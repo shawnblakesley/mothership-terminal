@@ -989,10 +989,10 @@
 
   // The comms box sends as a Direction (the agent obeys), as a voice speaking
   // (the Speak picker), or as a private Note. Keyboard first: Tab / Shift+Tab
-  // cycle Direction → each voice and character → Note; Enter sends in the
+  // cycle Direction → Note → each voice and character; Enter sends in the
   // current mode, Shift+Enter is a new line, Ctrl+Enter always sends a Note.
   let composeMode = "command"; // "command" | "voice" (as $("sendAs")) | "note"
-  const composeModes = () => ["command", ...[...$("sendAs").options].map((o) => `voice:${o.value}`), "note"];
+  const composeModes = () => ["command", "note", ...[...$("sendAs").options].map((o) => `voice:${o.value}`)];
   const currentComposeMode = () => (composeMode === "voice" ? `voice:${$("sendAs").value}` : composeMode);
 
   function setComposeMode(mode) {
