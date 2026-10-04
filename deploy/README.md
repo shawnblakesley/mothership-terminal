@@ -2,6 +2,8 @@
 
 This is how [shawnofthe.dev/mothership](https://shawnofthe.dev/mothership/) is wired. The main site is static: S3 behind CloudFront. The terminal needs a running server, so CloudFront sends just `/mothership*` to it.
 
+**Infrastructure as code:** the AWS side lives in the CDK app in the private `monster-land` repo (`cdk/lib`). **MothershipStack** owns the Lightsail instance (`mothership-2gb`), its static IP (`mothership-ip`) and the `mothership-origin` DNS record; **PortfolioStack** owns the CloudFront distribution, including the `/mothership*` route. The origin secret is read at deploy time from SSM Parameter Store (`/mothership/origin-secret`), never stored in code. Change infrastructure there (`cdk diff`, then `cdk deploy`), not by hand. The steps below are how it was first set up, and what to do on a fresh server; app code still deploys with `update.sh`.
+
 ```
                            ┌── /*            → S3 bucket (the static site, unchanged)
 viewer ── HTTPS ── CloudFront
