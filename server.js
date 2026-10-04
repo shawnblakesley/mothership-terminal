@@ -238,7 +238,19 @@ app.use(BASE || "/", router);
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: `${BASE}/ws`, maxPayload: 256 * 1024 });
 
+// Heartbeat: keeps quiet connections open through CloudFront and proxies (which
+// drop idle WebSockets) and clears out ones whose client vanished.
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) { ws.terminate(); continue; }
+    ws.isAlive = false;
+    ws.ping();
+  }
+}, 30_000).unref();
+
 wss.on("connection", (ws, req) => {
+  ws.isAlive = true;
+  ws.on("pong", () => (ws.isAlive = true));
   const url = new URL(req.url, "http://x");
   const ip = clientIp(req);
   if (limited(`ws:${ip}`, 60, 60_000)) return ws.close(4029, "too many connections");
