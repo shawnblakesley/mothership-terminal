@@ -496,7 +496,8 @@ export class Session {
     ws.lastInput = now;
     this.interruptComms();
     const pc = this.characterOf(ws);
-    this.addLog("player", text, pc ? { by: pc.name } : {});
+    const term = this.state.config.terminals.find((t) => t.id === ws.terminal);
+    this.addLog("player", text, { ...(pc ? { by: pc.name } : {}), ...(term ? { at: term.name } : {}) });
     if (this.state.config.mode === "manual") {
       this.state.pending = null;
       this.syncDm();
@@ -1120,7 +1121,7 @@ export class Session {
     }
     const voices = this.state.config.voices;
     const lines = splitVoiceTags(
-      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), text: String(l.text ?? "").slice(0, 8000), effects: l.effects, variants: l.variants })),
+      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), inPerson: !!(l.inPerson ?? l.in_person), text: String(l.text ?? "").slice(0, 8000), effects: l.effects, variants: l.variants })),
       voices,
     );
     const useEffects = this.state.config.agentEffects;
@@ -1134,7 +1135,7 @@ export class Session {
     let waiting = [];
     let lastEntry = null;
     this.castCharacters(lines);
-    for (const { voice, character, text, effects: lineFx, variants: rawVariants } of lines) {
+    for (const { voice, character, inPerson, text, effects: lineFx, variants: rawVariants } of lines) {
       // Per-player versions of this line, for the crew they name (if the Warden allows them).
       const variants = source === "agent" && !this.state.config.agentVariants ? [] : resolveVariants(rawVariants, this.state.config.crew);
       // Effects from an effect-only beat are marked hold: the next line waits for them.
@@ -1145,7 +1146,7 @@ export class Session {
       for (const c of cues) if (c.type === "blackout") c.hold = true;
       waiting = [];
       const kind = kindOf(voice);
-      const entry = this.addLog(kind, text, { source, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
+      const entry = this.addLog(kind, text, { source, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson && character ? { inPerson: true } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
       lastEntry = entry;
       for (const c of cues) this.startEffect(c, "agent", { atEntry: entry.id, when: "before", hold: c.hold });

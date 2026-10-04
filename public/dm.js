@@ -294,7 +294,7 @@
   // Null for Warden notes.
   function speaker(e) {
     const by = e.source === "dm" ? "you" : e.source === "agent" ? "agent" : "";
-    const who = (name) => (e.character ? `${name} · ${e.character}` : name);
+    const who = (name) => (e.inPerson && e.character ? `${e.character} (in person)` : e.character ? `${name} · ${e.character}` : name);
     switch (e.kind) {
       case "player": return { name: e.by ? `Player · ${e.by}` : "Players", c: "var(--player)" };
       case "warden": return { name: "Warden → agent", c: "var(--warden)" };
@@ -393,7 +393,7 @@
   // One editable line of a draft: who says it, and what.
   // A line's effects fire as it begins (between lines of dialogue); untick to drop one.
   const draftLine = (l) => `
-    <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}">
+    <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}" data-inperson="${l.inPerson ? 1 : ""}" ${l.inPerson ? 'title="Spoken in person, in the room with the players"' : ""}>
       <div class="dwho">
         <select aria-label="Voice">${S.config.voices.map((v) => `<option value="${esc(v.id)}" ${v.id === l.voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
         <input class="dchar" list="chars-${esc(l.voice)}" value="${esc(l.character || "")}" placeholder="speaker" aria-label="Character" title="Who speaks this line (for voices several people share, like the intercom)" ${hasCast(l.voice) || l.character ? "" : "hidden"}>
@@ -943,7 +943,7 @@
           const fx = JSON.parse(row.dataset.effects || "[]").filter((_, i) => row.querySelector(`[data-leff="${i}"]`)?.checked);
           const variants = [...row.querySelectorAll(".dvar")].map((d) => ({ for: d.querySelector(".dvfor").value.trim(), text: d.querySelector(".dvtext").value }))
             .filter((v) => v.for && v.text.trim());
-          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), text: row.querySelector(".dwho + textarea").value, effects: fx, variants };
+          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), inPerson: !!row.dataset.inperson, text: row.querySelector(".dwho + textarea").value, effects: fx, variants };
         })
         .filter((l) => l.text.trim() || l.effects.length || l.variants.length), // effect-only beats count
       station_changes: r.station_changes.filter((_, i) => card.querySelector(`[data-chg="${i}"]`)?.checked),

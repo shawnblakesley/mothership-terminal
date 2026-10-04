@@ -150,7 +150,8 @@
     const v = voiceOf(entry);
     div.classList.add(`style-${v?.style || (entry.kind === "system" ? "boxed" : "plain")}`);
     // A shared voice (the intercom) also shows who is speaking: "INTERCOM · SALK: ".
-    if (v?.style === "label") div.dataset.label = `${v.name}${entry.character ? ` · ${entry.character.toUpperCase()}` : ""}: `;
+    if (entry.inPerson && entry.character) div.dataset.label = `${entry.character.toUpperCase()}: `; // in the room with them
+    else if (v?.style === "label") div.dataset.label = `${v.name}${entry.character ? ` · ${entry.character.toUpperCase()}` : ""}: `;
     if (v?.color) {
       div.style.color = v.color;
       div.style.borderColor = v.color;
@@ -248,7 +249,7 @@
     const text = (part.i ? "\n" : "") + (play.pieces[part.i] ?? "");
     const late = serverNow() - part.at;
     // The whole clip always plays: a screen that's a moment late starts it a moment late.
-    if (audio) audio.then((buf) => play.gen === lineGen && !play.cut && Voice.playNow(buf, voiceOf(play.entry)?.fx));
+    if (audio) audio.then((buf) => play.gen === lineGen && !play.cut && Voice.playNow(buf, play.entry.inPerson ? {} : voiceOf(play.entry)?.fx)); // (in person: their own voice, no speaker effects)
     // Type it out within the piece's time (all at once if this screen is late).
     if (late > part.dur * 0.6) { play.div.textContent += text; scrollDown(); }
     else typeInto(play.div, text, part.dur - Math.max(0, late));
