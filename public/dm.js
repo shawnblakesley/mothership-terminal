@@ -410,12 +410,16 @@
 
   // ------------------------------------------------------------ station map
   let mapKey = "";
+  // Drawing (schematic) or Status (board); remembered on this device.
+  let mapView = store.get("mapView") || "draw";
   function renderMap(force = false) {
-    const key = JSON.stringify([S.station, S.config.map]);
+    const key = JSON.stringify([S.station, S.config.map, mapView]);
     if (!force && key === mapKey) return;
     mapKey = key;
-    StationMap.render($("map"), S.station, S.config.map);
-    if ($("mapDialog").open) StationMap.render($("mapBig"), S.station, S.config.map);
+    const show = (el) => (mapView === "status" ? StationMap.render : StationMap.draw)(el, S.station, S.config.map);
+    for (const b of document.querySelectorAll(".mapview button")) b.classList.toggle("on", b.dataset.view === mapView);
+    show($("map"));
+    if ($("mapDialog").open) show($("mapBig"));
     if (document.activeElement !== $("mapLayout") && !dirty.has("map")) $("mapLayout").value = S.config.map;
   }
 
@@ -448,6 +452,19 @@
     renderMap(true);
   };
   $("mapClose").onclick = () => $("mapDialog").close();
+  for (const seg of document.querySelectorAll(".mapview")) {
+    seg.addEventListener("click", (e) => {
+      const v = e.target.closest("[data-view]")?.dataset.view;
+      if (!v) return;
+      e.preventDefault(); // (one sits in the panel's summary)
+      mapView = v;
+      store.set("mapView", v);
+      renderMap(true);
+    });
+  }
+  // The drawing is laid out for its width.
+  let mapResize = null;
+  addEventListener("resize", () => { clearTimeout(mapResize); mapResize = setTimeout(() => S && renderMap(true), 200); });
   $("mapLayout").addEventListener("input", () => dirty.add("map"));
   $("mapLayoutSave").onclick = () => {
     dirty.delete("map");

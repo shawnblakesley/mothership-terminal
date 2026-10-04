@@ -84,7 +84,12 @@ You can also ask it questions this way. Notes need an API key; they work in ever
 
 ## Station map
 
-The **Station map** draws the station state as decks and rooms, with every value on it: doors, cameras and lights in their rooms and decks, and everything else (life support, power, comms, quarantine, crew...) as system panels. Values are coloured at a glance (green fine, amber degraded, red locked, offline or dangerous); a deck with its lights off goes dark, flickering lights flicker, and a quarantined deck is striped red. Anything the agent adds that isn't on the layout yet appears under "Not on the map yet".
+The **Station map** has two views (switch with **Drawing / Status**):
+
+- **Drawing:** a schematic of the station. Decks are stacked on a lift shaft; each has a corridor its rooms open off. Doors sit in the doorways (green open, amber closed, red locked or sealed), cameras show on their rooms, airlocks open to space, and extra connections such as air vents or maintenance shafts are drawn as pipes between rooms. Click a door, light, camera or value to change it.
+- **Status:** a board of every value by deck and room.
+
+Both show every value in the state: doors, cameras and lights in their rooms and decks, and everything else (life support, power, comms, quarantine, crew...) as system panels. Values are coloured at a glance (green fine, amber degraded, red locked, offline or dangerous); a deck with its lights off goes dark, flickering lights flicker, and a quarantined deck is striped red. Anything the agent adds that isn't on the layout yet appears under "Not on the map yet".
 
 Click a value to change it: pick a common one (OPEN, LOCKED, SEALED...) or type anything. The players see nothing; the agent sees the new state on its next reply. **⤢ Expand** opens the full map, where **Layout** sets the decks and rooms, one line per deck:
 
@@ -92,7 +97,7 @@ Click a value to change it: pick a common one (OPEN, LOCKED, SEALED...) or type 
 Deck 2 · Habitation / Med Bay: med_bay=Med Bay, galley
 ```
 
-Room ids match station state keys anywhere in their path (`doors.med_bay`, `cameras.med_bay`), and "Deck 2" matches deck-wide keys like `lights.deck_2`.
+Room ids match station state keys anywhere in their path (`doors.med_bay`, `cameras.med_bay`), and "Deck 2" matches deck-wide keys like `lights.deck_2`. Add connections between rooms with `Link:` lines, e.g. `Link: med_bay - cargo_bay_deck3 (air vents)`.
 
 ## Warden vs players
 

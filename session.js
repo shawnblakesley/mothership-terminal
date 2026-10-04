@@ -29,7 +29,11 @@ const DEFAULT_SECRETS = `- The void contained an organism. It is in the Deck 3 c
 const DEFAULT_MAP = `Deck 1 · Command / Comms: command_deck=Command, airlock_a=Airlock A
 Deck 2 · Habitation / Med Bay: med_bay=Med Bay
 Deck 3 · Cargo / Refinery: cargo_bay_deck3=Cargo Bay
-Deck 4 · Reactor: reactor_access=Reactor Access`;
+Deck 4 · Reactor: reactor_access=Reactor Access
+Link: med_bay - cargo_bay_deck3 (air vents)
+Link: cargo_bay_deck3 - reactor_access (maintenance shaft)`;
+// Earlier default layouts (no links), upgraded when unedited.
+const OLD_DEFAULT_MAPS = [DEFAULT_MAP.split("\nLink:")[0]];
 
 const DEFAULT_STATION = {
   access_level: "GUEST",
@@ -96,6 +100,7 @@ function migrateGame(saved) {
       .trim();
   }
   config.secrets = String(config.secrets).replace("WARDEN is to seal all decks", "HV-CORE is to seal all decks");
+  if (OLD_DEFAULT_MAPS.includes(config.map)) config.map = DEFAULT_MAP;
   return {
     config: { ...config, ...fixSelection(config), voices },
     station: saved.station ?? base.station,
