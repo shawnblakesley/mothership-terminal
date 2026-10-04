@@ -280,21 +280,45 @@
   }
 
   let lastLogLen = -1;
+  // A log entry's speaker label, who sent it (you or the agent) and its colour.
+  // Null for Warden notes.
+  function speaker(e) {
+    const by = e.source === "dm" ? "you" : e.source === "agent" ? "agent" : "";
+    switch (e.kind) {
+      case "player": return { name: "Players", c: "var(--player)" };
+      case "warden": return { name: "Warden → agent", c: "var(--warden)" };
+      case "roll": return { name: "Roll result", c: "var(--roll)" };
+      case "terminal": return { name: voiceName("terminal"), by, c: "var(--accent)" };
+      case "system": return { name: voiceName("broadcast"), by, c: "var(--warn)" };
+      case "entity": {
+        const v = S.config.voices.find((x) => x.id === e.entity);
+        return { name: v?.name || e.entity, by, c: v?.color || "var(--entity)" };
+      }
+      default: return null;
+    }
+  }
+
   function renderLog() {
     const log = $("log");
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
-    const who = (e) => e.kind === "player" ? "Players"
-      : e.kind === "warden" ? "⚑ Warden command → agent"
-      : e.kind === "roll" ? "🎲 Roll result"
-      : e.kind === "entity" ? `🔊 ${esc(voiceName(e.entity))} · ${e.source === "dm" ? "you" : "agent"}`
-      : e.kind === "terminal" ? (e.source === "dm" ? "Terminal · you" : "Terminal · agent")
-      : e.kind === "system" ? (e.source === "agent" ? "Broadcast · agent" : "Broadcast · you") : "Note";
-    log.innerHTML = S.log.map((e) => `
-      <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""}">
-        <div class="who"><span>${who(e)}</span><span>${time(e.ts)}</span>${e.hidden ? "<span>· cleared from screen</span>" : ""}</div>
-        <div class="txt">${esc(e.text)}</div>
-        <button class="del" data-del="${e.id}" title="Delete (also removes from agent memory)">✕</button>
-      </div>`).join("") || `<div class="muted small">Nothing yet. Waiting for the crew to type something…</div>`;
+    log.innerHTML = S.log.map((e) => {
+      const sp = speaker(e);
+      const del = `<button class="del" data-del="${e.id}" title="Delete (also removes from agent memory)">✕</button>`;
+      const when = `<span class="time">${time(e.ts)}</span>`;
+      // Warden notes: one quiet line each.
+      if (!sp) {
+        // "Agent triggered effect: blackout (2s) before line #13" -> "⚡ blackout (2s)":
+        // it's listed right under the line it plays with.
+        const fx = /^Agent triggered effect: (.*?)(?: (before|after) line #\d+)?$/.exec(e.text);
+        const txt = fx ? `⚡ ${esc(fx[1])}${fx[2] === "after" ? " · after this line" : ""}` : esc(e.text);
+        return `<div class="entry note${fx ? " fx" : ""}"><span class="txt">${txt}</span>${when}${del}</div>`;
+      }
+      return `
+      <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""}" style="--c: ${sp.c}">
+        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${when}</div>
+        <div class="txt">${esc(e.text)}</div>${del}
+      </div>`;
+    }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew to type something…</div>`;
     if (atBottom || S.log.length !== lastLogLen) log.scrollTop = log.scrollHeight;
     lastLogLen = S.log.length;
   }
