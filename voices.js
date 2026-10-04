@@ -119,8 +119,8 @@ BEHAVIOUR
 - For alerts, quarantine and lockdown notices, evacuation orders, shift and schedule changes.
 - It announces; it never converses or answers questions.`,
   intercom: `The live station intercom: real people elsewhere on the station talking to the players.
-- Natural, human, conversational speech (sentence case), with the speaker's own personality, stress and fear.
-- Say who is speaking if it isn't obvious ("This is Salk, in med bay...").
+- Several people use it (see CHARACTERS); each line says who is speaking. Give each their own personality, stress and fear, and let them talk to each other as well as to the players.
+- Natural, human, conversational speech (sentence case).
 - Only people the lore says are on the station can speak, and only about what they would know.
 - Intercom lines only: strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,
   unknown: `Something that should not be in the system. Nobody knows what it is.
@@ -129,7 +129,10 @@ BEHAVIOUR
 };
 
 // Earlier default personas, upgraded when a saved session still has one unedited.
-const INTERCOM_BASE = DEFAULT_PERSONAS.intercom.split("\n").slice(0, -1).join("\n");
+const INTERCOM_BASE = `The live station intercom: real people elsewhere on the station talking to the players.
+- Natural, human, conversational speech (sentence case), with the speaker's own personality, stress and fear.
+- Say who is speaking if it isn't obvious ("This is Salk, in med bay...").
+- Only people the lore says are on the station can speak, and only about what they would know.`;
 export const OLD_DEFAULT_PERSONAS = {
   terminal: [
     // before the rule of cool: HV-CORE decided whether hacks worked
@@ -141,6 +144,7 @@ export const OLD_DEFAULT_PERSONAS = {
   intercom: [
     INTERCOM_BASE, // before the one-sentence rule
     `${INTERCOM_BASE}\n- Strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,
+    `${INTERCOM_BASE}\n- Intercom lines only: strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`, // before characters
   ],
 };
 
@@ -152,9 +156,74 @@ export function defaultVoices() {
   return [
     { id: BUILTIN.terminal, name: "HV-CORE", style: "plain", color: "", persona: DEFAULT_PERSONAS.terminal, ...fromPreset("robotic") },
     { id: BUILTIN.broadcast, name: "SYSTEM BROADCAST", style: "boxed", color: "", persona: DEFAULT_PERSONAS.broadcast, ...fromPreset("ethereal") },
-    { id: "intercom", name: "INTERCOM", style: "label", color: "#9fd3ff", persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom") },
+    { id: "intercom", name: "INTERCOM", style: "label", color: "#9fd3ff", persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom"), characters: DEFAULT_INTERCOM_CHARACTERS },
     { id: "unknown", name: "???", style: "label", color: "#ff5a5a", persona: DEFAULT_PERSONAS.unknown, ...fromPreset("demonic") },
   ];
+}
+
+// People who speak through one voice (e.g. different crew on the intercom), each
+// with their own base voice: a Kokoro speaker for human voices, an eSpeak
+// variant for synthetic ones. The agent picks who speaks each line.
+const DEFAULT_INTERCOM_CHARACTERS = [
+  { name: "Dr. Imre Salk", voice: "am_michael", notes: "The station medic, in med bay. Kind, exhausted, frightened." },
+];
+
+const MAX_CHARACTERS = 30;
+const validCharacterVoice = (engine, id) => (engine === "neural" ? !!SPEAKERS[id] : VARIANTS.includes(id) && id !== "");
+
+function sanitizeCharacters(list, engine) {
+  const seen = new Set();
+  const out = [];
+  for (const c of Array.isArray(list) ? list : []) {
+    const name = String(c?.name || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push({ name, voice: validCharacterVoice(engine, c.voice) ? c.voice : "", notes: String(c?.notes || "").slice(0, 500) });
+    if (out.length >= MAX_CHARACTERS) break;
+  }
+  return out;
+}
+
+// Find a voice's character by name, forgivingly: "Salk" or "Dr. Salk" find "Dr. Imre Salk".
+export function findCharacter(v, name) {
+  const n = String(name || "").trim().toLowerCase();
+  if (!n || !v?.characters?.length) return null;
+  const words = (s) => s.toLowerCase().replace(/[^a-z0-9' ]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !["dr", "mr", "mrs", "ms", "the"].includes(w));
+  const exact = v.characters.find((c) => c.name.toLowerCase() === n);
+  if (exact) return exact;
+  const nw = words(n);
+  return v.characters.find((c) => { const cw = words(c.name); return nw.length && nw.every((w) => cw.includes(w)); }) || null;
+}
+
+// A new character the agent brought in ("Marlowe (f)"): give them a voice of
+// their own (one the voice's other characters aren't using), stable for the name.
+// Returns { name, created } and adds the character to v.characters.
+export function castCharacter(v, raw) {
+  const m = String(raw || "").trim().match(/^(.*?)\s*\((f|m|female|male|woman|man)\)\s*$/i);
+  const name = (m ? m[1] : String(raw || "")).replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!name) return { name: "", created: false };
+  const found = findCharacter(v, name);
+  if (found) return { name: found.name, created: false };
+  if ((v.characters ||= []).length >= MAX_CHARACTERS) return { name, created: false };
+  const sex = m ? m[2][0].toLowerCase() : "";
+  const neural = v.voice.engine === "neural";
+  let pool = neural
+    ? Object.keys(SPEAKERS).filter((id) => !sex || id[1] === sex)
+    : VARIANTS.filter((id) => /^[mf]\d$/.test(id) && (!sex || id[0] === sex));
+  const used = new Set([neural ? v.voice.speaker : v.voice.variant, ...v.characters.map((c) => c.voice)]);
+  if (pool.some((id) => !used.has(id))) pool = pool.filter((id) => !used.has(id));
+  let h = 0;
+  for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  v.characters.push({ name, voice: pool[h % pool.length] || "", notes: "" });
+  return { name, created: true };
+}
+
+// The base voice a line is spoken with: the voice's own, or its character's.
+export function speakingVoice(voices, entry) {
+  const v = voiceFor(voices, entry);
+  const c = entry.character ? findCharacter(v, entry.character) : null;
+  if (!c?.voice) return v.voice;
+  return v.voice.engine === "neural" ? { ...v.voice, speaker: c.voice } : { ...v.voice, variant: c.voice };
 }
 
 const clampInt = (v, min, max, def) => {
@@ -190,6 +259,9 @@ export function sanitizeVoices(list) {
       },
       fx: fillFx(raw.fx),
     });
+    const engine = out.at(-1).voice.engine;
+    // Voices saved before characters existed: the intercom gets the default cast.
+    out.at(-1).characters = sanitizeCharacters(raw.characters ?? (id === "intercom" ? DEFAULT_INTERCOM_CHARACTERS : []), engine);
   }
   for (const b of defaults.slice(0, 2)) if (!seen.has(b.id)) out.unshift(b);
   return out;

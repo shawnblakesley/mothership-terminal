@@ -87,16 +87,18 @@
   // In-page confirmation: ask(title, text, [[value, label, class?], ...]) resolves
   // to the clicked button's value, or "" if dismissed. (Not confirm(): browsers let
   // people block those, which silently answers "cancel".)
-  function ask(title, text, buttons, copyText) {
+  // input: { value } shows an editable field (read it from $("askCopy") afterwards).
+  function ask(title, text, buttons, copyText, input = null) {
     const dlg = $("askDialog");
     $("askTitle").textContent = title;
     $("askText").textContent = text;
-    $("askCopy").hidden = !copyText;
-    $("askCopy").value = copyText || "";
+    $("askCopy").hidden = !copyText && !input;
+    $("askCopy").readOnly = !input;
+    $("askCopy").value = input ? String(input.value ?? "") : copyText || "";
     $("askButtons").innerHTML = buttons.map(([v, label, cls]) => `<button value="${esc(v)}" class="${cls || ""}">${esc(label)}</button>`).join("")
       + '<span class="grow"></span><button value="" formnovalidate>Cancel</button>';
     dlg.showModal();
-    if (copyText) $("askCopy").select();
+    if (copyText || input) $("askCopy").select();
     return new Promise((resolve) => {
       const done = (value) => {
         dlg.removeEventListener("close", onClose);
@@ -260,6 +262,8 @@
     renderOutcome();
     renderRoll();
     renderSounds();
+    renderCastLists();
+    renderMap();
   }
 
   function fillSelect(sel, options, value) {
@@ -285,15 +289,18 @@
   // Null for Warden notes.
   function speaker(e) {
     const by = e.source === "dm" ? "you" : e.source === "agent" ? "agent" : "";
+    const who = (name) => (e.character ? `${name} · ${e.character}` : name);
     switch (e.kind) {
       case "player": return { name: "Players", c: "var(--player)" };
       case "warden": return { name: "Warden → agent", c: "var(--warden)" };
+      case "aside": return { name: "Note → agent", by: "private", c: "var(--aside)" };
+      case "aside_reply": return { name: "Agent → you", by: "private", c: "var(--aside)" };
       case "roll": return { name: "Roll result", c: "var(--roll)" };
-      case "terminal": return { name: voiceName("terminal"), by, c: "var(--accent)" };
-      case "system": return { name: voiceName("broadcast"), by, c: "var(--warn)" };
+      case "terminal": return { name: who(voiceName("terminal")), by, c: "var(--accent)" };
+      case "system": return { name: who(voiceName("broadcast")), by, c: "var(--warn)" };
       case "entity": {
         const v = S.config.voices.find((x) => x.id === e.entity);
-        return { name: v?.name || e.entity, by, c: v?.color || "var(--entity)" };
+        return { name: who(v?.name || e.entity), by, c: v?.color || "var(--entity)" };
       }
       default: return null;
     }
@@ -317,7 +324,7 @@
       return `
       <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""}" style="--c: ${sp.c}">
         <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${when}</div>
-        <div class="txt">${esc(e.text)}</div>${del}
+        <div class="txt">${esc(e.text)}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
       </div>`;
     }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew to type something…</div>`;
     if (atBottom || S.log.length !== lastLogLen) log.scrollTop = log.scrollHeight;
@@ -375,11 +382,20 @@
   // A line's effects fire as it begins (between lines of dialogue); untick to drop one.
   const draftLine = (l) => `
     <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}">
-      <select aria-label="Voice">${S.config.voices.map((v) => `<option value="${esc(v.id)}" ${v.id === l.voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
+      <div class="dwho">
+        <select aria-label="Voice">${S.config.voices.map((v) => `<option value="${esc(v.id)}" ${v.id === l.voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
+        <input class="dchar" list="chars-${esc(l.voice)}" value="${esc(l.character || "")}" placeholder="speaker" aria-label="Character" title="Who speaks this line (for voices several people share, like the intercom)" ${hasCast(l.voice) || l.character ? "" : "hidden"}>
+      </div>
       <textarea rows="${Math.min(12, Math.max(2, l.text.split("\n").length))}" placeholder="${l.effects?.length ? "(effect only: no text)" : ""}">${esc(l.text)}</textarea>
       <button data-act="delLine" class="ghost" title="Remove line">✕</button>
       ${l.effects?.length ? `<div class="dfx">${l.effects.map((f, i) => `<label class="chip"><input type="checkbox" data-leff="${i}" ${S.config.agentEffects ? "checked" : ""}> ⚡ ${FX_META[f.type]?.[0] || ""} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s <span class="muted">as this line starts</span></label>`).join("")}</div>` : ""}
     </div>`;
+  const hasCast = (voiceId) => !!S.config.voices.find((v) => v.id === voiceId)?.characters?.length;
+  // Name suggestions for each voice's speaker box.
+  function renderCastLists() {
+    $("castLists").innerHTML = S.config.voices.map((v) =>
+      `<datalist id="chars-${esc(v.id)}">${(v.characters || []).map((c) => `<option value="${esc(c.name)}">`).join("")}</datalist>`).join("");
+  }
   const steerRow = () => `<input id="steer" placeholder="Steer the rewrite: e.g. 'more evasive', 'deny the door is open', 'glitch mid-sentence'">`;
 
   function renderEffects() {
@@ -391,6 +407,52 @@
           <button data-endfx="${f.id}">End</button></li>`).join("")
       : `<li class="none">None</li>`;
   }
+
+  // ------------------------------------------------------------ station map
+  let mapKey = "";
+  function renderMap(force = false) {
+    const key = JSON.stringify([S.station, S.config.map]);
+    if (!force && key === mapKey) return;
+    mapKey = key;
+    StationMap.render($("map"), S.station, S.config.map);
+    if ($("mapDialog").open) StationMap.render($("mapBig"), S.station, S.config.map);
+    if (document.activeElement !== $("mapLayout") && !dirty.has("map")) $("mapLayout").value = S.config.map;
+  }
+
+  // Click a value: pick a likely one or type anything; it goes into the station state.
+  async function editStationValue(path) {
+    let cur = S.station;
+    for (const k of path) cur = cur?.[k];
+    const options = StationMap.choicesFor(path).filter((o) => o !== String(cur).toUpperCase());
+    const picked = await ask(path.join(".").replace(/_/g, " ").toUpperCase(), `Now: ${cur}. Pick a value or type one. Players don't see this; the agent does on its next reply.`,
+      [["set", "Set", "primary"], ...options.map((o) => [`opt:${o}`, o])], "", { value: cur }); // Set first: Enter in the field means Set
+    if (!picked) return;
+    const raw = picked === "set" ? $("askCopy").value.trim() : picked.slice(4);
+    if (raw === "" || raw === String(cur)) return;
+    const next = structuredClone(S.station);
+    let o = next;
+    for (const k of path.slice(0, -1)) o = o[k] ??= {};
+    o[path.at(-1)] = /^-?\d+(\.\d+)?$/.test(raw) ? Number(raw) : raw;
+    send({ t: "station", station: next });
+  }
+  for (const id of ["map", "mapBig"]) {
+    $(id).addEventListener("click", (e) => {
+      const p = e.target.closest("[data-path]")?.dataset.path;
+      if (p) editStationValue(JSON.parse(p));
+    });
+  }
+  $("mapExpand").onclick = (e) => {
+    e.preventDefault(); // (it sits in the panel's summary)
+    $("mapTitle").textContent = `${S.config.stationName} · station map`;
+    $("mapDialog").showModal();
+    renderMap(true);
+  };
+  $("mapClose").onclick = () => $("mapDialog").close();
+  $("mapLayout").addEventListener("input", () => dirty.add("map"));
+  $("mapLayoutSave").onclick = () => {
+    dirty.delete("map");
+    send({ t: "config", patch: { map: $("mapLayout").value } });
+  };
 
   // ------------------------------------------------------------ sounds
   const soundUrl = (id) => `api/sessions/${code}/sounds/${id}`;
@@ -554,7 +616,10 @@
     if (!text) return;
     if (as === "note") send({ t: "note", text });
     else if (as === "command") send({ t: "command", text });
-    else send({ t: "inject", as: $("sendAs").value, text, clearPending: true });
+    else {
+      const [as, character = ""] = $("sendAs").value.split("::");
+      send({ t: "inject", as, character, text, clearPending: true });
+    }
     $("compose").value = "";
   }
   $("sendCommand").onclick = () => compose("command");
@@ -577,7 +642,7 @@
       lines: [...card.querySelectorAll(".dline")]
         .map((row) => {
           const fx = JSON.parse(row.dataset.effects || "[]").filter((_, i) => row.querySelector(`[data-leff="${i}"]`)?.checked);
-          return { voice: row.querySelector("select").value, text: row.querySelector("textarea").value, effects: fx };
+          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), text: row.querySelector("textarea").value, effects: fx };
         })
         .filter((l) => l.text.trim() || l.effects.length), // effect-only beats count
       station_changes: r.station_changes.filter((_, i) => card.querySelector(`[data-chg="${i}"]`)?.checked),
@@ -592,6 +657,13 @@
     else if (act === "delLine") e.target.closest(".dline").remove();
     else if (act === "discard") send({ t: "discard" });
     else if (act === "regen") send({ t: "generate", steer: $("steer")?.value || "" });
+  });
+  // Switching a line's voice: its speaker box follows (shown for shared voices).
+  $("pending").addEventListener("change", (e) => {
+    if (!e.target.matches(".dwho select")) return;
+    const box = e.target.parentElement.querySelector(".dchar");
+    box.setAttribute("list", `chars-${e.target.value}`);
+    box.hidden = !hasCast(e.target.value) && !box.value;
   });
   $("pending").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -652,7 +724,11 @@
   function renderSendAs() {
     const sel = $("sendAs");
     const prev = sel.value || "terminal";
-    fillSelect(sel, S.config.voices.map((v) => [v.id, v.id === "terminal" ? `${v.name} (terminal)` : v.name]), prev);
+    // Shared voices list each character too ("INTERCOM · Dr. Imre Salk").
+    fillSelect(sel, S.config.voices.flatMap((v) => [
+      [v.id, v.id === "terminal" ? `${v.name} (terminal)` : v.name],
+      ...(v.characters || []).map((c) => [`${v.id}::${c.name}`, `${v.name} · ${c.name}`]),
+    ]), prev);
     if (!sel.value) sel.value = "terminal";
   }
 
@@ -716,11 +792,34 @@
           ${slider("voice.pitch", "Pitch", 0, 99, 1, v.voice.pitch)}
           ${slider("voice.speed", "Words/min", 80, 320, 5, v.voice.speed)}`}
         </div>
+        ${BUILTIN_IDS.includes(v.id) ? "" : castEditor(v)}
         <details class="fxd"><summary>Effects</summary>
           <div class="vgrid">${Object.entries(o.fxParams).map(([k, [min, max]]) =>
             slider(`fx.${k}`, FX_LABELS[k] || k, min, max, (max - min) / 100, v.fx[k])).join("")}</div>
         </details>
       </div>`).join("");
+  }
+
+  // People who speak through this voice, each with their own base voice. The
+  // agent reads the list (with the persona) and picks who speaks each line.
+  function castEditor(v) {
+    const o = S.voiceOptions;
+    const choices = v.voice.engine === "neural"
+      ? Object.entries(o.speakers)
+      : o.variants.filter((x) => /^[mf]\d$/.test(x)).map((x) => [x, x]);
+    const own = v.voice.engine === "neural" ? o.speakers[v.voice.speaker] : v.voice.variant || "default";
+    return `<div class="cast">
+      <div class="row"><span class="grow castlabel">Characters <em>(people who speak through this voice; the agent switches between them)</em></span>
+        <button data-act="addChar" class="ghost">+ Character</button></div>
+      ${(v.characters || []).map((c, j) => `<div class="char" data-j="${j}">
+        <input data-ck="name" value="${esc(c.name)}" placeholder="Name" aria-label="Character name">
+        <select data-ck="voice" aria-label="Their voice"><option value="">same as ${esc(v.name)} (${esc(own)})</option>${choices.map(([id, label]) =>
+          `<option value="${id}" ${id === c.voice ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
+        <button data-act="testChar" title="Hear them (on this computer only)">▶</button>
+        <button data-act="delChar" class="ghost" title="Remove">✕</button>
+        <input data-ck="notes" class="cnotes" value="${esc(c.notes)}" placeholder="Who they are, how they talk (the agent reads this)" aria-label="Notes">
+      </div>`).join("") || `<div class="muted small">Nobody yet. The agent adds people it brings in; you can pick their voices here.</div>`}
+    </div>`;
   }
 
   function slider(key, label, min, max, step, value) {
@@ -737,6 +836,12 @@
 
   $("voices").addEventListener("input", (e) => {
     const card = e.target.closest(".vcard");
+    const ck = e.target.dataset.ck;
+    if (card && ck) {
+      const c = voicesDraft[Number(card.dataset.i)].characters[Number(e.target.closest(".char").dataset.j)];
+      c[ck] = e.target.value;
+      return saveVoices();
+    }
     const key = e.target.dataset.k;
     if (!card || !key) return;
     const v = voicesDraft[Number(card.dataset.i)];
@@ -785,6 +890,19 @@
     let i = Number(card.dataset.i);
     if (act === "test") {
       Voice.test(voicesDraft[i], $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
+    } else if (act === "addChar") {
+      (voicesDraft[i].characters ||= []).push({ name: "", voice: "", notes: "" });
+      renderVoices(true);
+      $("voices").querySelector(`.vcard[data-i="${i}"] .char:last-of-type [data-ck="name"]`)?.focus();
+    } else if (act === "delChar") {
+      voicesDraft[i].characters.splice(Number(e.target.closest(".char").dataset.j), 1);
+      saveVoices();
+      renderVoices(true);
+    } else if (act === "testChar") {
+      const v = voicesDraft[i];
+      const c = v.characters[Number(e.target.closest(".char").dataset.j)];
+      const base = !c.voice ? v.voice : v.voice.engine === "neural" ? { ...v.voice, speaker: c.voice } : { ...v.voice, variant: c.voice };
+      Voice.test({ ...v, voice: base }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     } else if (act === "del") {
       const v = voicesDraft[i];
       if (!(await sure(`Delete "${v.name}"?`, "The voice and its persona are removed.", "Delete"))) return;

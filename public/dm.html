@@ -50,6 +50,22 @@
     </form>
   </dialog>
 
+  <!-- The full station map, with its layout editor. -->
+  <dialog id="mapDialog" class="mapdlg">
+    <div class="row">
+      <h2 class="grow" id="mapTitle">Station map</h2>
+      <span class="muted small">Click any value to change it. The agent sees changes on its next reply.</span>
+      <button id="mapClose" class="ghost" aria-label="Close">✕</button>
+    </div>
+    <div id="mapBig" class="smap"></div>
+    <details class="maplayout">
+      <summary>Layout <span class="muted">(decks and rooms)</span></summary>
+      <p class="muted small">One line per deck: <code>Deck 2 · Med Bay: med_bay=Med Bay, galley</code>. Room ids match keys in the station state (<code>doors.med_bay</code>, <code>cameras.med_bay</code>); "Deck 2" matches deck-wide keys like <code>lights.deck_2</code>. Anything not placed still shows up, under systems or "Not on the map yet".</p>
+      <textarea id="mapLayout" class="code" rows="7" spellcheck="false"></textarea>
+      <div class="row"><span class="grow"></span><button id="mapLayoutSave">Save layout</button></div>
+    </details>
+  </dialog>
+
   <dialog id="keyDialog">
     <form method="dialog" class="stack" id="keyForm">
       <h2>Agent API key</h2>
@@ -94,14 +110,15 @@
       <h2>Comms log</h2>
       <div id="log" class="log"></div>
       <div class="compose">
-        <textarea id="compose" rows="3" placeholder="Command the agent, type as the terminal, send a broadcast, or leave a private note…  (Ctrl+Enter = command agent)"></textarea>
+        <textarea id="compose" rows="3" placeholder="Command the agent, speak as any voice, or send the agent a private note…  (Ctrl+Enter = command agent)"></textarea>
+        <div id="castLists" hidden></div>
         <div class="row wrap">
           <button id="sendCommand" class="primary" title="The agent must obey. Players never see this; the agent responds to it right away.">⚑ Command agent</button>
           <span class="sendas">
             <select id="sendAs" aria-label="Voice to send as" title="Which voice says it. Add voices under Voices &amp; entities."></select>
             <button id="sendVoice" title="Appears on the players' screen word for word, spoken in that voice">Send as voice</button>
           </span>
-          <button id="sendNote" class="ghost" title="Only you see this; the agent doesn't">Private note</button>
+          <button id="sendNote" class="ghost" title="Private, between you and the agent: tell it what changed (e.g. 'Voss is dead', 'the cargo door is now open'). It updates the station state and replies here. Players see nothing.">✉ Note to agent</button>
         </div>
       </div>
     </section>
@@ -192,7 +209,11 @@
       <div class="preview"><iframe id="preview" title="Player terminal preview"></iframe></div>
       <p class="muted small">Players join with code <b id="codeInline"></b> at <code id="playerUrl"></code> <button id="copyPlayer" class="ghost">Copy link</button></p>
 
-      <details open>
+      <details open id="mapPanel">
+        <summary>Station map <span class="muted">(click a value to change it)</span><span class="grow"></span><button id="mapExpand" class="ghost" title="Open the full map">⤢ Expand</button></summary>
+        <div id="map" class="smap compact"></div>
+      </details>
+      <details>
         <summary>Station state <span class="muted">(the agent reads &amp; edits this)</span></summary>
         <textarea id="station" class="code" rows="14" spellcheck="false"></textarea>
         <div class="row"><span id="stationErr" class="err"></span><span class="grow"></span><button id="stationSave">Save state</button></div>
@@ -245,6 +266,7 @@
 
   <script src="voice.js"></script>
   <script src="sfx.js"></script>
+  <script src="stationmap.js"></script>
   <script src="dm.js"></script>
 </body>
 </html>

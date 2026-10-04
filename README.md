@@ -62,14 +62,37 @@ For anything that speaks the OpenAI chat-completions format (OpenRouter, Groq, T
 | Area | What it does |
 |---|---|
 | **Mode** (top right) | **Auto**: agent replies go straight to players. **Review**: every reply arrives as an editable draft that you send, regenerate with steering, or discard. **Manual**: agent is off. |
-| **Comms log** | Full transcript. **⚑ Command agent** (Ctrl+Enter) gives the agent an order it must obey; it acts on it right away and players never see the order. **Send as voice** puts your exact words on screen as any voice (see below). **Private note** is for you only. Deleting an entry also removes it from the agent's memory. |
+| **Comms log** | Full transcript. **⚑ Command agent** (Ctrl+Enter) gives the agent an order it must obey; it acts on it right away and players never see the order. **Send as voice** puts your exact words on screen as any voice (see below). **✉ Note to agent** is private between you and the agent (see below). Deleting an entry also removes it from the agent's memory. |
 | **Command for the next reply** | A one-shot order applied to the agent's next reply, e.g. "lie about the door". |
 | **Draft card** | A reply is a list of lines, each said by a voice. Edit the text, change who says each line, add or remove lines, and untick any station changes or effects you don't want. The 🧠 note is the agent's private read on what the players are attempting. |
 | **Screen effects** | Blood, goo (players can drag to wipe these off the glass), cracked screen, hacker alarm with siren, red alert with klaxon, glitch, static, blackout, terminal lockout (blocks input), giant banner, text corruption. Set the caption, duration (0 = until cleared) and intensity. |
+| **Station map** | The station state drawn as decks and rooms (see below). Click any value to change it; **⤢ Expand** opens the full map. |
 | **Station state** | JSON the agent reads every turn and can change, e.g. opening doors or raising `access_level`. The player header shows `access_level`. |
 | **Standing orders** | Persistent steering, e.g. "the AI is slowly being infected". |
 | **Lore & secrets** | What the computer knows. Secrets, such as passwords and company directives, are guarded by access level. |
 | **Voices, personas & settings** | Every voice with its persona, look and sound (see below), plus station name, screen colour, whether the agent may fire effects itself (such as an alarm when it catches a hack), and whether voices speak aloud. |
+
+## Notes to the agent
+
+**✉ Note to agent** sends a private note that only you and the agent see. Use it to tell the agent what is now true, without anything happening on the players' screen: "Voss died an hour ago in med bay", "Petrov has sealed himself in reactor access and cut the deck 4 lights". The agent:
+
+- updates the station state to match, right away (e.g. `crew.voss = DEAD`, `lights.deck_4 = OFF`),
+- keeps it in mind from then on,
+- replies to you in the log ("Agent → you"), listing what it changed.
+
+You can also ask it questions this way. Notes need an API key; they work in every mode.
+
+## Station map
+
+The **Station map** draws the station state as decks and rooms, with every value on it: doors, cameras and lights in their rooms and decks, and everything else (life support, power, comms, quarantine, crew...) as system panels. Values are coloured at a glance (green fine, amber degraded, red locked, offline or dangerous); a deck with its lights off goes dark, flickering lights flicker, and a quarantined deck is striped red. Anything the agent adds that isn't on the layout yet appears under "Not on the map yet".
+
+Click a value to change it: pick a common one (OPEN, LOCKED, SEALED...) or type anything. The players see nothing; the agent sees the new state on its next reply. **⤢ Expand** opens the full map, where **Layout** sets the decks and rooms, one line per deck:
+
+```
+Deck 2 · Habitation / Med Bay: med_bay=Med Bay, galley
+```
+
+Room ids match station state keys anywhere in their path (`doors.med_bay`, `cameras.med_bay`), and "Deck 2" matches deck-wide keys like `lights.deck_2`.
 
 ## Warden vs players
 
@@ -121,12 +144,13 @@ Sounds play through the players' VOL control. Players who join or reload mid-sce
 
 ## Voices & entities
 
-Every line on the players' screen belongs to a voice, and **the agent can speak as any of them**. A reply can mix voices, for example a terminal readout, then Dr. Salk on the intercom, then a station-wide announcement. Two voices are built in: **HV-CORE** (the terminal) and **System Broadcast**. Add any number of others under **Voices, personas & settings**, such as an intercom, a stranger on comms, or the thing in the vents. You can also pick one in the comms box and **Send as voice** yourself.
+Every line on the players' screen belongs to a voice, and **the agent can speak as any of them**. No voice is the default: the agent answers as whoever would really respond. If the players talk to Salk, Salk answers on the intercom; HV-CORE answers terminal commands. A reply can mix voices, for example Dr. Salk on the intercom, then a station-wide announcement. Two voices are built in: **HV-CORE** (the terminal) and **System Broadcast**. Add any number of others under **Voices, personas & settings**, such as an intercom, a stranger on comms, or the thing in the vents. You can also pick one in the comms box and **Send as voice** yourself.
 
 Each voice has:
 
 - **Persona:** who it is, how it talks and what it knows. The agent reads every voice's persona. HV-CORE's persona is the terminal's main personality.
 
+- **Characters** (for voices several people share, like the intercom): each has a name, their own speaker voice and a short note the agent reads. The agent switches between them line by line ("INTERCOM · SALK:", then "INTERCOM · MARLOWE:"), so it can stage conversations. When it brings in someone new, they're added automatically with a voice of their own, matching whether it wrote them as a woman or a man; change it any time. You can also **Send as voice** as any character.
 - **On-screen style:** plain text, a `NAME:` label, or boxed, plus an optional colour.
 - **Engine:** **Human** (neural, natural-sounding: 28 US/UK male and female speakers, adjustable pace) or **Synthetic** (eSpeak, with pitch and speed). Human is best for intercoms and people on comms. Synthetic suits machines and monsters.
 - **Effects:** speed/pitch, low and high cut, distortion, robot warble (ring modulation), metallic resonance, chorus, echo, reverb and radio hiss. Presets: **intercom** and **human** (human engine), and robotic, ethereal, radio, demonic, whisper and clean (synthetic).

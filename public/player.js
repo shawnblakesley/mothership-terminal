@@ -154,7 +154,8 @@
     if (entry.kind === "roll") { div.classList.add("roll"); return div; }
     const v = voiceOf(entry);
     div.classList.add(`style-${v?.style || (entry.kind === "system" ? "boxed" : "plain")}`);
-    if (v?.style === "label") div.dataset.label = `${v.name}: `;
+    // A shared voice (the intercom) also shows who is speaking: "INTERCOM · SALK: ".
+    if (v?.style === "label") div.dataset.label = `${v.name}${entry.character ? ` · ${entry.character.toUpperCase()}` : ""}: `;
     if (v?.color) {
       div.style.color = v.color;
       div.style.borderColor = v.color;

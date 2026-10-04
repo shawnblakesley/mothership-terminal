@@ -3,7 +3,7 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey } from "./providers/index.js";
 import { warmNeural, synthesize } from "./tts.js";
-import { speechParts, voiceFor } from "./voices.js";
+import { speechParts, speakingVoice, castCharacter } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
@@ -24,6 +24,13 @@ const DEFAULT_SECRETS = `- The void contained an organism. It is in the Deck 3 c
 - Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
 - Dr. Imre Salk (medic) is infected but does not know it.`;
 
+// The Warden's station map: one line per deck, "Deck name: room, room=Label, ...".
+// Room ids match keys in the station state (doors.med_bay, cameras.med_bay...).
+const DEFAULT_MAP = `Deck 1 · Command / Comms: command_deck=Command, airlock_a=Airlock A
+Deck 2 · Habitation / Med Bay: med_bay=Med Bay
+Deck 3 · Cargo / Refinery: cargo_bay_deck3=Cargo Bay
+Deck 4 · Reactor: reactor_access=Reactor Access`;
+
 const DEFAULT_STATION = {
   access_level: "GUEST",
   life_support: { oxygen_pct: 87, co2: "ELEVATED", status: "NOMINAL" },
@@ -42,8 +49,9 @@ const DEFAULT_STATION = {
   self_destruct: "DISARMED",
 };
 
-// Log kinds players never see: Warden notes and the Warden's commands to the agent.
-const PRIVATE_KINDS = new Set(["note", "warden"]);
+// Log kinds players never see: Warden notes, the Warden's commands to the agent,
+// and private notes between the Warden and the agent (aside / aside_reply).
+const PRIVATE_KINDS = new Set(["note", "warden", "aside", "aside_reply"]);
 export const SPOKEN_KINDS = new Set(["terminal", "system", "entity"]);
 
 export function defaultGame(keys = {}) {
@@ -59,6 +67,7 @@ export function defaultGame(keys = {}) {
       tts: true,
       voices: defaultVoices(),
       theme: "green",
+      map: DEFAULT_MAP,
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -261,8 +270,9 @@ export class Session {
     const s = this.state;
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "tts", "theme"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "tts", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
+        s.config.map = String(s.config.map ?? "").slice(0, 4000);
         // Switching provider snaps to its cheapest model; invalid efforts snap to the cheapest valid one.
         if ("provider" in msg.patch && !("model" in msg.patch)) Object.assign(s.config, { model: "", effort: "" });
         else if ("model" in msg.patch && !("effort" in msg.patch)) s.config.effort = "";
@@ -327,13 +337,19 @@ export class Session {
         const as = msg.as === "system" ? BUILTIN.broadcast : msg.as || BUILTIN.terminal;
         if (!s.config.voices.some((v) => v.id === as)) break;
         const kind = kindOf(as);
-        this.addLog(kind, text, { source: "dm", ...(kind === "entity" ? { entity: as } : {}) });
+        // Optionally as one of that voice's characters (e.g. Salk on the intercom).
+        const line = { voice: as, character: String(msg.character || "").slice(0, 60) };
+        this.castCharacters([line]);
+        this.addLog(kind, text, { source: "dm", ...(kind === "entity" ? { entity: as } : {}), ...(line.character ? { character: line.character } : {}) });
         if (msg.clearPending) { this.genCounter++; s.pending = null; this.setBusy(false); }
         break;
       }
-      case "note":
-        this.addLog("note", String(msg.text || "").slice(0, 4000));
+      case "note": {
+        // A private note to the agent: it updates what's true, without the players seeing anything.
+        const text = String(msg.text || "").trim().slice(0, 4000);
+        if (text) this.aside(text);
         break;
+      }
       case "effect":
         this.startEffect(msg.effect, "dm");
         break;
@@ -517,10 +533,58 @@ export class Session {
   pregenerate(lines) {
     if (!this.state.config.tts) return;
     for (const l of lines) {
-      const v = voiceFor(this.state.config.voices, l);
-      if (v?.voice.engine !== "neural") continue; // synthetic voices are instant anyway
-      for (const part of speechParts(l.text)) synthesize(part, v.voice).catch(() => {});
+      const base = speakingVoice(this.state.config.voices, l);
+      if (base.engine !== "neural") continue; // synthetic voices are instant anyway
+      for (const part of speechParts(l.text)) synthesize(part, base).catch(() => {});
     }
+  }
+
+  // Lines name who speaks through a shared voice ("character"). Match each to the
+  // voice's cast (canonical name), and give anyone new a voice of their own.
+  castCharacters(lines) {
+    let added = false;
+    for (const l of lines) {
+      if (!l.character) continue;
+      const v = this.state.config.voices.find((x) => x.id === l.voice);
+      if (!v) { l.character = ""; continue; }
+      const { name, created } = castCharacter(v, l.character);
+      l.character = name;
+      added ||= created;
+    }
+    if (added) this.touch();
+  }
+
+  // A private note from the Warden: the agent takes it in (updating the station
+  // state if needed) and answers the Warden; the players see nothing.
+  async aside(text) {
+    const s = this.state;
+    this.addLog("aside", text);
+    this.syncDm();
+    try {
+      const provider = getProvider(s.config.provider);
+      if (!provider) throw new Error(`Unknown provider "${s.config.provider}".`);
+      const apiKey = keyFor(s.config.provider, this.keys);
+      if (!apiKey) throw new Error(`No ${provider.label} API key for this session, so the agent can't read notes. Add one under "Agent".`);
+      const request = { apiKey, model: s.config.model, effort: s.config.effort, ...buildRequest(s, "", { aside: true }) };
+      let reply;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          reply = parseReply(await provider.generate(request), s.config.voices);
+          break;
+        } catch (err) {
+          if (!err.malformed || attempt >= 2) throw err;
+        }
+      }
+      const changes = reply.station_changes.filter((c) => c.path);
+      for (const c of changes) setPath(s.station, c.path, c.value);
+      this.addLog("aside_reply", reply.dm_note.trim() || "Noted.", { changes: changes.map(({ path, value }) => ({ path, value })) });
+      if (changes.length) this.toPlayers({ t: "header", header: this.playerHeader() });
+    } catch (err) {
+      console.error(`[${this.code}] note failed:`, err?.message || err);
+      this.addLog("note", `The agent didn't get that note: ${err?.message || err}`);
+    }
+    this.touch();
+    this.syncDm();
   }
 
   // ---------------------------------------------------------------- rolls
@@ -566,7 +630,7 @@ export class Session {
     }
     const voices = this.state.config.voices;
     const lines = splitVoiceTags(
-      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, text: String(l.text ?? "").slice(0, 8000), effects: l.effects })),
+      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), text: String(l.text ?? "").slice(0, 8000), effects: l.effects })),
       voices,
     );
     const useEffects = this.state.config.agentEffects;
@@ -579,7 +643,8 @@ export class Session {
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
     let lastEntry = null;
-    for (const { voice, text, effects: lineFx } of lines) {
+    this.castCharacters(lines);
+    for (const { voice, character, text, effects: lineFx } of lines) {
       // Effects from an effect-only beat are marked hold: the next line waits for them.
       const cues = useEffects ? [...waiting, ...normalizeEffects(lineFx)] : [];
       if (!text) { waiting = cues.map((c) => ({ ...c, hold: true })); continue; }
@@ -588,7 +653,7 @@ export class Session {
       for (const c of cues) if (c.type === "blackout") c.hold = true;
       waiting = [];
       const kind = kindOf(voice);
-      const entry = this.addLog(kind, text, { source, ...(kind === "entity" ? { entity: voice } : {}), ...meta, ...(cues.length ? { cues } : {}) });
+      const entry = this.addLog(kind, text, { source, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
       lastEntry = entry;
       for (const c of cues) this.startEffect(c, "agent", { atEntry: entry.id, when: "before", hold: c.hold });
@@ -653,6 +718,7 @@ export class Session {
         s.pending = { status: "ready", forEntry, reply, model, directives };
         // Make the voices while the Warden reads the draft: an unedited line is
         // then ready to play the moment it's sent.
+        this.castCharacters(reply.lines);
         this.pregenerate(reply.lines.map((l) => ({ ...l, kind: kindOf(l.voice), entity: l.voice })));
       }
     } catch (err) {

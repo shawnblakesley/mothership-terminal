@@ -7,7 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { synthesize, setCacheDir, warmNeural } from "./tts.js";
-import { sanitizeVoices, voiceFor, speechParts } from "./voices.js";
+import { sanitizeVoices, speakingVoice, speechParts } from "./voices.js";
 import { getProvider, looksLikeKey, catalog } from "./providers/index.js";
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
 import { setSoundsDir, saveSound, soundPath, deleteSoundFile, deleteSessionSounds, MAX_SOUND_BYTES } from "./sounds.js";
@@ -220,7 +220,7 @@ router.get("/api/sessions/:code/tts/:id", async (req, res) => {
     // ?part=N: just that text line (human voices are fetched line by line so speech starts sooner).
     const text = req.query.part === undefined ? entry.text : speechParts(entry.text)[Number(req.query.part)];
     if (text === undefined) return res.status(404).end();
-    const wav = await synthesize(text, voiceFor(s.state.config.voices, entry).voice);
+    const wav = await synthesize(text, speakingVoice(s.state.config.voices, entry));
     if (!wav) return res.status(204).end();
     res.set("Content-Type", "audio/wav").send(wav);
   } catch (err) {
