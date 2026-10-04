@@ -14,7 +14,7 @@ export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPatter
     models,
 
     async generate({ apiKey, model, effort, system, context, messages, schema, example }) {
-      if (!apiKey) throw new Error(`${label}: no API key. Add one in the Warden console.`);
+      if (!apiKey) throw new Error("No LLM API key. Add one under ⚙ Settings → LLM.");
       const spec = models.find((m) => m.id === model) ?? models[0];
 
       const body = {

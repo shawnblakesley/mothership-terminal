@@ -72,7 +72,7 @@ code { font-family: var(--mono); background: var(--panel2); padding: 1px 6px; bo
 .seg button.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
 
 /* ---- layout ---- */
-.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 1.1fr) minmax(300px, 1fr) minmax(300px, 1fr); }
+.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 1fr); }
 .col { padding: 14px 16px; border-right: 1px solid var(--line); overflow-y: auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 .col:last-child { border-right: 0; }
 h2 { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); margin: 8px 0 0; display: flex; align-items: center; gap: 10px; }
@@ -376,6 +376,19 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .mono { font-family: var(--mono); }
 @media (max-width: 900px) { .bgrid { grid-template-columns: 1fr; overflow-y: auto; } .bmsgs { min-height: 300px; } }
 
+/* ---- synopsis ---- */
+.synopsisdlg { width: min(860px, calc(100vw - 32px)); height: calc(100vh - 40px); max-height: none; display: none; }
+.synopsisdlg[open] { display: flex; flex-direction: column; gap: 10px; }
+.synopsisdlg h2 { font-size: 14px; }
+.synbody { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.synempty { margin: auto; text-align: center; max-width: 30em; line-height: 1.5; }
+.synsec { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.synsec h3 { margin: 0 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-soft); }
+.syntext { white-space: pre-wrap; line-height: 1.55; }
+.synsec.warden { background: color-mix(in srgb, var(--warden) 8%, var(--panel)); border: 1px dashed color-mix(in srgb, var(--warden) 55%, var(--line)); }
+.synsec.warden h3 { color: var(--warden); }
+.synlabel { display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--warden); border: 1px solid color-mix(in srgb, var(--warden) 55%, transparent); border-radius: 4px; padding: 1px 6px; margin-bottom: 6px; }
+
 /* ---- per-player variants ---- */
 .entry .var { margin-top: 5px; padding: 4px 0 0 10px; border-top: 1px dashed var(--line2); white-space: pre-wrap; }
 .entry .vfor { font-family: system-ui, sans-serif; font-size: 11px; letter-spacing: 0.04em; color: var(--warden); text-transform: uppercase; }
@@ -414,6 +427,8 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .tabs button { flex: 1; }
 .tabpanel { display: flex; flex-direction: column; gap: 10px; }
 .tabpanel[hidden] { display: none; }
+/* A reply or ruling waiting on the Warden while another tab is open. */
+.tabdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); margin-left: 6px; vertical-align: 1px; box-shadow: 0 0 6px var(--warn); }
 .hint { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--line2); color: var(--muted); font-size: 10px; font-weight: 600; cursor: help; letter-spacing: 0; text-transform: none; }
 .hint:hover { color: var(--fg); border-color: var(--muted); }
 h2 .hint { margin-left: -4px; }

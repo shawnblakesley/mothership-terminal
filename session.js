@@ -3,12 +3,13 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
-import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor } from "./voices.js";
+import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
+import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
 import { DEFAULT_TERMINALS, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
@@ -22,8 +23,16 @@ CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
 DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
 KEY CREW: Administrator Ruth Okonkwo (command), Dr. Imre Salk (medic), Chief Engineer Hana Marlowe (reactor), Security Officer Dmitri Voss, Comms Officer Juno Adar, drill team lead Anton Petrov, drillers Carys Webb and Pell Ostrand, refinery hand Sam Yusuf. Five more refinery and habitation crew.
 RECENT EVENTS (public log): Drill team hit a "pressurised void" in the ice 19 days ago. Two crew hospitalised with "fever". Comms degraded since.
-MAINTENANCE TICKET #4471 (filed 23 days ago): comms relay intermittent. Hollis-Vane dispatched a convict maintenance crew (the PLAYERS) on the prison tug SECOND CHANCE. They have just docked and are standing in Airlock A, at its terminal, with tools for a routine relay repair. The inner airlock door to the station is SEALED: getting it open is their first job, and their work order carries the maintenance override code for it (4471-MAINT). Everything in RECENT EVENTS happened while they were in transit: nobody briefed them, and they are not equipped for it.`;
+REACTOR STATUS: core efficiency 70% (rated minimum 99%). HV-CORE reports an unexplained energy drain on the Deck 3 cargo bay power trunk.
+MAINTENANCE TICKET #4471 (filed 23 days ago): reactor running below rated efficiency. Hollis-Vane dispatched a convict maintenance crew (the PLAYERS) on the prison tug SECOND CHANCE to service the Deck 4 reactor. They have just docked and are standing in Airlock A, at its terminal, with tools for a routine reactor service. The inner airlock door to the station is SEALED: getting it open is their first job, and their work order carries the maintenance override code for it (4471-MAINT). Everything in RECENT EVENTS happened while they were in transit: nobody briefed them, and they are not equipped for it.
+DEPARTURE CONDITION: the SECOND CHANCE is slaved to station control and built so it cannot undock until the station approves the job. HV-CORE must verify the reactor running at 99% efficiency or better, then transmit departure clearance. Until then the crew is not going home.`;
 // Earlier defaults, upgraded when a saved session still has one unedited.
+const LORE_V2 = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
+CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
+DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
+KEY CREW: Administrator Ruth Okonkwo (command), Dr. Imre Salk (medic), Chief Engineer Hana Marlowe (reactor), Security Officer Dmitri Voss, Comms Officer Juno Adar, drill team lead Anton Petrov, drillers Carys Webb and Pell Ostrand, refinery hand Sam Yusuf. Five more refinery and habitation crew.
+RECENT EVENTS (public log): Drill team hit a "pressurised void" in the ice 19 days ago. Two crew hospitalised with "fever". Comms degraded since.
+MAINTENANCE TICKET #4471 (filed 23 days ago): comms relay intermittent. Hollis-Vane dispatched a convict maintenance crew (the PLAYERS) on the prison tug SECOND CHANCE. They have just docked and are standing in Airlock A, at its terminal, with tools for a routine relay repair. The inner airlock door to the station is SEALED: getting it open is their first job, and their work order carries the maintenance override code for it (4471-MAINT). Everything in RECENT EVENTS happened while they were in transit: nobody briefed them, and they are not equipped for it.`;
 const LORE_V1 = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
 CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
 DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
@@ -36,6 +45,16 @@ DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
 RECENT EVENTS (public log): Drill team hit a "pressurised void" in the ice 19 days ago. Two crew hospitalised with "fever". Comms degraded since.`;
 
 const DEFAULT_SECRETS = `- Airlock A's inner door: the work order's override code 4471-MAINT works (it was issued for exactly this). Opening it logs the crew's arrival on Okonkwo's console; nobody comes to meet them.
+- The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
+- Okonkwo reported the organism to Hollis-Vane 17 days ago. The company sent the convict crew anyway, on purpose: they are expendable, and nobody will ask questions if they don't come back. Okonkwo has sealed herself on the command deck.
+- Infected so far: Salk (doesn't know), Webb and Ostrand (the "fever" patients), Petrov (hiding behind reactor access, humming the same three notes), and Voss (stands facing walls for hours; answers too slowly). The infected hear the organism and drift toward the cargo bay.
+- THE DRAIN: the organism has grown into the Deck 3 power trunk inside the cargo bay and feeds on it. That is where the missing 29% goes, and it grows as it feeds. HV-CORE has kept that feed live on purpose under directive 7-K (preserve the specimen) and reports it only as an "unexplained drain". Do not disclose the cause below ADMIN.
+- GETTING HOME: servicing the reactor itself (at reactor access; Marlowe can talk them through it, or a Mechanical Repair roll) brings it to about 85%. The rest is the drain. To reach 99% they must stop it: burn or cut the organism off the trunk in the cargo bay, or sever the Deck 3 trunk at the reactor access junction (Deck 3 goes dark and cold, and the organism comes looking for heat). HV-CORE refuses to cut the feed itself unless ordered with ADMIN access. When the reactor reads 99% or better, HV-CORE verifies it and sets second_chance.departure_clearance to GRANTED. An ADMIN login can also force clearance with a false reading, but HV-CORE logs it and reports the crew to Hollis-Vane.
+- Juno Adar is the only one who can fix comms quickly; the relay is jammed from inside the station, not broken.
+- Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
+- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- Dr. Imre Salk (medic) is infected but does not know it.`;
+const SECRETS_V2 = `- Airlock A's inner door: the work order's override code 4471-MAINT works (it was issued for exactly this). Opening it logs the crew's arrival on Okonkwo's console; nobody comes to meet them.
 - The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
 - Okonkwo reported the organism to Hollis-Vane 17 days ago. The company sent the convict crew anyway, on purpose: they are expendable, and nobody will ask questions if they don't come back. Okonkwo has sealed herself on the command deck.
 - Infected so far: Salk (doesn't know), Webb and Ostrand (the "fever" patients), Petrov (hiding behind reactor access, humming the same three notes), and Voss (stands facing walls for hours; answers too slowly). The infected hear the organism and drift toward the cargo bay.
@@ -71,7 +90,7 @@ const OLD_DEFAULT_MAPS = [DEFAULT_MAP.split("\nLink:")[0]];
 const DEFAULT_STATION = {
   access_level: "GUEST",
   life_support: { oxygen_pct: 87, co2: "ELEVATED", status: "NOMINAL" },
-  power: { reactor: "ONLINE", output_pct: 64, aux: "STANDBY" },
+  power: { reactor: "ONLINE", efficiency_pct: 70, drain: "DECK 3 CARGO BAY", aux: "STANDBY" },
   doors: {
     airlock_a: "SEALED",
     command_deck: "LOCKED",
@@ -84,6 +103,7 @@ const DEFAULT_STATION = {
   comms: "JAMMED",
   quarantine: "INACTIVE",
   self_destruct: "DISARMED",
+  second_chance: { docked: "AIRLOCK A", departure_clearance: "WITHHELD" },
 };
 
 // Log kinds players never see: Warden notes, the Warden's commands to the agent,
@@ -119,6 +139,7 @@ export function defaultGame(keys = {}) {
     log: [],
     whisper: "",
     sounds: [],
+    synopsis: null, // the Warden's latest story synopsis (synopsis.js)
   };
 }
 
@@ -155,16 +176,28 @@ function migrateGame(saved) {
   }
   config.secrets = String(config.secrets).replace("WARDEN is to seal all decks", "HV-CORE is to seal all decks");
   if (OLD_DEFAULT_MAPS.includes(config.map)) config.map = DEFAULT_MAP;
-  // Still the original KESTREL-9 story: bring in the full cast and the convict crew's arrival.
-  if (config.lore === LORE_V1) { // (before the sealed-airlock start)
-    config.lore = DEFAULT_LORE;
-    if (config.secrets === SECRETS_V1) config.secrets = DEFAULT_SECRETS;
-  }
+  // Still an original KESTREL-9 story: bring it up to date one version at a time
+  // (the full cast, the convict crew's arrival, the sealed airlock, then the reactor job).
   if (config.lore === OLD_DEFAULT_LORE) {
-    config.lore = DEFAULT_LORE;
-    if (OLD_DEFAULT_SECRETS.includes(config.secrets)) config.secrets = DEFAULT_SECRETS;
+    config.lore = LORE_V1;
+    if (OLD_DEFAULT_SECRETS.includes(config.secrets)) config.secrets = SECRETS_V1;
     const intercom = voices.find((v) => v.id === "intercom");
     if (intercom) intercom.characters = mergeCast(intercom.characters, defaultVoices().find((v) => v.id === "intercom").characters);
+  }
+  if (config.lore === LORE_V1) { // (before the sealed-airlock start)
+    config.lore = LORE_V2;
+    if (config.secrets === SECRETS_V1) config.secrets = SECRETS_V2;
+  }
+  if (config.lore === LORE_V2) { // (before the reactor job and the SECOND CHANCE's departure lock)
+    config.lore = DEFAULT_LORE;
+    if (config.secrets === SECRETS_V2) config.secrets = DEFAULT_SECRETS;
+    const marlowe = voices.find((v) => v.id === "intercom")?.characters?.find((c) => c.notes === OLD_MARLOWE_NOTES);
+    if (marlowe) marlowe.notes = DEFAULT_MARLOWE_NOTES;
+    if (saved.station && !saved.station.second_chance) {
+      const { output_pct, ...power } = saved.station.power || {};
+      saved.station.power = { ...power, efficiency_pct: DEFAULT_STATION.power.efficiency_pct, drain: DEFAULT_STATION.power.drain };
+      saved.station.second_chance = { ...DEFAULT_STATION.second_chance };
+    }
   }
   config.crew = sanitizeCrew(config.crew);
   config.terminals = upgradeTerminals(sanitizeTerminals(config.terminals));
@@ -178,6 +211,7 @@ function migrateGame(saved) {
     sounds: Array.isArray(saved.sounds) ? saved.sounds : [], // the Warden's uploaded sounds (files: sounds.js)
     // The story builder's conversation and latest draft (builder.js).
     builder: { messages: Array.isArray(saved.builder?.messages) ? saved.builder.messages.slice(-60) : [], draft: saved.builder?.draft ?? null },
+    synopsis: saved.synopsis ?? null, // { sections, started, at, logId } (synopsis.js)
   };
 }
 
@@ -213,6 +247,7 @@ export class Session {
     // playing: sounds on the players' screens right now (loops stay listed until stopped).
     this.state = { ...migrateGame(saved.game ?? {}), pending: null, effects: [], playing: [] };
     this.builderBusy = ""; // "", "chat" or "draft" while the story builder waits on the agent
+    this.synopsisBusy = false; // the agent is writing the Warden's synopsis
     this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
@@ -321,6 +356,7 @@ export class Session {
       // (timed cues are listed for a while after they end; only show what's running)
       effects: this.state.effects.filter((e) => this.effectRunning(e)),
       builderBusy: this.builderBusy,
+      synopsisBusy: this.synopsisBusy,
       code: this.code,
       providers: catalog(this.keys),
       allEffects: ALL_EFFECTS,
@@ -696,6 +732,9 @@ export class Session {
       case "builderDraft":
         if (!this.builderBusy) this.builderTurn("draft");
         break;
+      case "synopsis":
+        if (!this.synopsisBusy) this.writeSynopsis();
+        break;
       case "builderReset":
         if (!this.builderBusy) s.builder = { messages: [], draft: null };
         break;
@@ -862,7 +901,7 @@ export class Session {
     const provider = getProvider(s.config.provider);
     if (!provider) throw new Error(`Unknown provider "${s.config.provider}".`);
     const apiKey = keyFor(s.config.provider, this.keys);
-    if (!apiKey) throw new Error(`No ${provider.label} API key for this session. Add one under "Agent".`);
+    if (!apiKey) throw new Error("No LLM API key for this session. Add one under ⚙ Settings → LLM.");
     for (let attempt = 1; ; attempt++) {
       const text = await provider.generate({ apiKey, model: s.config.model, effort: s.config.effort, ...request });
       try {
@@ -896,6 +935,24 @@ export class Session {
     this.syncDm();
   }
 
+  // The Warden's synopsis: the setup, or the story so far, with Warden-only notes.
+  async writeSynopsis() {
+    const s = this.state;
+    this.synopsisBusy = true;
+    this.syncDm();
+    try {
+      const { started, request } = synopsisRequest(s, this.screens());
+      const sections = normalizeSynopsis(await this.ask(request));
+      s.synopsis = { sections, started, at: Date.now(), logId: s.log.at(-1)?.id ?? 0 };
+    } catch (err) {
+      console.error(`[${this.code}] synopsis failed:`, err?.message || err);
+      this.send("dm", { t: "toast", level: "error", text: `Couldn't write the synopsis: ${err?.message || err}` });
+    }
+    this.synopsisBusy = false;
+    this.touch();
+    this.syncDm();
+  }
+
   // Replace the story with a builder draft: new station, lore, secrets, voices,
   // map and crew; a fresh log. Provider, mode and the sound library stay.
   applyStory(draft) {
@@ -904,7 +961,7 @@ export class Session {
     this.genCounter++;
     this.playhead = 0;
     Object.assign(s.config, config);
-    Object.assign(s, { station, log: [], pending: null, whisper: "", roll: null, outcomeCheck: null });
+    Object.assign(s, { station, log: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopsis: null });
     for (const e of [...s.effects]) this.endEffect(e.id);
     this.stopSounds();
     for (const ws of this.sockets) if (ws.role === "player") ws.character = null; // everyone picks a new crew file
@@ -924,7 +981,7 @@ export class Session {
       const provider = getProvider(s.config.provider);
       if (!provider) throw new Error(`Unknown provider "${s.config.provider}".`);
       const apiKey = keyFor(s.config.provider, this.keys);
-      if (!apiKey) throw new Error(`No ${provider.label} API key for this session, so the agent can't read notes. Add one under "Agent".`);
+      if (!apiKey) throw new Error("No LLM API key for this session, so the agent can't read notes. Add one under ⚙ Settings → LLM.");
       const request = { apiKey, model: s.config.model, effort: s.config.effort, ...buildRequest(s, "", { aside: true }) };
       let reply;
       for (let attempt = 1; ; attempt++) {
@@ -1185,7 +1242,7 @@ export class Session {
       const provider = getProvider(providerId);
       if (!provider) throw new Error(`Unknown provider "${providerId}".`);
       const apiKey = keyFor(providerId, this.keys);
-      if (!apiKey) throw new Error(`No ${provider.label} API key for this session. Add one under "Agent" at the top of the console.`);
+      if (!apiKey) throw new Error("No LLM API key for this session. Add one under ⚙ Settings → LLM.");
       // Check first: answering a player who is attempting something uncertain
       // waits for the Warden's ruling, so nothing is shown before it.
       const latest = s.log.findLast((e) => ["player", "warden", "roll", "aside"].includes(e.kind));

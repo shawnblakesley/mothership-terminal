@@ -57,7 +57,7 @@
     <h3 class="sethead">Players join</h3>
     <div class="row wrap"><span>Code <b id="codeInline" class="mono"></b> at <code id="playerUrl"></code></span><span class="grow"></span>
       <button id="copyPlayer">Copy player link</button></div>
-    <h3 class="sethead">AI</h3>
+    <h3 class="sethead">LLM</h3>
     <div class="row wrap agent" title="Which AI runs the station. Lists are cheapest-first.">
       <select id="provider" aria-label="Provider"></select>
       <select id="model" aria-label="Model"></select>
@@ -126,6 +126,18 @@
     </div>
   </dialog>
 
+  <!-- Synopsis: a briefing for the players (the setup, or the story so far), with Warden-only notes. -->
+  <dialog id="synopsisDialog" class="synopsisdlg">
+    <div class="row wrap">
+      <h2 class="grow">Synopsis</h2>
+      <span id="synStatus" class="muted small"></span>
+      <button id="synWrite" title="Have the agent write it from the story and the comms so far. Uses this session's model and key.">↻ Write it</button>
+      <button id="synCopy" title="Copy the player sections only, without the Warden-only notes">Copy for players</button>
+      <button id="synClose" class="ghost" aria-label="Close">✕</button>
+    </div>
+    <div id="synBody" class="synbody"></div>
+  </dialog>
+
   <!-- The full station map, with its layout editor. -->
   <dialog id="mapDialog" class="mapdlg">
     <div class="row">
@@ -168,8 +180,9 @@
     <button id="sessionCode" class="code" title="Session code: click to copy the player link">------</button>
     <span class="grow"></span>
     <span id="keywarn" class="pill bad" hidden></span>
-    <button id="builderBtn" class="ghost" title="Create a brand-new station, cast and crew with the agent">✎ Story builder</button>
-    <button id="settingsBtn" class="ghost" title="AI model and key, joining, what the agent and players may do, and the session">⚙ Settings</button>
+    <button id="synopsisBtn" class="ghost" title="A briefing to share with the players (who they are, where, what they know, what they're here to do), with notes for you on the story beats and next steps">Synopsis</button>
+    <button id="builderBtn" class="ghost" title="Create a brand-new station, cast and crew with the agent">Story Builder</button>
+    <button id="settingsBtn" class="ghost" aria-label="Settings" title="Settings: AI model and key, joining, what the agent and players may do, and the session">⚙</button>
     <div class="seg" id="mode" role="radiogroup" aria-label="Response mode">
       <button data-mode="auto" title="Agent replies go straight to players">Auto</button>
       <button data-mode="review" title="You approve/edit every agent reply">Review</button>
@@ -196,99 +209,99 @@
       </div>
     </section>
 
-    <!-- ================= RESPONSE + FX ================= -->
-    <section class="col">
-      <h2>Next response</h2>
-      <label class="field">
-        <span>⚑ Command for the next reply <em>(obeyed once, applied when the players next type)</em></span>
-        <textarea id="whisper" rows="2" placeholder="e.g. Pretend the cargo door opened, but it's lying. Mention a heartbeat sensor spike."></textarea>
-      </label>
-      <div id="pending" class="card empty">No reply pending.</div>
-      <div class="row">
-        <button id="promptNow" title="Make the agent speak now, even without new player input">Prompt agent now</button>
-        <span class="grow"></span>
-        <button id="retcon" class="ghost" title="Undo the agent's last response: its lines are removed from the players' screens, this log and the agent's memory, and its station and crew changes and effects are reverted">↶ Retcon last response</button>
-      </div>
-
-      <!-- An uncertain player action the agent left to the Warden (rule of cool). -->
-      <div id="outcome" class="card outcome" hidden></div>
-
-      <div class="tabs seg" data-tabs="tools" role="tablist">
-        <button data-tab="roll">🎲 Roll</button><button data-tab="fx">⚡ Effects</button><button data-tab="sounds">🔊 Sounds</button>
-      </div>
-      <div class="tabpanel" data-tabs="tools" data-panel="roll">
-      <div class="card stack" id="rollCard">
-        <div class="rollgrid">
-          <label>Check
-            <select id="rollCheck"></select>
-          </label>
-          <label>[+] / [−]
-            <select id="rollAdv">
-              <option value="none">Normal</option>
-              <option value="advantage">[+] Advantage</option>
-              <option value="disadvantage">[−] Disadvantage</option>
-            </select>
-          </label>
-          <label>Skill
-            <input id="rollSkill" placeholder="e.g. Hacking (optional)">
-          </label>
-          <label>Skill level
-            <select id="rollSkillLevel">
-              <option value="none">None</option>
-              <option value="trained">Trained +10</option>
-              <option value="expert">Expert +15</option>
-              <option value="master">Master +20</option>
-            </select>
-          </label>
-          <label>Stat / Save value
-            <input id="rollStat" type="number" min="1" max="99" placeholder="players enter it">
-          </label>
-          <label class="wide">What for
-            <input id="rollReason" placeholder="e.g. bypass the cargo bay lock">
-          </label>
-        </div>
-        <div class="row"><button id="rollCall" class="primary" title="Roll under Stat + Skill on d100 · doubles crit · a failure adds 1 Stress">🎲 Call for roll</button></div>
-        <div id="rollStatus" hidden></div>
-      </div>
-      </div>
-
-      <div class="tabpanel" data-tabs="tools" data-panel="fx">
-      <div class="fxopts">
-        <label>Caption <input id="fxText" placeholder="optional text (alarm, banner, lockout, blackout)"></label>
-        <label>Seconds <input id="fxSecs" type="number" min="0" value="8" title="0 = until cleared"></label>
-        <label>Intensity
-          <select id="fxIntensity"><option value="1">Low</option><option value="2" selected>Med</option><option value="3">High</option></select>
-        </label>
-      </div>
-      <div id="fxButtons" class="fxgrid"></div>
-      <div class="row">
-        <h3 class="grow">Active</h3>
-        <button id="fxClear" class="danger">Clear all</button>
-      </div>
-      <ul id="fxActive" class="fxlist"></ul>
-      </div>
-
-      <div class="tabpanel" data-tabs="tools" data-panel="sounds">
-      <!-- The Warden's own audio: monster growls, attacks, ambience. Plays on every player screen. -->
-      <div id="soundDrop" class="drop">
-        <input type="file" id="soundFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.webm" multiple hidden>
-        <button id="soundUpload">⬆ Upload sounds</button>
-        <span class="muted small">or drop files here (MP3, WAV, OGG · 10 MB)</span>
-      </div>
-      <ul id="soundList" class="soundlist"></ul>
-      <div class="row">
-        <h3 class="grow">Playing</h3>
-        <button id="soundStopAll" class="danger">Stop all sounds</button>
-      </div>
-      <ul id="soundPlaying" class="fxlist"></ul>
-      </div>
-    </section>
-
-    <!-- ================= PREVIEW + SETUP ================= -->
+    <!-- ================= CONTROL PANEL: actions, map, crew, story ================= -->
     <section class="col">
       <div class="tabs seg" data-tabs="side" role="tablist">
-        <button data-tab="map">Map</button><button data-tab="crew">Crew</button><button data-tab="story">Story</button>
+        <button data-tab="actions">Actions<span id="actionsDot" class="tabdot" hidden title="Waiting on you"></span></button><button data-tab="map">Map</button><button data-tab="crew">Crew</button><button data-tab="story">Story</button>
       </div>
+      <!-- The next response, rolls, effects and sounds. -->
+      <div class="tabpanel" data-tabs="side" data-panel="actions">
+        <label class="field">
+          <span>⚑ Command for the next reply <em>(obeyed once, applied when the players next type)</em></span>
+          <textarea id="whisper" rows="2" placeholder="e.g. Pretend the cargo door opened, but it's lying. Mention a heartbeat sensor spike."></textarea>
+        </label>
+        <div id="pending" class="card empty">No reply pending.</div>
+        <div class="row">
+          <button id="promptNow" title="Make the agent speak now, even without new player input">Prompt agent now</button>
+          <span class="grow"></span>
+          <button id="retcon" class="ghost" title="Undo the agent's last response: its lines are removed from the players' screens, this log and the agent's memory, and its station and crew changes and effects are reverted">↶ Retcon last response</button>
+        </div>
+
+        <!-- An uncertain player action the agent left to the Warden (rule of cool). -->
+        <div id="outcome" class="card outcome" hidden></div>
+
+        <div class="tabs seg" data-tabs="tools" role="tablist">
+          <button data-tab="roll">🎲 Roll</button><button data-tab="fx">⚡ Effects</button><button data-tab="sounds">🔊 Sounds</button>
+        </div>
+        <div class="tabpanel" data-tabs="tools" data-panel="roll">
+        <div class="card stack" id="rollCard">
+          <div class="rollgrid">
+            <label>Check
+              <select id="rollCheck"></select>
+            </label>
+            <label>[+] / [−]
+              <select id="rollAdv">
+                <option value="none">Normal</option>
+                <option value="advantage">[+] Advantage</option>
+                <option value="disadvantage">[−] Disadvantage</option>
+              </select>
+            </label>
+            <label>Skill
+              <input id="rollSkill" placeholder="e.g. Hacking (optional)">
+            </label>
+            <label>Skill level
+              <select id="rollSkillLevel">
+                <option value="none">None</option>
+                <option value="trained">Trained +10</option>
+                <option value="expert">Expert +15</option>
+                <option value="master">Master +20</option>
+              </select>
+            </label>
+            <label>Stat / Save value
+              <input id="rollStat" type="number" min="1" max="99" placeholder="players enter it">
+            </label>
+            <label class="wide">What for
+              <input id="rollReason" placeholder="e.g. bypass the cargo bay lock">
+            </label>
+          </div>
+          <div class="row"><button id="rollCall" class="primary" title="Roll under Stat + Skill on d100 · doubles crit · a failure adds 1 Stress">🎲 Call for roll</button></div>
+          <div id="rollStatus" hidden></div>
+        </div>
+        </div>
+
+        <div class="tabpanel" data-tabs="tools" data-panel="fx">
+        <div class="fxopts">
+          <label>Caption <input id="fxText" placeholder="optional text (alarm, banner, lockout, blackout)"></label>
+          <label>Seconds <input id="fxSecs" type="number" min="0" value="8" title="0 = until cleared"></label>
+          <label>Intensity
+            <select id="fxIntensity"><option value="1">Low</option><option value="2" selected>Med</option><option value="3">High</option></select>
+          </label>
+        </div>
+        <div id="fxButtons" class="fxgrid"></div>
+        <div class="row">
+          <h3 class="grow">Active</h3>
+          <button id="fxClear" class="danger">Clear all</button>
+        </div>
+        <ul id="fxActive" class="fxlist"></ul>
+        </div>
+
+        <div class="tabpanel" data-tabs="tools" data-panel="sounds">
+        <!-- The Warden's own audio: monster growls, attacks, ambience. Plays on every player screen. -->
+        <div id="soundDrop" class="drop">
+          <input type="file" id="soundFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.webm" multiple hidden>
+          <button id="soundUpload">⬆ Upload sounds</button>
+          <span class="muted small">or drop files here (MP3, WAV, OGG · 10 MB)</span>
+        </div>
+        <ul id="soundList" class="soundlist"></ul>
+        <div class="row">
+          <h3 class="grow">Playing</h3>
+          <button id="soundStopAll" class="danger">Stop all sounds</button>
+        </div>
+        <ul id="soundPlaying" class="fxlist"></ul>
+        </div>
+    
+      </div>
+
       <div class="tabpanel" data-tabs="side" data-panel="map">
         <div class="row" id="mapPanel"><span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">Drawing</button><button data-view="status">Status</button></span>
           <span class="grow"></span><button id="mapExpand" class="ghost" title="Open the full map">⤢ Expand</button></div>

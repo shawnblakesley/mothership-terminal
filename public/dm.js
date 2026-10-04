@@ -267,6 +267,10 @@
     renderCrew();
     renderTerminals();
     renderBuilder();
+    renderSynopsis();
+    // Something waits on the Warden under Actions (a reply to review, a ruling): flag the tab.
+    const waiting = ["ready", "error"].includes(S.pending?.status) || !!S.outcomeCheck;
+    $("actionsDot").hidden = !waiting || store.get("tab:side") === "actions";
     $("retcon").disabled = !S.canRetcon;
     $("retcon").textContent = S.canRetcon > 1 ? `↶ Retcon last response (${S.canRetcon})` : "↶ Retcon last response";
   }
@@ -286,7 +290,7 @@
     fillSelect($("effort"), m.efforts.map((e) => [e, e === "off" ? "thinking off" : `effort ${e}`]), effort);
     $("effort").disabled = !m.efforts.length;
     $("keywarn").hidden = p.configured;
-    $("keywarn").textContent = `No ${p.label} key: add one`;
+    $("keywarn").textContent = "No LLM key: add one";
   }
 
   let lastLogLen = -1;
@@ -604,6 +608,44 @@
     toast("New story applied.");
   });
 
+  // ------------------------------------------------------------ synopsis
+  let synopsisKey = "";
+  function renderSynopsis() {
+    if (!$("synopsisDialog").open) return;
+    const syn = S.synopsis, busy = S.synopsisBusy;
+    // Entries since it was written (things said or typed, not console notes).
+    const newer = syn ? S.log.filter((e) => e.id > syn.logId && e.kind !== "note").length : 0;
+    const key = JSON.stringify([syn, busy, newer]);
+    if (key === synopsisKey) return;
+    synopsisKey = key;
+    const when = syn && new Date(syn.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    $("synStatus").textContent = busy ? "" : !syn ? "" : `${syn.started ? "The story so far" : "Starting synopsis"} · written ${when}${newer ? ` · ${newer} new log ${newer === 1 ? "entry" : "entries"} since` : ""}`;
+    $("synWrite").disabled = busy;
+    $("synWrite").textContent = syn ? (newer ? "↻ Update to now" : "↻ Rewrite") : "↻ Write it";
+    $("synWrite").classList.toggle("primary", !syn || newer > 0);
+    $("synCopy").disabled = busy || !syn?.sections.some((x) => x.audience === "players");
+    const body = $("synBody");
+    if (busy) { body.innerHTML = `<div class="synempty"><span class="spinner"></span>${syn ? "Bringing the synopsis up to date with the comms so far…" : "Writing the synopsis…"}</div>`; return; }
+    if (!syn) { body.innerHTML = `<div class="synempty muted">No synopsis yet. <b>Write it</b> has the agent brief the players on who they are, where they are, what they know and what they're here to do, with notes only you see on the story beats and next steps.</div>`; return; }
+    body.innerHTML = syn.sections.map((x) => x.audience === "warden"
+      ? `<section class="synsec warden"><div class="synlabel">For the Warden only</div><h3>${esc(x.heading)}</h3><div class="syntext">${esc(x.text)}</div></section>`
+      : `<section class="synsec"><h3>${esc(x.heading)}</h3><div class="syntext">${esc(x.text)}</div></section>`).join("");
+  }
+  const writeSynopsis = () => { if (!S.synopsisBusy) send({ t: "synopsis" }); };
+  $("synopsisBtn").onclick = () => {
+    synopsisKey = "";
+    $("synopsisDialog").showModal();
+    if (!S.synopsis && !S.synopsisBusy) writeSynopsis(); // first time: write it straight away
+    renderSynopsis();
+  };
+  $("synClose").onclick = () => $("synopsisDialog").close();
+  $("synWrite").onclick = writeSynopsis;
+  $("synCopy").onclick = async () => {
+    const text = S.synopsis.sections.filter((x) => x.audience === "players").map((x) => `${x.heading.toUpperCase()}\n${x.text}`).join("\n\n");
+    try { await navigator.clipboard.writeText(text); toast("Player sections copied (no Warden-only notes)."); }
+    catch { toast("Couldn't copy: your browser blocked the clipboard.", "error"); }
+  };
+
   // ------------------------------------------------------------ terminals
   const LOOKS = { blood: "Blood", goo: "Goo", crack: "Cracked", flicker: "Flicker", dim: "Dim", grime: "Grime", portable: "Handheld" };
   let termDraft = null, termTimer = null, termSentAt = 0;
@@ -681,6 +723,7 @@
       for (const p of document.querySelectorAll(`.tabpanel[data-tabs="${group}"]`)) p.hidden = p.dataset.panel !== tab;
       store.set(`tab:${group}`, tab);
       if (group === "side" && tab === "map" && S) renderMap(true); // (drawn for its width)
+      if (group === "side" && tab === "actions") $("actionsDot").hidden = true;
     };
     bar.addEventListener("click", (e) => { const t = e.target.closest("[data-tab]")?.dataset.tab; if (t) show(t); });
     show(store.get(`tab:${group}`) || bar.querySelector("[data-tab]").dataset.tab);

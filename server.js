@@ -368,7 +368,7 @@ server.listen(PORT, "0.0.0.0", () => {
     console.log(`\n  Your previous game was imported as session ${imported.session.code}.`);
     console.log(`  Open its Warden console once with this link (it's remembered after that):`);
     console.log(`  http://localhost:${PORT}${BASE}/dm?s=${imported.session.code}#token=${imported.token}`);
-    console.log(`  Then paste your API key under "Agent".`);
+    console.log(`  Then paste your API key under ⚙ Settings → LLM.`);
   }
   if (process.env.ALLOW_SERVER_KEYS === "1") console.log("\n  ! ALLOW_SERVER_KEYS=1: sessions without their own key will use this server's keys.");
   console.log("");

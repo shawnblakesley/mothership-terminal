@@ -164,10 +164,12 @@ export function defaultVoices() {
 // People who speak through one voice (e.g. different crew on the intercom), each
 // with their own base voice: a Kokoro speaker for human voices, an eSpeak
 // variant for synthetic ones. The agent picks who speaks each line.
+export const OLD_MARLOWE_NOTES = "Runs the reactor deck. Blunt, practical, swears. Wants the cargo bay opened and dealt with; has no patience for Okonkwo.";
+export const DEFAULT_MARLOWE_NOTES = "Runs the reactor deck. Blunt, practical, swears. Knows the reactor has bled power into the cargo bay for two weeks and that HV-CORE won't let her cut the feed. Can talk the crew through the reactor service. Wants the cargo bay opened and dealt with; has no patience for Okonkwo.";
 const DEFAULT_INTERCOM_CHARACTERS = [
   { name: "Administrator Ruth Okonkwo", voice: "bf_emma", notes: "Station administrator, sealed in on the command deck. Clipped, controlled, company first. Gives orders, never answers questions about what she has reported." },
   { name: "Dr. Imre Salk", voice: "am_michael", notes: "The station medic, in med bay. Kind, exhausted, frightened. Rambles when scared; insists the fever is under control." },
-  { name: "Chief Engineer Hana Marlowe", voice: "af_sarah", notes: "Runs the reactor deck. Blunt, practical, swears. Wants the cargo bay opened and dealt with; has no patience for Okonkwo." },
+  { name: "Chief Engineer Hana Marlowe", voice: "af_sarah", notes: DEFAULT_MARLOWE_NOTES },
   { name: "Security Officer Dmitri Voss", voice: "am_onyx", notes: "Station security. Speaks slowly now, with long pauses, far too calm. Repeats the last thing said to him." },
   { name: "Comms Officer Juno Adar", voice: "af_nova", notes: "Young comms officer on Deck 1, trying to fix the jammed relay for days. Talks fast, scared but hopeful; overjoyed to hear new voices." },
   { name: "Anton Petrov", voice: "bm_george", notes: "Drill team lead, hiding behind reactor access. Whispers; paranoid; hums the same three notes between sentences." },

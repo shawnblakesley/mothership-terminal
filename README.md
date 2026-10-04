@@ -59,10 +59,20 @@ For anything that speaks the OpenAI chat-completions format (OpenRouter, Groq, T
 
 ## The default story: KESTREL-9
 
-A rimward ice-mining platform where the drill team broke into a "pressurised void" 19 days ago. The players are a **convict maintenance crew** sent by Hollis-Vane on the prison tug SECOND CHANCE to fix a minor comms fault. Everything went wrong while they were in transit, so nobody briefed them and they brought tools, not weapons. They start in **Airlock A** with the inner door sealed: opening it (their work order has the override code) is the first thing they do, and the rest of the station opens up from there.
+A rimward ice-mining platform where the drill team broke into a "pressurised void" 19 days ago. The players are a **convict maintenance crew** sent by Hollis-Vane on the prison tug SECOND CHANCE to service the station's reactor. Everything went wrong while they were in transit, so nobody briefed them and they brought tools, not weapons. They start in **Airlock A** with the inner door sealed: opening it (their work order has the override code) is the first thing they do, and the rest of the station opens up from there.
+
+**Getting home:** the SECOND CHANCE is built not to undock until the station approves the job. HV-CORE has to verify the reactor running at **99% efficiency** or better. It is at 70%, and HV-CORE shows an energy drain in the Deck 3 cargo bay, which is where the thing from the void is. The station state tracks it (`power.efficiency_pct`, `power.drain`, `second_chance.departure_clearance`).
 
 - **Player characters:** Teodora "Rook" Rusk (Teamster rigger, hijacked a hauler to save her brother's kids), Elias "Tick" Varga (Scientist, cooked combat stims), MOLL-7 (Android, refused an order that would have killed two workers) and Dax Oyelaran (ex-Marine, struck an officer to hold an evac ramp). Each has full Mothership stats, saves, health, skills, loadout, trinket and patch.
 - **Cast on the intercom,** each with a description and their own voice: Administrator Ruth Okonkwo, Dr. Imre Salk, Chief Engineer Hana Marlowe, Security Officer Dmitri Voss, Comms Officer Juno Adar, drill lead Anton Petrov, drillers Carys Webb and Pell Ostrand, and refinery hand Sam Yusuf.
+
+## Synopsis
+
+**Synopsis** (top of the console) has the agent write a briefing to share with the players: who they are, where they are, what they know about the station and what they're expected to do. Once the story has started, it is written from the comms so far and tells the players only what their characters have actually learned.
+
+- Sections marked **For the Warden only** cover what is really going on, the story beats still to come and the next steps (and, once play is under way, which beats have happened and where everyone is now).
+- **Copy for players** copies just the player sections.
+- The synopsis is kept with the session. When the log has moved on since it was written, **Update to now** rewrites it. It uses the session's model and key.
 
 ## Player characters
 
@@ -85,7 +95,7 @@ Each player reads their own screen as their own character, so one line can say d
 
 ## Story builder
 
-**✎ Story builder** (top of the console) creates a brand-new scenario with the agent. Describe what you have in mind, or ask it to surprise you. It asks questions and pitches ideas. When you press **Draft it**, it writes the whole scenario:
+**Story Builder** (top of the console) creates a brand-new scenario with the agent. Describe what you have in mind, or ask it to surprise you. It asks questions and pitches ideas. When you press **Draft it**, it writes the whole scenario:
 
 - station name, screen colour, public lore and guarded secrets,
 - the station state and a deck/room layout with connections (previewed as a map),
@@ -113,7 +123,7 @@ Every password attempt, and anything else the players try that could go either w
 
 ## Retcon
 
-**↶ Retcon last response** (under Next response) undoes the agent's last response: its lines are removed from the players' screens, your log and the agent's memory, its station and crew-condition changes are reverted, and its effects end. Press it again to go back further (up to five responses). The player input or roll that prompted it stays, so you can prompt the agent again or narrate it yourself.
+**↶ Retcon last response** (under **Actions**) undoes the agent's last response: its lines are removed from the players' screens, your log and the agent's memory, its station and crew-condition changes are reverted, and its effects end. Press it again to go back further (up to five responses). The player input or roll that prompted it stays, so you can prompt the agent again or narrate it yourself.
 
 ## Interrupting
 
@@ -121,7 +131,7 @@ If a player types while lines are still playing, the comms cut off on every scre
 
 ## Settings
 
-**⚙ Settings** in the console header holds the join code and player link, the AI provider, model and **API key**, the station name and screen colour, **how much the characters say** (Terse, Brief, Normal or Expansive; Brief by default, and enforced on every reply), the session actions (clear screen, restart story, factory reset, Warden link, end session), and switches for what the agent and players may do:
+**⚙** (Settings) in the console header holds the join code and player link, the AI provider, model and **API key**, the station name and screen colour, **how much the characters say** (Terse, Brief, Normal or Expansive; Brief by default, and enforced on every reply), the session actions (clear screen, restart story, factory reset, Warden link, end session), and switches for what the agent and players may do:
 
 - the agent may check with you first;
 - the agent may trigger screen effects; send different versions of a line to different players; change the crew's health, wounds and stress,
@@ -132,7 +142,7 @@ If a player types while lines are still playing, the comms cut off on every scre
 
 | Area | What it does |
 |---|---|
-| **Layout** | Left: the comms log and compose box. Middle: the next response, then tabs for **Roll**, **Effects** and **Sounds**. Right: tabs for **Map** (drawing or status board, plus the raw station state), **Crew** (player characters and terminals) and **Story** (voices & personas, standing orders, lore & secrets). |
+| **Layout** | Left: the comms log and compose box. Right: the control panel, with tabs for **Actions** (the next response, then **Roll**, **Effects** and **Sounds**; a dot on the tab means a reply or ruling is waiting for you), **Map** (drawing or status board, plus the raw station state), **Crew** (player characters and terminals) and **Story** (voices & personas, standing orders, lore & secrets). |
 | **Mode** (top right) | **Auto**: agent replies go straight to players. **Review**: every reply arrives as an editable draft that you send, regenerate with steering, or discard. **Manual**: agent is off. |
 | **Comms log** | Full transcript. **⚑ Command agent** (Ctrl+Enter) gives the agent an order it must obey; it acts on it right away and players never see the order. **Send as voice** puts your exact words on screen as any voice (see below). **✉ Note to agent** is private between you and the agent (see below). Deleting an entry also removes it from the agent's memory. |
 | **Command for the next reply** | A one-shot order applied to the agent's next reply, e.g. "lie about the door". |
@@ -142,7 +152,7 @@ If a player types while lines are still playing, the comms cut off on every scre
 | **Station state** | JSON the agent reads every turn and can change, e.g. opening doors or raising `access_level`. The player header shows `access_level`. |
 | **Standing orders** | Persistent steering, e.g. "the AI is slowly being infected". |
 | **Lore & secrets** | What the computer knows. Secrets, such as passwords and company directives, are guarded by access level. |
-| **Voices & personas** | Every voice with its persona, look and sound (see below). Station name, screen colour and feature switches are under **⚙ Settings**. |
+| **Voices & personas** | Every voice with its persona, look and sound (see below). Station name, screen colour and feature switches are under **⚙** (Settings). |
 
 ## Notes to the agent
 
@@ -210,7 +220,7 @@ In Review mode each line in the draft shows its effects as ⚡ chips, which you 
 
 ## Sounds
 
-Upload your own audio in **Sounds** (middle column): monster growls, attacks, screams, station ambience. Use the button or drop files on it; MP3, WAV, OGG, M4A, FLAC and WebM work, up to 10 MB each and 100 MB per session (`MAX_SOUND_MB`, `MAX_SESSION_SOUNDS_MB`).
+Upload your own audio in **Sounds** (under **Actions**): monster growls, attacks, screams, station ambience. Use the button or drop files on it; MP3, WAV, OGG, M4A, FLAC and WebM work, up to 10 MB each and 100 MB per session (`MAX_SOUND_MB`, `MAX_SESSION_SOUNDS_MB`).
 
 - **▶ Once** plays a sound on every player screen (an attack, a bang on the hull).
 - **🔁 Loop** keeps it going until you stop it (a low growl, reactor hum, dripping). Loops fade in and out, and you can change a loop's volume live under **Playing**.

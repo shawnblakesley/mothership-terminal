@@ -27,7 +27,7 @@ export default {
   models: MODELS,
 
   async generate({ apiKey, model, effort, system, context, messages, schema }) {
-    if (!apiKey) throw new Error("Claude: no API key. Add one in the Warden console.");
+    if (!apiKey) throw new Error("No LLM API key. Add one under ⚙ Settings → LLM.");
     const client = clientFor(apiKey);
     const spec = MODELS.find((m) => m.id === model) ?? MODELS[0];
 
@@ -69,6 +69,6 @@ function describeError(err) {
   if (err instanceof Anthropic.RateLimitError) return "Claude: rate limited — wait a moment and regenerate.";
   if (err instanceof Anthropic.APIConnectionError) return "Claude: could not reach the API — check your connection.";
   if (err instanceof Anthropic.APIError) return `Claude API error ${err.status}: ${err.message}`;
-  if (/authentication method/i.test(err?.message || "")) return "Claude: no API key. Add one in the Warden console.";
+  if (/authentication method/i.test(err?.message || "")) return "No LLM API key. Add one under ⚙ Settings → LLM.";
   return `Claude: ${err?.message || err}`;
 }

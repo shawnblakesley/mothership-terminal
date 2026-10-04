@@ -20,7 +20,7 @@ export const DEFAULT_TERMINALS = [
   { id: "medbay", name: "MED BAY TERMINAL", room: "med_bay", look: ["grime", "flicker"], theme: "", open: false, requires: "doors.airlock_a", notes: "Salk's terminal. The keys are sticky with something; the screen flickers." },
   { id: "command", name: "COMMAND DECK TERMINAL", room: "command_deck", look: ["dim"], theme: "amber", open: false, requires: "doors.command_deck", notes: "Okonkwo's deck, sealed. Full system access if anyone gets in." },
   { id: "cargo", name: "CARGO BAY TERMINAL", room: "cargo_bay_deck3", look: ["crack", "blood"], theme: "", open: false, requires: "doors.cargo_bay_deck3", notes: "Behind the locked cargo door. The screen is cracked and smeared with blood; something happened right here." },
-  { id: "reactor", name: "REACTOR ACCESS TERMINAL", room: "reactor_access", look: ["flicker", "dim"], theme: "red", open: false, requires: "doors.reactor_access", notes: "Petrov's hiding place. Running on emergency power." },
+  { id: "reactor", name: "REACTOR ACCESS TERMINAL", room: "reactor_access", look: ["flicker", "dim"], theme: "red", open: false, requires: "doors.reactor_access", notes: "Petrov's hiding place. Running on emergency power. Where the reactor service is done: shows the efficiency readout, the drain on the Deck 3 trunk, and the junction that can cut it." },
   { id: "portable", name: "PORTABLE TERMINAL", room: "", look: ["portable"], theme: "", open: true, notes: "A handheld maintenance unit from the crew's kit. Weak signal: it can read the station network, but can't work doors or cameras without a hard link at a wall terminal." },
 ];
 
