@@ -108,6 +108,17 @@
   setInterval(() => { $("hdr-clock").textContent = new Date().toTimeString().slice(0, 8); }, 1000);
 
   // ------------------------------------------------------------ lines
+  // Human (neural) voices are slow to generate, so they're fetched one text line at a
+  // time: the first line plays while the next is generated. (Same split as the
+  // server's speechParts in voices.js.)
+  function speak(entry) {
+    const v = voiceOf(entry);
+    const url = `api/sessions/${code}/tts/${entry.id}`;
+    if (!v?.chunked) return Voice.say(url, v?.fx);
+    const parts = entry.text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+    parts.forEach((_, i) => Voice.say(`${url}?part=${i}`, v.fx));
+  }
+
   // Which voice a line belongs to: its entity, or the built-in terminal/broadcast voice.
   function voiceOf(entry) {
     const id = entry.entity || (entry.kind === "system" ? "broadcast" : "terminal");
@@ -148,7 +159,7 @@
     }
     typingQueue.push(entry);
     if (!typing) typeNext();
-    if (header.tts) Voice.say(`api/sessions/${code}/tts/${entry.id}`, voiceOf(entry)?.fx);
+    if (header.tts) speak(entry);
   }
 
   function typeNext() {

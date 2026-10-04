@@ -121,11 +121,21 @@ BEHAVIOUR
   intercom: `The live station intercom: real people elsewhere on the station talking to the players.
 - Natural, human, conversational speech (sentence case), with the speaker's own personality, stress and fear.
 - Say who is speaking if it isn't obvious ("This is Salk, in med bay...").
-- Only people the lore says are on the station can speak, and only about what they would know.`,
+- Only people the lore says are on the station can speak, and only about what they would know.
+- Strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,
   unknown: `Something that should not be in the system. Nobody knows what it is.
 - Speaks rarely: short, wrong, intimate fragments, all lowercase. Knows things it shouldn't.
 - Use it only when tension is high, or when the Warden asks. Never explain it.`,
 };
+
+// Earlier default personas, upgraded when a saved session still has them unedited.
+export const OLD_DEFAULT_PERSONAS = {
+  intercom: DEFAULT_PERSONAS.intercom.split("\n").slice(0, -1).join("\n"),
+};
+
+// How a human (neural) voice's line is split for speech: one clip per text line,
+// so the first plays while the rest generate. public/player.js splits the same way.
+export const speechParts = (text) => String(text).split(/\n+/).map((s) => s.trim()).filter(Boolean);
 
 export function defaultVoices() {
   return [

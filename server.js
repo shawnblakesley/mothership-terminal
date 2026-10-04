@@ -7,7 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { synthesize } from "./tts.js";
-import { sanitizeVoices, voiceFor } from "./voices.js";
+import { sanitizeVoices, voiceFor, speechParts } from "./voices.js";
 import { getProvider, looksLikeKey, catalog } from "./providers/index.js";
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
 
@@ -215,7 +215,10 @@ router.get("/api/sessions/:code/tts/:id", async (req, res) => {
   const entry = s?.state.log.find((e) => e.id === Number(req.params.id));
   if (!s || !s.state.config.tts || !entry || entry.hidden || !SPOKEN_KINDS.has(entry.kind)) return res.status(404).end();
   try {
-    const wav = await synthesize(entry.text, voiceFor(s.state.config.voices, entry).voice);
+    // ?part=N: just that text line (human voices are fetched line by line so speech starts sooner).
+    const text = req.query.part === undefined ? entry.text : speechParts(entry.text)[Number(req.query.part)];
+    if (text === undefined) return res.status(404).end();
+    const wav = await synthesize(text, voiceFor(s.state.config.voices, entry).voice);
     if (!wav) return res.status(204).end();
     res.set("Content-Type", "audio/wav").send(wav);
   } catch (err) {

@@ -3,7 +3,7 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey } from "./providers/index.js";
 import { warmNeural } from "./tts.js";
-import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN } from "./voices.js";
+import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives } from "./agent.js";
 
 const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
@@ -67,6 +67,8 @@ function migrateGame(saved) {
   const base = defaultGame();
   const { persona: legacyPersona, ...config } = { ...base.config, ...saved.config };
   const voices = sanitizeVoices(config.voices ?? defaultVoices()).map((v) => {
+    // Unedited copies of an older default persona get the current one.
+    if (OLD_DEFAULT_PERSONAS[v.id] && v.persona === OLD_DEFAULT_PERSONAS[v.id]) v = { ...v, persona: DEFAULT_PERSONAS[v.id] };
     // The original INTERCOM default was a synthetic radio voice; untouched ones get the human one.
     if (v.id !== "intercom" || v.preset !== "radio") return v;
     const human = defaultVoices().find((d) => d.id === "intercom");
@@ -188,7 +190,8 @@ export class Session {
       theme: c.theme,
       tts: c.tts,
       // What each voice looks like on screen and its effect chain (no personas or base-voice internals).
-      voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: v.name, style: v.style, color: v.color, fx: v.fx }])),
+      // chunked: human voices are spoken one text line at a time (see speechParts).
+      voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: v.name, style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
     };
   }
 
