@@ -20,6 +20,8 @@
       <span id="hdr-clock">00:00:00</span>
       <span id="hdr-link" class="link" title="Connection">● LINK</span>
       <span class="sep">//</span>
+      <button id="hdr-term" class="hdr-btn" type="button" title="Which terminal you're at" hidden>TERM</button>
+      <span class="sep" id="hdr-term-sep" hidden>//</span>
       <button id="hdr-file" class="hdr-btn" type="button" title="Your crew file" hidden>FILE</button>
       <span class="sep" id="hdr-file-sep" hidden>//</span>
       <span class="vol">
@@ -35,6 +37,13 @@
         <div class="p-dim">SELECT YOUR CREW FILE (PRESS 1-4).</div>
         <ol id="crewpick-list"></ol>
         <button type="button" id="crewpick-none" class="p-btn">[ NO FILE: JUST WATCHING ]</button>
+      </section>
+      <!-- Move to another terminal on the station (or the portable unit). -->
+      <section id="termpick" class="panel" hidden>
+        <div class="p-title">■ STATION TERMINALS ■</div>
+        <div class="p-dim" id="termpick-note">SELECT A TERMINAL (PRESS 1-9).</div>
+        <ol id="termpick-list"></ol>
+        <button type="button" id="termpick-close" class="p-btn">[ STAY HERE ]</button>
       </section>
       <!-- A player rolls one of their own Stats or Saves. -->
       <section id="selfroll" class="panel" hidden>

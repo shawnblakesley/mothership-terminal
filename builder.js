@@ -6,6 +6,7 @@
 // Two kinds of call: a conversation turn ({ reply, ready }) and a full draft.
 import { BUILTIN, PRESETS, SPEAKERS, defaultVoices, fromPreset, sanitizeVoices, castCharacter } from "./voices.js";
 import { CLASSES, STATS, SAVES, sanitizeCrew } from "./crew.js";
+import { LOOKS, DEFAULT_TERMINALS, sanitizeTerminals } from "./terminals.js";
 
 const THEMES = ["green", "amber", "cyan", "white", "red"];
 const PRESET_IDS = Object.keys(PRESETS);
@@ -42,6 +43,7 @@ FIELDS
 - computer: the station computer's display name (e.g. "HV-CORE") and persona: who it is and how it writes (it prints on a monochrome CRT terminal; casing, tone, length), what it knows, how it treats access levels and hacking attempts. Write the persona as instructions addressed to it ("You are ...").
 - broadcastPersona: the automated public-address voice's persona (announces, never converses).
 - voices: other voices that can speak (at least an intercom-style voice for the living cast; optionally something uncanny). For each: id (snake_case), name (as shown on screen, e.g. "INTERCOM"), preset (sound: intercom/human for people, robotic, ethereal, radio, demonic, whisper, clean), color (#rrggbb or ""), persona (who uses it and how it sounds; for a shared voice like the intercom, the general rules), and characters: the named people who speak through it, each with sex (f/m), a voice (a distinct speaker id from the list; never reuse one within a voice) and notes (who they are, where, what they want, how they talk, and anything the AI must keep in mind).
+- terminals: 3-6 physical terminals the players can use, in map rooms (room = a room id from the map), each with a look (any of: ${LOOKS.filter((l) => l !== "portable").join(", ")}; [] for clean), open (can the players reach it at the start?) and notes (what's there, what happened at it). Make the looks tell the story: clean where they arrive, bloody and cracked where it went wrong. A portable handheld terminal is added automatically.
 - crew: the players' characters (1-4, normally 4), Mothership 1e. className one of ${CLASSES.join(", ")}. Stats ${STATS.join("/")} roughly 20-50 (class strengths higher); Saves ${SAVES.join("/")} roughly 15-40 (Android: Fear 60ish, Sanity lower). Health max 10-20, Wounds max 2 (Android 3), Stress 2. 3-5 skills (e.g. Zero-G, Mechanical Repair, Computers, Chemistry, Firearms, Military Training, Hacking, Piloting, Athletics, Medicine). Give each a role, pronouns, crime or reason they're here (field "crime"; for non-convicts, why they took the job), a 3-5 sentence backstory with a hook, loadout (realistic for why they came), trinket and patch. notes: anything only the Warden should know about them, or "".
 
 LENGTH (it must fit in one reply): lore and secrets under ~200 words each; each persona under ~150 words; each character note under ~40 words; backstories 3-4 sentences; 15-35 station values; at most ~10 named characters.`;
@@ -81,6 +83,10 @@ export const DRAFT_SCHEMA = obj({
         items: obj({ name: str, sex: { type: "string", enum: ["f", "m"] }, voice: { type: "string", enum: Object.keys(SPEAKERS) }, notes: str }),
       },
     }),
+  },
+  terminals: {
+    type: "array",
+    items: obj({ name: str, room: str, look: { type: "array", items: { type: "string", enum: LOOKS.filter((l) => l !== "portable") } }, open: { type: "boolean" }, notes: str }),
   },
   crew: {
     type: "array",
@@ -149,6 +155,7 @@ export function normalizeDraft(raw) {
       characters: (Array.isArray(v?.characters) ? v.characters : []).slice(0, 30).map((c) => ({ name: s(c?.name, 40), sex: c?.sex === "m" ? "m" : "f", voice: SPEAKERS[c?.voice] ? c.voice : "", notes: s(c?.notes, 500) })),
     })).filter((v) => v.name),
     crew: (Array.isArray(d.crew) ? d.crew : []).slice(0, 4),
+    terminals: (Array.isArray(d.terminals) ? d.terminals : []).slice(0, 10),
   };
 }
 
@@ -198,6 +205,8 @@ export function applyDraft(d) {
       map: d.map,
       voices: sanitizeVoices([terminal, broadcast, ...others]),
       crew,
+      // The story's terminals (the players start at the first open one), plus a portable unit.
+      terminals: sanitizeTerminals([...d.terminals, DEFAULT_TERMINALS.find((t) => t.portable || t.id === "portable")]),
     },
     station,
   };

@@ -265,6 +265,7 @@
     renderCastLists();
     renderMap();
     renderCrew();
+    renderTerminals();
     renderBuilder();
   }
 
@@ -433,7 +434,7 @@
     const panel = $("crew");
     if (!fromDraft) {
       const editing = panel.contains(document.activeElement) || crewTimer !== null || Date.now() - crewSentAt < 1500;
-      const json = JSON.stringify([S.config.crew, S.claims]);
+      const json = JSON.stringify([S.config.crew, S.claims, S.screens, S.config.terminals.map((t) => t.name)]);
       if ((crewDraft && editing) || panel.dataset.json === json) return;
       panel.dataset.json = json;
       crewDraft = structuredClone(S.config.crew);
@@ -447,7 +448,10 @@
       return `<details class="pc" data-i="${i}">
         <summary><span class="pcname">${esc(c.name || "Unnamed")}</span>
           <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
-          <span class="pill ${playing ? "ok" : ""}">${playing ? `playing on ${playing} screen${playing > 1 ? "s" : ""}` : "not picked"}</span></summary>
+          <span class="pill ${playing ? "ok" : ""}">${playing ? `playing on ${playing} screen${playing > 1 ? "s" : ""}` : "not picked"}</span>
+          ${whereIs(c.id) ? `<span class="muted small">at ${esc(whereIs(c.id))}</span>` : ""}</summary>
+        ${playing ? `<div class="row small"><span class="muted">Move them to</span><select data-move="${esc(c.id)}">${S.config.terminals.map((t) =>
+          `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></div>` : ""}
         <div class="pcgrid">
           ${txt("name", c.name, "Name")}
           <label>Pronouns<input data-c="pronouns" value="${esc(c.pronouns)}"></label>
@@ -474,6 +478,14 @@
     $("addCrew").disabled = crewDraft.length >= 4;
   }
   const openCrew = new Set();
+  const whereIs = (crewId) => {
+    const id = S.screens?.find((s) => s.characterId === crewId)?.terminal;
+    return S.config.terminals.find((t) => t.id === id)?.name || "";
+  };
+  $("crew").addEventListener("change", (e) => {
+    const who = e.target.dataset.move;
+    if (who) { send({ t: "moveScreens", character: who, terminal: e.target.value }); e.target.blur(); }
+  });
   $("crew").addEventListener("toggle", (e) => {
     const i = e.target.dataset?.i;
     if (i !== undefined) e.target.open ? openCrew.add(i) : openCrew.delete(i);
@@ -557,6 +569,7 @@
       <details><summary>Secrets</summary><pre class="bpre">${esc(d.secrets)}</pre></details>
       <details><summary>Computer: ${esc(d.computer.name)}</summary><pre class="bpre">${esc(d.computer.persona)}</pre>${d.standingOrders ? `<div class="small"><b>Standing orders:</b> ${esc(d.standingOrders)}</div>` : ""}</details>
       <details open><summary>Cast <span class="muted">(voices and characters)</span></summary>${cast || '<p class="muted">None.</p>'}</details>
+      <details><summary>Terminals</summary><ul class="small">${(d.terminals || []).map((t) => `<li><b>${esc(t.name)}</b> <span class="muted">${esc(t.room)}${t.look?.length ? ` · ${esc(t.look.join(", "))}` : " · clean"}${t.open ? "" : " · not reachable at first"}</span> · ${esc(t.notes)}</li>`).join("")}<li class="muted">+ a portable handheld terminal</li></ul></details>
       <details open><summary>Player characters</summary>${crew || '<p class="muted">None.</p>'}</details>`;
     // Preview the map from the draft's own state and layout.
     const st = {};
@@ -588,6 +601,65 @@
     $("builderDialog").close();
     toast("New story applied.");
   });
+
+  // ------------------------------------------------------------ terminals
+  const LOOKS = { blood: "Blood", goo: "Goo", crack: "Cracked", flicker: "Flicker", dim: "Dim", grime: "Grime", portable: "Handheld" };
+  let termDraft = null, termTimer = null, termSentAt = 0;
+  function renderTerminals(fromDraft = false) {
+    const panel = $("terminals");
+    if (!fromDraft) {
+      const editing = panel.contains(document.activeElement) || termTimer !== null || Date.now() - termSentAt < 1500;
+      const json = JSON.stringify([S.config.terminals, S.screens, S.config.map]);
+      if ((termDraft && editing) || panel.dataset.json === json) return;
+      panel.dataset.json = json;
+      termDraft = structuredClone(S.config.terminals);
+    }
+    const rooms = StationMap.parseLayout(S.config.map).flatMap((d) => d.rooms.map((r) => [r.id, `${r.label} (${d.label.split("·")[0].trim()})`]));
+    panel.innerHTML = termDraft.map((t, i) => {
+      const here = (S.screens || []).filter((s) => s.terminal === t.id).map((s) => s.character || "a screen");
+      return `<div class="tcard" data-i="${i}">
+        <div class="row"><input data-t="name" value="${esc(t.name)}" aria-label="Terminal name" class="tname">
+          <label class="check small"><input type="checkbox" data-t="open" ${t.open ? "checked" : ""}> reachable</label>
+          <button data-tact="del" class="ghost" title="Remove">✕</button></div>
+        <div class="row wrap small">
+          <label>Room <select data-t="room"><option value="">(none / portable)</option>${rooms.map(([id, label]) => `<option value="${esc(id)}" ${id === t.room ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
+          <label>Colour <select data-t="theme">${["", "green", "amber", "cyan", "white", "red"].map((x) => `<option value="${x}" ${x === t.theme ? "selected" : ""}>${x || "station's"}</option>`).join("")}</select></label>
+        </div>
+        <div class="looks">${Object.entries(LOOKS).map(([k, label]) => `<label class="chip"><input type="checkbox" data-look="${k}" ${t.look.includes(k) ? "checked" : ""}> ${label}</label>`).join("")}</div>
+        <input data-t="notes" value="${esc(t.notes)}" placeholder="What's here, what happened at it (the agent reads this)" aria-label="Notes">
+        ${here.length ? `<div class="muted small">Here now: ${here.map(esc).join(", ")}</div>` : ""}
+      </div>`;
+    }).join("");
+  }
+  function saveTerminals() {
+    clearTimeout(termTimer);
+    termTimer = setTimeout(() => { termTimer = null; termSentAt = Date.now(); send({ t: "terminals", terminals: termDraft }); }, 500);
+  }
+  $("terminals").addEventListener("input", (e) => {
+    const card = e.target.closest(".tcard");
+    if (!card) return;
+    const t = termDraft[Number(card.dataset.i)];
+    if (e.target.dataset.look) {
+      const k = e.target.dataset.look;
+      t.look = e.target.checked ? [...new Set([...t.look, k])] : t.look.filter((x) => x !== k);
+    } else if (e.target.dataset.t === "open") t.open = e.target.checked;
+    else if (e.target.dataset.t) t[e.target.dataset.t] = e.target.value;
+    saveTerminals();
+  });
+  $("terminals").addEventListener("click", async (e) => {
+    if (e.target.closest("[data-tact]")?.dataset.tact !== "del") return;
+    const i = Number(e.target.closest(".tcard").dataset.i);
+    if (!(await sure(`Remove ${termDraft[i].name}?`, "Players at it stay there until they or you move them.", "Remove"))) return;
+    termDraft.splice(i, 1);
+    send({ t: "terminals", terminals: termDraft });
+    termSentAt = 0;
+  });
+  $("addTerminal").onclick = () => {
+    termDraft.push({ name: "NEW TERMINAL", room: "", look: [], theme: "", open: true, notes: "" });
+    send({ t: "terminals", terminals: termDraft });
+    termSentAt = 0;
+    renderTerminals(true);
+  };
 
   // ------------------------------------------------------------ station map
   let mapKey = "";
@@ -760,7 +832,7 @@
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
   // On/off features in the Settings window (config keys of the same name).
-  const SETTING_SWITCHES = ["agentEffects", "agentVariants", "agentCrew", "playerVitals", "playerRolls", "tts"];
+  const SETTING_SWITCHES = ["agentEffects", "agentVariants", "agentCrew", "playerVitals", "playerRolls", "playerTerminals", "tts"];
 
   function renderConfig() {
     const c = S.config;

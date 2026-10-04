@@ -2,13 +2,14 @@
 // Warden consoles, and the agent loop. The server keeps many of these at once.
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey } from "./providers/index.js";
-import { warmNeural, synthesize } from "./tts.js";
-import { speechParts, speakingVoice, castCharacter, findCharacter } from "./voices.js";
+import { warmNeural, synthesize, wavSeconds } from "./tts.js";
+import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
+import { DEFAULT_TERMINALS, sanitizeTerminals } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -94,6 +95,8 @@ export function defaultGame(keys = {}) {
       theme: "green",
       map: DEFAULT_MAP,
       crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
+      terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
+      playerTerminals: true, // players may move between terminals themselves
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -143,6 +146,7 @@ function migrateGame(saved) {
     if (intercom) intercom.characters = mergeCast(intercom.characters, defaultVoices().find((v) => v.id === "intercom").characters);
   }
   config.crew = sanitizeCrew(config.crew);
+  config.terminals = sanitizeTerminals(config.terminals);
   return {
     config: { ...config, ...fixSelection(config), voices },
     station: saved.station ?? base.station,
@@ -192,6 +196,9 @@ export class Session {
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
     this.genCounter = 0;
+    // Lines reach the players on one shared timeline (see scheduleLine), in order.
+    this.playhead = 0;
+    this.lineChain = Promise.resolve();
     this.rerun = false; // a player typed while the agent was busy: answer once it's done
     this.effectTimers = new Map();
     this.onChange = onChange;
@@ -251,7 +258,7 @@ export class Session {
   playerView() {
     return {
       version: APP_VERSION,
-      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden),
+      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued),
       header: this.playerHeader(),
       effects: this.state.effects,
       playing: this.state.playing.filter((p) => p.loop),
@@ -270,6 +277,8 @@ export class Session {
       theme: c.theme,
       tts: c.tts,
       vitals: c.playerVitals, // players may edit their own health/wounds/stress
+      terminals: c.terminals.map(({ id, name, look, theme, open }) => ({ id, name, look, theme, open })),
+      moveTerminals: c.playerTerminals, // players may switch terminals themselves
       selfRolls: c.playerRolls, // players may roll their own stats/saves
       // What each voice looks like on screen and its effect chain (no personas or base-voice internals).
       // chunked: human voices are spoken one text line at a time (see speechParts).
@@ -282,6 +291,7 @@ export class Session {
       version: APP_VERSION,
       ...this.state,
       claims: this.claims(),
+      screens: this.screens(),
       builderBusy: this.builderBusy,
       code: this.code,
       providers: catalog(this.keys),
@@ -296,13 +306,75 @@ export class Session {
     const entry = { id: this.nextId++, kind, text, ts: Date.now(), ...extra };
     this.state.log.push(entry);
     if (this.state.log.length > MAX_LOG) this.state.log.splice(0, this.state.log.length - MAX_LOG);
-    if (!PRIVATE_KINDS.has(kind)) this.toPlayers({ t: "line", entry });
     if (SPOKEN_KINDS.has(kind)) this.pregenerate([entry]);
+    if (kind === "player") this.toPlayers({ t: "line", entry }); // what they typed: at once
+    else if (!PRIVATE_KINDS.has(kind)) {
+      entry.queued = true; // not on players' screens until it's scheduled
+      this.lineChain = this.lineChain.then(() => this.scheduleLine(entry)).catch((err) => console.error(`[${this.code}] line schedule failed:`, err));
+    }
     this.touch();
     return entry;
   }
 
   setBusy(busy) { this.toPlayers({ t: "busy", busy }); }
+
+  // ---------------------------------------------------------------- shared timeline
+  // Every player screen shows and speaks a line at the same moment. The server
+  // generates each clip once (cached in tts.js), measures it, and gives every
+  // line and every spoken piece a start time on one session timeline (server
+  // clock, ms). Screens sync their clocks (ping/pong) and play to the schedule.
+  //   entry.timing = { at, speakAt, end, versions: [[{ i, at, dur, audio, last }], ...] }
+  //   at: effects "before" the line fire; speakAt: after any beat (e.g. a blackout).
+  //   versions[0] is the line's text; versions[k] its k-th per-player variant.
+  // The line goes out once each version's first piece is ready; later pieces
+  // follow as "part" messages, then "lineEnd".
+  async scheduleLine(entry) {
+    const LEAD = 450, PIECE_GAP = 250, LINE_GAP = 150;
+    const c = this.state.config;
+    const spoken = c.tts && SPOKEN_KINDS.has(entry.kind);
+    const voice = SPOKEN_KINDS.has(entry.kind) ? voiceFor(c.voices, entry) : null;
+    const base = voice ? speakingVoice(c.voices, entry) : null;
+    const rate = voice?.fx?.rate || 1;
+    const chunked = voice?.voice.engine === "neural";
+    const texts = [entry.text, ...(entry.variants || []).map((v) => v.text)];
+    const pieces = texts.map((t) => (!t ? [] : chunked ? speechParts(t) : [t]));
+    const jobs = pieces.map((ps) => ps.map((p) => (spoken ? synthesize(p, base).catch(() => null) : Promise.resolve(null))));
+    // A beat (e.g. a blackout) holds the line back for its length, plus a moment so the lights are surely back.
+    const beat = Math.max(0, ...(entry.cues || []).filter((x) => x.hold).map((x) => Math.min(10, x.seconds || 3) * 1000));
+    const hold = beat ? beat + 400 : 0;
+    const at = Math.max(this.playhead, Date.now() + LEAD);
+    const timing = { at, speakAt: at + hold, versions: texts.map(() => []) };
+    const cursors = texts.map(() => timing.speakAt);
+    const live = () => this.state.log.includes(entry);
+    let sent = false;
+    const most = Math.max(0, ...pieces.map((p) => p.length));
+    for (let i = 0; i < most; i++) {
+      for (let v = 0; v < texts.length; v++) {
+        if (i >= pieces[v].length) continue;
+        const wav = await jobs[v][i];
+        // Unspoken text gets reading time instead.
+        const dur = wav ? Math.round((wavSeconds(wav) / rate) * 1000) : Math.min(6000, 400 + pieces[v][i].length * 18);
+        const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!wav, last: i === pieces[v].length - 1 };
+        cursors[v] = part.at + dur + PIECE_GAP;
+        timing.versions[v].push(part);
+        if (sent && live()) this.toPlayers({ t: "part", id: entry.id, v, part });
+      }
+      if (!sent) {
+        sent = true;
+        entry.timing = timing;
+        delete entry.queued;
+        if (live()) this.toPlayers({ t: "line", entry });
+      }
+    }
+    if (!sent) { // nothing to show anyone (shouldn't happen): keep the order, move on
+      entry.timing = timing;
+      delete entry.queued;
+      if (live()) this.toPlayers({ t: "line", entry });
+    }
+    timing.end = Math.max(timing.speakAt, ...cursors.map((x) => x - PIECE_GAP));
+    if (live()) this.toPlayers({ t: "lineEnd", id: entry.id, end: timing.end });
+    this.playhead = timing.end + LINE_GAP;
+  }
 
   // ---------------------------------------------------------------- players
   // Which crew files are taken, and how many screens each: { id: count }.
@@ -323,6 +395,8 @@ export class Session {
 
   handlePlayer(ws, msg) {
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
+    if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() })); // clock sync
+    if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
     if (msg.t === "claim") {
@@ -355,7 +429,7 @@ export class Session {
     const s = this.state;
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "playerVitals", "playerRolls", "tts", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "playerVitals", "playerRolls", "playerTerminals", "tts", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
         // Switching provider snaps to its cheapest model; invalid efforts snap to the cheapest valid one.
@@ -451,10 +525,12 @@ export class Session {
       case "clearScreen":
         // Wipe the visible terminal but keep the entries so the agent's memory survives.
         for (const e of s.log) e.hidden = true;
+        this.playhead = 0;
         this.toPlayers({ t: "init", ...this.playerView() });
         break;
       case "resetSession":
         this.genCounter++;
+        this.playhead = 0;
         s.log = [];
         s.pending = null;
         s.whisper = "";
@@ -517,6 +593,14 @@ export class Session {
       case "builderApply":
         if (s.builder.draft && !this.builderBusy) this.applyStory(s.builder.draft);
         break;
+      case "terminals":
+        s.config.terminals = sanitizeTerminals(msg.terminals);
+        this.toPlayers({ t: "header", header: this.playerHeader() });
+        break;
+      case "moveScreens":
+        // The Warden moves a character's player screens to a terminal.
+        for (const ws of this.sockets) if (ws.role === "player" && ws.character && ws.character === msg.character) this.playerTerminal(ws, msg.terminal, "warden");
+        break;
       case "crew":
         s.config.crew = sanitizeCrew(msg.crew);
         this.crewChanged();
@@ -560,6 +644,7 @@ export class Session {
       }
       case "resetAll":
         this.genCounter++;
+        this.playhead = 0;
         for (const e of [...s.effects]) this.endEffect(e.id);
         this.stopSounds();
         // The sound library is kept (its files are the Warden's uploads).
@@ -707,6 +792,7 @@ export class Session {
     const s = this.state;
     const { config, station } = applyDraft(draft);
     this.genCounter++;
+    this.playhead = 0;
     Object.assign(s.config, config);
     Object.assign(s, { station, log: [], pending: null, whisper: "", roll: null, outcomeCheck: null });
     for (const e of [...s.effects]) this.endEffect(e.id);
@@ -785,6 +871,27 @@ export class Session {
       this.crewChanged();
     }
     this.syncDm();
+  }
+
+  // A screen is at a terminal: the player chose it (if allowed), or the Warden moved them.
+  playerTerminal(ws, id, by) {
+    const t = this.state.config.terminals.find((x) => x.id === id);
+    if (!t || ws.terminal === id) return;
+    // Players can't walk into a terminal that isn't reachable, or move at all if the Warden says so
+    // (but a screen that has no terminal yet takes the one it asks for).
+    if (by === "player" && ws.terminal && (!this.state.config.playerTerminals || !t.open)) return;
+    if (by === "player" && !ws.terminal && !t.open) return;
+    const had = ws.terminal;
+    ws.terminal = id;
+    if (by === "warden") ws.send(JSON.stringify({ t: "terminalSet", id }));
+    const pc = this.characterOf(ws);
+    if (had && pc) this.addLog("note", `${pc.name} ${by === "warden" ? "was moved" : "moved"} to the ${t.name}.`);
+    this.syncDm();
+  }
+
+  // Where each player screen is: [{ character, terminal }] (for the Warden and the agent).
+  screens() {
+    return [...this.sockets].filter((ws) => ws.role === "player" && ws.terminal).map((ws) => ({ character: this.characterOf(ws)?.name || null, characterId: ws.character, terminal: ws.terminal }));
   }
 
   // A player tracks their own condition (e.g. after something settled at the table).
@@ -928,7 +1035,7 @@ export class Session {
       if (!provider) throw new Error(`Unknown provider "${providerId}".`);
       const apiKey = keyFor(providerId, this.keys);
       if (!apiKey) throw new Error(`No ${provider.label} API key for this session. Add one under "Agent" at the top of the console.`);
-      const request = { apiKey, model, effort, ...buildRequest(s, steer) };
+      const request = { apiKey, model, effort, ...buildRequest({ ...s, screens: this.screens() }, steer) };
       // One silent retry for malformed output (empty / not JSON) before bothering the Warden.
       let reply;
       for (let attempt = 1; ; attempt++) {

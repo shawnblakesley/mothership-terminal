@@ -177,6 +177,22 @@ function pruneDisk() {
   } catch {}
 }
 
+// Length of a WAV clip in seconds (0 if it can't be read).
+export function wavSeconds(buf) {
+  if (!buf || buf.length < 44 || buf.toString("latin1", 0, 4) !== "RIFF") return 0;
+  let p = 12, byteRate = 0;
+  while (p + 8 <= buf.length) {
+    const id = buf.toString("latin1", p, p + 4), size = buf.readUInt32LE(p + 4);
+    if (id === "fmt ") byteRate = buf.readUInt32LE(p + 16);
+    if (id === "data") {
+      const rest = buf.length - p - 8;
+      return byteRate ? (size && size <= rest ? size : rest) / byteRate : 0;
+    }
+    p += 8 + size + (size & 1);
+  }
+  return 0;
+}
+
 // `voice` is a base-voice object from voices.js:
 //   { engine: "espeak", variant, pitch, speed, wordgap }  synthetic
 //   { engine: "neural", speaker, pace }                   human-sounding (Kokoro)

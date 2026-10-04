@@ -230,8 +230,39 @@
     return extras;
   }
 
+  // ---------------------------------------------------------- scheduled playback
+  // The player screen plays lines on the server's timeline: load a clip ahead,
+  // then play it at its moment. A screen that's late starts part-way in, so
+  // every screen stays in step.
+  const live = new Set();
+  function load(url) {
+    return fetch(url)
+      .then((r) => (r.ok && r.status !== 204 ? r.arrayBuffer() : null))
+      .then((buf) => (buf ? ctx().decodeAudioData(buf) : null))
+      .catch(() => null);
+  }
+  function playNow(buffer, fx = {}, lateMs = 0) {
+    if (!buffer || !ready() || blocked()) return;
+    const c = ctx();
+    const rate = fx.rate || 1;
+    const offset = Math.max(0, (lateMs / 1000) * rate);
+    if (offset >= buffer.duration - 0.05) return; // missed it entirely
+    const src = c.createBufferSource();
+    src.buffer = buffer;
+    const sources = chain(c, src, getMaster(), fx, buffer.duration - offset);
+    live.add(src);
+    src.onended = () => {
+      live.delete(src);
+      setTimeout(() => sources.forEach((s) => { try { s.stop(); } catch {} }), 6000); // let tails ring out
+    };
+    sources.forEach((s) => s.start());
+    src.start(0, offset);
+  }
+  const cutLive = () => { for (const s of live) { try { s.stop(); } catch {} } live.clear(); };
+
   function stop() {
     gen++;
+    cutLive();
     for (const item of queue) item.settle(); // let any text waiting on these appear
     queue.length = 0;
     playing = false;
@@ -249,7 +280,9 @@
     stop,
     // Cut off whatever is being said right now, but keep the queue (lines later
     // in the reply still speak, e.g. after a blackout beat ends).
-    interrupt() { cutCurrent(); },
+    interrupt() { cutCurrent(); cutLive(); },
+    load,
+    playNow,
     // e.g. Voice.setBlocked(() => FX.has("blackout")): nothing speaks while it's true.
     setBlocked(fn) { blocked = fn; },
   };

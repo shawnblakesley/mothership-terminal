@@ -392,9 +392,13 @@
     },
   };
 
+  // fx.quiet: no sound (e.g. a terminal's permanent blood or crack, drawn on arrival).
   function start(fx) {
     if (active.has(fx.id) || !builders[fx.type]) return;
-    const handle = builders[fx.type](fx) || {};
+    const wasMuted = Sound.muted;
+    if (fx.quiet) Sound.muted = true;
+    let handle;
+    try { handle = builders[fx.type](fx) || {}; } finally { Sound.muted = wasMuted; }
     if (handle.el) handle.el.classList.add("fx-in");
     active.set(fx.id, { effect: fx, ...handle });
     document.dispatchEvent(new CustomEvent("fxchange"));
@@ -415,7 +419,7 @@
 
   function sync(list) {
     const ids = new Set(list.map((f) => f.id));
-    for (const id of [...active.keys()]) if (!ids.has(id)) end(id);
+    for (const id of [...active.keys()]) if (!ids.has(id) && !id.startsWith("decor-")) end(id); // (a terminal's own look stays)
     for (const f of list) start(f);
   }
 

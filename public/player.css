@@ -312,12 +312,12 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { displ
 #mainrow { flex: 1; min-height: 0; display: flex; gap: 0.9em; }
 #mainrow #screen { min-width: 0; }
 #side {
-  flex: 0 0 clamp(220px, 27%, 360px); overflow-y: auto; scrollbar-width: none;
-  border-left: 2px solid var(--dim); padding: 0 0 0 0.8em; font-size: 0.78em; line-height: 1.25;
+  flex: 0 0 clamp(260px, 30%, 440px); overflow-y: auto; scrollbar-width: none;
+  border-left: 2px solid var(--dim); padding: 0 0 0 0.8em; line-height: 1.25;
 }
 #side::-webkit-scrollbar { display: none; }
 #side[hidden] { display: none; }
-.s-name { font-size: 1.15em; }
+.s-name { }
 .s-sec { margin-top: 0.7em; }
 .s-grid { display: grid; grid-template-columns: repeat(4, auto 1fr); gap: 0 0.4em; margin-top: 0.15em; }
 .s-k { color: var(--dim); }
@@ -338,3 +338,18 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { displ
 #selfroll [hidden] { display: none; }
 #sr-dice { background: transparent; border: 0; border-bottom: 2px solid var(--fg); outline: 0; color: var(--fg); font: inherit; text-shadow: inherit; text-align: center; }
 #sr-err { color: var(--fg); animation: blink 1s infinite steps(1); }
+
+/* Terminal looks (a terminal's own condition; blood/goo/crack are drawn as effects). */
+body.look-flicker #screen, body.look-flicker #side { animation: lookflicker 5s infinite steps(1); }
+@keyframes lookflicker { 0%, 100% { opacity: 1; } 3% { opacity: 0.55; } 4% { opacity: 1; } 41% { opacity: 0.8; } 42% { opacity: 1; } 77% { opacity: 0.4; } 78.5% { opacity: 1; } }
+body.look-dim #crt { filter: brightness(0.62) saturate(0.8); }
+body.look-grime #crt::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2; mix-blend-mode: multiply;
+  background:
+    radial-gradient(ellipse 22% 16% at 18% 78%, rgba(70, 48, 20, 0.55), transparent 70%),
+    radial-gradient(ellipse 30% 12% at 72% 22%, rgba(60, 40, 18, 0.45), transparent 70%),
+    radial-gradient(ellipse 12% 20% at 88% 70%, rgba(50, 32, 12, 0.5), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 50% 50%, rgba(40, 30, 10, 0.18), transparent 80%);
+}
+body.look-portable #crt { inset: 5vh 6vw; border: 3px solid var(--dim); border-radius: 22px; box-shadow: 0 0 0 9999px #050505, inset 0 0 40px rgba(0, 0, 0, 0.6); font-size: 0.9em; }
+body.look-portable #crt::before { content: "PORTABLE UNIT · SIGNAL ▂▄▆_ · BATT 62%"; position: absolute; right: 2.2em; bottom: 0.6em; color: var(--dim); font-size: 0.7em; letter-spacing: 0.08em; }

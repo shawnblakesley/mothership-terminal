@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { BUILTIN, SPEAKERS } from "./voices.js";
 import { CHECKS } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
+import { terminalsBrief } from "./terminals.js";
 
 // Every effect the player screen can render. The agent may only trigger the
 // "electronic" ones; blood/goo/crack are physical and stay in the Warden's hands.
@@ -267,6 +268,10 @@ PER-PLAYER VARIATIONS
 - "text" may be empty if the line is only for certain players (everyone else sees nothing).
 - Use variations RARELY: a special moment, not a habit. Most replies have none at all; at most one varied line in a reply, and not in most replies. Never use them for routine information.
 
+TERMINALS (where the players are)
+- Each player's screen is a physical terminal somewhere on the station (or a portable unit): see WHERE THE PLAYERS ARE. Answer from that place: the local cameras, doors and systems; the state of the room; what the terminal itself has been through. A portable terminal has weaker, remote-only access.
+- When players are at different terminals, per-player variants can give each the view from where they stand.
+
 CREW CONDITION (the players' characters: Health, Wounds, Stress)
 - When the fiction clearly hurts or rattles a character, record it in crew_changes: damage as negative health (a few points; a Wound when health runs out or for a grievous injury), and +1 or +2 stress for real horror, panic or loss.
 - Only for consequences that actually happened in this reply and that the Warden left to you. Failed rolls already add 1 stress automatically: don't add it again. When unsure, leave it to the Warden.
@@ -406,6 +411,10 @@ function buildContext(state, steer, aside = false) {
     );
   }
   if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
+  if (state.config.terminals?.length) {
+    const at = (state.screens || []).map((s) => `- ${s.character || "a screen with no crew file"}: ${state.config.terminals.find((t) => t.id === s.terminal)?.name || s.terminal}`);
+    ctx.push(`TERMINALS ON THE STATION:\n${terminalsBrief(state.config.terminals)}\n\nWHERE THE PLAYERS ARE (which terminal each player's screen is):\n${at.join("\n") || "- (nobody has chosen yet)"}`);
+  }
   if (!state.config.agentEffects) ctx.push("Effects are disabled right now: return an empty effects array.");
   if (state.config.agentVariants === false) ctx.push("Per-player variations are disabled: every line's variants must be [].");
   if (state.config.agentCrew === false) ctx.push("The Warden tracks crew health, wounds and stress themselves: crew_changes must be [].");

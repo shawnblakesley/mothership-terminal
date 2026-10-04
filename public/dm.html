@@ -66,6 +66,7 @@
     <h3 class="sethead">Players may…</h3>
     <label class="check"><input type="checkbox" id="playerVitals"> <span>change their own health, wounds and stress <em>for things settled at the table</em></span></label>
     <label class="check"><input type="checkbox" id="playerRolls"> <span>roll their own stats and saves <em>results appear in your log</em></span></label>
+    <label class="check"><input type="checkbox" id="playerTerminals"> <span>move between terminals <em>to any terminal marked reachable, or the portable unit</em></span></label>
     <h3 class="sethead">Sound</h3>
     <label class="check"><input type="checkbox" id="tts"> <span>voices speak aloud on the players' screens</span></label>
   </dialog>
@@ -269,6 +270,12 @@
         <p class="muted small">Each player picks one of these on their screen and can read its file. The agent knows who they are and who typed what. A failed roll adds 1 Stress to the roller's character.</p>
         <div id="crew"></div>
         <div class="row"><button id="addCrew">+ Add character</button><span class="grow"></span><span class="muted small">Up to 4</span></div>
+      </details>
+      <details id="termPanel">
+        <summary>Terminals <span class="muted">(where the players can be)</span></summary>
+        <p class="muted small">Each player screen is at one of these. Its look (blood, a cracked screen, flicker…) shows on that screen, and the agent answers from that place. Players switch with <b>TERM</b> on their screen (if allowed in Settings) among the ones marked reachable; you can move anyone from their crew card.</p>
+        <div id="terminals"></div>
+        <div class="row"><button id="addTerminal">+ Add terminal</button></div>
       </details>
       <details id="voicesPanel" open>
         <summary>Voices &amp; personas</summary>

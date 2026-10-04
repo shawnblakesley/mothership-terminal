@@ -9,7 +9,7 @@
   const caret = $("caret"), busyEl = $("busy"), promptEl = $("prompt");
 
   let header = { stationName: "----", accessLevel: "GUEST", theme: "green" };
-  let ws, typingQueue = [], typing = false, busy = false;
+  let ws, busy = false;
   const history = [];
   let histIdx = -1;
 
@@ -102,8 +102,7 @@
     $("hdr-access").textContent = h.accessLevel;
     $("hdr-os").textContent = `${h.voices?.terminal?.name || "TERMINAL"} OS v4.1`;
     promptEl.textContent = `${h.accessLevel}@${h.stationName}>`;
-    for (const cls of [...document.body.classList]) if (cls.startsWith("theme-")) document.body.classList.remove(cls);
-    document.body.classList.add(`theme-${h.theme || "green"}`);
+    applyTerminal();
     renderSide();
     if (!$("crewfile").hidden) renderFile();
     for (const el of linesEl.querySelectorAll(".line.player")) el.dataset.prompt = el.dataset.prompt || "";
@@ -112,41 +111,26 @@
   setInterval(() => { $("hdr-clock").textContent = new Date().toTimeString().slice(0, 8); }, 1000);
 
   // ------------------------------------------------------------ lines
-  // Human (neural) voices are slow to generate, so they're fetched one text line at a
-  // time: the first line plays while the next is generated. (Same split as the
-  // server's speechParts in voices.js.)
-  //
-  // Returns the line's text split into the pieces being spoken, each with the
-  // voice's { started, ended } handle, so typeNext() can reveal the text in step
-  // with the voice. Null when nothing will be spoken (sound off, not unlocked...).
-  function speak(entry) {
-    if (muted || volume === 0) return null; // muted terminals don't wait on silent audio
-    const v = voiceOf(entry);
-    // ?v=N: this screen's own variant of the line; ?part=N: one text line of it.
-    const url = (part) => {
-      const q = new URLSearchParams();
-      if (entry.vi >= 0) q.set("v", entry.vi);
-      if (part !== undefined) q.set("part", part);
-      const qs = q.toString();
-      return `api/sessions/${code}/tts/${entry.id}${qs ? `?${qs}` : ""}`;
-    };
-    if (!v?.chunked) {
-      const handle = Voice.say(url(), v?.fx);
-      return handle && [{ text: entry.text, handle }];
-    }
-    // One clip per non-empty text line; blank lines ride along with the next one.
-    const pieces = [];
-    let pending = "";
-    for (const row of entry.text.split("\n")) {
-      if (!row.trim()) { pending += `${row}\n`; continue; }
-      const handle = Voice.say(url(pieces.length), v.fx);
-      if (!handle) return null;
-      pieces.push({ text: pending + row, handle });
-      pending = "";
-    }
-    if (pending && pieces.length) pieces.at(-1).text += `\n${pending.replace(/\n$/, "")}`;
-    return pieces.length ? pieces : null;
+  // Every screen shows and speaks a line at the same moment: the server gives
+  // each line (and each spoken piece of it) a start time on one timeline, in
+  // server-clock ms (see Session.scheduleLine). This screen syncs its clock to
+  // the server's and plays to that schedule.
+  //   entry.timing = { at, speakAt, end, versions: [[{ i, at, dur, audio, last }], ...] }
+
+  // ---- server clock
+  let clockOffset = 0; // server time minus this screen's time
+  let bestRtt = Infinity;
+  const serverNow = () => Date.now() + clockOffset;
+  const untilServer = (t) => Math.max(0, t - serverNow());
+  function ping() { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: "ping", c: Date.now() })); }
+  function onPong({ c, s }) {
+    const rtt = Date.now() - c;
+    // Trust the quickest round trips (least skewed by network delay).
+    if (rtt > bestRtt * 1.5 + 20) return;
+    bestRtt = Math.min(bestRtt, rtt);
+    clockOffset = s + rtt / 2 - Date.now();
   }
+  setInterval(ping, 30_000);
 
   // Which voice a line belongs to: its entity, or the built-in terminal/broadcast voice.
   function voiceOf(entry) {
@@ -183,6 +167,30 @@
     return entry.text || entry.kind === "player" ? entry : null;
   }
 
+  // The text pieces a line is spoken in: one per text line for human voices
+  // (blank lines ride along with the next), else the whole text. Same split as
+  // the server's speechParts.
+  function piecesOf(entry) {
+    if (!voiceOf(entry)?.chunked || entry.kind === "roll" || entry.kind === "player") return [entry.text];
+    const out = [];
+    let pending = "";
+    for (const row of entry.text.split("\n")) {
+      if (!row.trim()) { pending += `${row}\n`; continue; }
+      out.push(pending + row);
+      pending = "";
+    }
+    if (pending && out.length) out[out.length - 1] += `\n${pending.replace(/\n$/, "")}`;
+    return out.length ? out : [entry.text];
+  }
+
+  function clipUrl(entry, part) {
+    const q = new URLSearchParams();
+    if (entry.vi >= 0) q.set("v", entry.vi);
+    if (voiceOf(entry)?.chunked) q.set("part", part);
+    const qs = q.toString();
+    return `api/sessions/${code}/tts/${entry.id}${qs ? `?${qs}` : ""}`;
+  }
+
   function renderInstant(raw) {
     const entry = forMe(raw);
     if (!entry) return;
@@ -192,52 +200,109 @@
     linesEl.append(div);
   }
 
+  // ---- playing lines to the schedule
+  let lineGen = 0; // bumped on init: timers from before it do nothing
+  const plays = new Map(); // entry id -> play
+  const canHear = () => header.tts && !muted && volume > 0 && FX.Sound.ok();
+
   function enqueue(raw) {
-    const entry = forMe(raw);
-    if (!entry) {
-      // Not for this screen: nothing shows, but it keeps its place so its effects fire in order.
-      cueState.set(raw.id, "queued");
-      typingQueue.push({ ...raw, silent: true });
-      if (!typing) typeNext();
-      return;
+    if (raw.kind === "player" || !raw.timing) { // what a player typed (or an unscheduled line)
+      renderInstant(raw);
+      return scrollDown();
     }
-    if (entry.kind === "player") {
-      renderInstant(entry);
-      scrollDown();
-      return;
-    }
-    // Speech is requested now (so audio starts generating right away); the text
-    // waits for it in typeNext().
-    entry.speech = header.tts && entry.kind !== "roll" ? speak(entry) : null;
-    cueState.set(entry.id, "queued");
-    typingQueue.push(entry);
-    if (!typing) typeNext();
+    if (plays.has(raw.id) || linesEl.querySelector(`[data-id="${raw.id}"]`)) return;
+    const entry = forMe(raw); // null: not for this screen (it still keeps its place for effects)
+    const v = !entry ? -1 : entry.vi >= 0 ? entry.vi + 1 : 0;
+    const play = { gen: lineGen, raw, entry, v, pieces: entry ? piecesOf(entry) : [], div: null, finished: false };
+    plays.set(raw.id, play);
+    cueState.set(raw.id, "queued");
+    updateBusy();
+    setTimeout(() => startLine(play), untilServer(raw.timing.at));
+    if (v >= 0) for (const part of raw.timing.versions[v] || []) schedulePart(play, part);
+    if (raw.timing.end) onLineEnd({ id: raw.id, end: raw.timing.end });
   }
 
-  // Type `text` onto the end of `div`, a few characters at a time.
-  function typeInto(div, text) {
-    return new Promise((resolve) => {
-      const start = div.textContent;
-      let i = 0;
-      // Faster for long dumps so the table doesn't take forever.
-      const perTick = text.length > 600 ? 6 : text.length > 200 ? 3 : 1;
-      const step = () => {
-        i = Math.min(text.length, i + perTick);
-        div.textContent = start + text.slice(0, i);
-        if (i % 3 === 0) FX.Sound.tick();
-        scrollDown();
-        if (i < text.length) setTimeout(step, text[i - 1] === "\n" ? 60 : 14);
-        else resolve();
-      };
-      step();
-    });
+  // Effects "before" the line fire now (a beat like a blackout is already in the schedule).
+  function startLine(play) {
+    if (play.gen !== lineGen) return;
+    cueState.set(play.raw.id, "showing");
+    releaseCues(play.raw.id, "before");
+  }
+
+  function schedulePart(play, part) {
+    // Fetch the clip ahead so it's ready on time (the server has already made it).
+    const audio = part.audio && canHear() ? Voice.load(clipUrl(play.entry, part.i)) : null;
+    setTimeout(() => playPart(play, part, audio), untilServer(part.at));
+  }
+
+  async function playPart(play, part, audio) {
+    if (play.gen !== lineGen) return;
+    if (!play.div) {
+      play.div = makeLine(play.entry);
+      play.div.classList.add("typing");
+      linesEl.append(play.div);
+      if (play.entry.kind !== "terminal" && play.entry.kind !== "roll") FX.Sound.beep(play.entry.kind === "system" ? 520 : 380, 0.15, 0.08);
+    }
+    const text = (part.i ? "\n" : "") + (play.pieces[part.i] ?? "");
+    const late = serverNow() - part.at;
+    if (audio) audio.then((buf) => play.gen === lineGen && Voice.playNow(buf, voiceOf(play.entry)?.fx, serverNow() - part.at));
+    // Type it out within the piece's time (all at once if this screen is late).
+    if (late > part.dur * 0.6) { play.div.textContent += text; scrollDown(); }
+    else typeInto(play.div, text, part.dur - Math.max(0, late));
+    if (part.last) setTimeout(() => finishLine(play), Math.max(0, part.dur - Math.max(0, late)));
+  }
+
+  function finishLine(play) {
+    if (play.finished || play.gen !== lineGen) return;
+    play.finished = true;
+    if (play.div) {
+      play.div.classList.remove("typing");
+      play.div.classList.add("done");
+    }
+    cueState.set(play.raw.id, "done");
+    releaseCues(play.raw.id, "after");
+    plays.delete(play.raw.id);
+    updateBusy();
+  }
+
+  function onPart({ id, v, part }) {
+    const play = plays.get(id);
+    if (!play) return;
+    (play.raw.timing.versions[v] ||= []).push(part);
+    if (v === play.v) schedulePart(play, part);
+  }
+
+  // A line's last moment: lines that aren't for this screen finish here.
+  function onLineEnd({ id, end }) {
+    const play = plays.get(id);
+    if (!play) return;
+    play.raw.timing.end = end;
+    if (play.v < 0) setTimeout(() => finishLine(play), untilServer(end));
+  }
+
+  // Type `text` onto the end of `div` within about `budget` ms (the time the voice takes).
+  function typeInto(div, text, budget = text.length * 14) {
+    const start = div.textContent;
+    const len = Math.max(1, text.length);
+    const per = (budget * 0.85) / len; // ms per character to finish in time
+    const interval = Math.max(4, Math.min(14, per));
+    const perTick = per < 4 ? Math.ceil(4 / Math.max(0.1, per)) : 1;
+    let i = 0;
+    const step = () => {
+      if (!div.isConnected) return;
+      i = Math.min(text.length, i + perTick);
+      div.textContent = start + text.slice(0, i);
+      if (i % 3 === 0) FX.Sound.tick();
+      scrollDown();
+      if (i < text.length) setTimeout(step, interval);
+    };
+    step();
   }
 
   // ------------------------------------------------------------ effect cues
   // The agent can time an effect to a line ("before" it starts, or "after" the
-  // last line). The effect arrives right after its line, while that line is
-  // still queued behind earlier text and voices, so it waits here until the
-  // line comes up, then runs for its own duration.
+  // last line). It waits here until its line comes up on the schedule, then
+  // runs for its own duration.
   const cueState = new Map(); // entry id -> "queued" | "showing" | "done"
   const heldCues = new Map(); // entry id -> { before: [], after: [] }
 
@@ -247,75 +312,28 @@
   }
 
   function onEffect(effect) {
-    const st = effect.atEntry ? cueState.get(effect.atEntry) : null;
-    const due = !st || st === "done" || (st === "showing" && effect.when === "before");
+    const st = effect.atEntry ? cueState.get(effect.atEntry) : "none";
+    // (A line not here yet is still being scheduled: hold its effect for it.)
+    const due = st === "none" || st === "done" || (st === "showing" && effect.when === "before");
     if (due) return runEffect(effect);
     const h = heldCues.get(effect.atEntry) || { before: [], after: [] };
     h[effect.when === "after" ? "after" : "before"].push(effect);
     heldCues.set(effect.atEntry, h);
   }
 
-  // Fires the held effects; returns how long a beat should pause the dialogue
-  // (effect-only beats like a blackout last for their duration, up to 10s).
   function releaseCues(id, when) {
     const h = heldCues.get(id);
-    if (!h) return 0;
-    let pause = 0;
-    for (const e of h[when].splice(0)) {
-      runEffect(e);
-      if (e.hold) pause = Math.max(pause, Math.min(10, e.seconds || 3));
-    }
-    return pause;
+    if (h) for (const e of h[when].splice(0)) runEffect(e);
   }
 
   function dropCue(fxId) {
     for (const h of heldCues.values()) for (const k of ["before", "after"]) h[k] = h[k].filter((e) => e.id !== fxId);
   }
 
-  async function typeNext() {
-    const entry = typingQueue.shift();
-    if (!entry) { typing = false; updateBusy(); return; }
-    typing = true;
-    updateBusy();
-    if (entry.silent) {
-      cueState.set(entry.id, "showing");
-      const pause = releaseCues(entry.id, "before");
-      if (pause) await new Promise((r) => setTimeout(r, pause * 1000));
-      cueState.set(entry.id, "done");
-      releaseCues(entry.id, "after");
-      return setTimeout(typeNext, 0);
-    }
-    const div = makeLine(entry);
-    div.classList.add("typing");
-    linesEl.append(div);
-    cueState.set(entry.id, "showing");
-    // Effects timed to the start of this line; a beat (e.g. a blackout) pauses first.
-    const pause = releaseCues(entry.id, "before");
-    if (pause) await new Promise((r) => setTimeout(r, pause * 1000));
-    if (entry.kind !== "terminal") FX.Sound.beep(entry.kind === "system" ? 520 : 380, 0.15, 0.08);
-    if (entry.speech) {
-      // Spoken: each piece appears as its voice starts saying it, and the next
-      // piece (or line) waits until the voice has finished.
-      for (const [i, piece] of entry.speech.entries()) {
-        await piece.handle.started;
-        const [, played] = await Promise.all([typeInto(div, (i ? "\n" : "") + piece.text), piece.handle.ended]);
-        // The voice couldn't play (blackout, failure): still give it reading time.
-        if (!played) await new Promise((r) => setTimeout(r, Math.min(6000, 600 + piece.text.length * 45)));
-      }
-    } else {
-      await typeInto(div, entry.text);
-    }
-    div.classList.remove("typing");
-    div.classList.add("done");
-    cueState.set(entry.id, "done");
-    releaseCues(entry.id, "after");
-    setTimeout(typeNext, 120);
-  }
-
   function scrollDown() { screenEl.scrollTop = screenEl.scrollHeight; }
 
   function updateBusy() {
-    busyEl.hidden = !(busy && !typing);
+    busyEl.hidden = !(busy && !plays.size);
     if (!busyEl.hidden) scrollDown();
   }
 
@@ -419,7 +437,7 @@
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   function openPanel(id) {
-    for (const p of ["crewpick", "crewfile", "selfroll"]) $(p).hidden = p !== id;
+    for (const p of ["crewpick", "crewfile", "selfroll", "termpick"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
     // (Not before power-on: the key that wakes the terminal would also press the button.)
     if (id === "crewpick" && bootEl.classList.contains("gone")) $("crewpick-list").querySelector("button")?.focus();
@@ -581,6 +599,87 @@
     if (e.key === "Escape" && document.body.classList.contains("panel-open") && !$("crewfile").hidden) openPanel(null);
   });
 
+  // ---- terminals: where this screen is on the station, and how that terminal looks.
+  const LOOK_FX = { blood: "blood", goo: "goo", crack: "crack" }; // drawn with the screen effects, left on
+  const LOOK_NAMES = { blood: "BLOODY", goo: "SLIMED", crack: "CRACKED", flicker: "FLICKERING", dim: "DIM", grime: "GRIMY", portable: "HANDHELD" };
+  let termId = null;
+  const termKey = () => `term:${code}`;
+  const terminals = () => header.terminals || [];
+  const myTerm = () => terminals().find((t) => t.id === termId) || null;
+
+  // After (re)connecting: go back to this device's terminal, or the first one open.
+  function terminalOnInit() {
+    if (spectate || !terminals().length) return applyTerminal();
+    let saved = null;
+    try { saved = localStorage.getItem(termKey()); } catch {}
+    const t = terminals().find((x) => x.id === (termId || saved)) || terminals().find((x) => x.open);
+    if (t) setTerminal(t.id, true);
+  }
+  function setTerminal(id, tell) {
+    termId = id;
+    try { localStorage.setItem(termKey(), id); } catch {}
+    if (tell) ws?.readyState === 1 && ws.send(JSON.stringify({ t: "terminal", id }));
+    applyTerminal();
+  }
+
+  // Theme, screen styles (flicker, dim, grime, handheld) and permanent blood/goo/crack.
+  let decor = "";
+  function applyTerminal() {
+    const t = spectate ? null : myTerm();
+    for (const cls of [...document.body.classList]) if (cls.startsWith("theme-") || cls.startsWith("look-")) document.body.classList.remove(cls);
+    document.body.classList.add(`theme-${t?.theme || header.theme || "green"}`);
+    for (const l of t?.look || []) if (!LOOK_FX[l]) document.body.classList.add(`look-${l}`);
+    const want = (t?.look || []).filter((l) => LOOK_FX[l]);
+    const key = `${t?.id}|${want.join(",")}`;
+    if (key !== decor) {
+      decor = key;
+      for (const l of Object.keys(LOOK_FX)) FX.end(`decor-${l}`);
+      for (const l of want) FX.start({ id: `decor-${l}`, type: LOOK_FX[l], text: "", intensity: 2, seconds: 0, quiet: true });
+    }
+    const btn = $("hdr-term");
+    btn.hidden = $("hdr-term-sep").hidden = spectate || !terminals().length;
+    btn.textContent = t ? `TERM: ${t.name.replace(/\s*TERMINAL$/i, "")}` : "TERM: ----";
+    if (!$("termpick").hidden) renderTermPick();
+  }
+
+  function renderTermPick() {
+    const can = header.moveTerminals !== false;
+    $("termpick-note").textContent = can ? "SELECT A TERMINAL (PRESS 1-9)." : "MOVEMENT RESTRICTED. ASK THE WARDEN.";
+    $("termpick-list").innerHTML = terminals().map((t, i) => {
+      const here = t.id === termId;
+      const ok = can && t.open && !here;
+      const looks = t.look.map((l) => LOOK_NAMES[l]).filter(Boolean).join(" · ");
+      return `<li>${ok ? `<button type="button" class="p-btn" data-term="${escH(t.id)}">[${i + 1}] ${escH(t.name)}</button>` : `<span class="${here ? "" : "p-dim"}">[${i + 1}] ${escH(t.name)}</span>`}
+        <span class="p-dim">${here ? " · <b>YOU ARE HERE</b>" : t.open ? "" : " · NO ACCESS"}${looks ? ` · ${looks}` : ""}</span></li>`;
+    }).join("");
+  }
+  $("hdr-term").onclick = () => {
+    if (!$("termpick").hidden) return openPanel(null);
+    renderTermPick();
+    openPanel("termpick");
+    $("termpick-list").querySelector("button")?.focus();
+  };
+  $("termpick-close").onclick = () => openPanel(null);
+  function pickTerm(id) {
+    const t = terminals().find((x) => x.id === id);
+    if (!t || !t.open || header.moveTerminals === false) return;
+    setTerminal(id, true);
+    openPanel(null);
+    // Walking up to a different screen: a short power-on.
+    const crtEl = $("crt");
+    crtEl.classList.remove("power-on");
+    void crtEl.offsetWidth;
+    crtEl.classList.add("power-on");
+    FX.Sound.beep(1200, 0.05);
+  }
+  $("termpick-list").addEventListener("click", (e) => { const id = e.target.closest("[data-term]")?.dataset.term; if (id) pickTerm(id); });
+  addEventListener("keydown", (e) => {
+    if ($("termpick").hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "Escape") return openPanel(null);
+    const t = terminals()[Number(e.key) - 1];
+    if (t) { e.preventDefault(); pickTerm(t.id); }
+  });
+
   // ---- rolling your own Stat/Save: pick a relevant skill (optional), then roll.
   const LEVELS = [["trained", "TRAINED +10", 10], ["expert", "EXPERT +15", 15], ["master", "MASTER +20", 20]];
   const ADV = [["none", "NORMAL"], ["advantage", "[+] ADVANTAGE"], ["disadvantage", "[-] DISADVANTAGE"]];
@@ -738,7 +837,12 @@
     if (!code) return;
     Sfx.setUrl((id) => `api/sessions/${code}/sounds/${id}`);
     ws = new WebSocket(socketUrl());
-    ws.onopen = () => $("hdr-link").classList.remove("down");
+    ws.onopen = () => {
+      $("hdr-link").classList.remove("down");
+      // Sync this screen's clock with the server's (a few tries; the quickest wins).
+      bestRtt = Infinity;
+      for (let i = 0; i < 4; i++) setTimeout(ping, i * 250);
+    };
     ws.onclose = (ev) => {
       $("hdr-link").classList.add("down");
       if (ev.code === 4004) {
@@ -757,23 +861,29 @@
         case "init":
           if (newCode(msg.version)) return;
           applyHeader(msg.header);
-          typingQueue = [];
+          lineGen++;
+          plays.clear();
           Voice.stop();
           linesEl.innerHTML = "";
-          msg.log.forEach(renderInstant);
           cueState.clear();
           heldCues.clear();
+          // Our crew file first: lines can read differently for it.
+          setCrew(msg.crew, msg.claims);
+          if (mine()) ws.send(JSON.stringify({ t: "claim", id: myId }));
+          // Past lines appear at once; any still playing join the schedule in step.
+          for (const e of msg.log) {
+            if (e.timing && e.kind !== "player" && (e.timing.end ?? Infinity) > serverNow()) enqueue(e);
+            else renderInstant(e);
+          }
           // Timed cues were played when they happened; don't replay them on reload.
           FX.sync(msg.effects.filter((e) => !(e.atEntry && e.seconds > 0)));
           Sfx.sync(msg.playing || []); // loops (ambience, a growl) that are running
           busy = msg.busy;
           updateBusy();
           showRoll(msg.roll || null);
-          setCrew(msg.crew, msg.claims);
-          // Reconnected with a file: claim it again. Otherwise (first visit, or a
-          // new story replaced the crew): reclaim a remembered file or pick one.
-          if (mine()) ws.send(JSON.stringify({ t: "claim", id: myId }));
-          else crewOnInit();
+          // First visit, or a new story replaced the crew: reclaim a remembered file or pick one.
+          if (!mine()) crewOnInit();
+          terminalOnInit();
           scrollDown();
           break;
         case "header":
@@ -781,6 +891,10 @@
           applyHeader(msg.header);
           break;
         case "line": enqueue(msg.entry); break;
+        case "part": onPart(msg); break;
+        case "terminalSet": setTerminal(msg.id, false); break; // the Warden moved us
+        case "lineEnd": onLineEnd(msg); break;
+        case "pong": onPong(msg); break;
         case "busy": busy = msg.busy; updateBusy(); break;
         case "effect": onEffect(msg.effect); break;
         case "roll": showRoll(msg.roll); break;

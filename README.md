@@ -94,12 +94,24 @@ Each player reads their own screen as their own character, so one line can say d
 
 Keep talking to change things, then **Redraft**. **Apply to this session** replaces the station, lore, secrets, voices, map and crew, and clears the log; your provider, key, mode and sounds stay. Players stay connected and pick a new crew file. The builder uses the session's model and key; with DeepSeek a draft takes under a minute and costs a fraction of a cent.
 
+## Terminals
+
+Each player's screen is a physical terminal somewhere on the station, or a portable handheld unit. **TERM** in the player's header lists them: they can walk to any terminal marked reachable (if **Settings** allows it), and you can move anyone from their crew card.
+
+- **Each terminal looks the part:** clean, blood on the screen, goo, a cracked screen, flickering, a dim failing backlight, grime, or a handheld frame with a weak-signal strip, and its own screen colour. In the default story the airlock terminal is clean, the med bay one grimy and flickering, the cargo bay one cracked and bloody, and the reactor one red and failing.
+- **The agent knows where everyone is** and answers from that place (local cameras, doors, what happened there; the portable unit has remote-only access). With players at different terminals, per-player variants can give each their own view.
+- Set them up under **Terminals** in the console: name, room on the map, look, colour, whether players can reach it yet, and notes for the agent, with who's at each one. The story builder creates terminals for new stories.
+
+## All screens in step
+
+Every player hears a line at the same moment. The server makes each voice clip once, measures it, and puts every line and spoken sentence on one timeline; each screen syncs its clock with the server and plays to that schedule (a screen that's a little late starts the clip part-way in). Beats such as a blackout are part of the schedule, and a player who reloads mid-speech rejoins in step.
+
 ## Settings
 
 **⚙ Settings** in the console header holds the station name and screen colour, and switches for what the agent and players may do:
 
 - the agent may trigger screen effects; send different versions of a line to different players; change the crew's health, wounds and stress,
-- players may change their own health, wounds and stress; roll their own stats and saves,
+- players may change their own health, wounds and stress; roll their own stats and saves; move between terminals,
 - voices speak aloud on the players' screens.
 
 ## DM console
