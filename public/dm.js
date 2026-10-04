@@ -284,7 +284,7 @@
     fillSelect($("effort"), m.efforts.map((e) => [e, e === "off" ? "thinking off" : `effort ${e}`]), effort);
     $("effort").disabled = !m.efforts.length;
     $("keywarn").hidden = p.configured;
-    $("keywarn").textContent = `no ${p.label} key: click to add`;
+    $("keywarn").textContent = `No ${p.label} key: add one`;
   }
 
   let lastLogLen = -1;
@@ -330,8 +330,8 @@
         return `<div class="entry note${fx ? " fx" : ""}"><span class="txt">${txt}</span>${when}${del}</div>`;
       }
       return `
-      <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""}" style="--c: ${sp.c}">
-        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${when}</div>
+      <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? 'title="Cut off by a player before it was said: the players never saw it and the agent doesn\'t remember it."' : ""}>
+        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? '<span class="by">never said (cut off)</span>' : ""}${when}</div>
         <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
       </div>`;
     }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew to type something…</div>`;
@@ -661,6 +661,20 @@
     renderTerminals(true);
   };
 
+  // ------------------------------------------------------------ tabs
+  // Tab bars ([data-tabs]) show one panel at a time; the choice is remembered.
+  for (const bar of document.querySelectorAll(".tabs[data-tabs]")) {
+    const group = bar.dataset.tabs;
+    const show = (tab) => {
+      for (const b of bar.querySelectorAll("[data-tab]")) b.classList.toggle("on", b.dataset.tab === tab);
+      for (const p of document.querySelectorAll(`.tabpanel[data-tabs="${group}"]`)) p.hidden = p.dataset.panel !== tab;
+      store.set(`tab:${group}`, tab);
+      if (group === "side" && tab === "map" && S) renderMap(true); // (drawn for its width)
+    };
+    bar.addEventListener("click", (e) => { const t = e.target.closest("[data-tab]")?.dataset.tab; if (t) show(t); });
+    show(store.get(`tab:${group}`) || bar.querySelector("[data-tab]").dataset.tab);
+  }
+
   // ------------------------------------------------------------ station map
   let mapKey = "";
   // Drawing (schematic) or Status (board); remembered on this device.
@@ -832,10 +846,11 @@
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
   // On/off features in the Settings window (config keys of the same name).
-  const SETTING_SWITCHES = ["agentEffects", "agentVariants", "agentCrew", "playerVitals", "playerRolls", "playerTerminals", "tts"];
+  const SETTING_SWITCHES = ["agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals", "tts"];
 
   function renderConfig() {
     const c = S.config;
+    $("talk").value = c.talk || "brief";
     for (const id of ["stationName", "lore", "secrets", "standingOrders", "theme"]) {
       const el = $(id);
       if (!dirty.has(id) && document.activeElement !== el && el.value !== c[id]) el.value = c[id];
@@ -859,7 +874,7 @@
     el.addEventListener("input", () => { dirty.add(id); clearTimeout(t); t = setTimeout(save, 800); });
     el.addEventListener("blur", () => dirty.has(id) && save());
   }
-  for (const id of ["theme", "provider", "model", "effort"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.value } }));
+  for (const id of ["theme", "talk", "provider", "model", "effort"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.value } }));
   for (const id of SETTING_SWITCHES) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.checked } }));
   $("settingsBtn").onclick = () => $("settingsDialog").showModal();
   $("settingsClose").onclick = () => $("settingsDialog").close();
@@ -1222,6 +1237,7 @@
     card.dataset.id = oc.id;
     card.innerHTML = `
       <div class="label">⚖ Your call: the players are attempting</div>
+      ${oc.held ? '<div class="muted small">Nothing has been shown to the players yet; they see PROCESSING until you decide.</div>' : ""}
       <div class="attempt">${esc(oc.attempt || "(something uncertain)")}</div>
       ${oc.suggested_check !== "none" ? `<div class="muted small">Agent suggests: ${esc(checkName(oc.suggested_check))}${advMark(oc.advantage)}</div>` : ""}
       ${oc.why ? `<div class="note">${esc(oc.why)}</div>` : ""}
@@ -1315,7 +1331,6 @@ ${dice}${res.dice.length > 1 ? ` → ${String(res.used).padStart(2, "0")}` : ""}
     $("sessionCode").textContent = code;
     $("codeInline").textContent = code;
     $("playerUrl").textContent = playerLink();
-    $("preview").src = `./?s=${code}&spectate=1`;
     document.title = `Warden · ${code}`;
     connect();
   } else {

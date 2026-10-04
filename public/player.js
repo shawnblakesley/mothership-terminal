@@ -236,7 +236,7 @@
   }
 
   async function playPart(play, part, audio) {
-    if (play.gen !== lineGen) return;
+    if (play.gen !== lineGen || play.cut || (play.cutAt !== undefined && part.at > play.cutAt)) return;
     if (!play.div) {
       play.div = makeLine(play.entry);
       play.div.classList.add("typing");
@@ -262,6 +262,26 @@
     cueState.set(play.raw.id, "done");
     releaseCues(play.raw.id, "after");
     plays.delete(play.raw.id);
+    updateBusy();
+  }
+
+  // A player typed while lines were playing: the comms stop on every screen.
+  // Lines that hadn't started are gone; a line cut off mid-way stops where it is.
+  function onInterrupt({ at, cut, trimmed }) {
+    Voice.interrupt();
+    for (const id of cut) {
+      const play = plays.get(id);
+      if (play) { play.cut = true; play.div?.remove(); plays.delete(id); }
+      heldCues.delete(id);
+      cueState.set(id, "done");
+    }
+    for (const id of trimmed) {
+      const play = plays.get(id);
+      if (!play) continue;
+      play.cutAt = at;
+      if (play.div) play.div.textContent += " —";
+      finishLine(play);
+    }
     updateBusy();
   }
 
@@ -892,6 +912,7 @@
           break;
         case "line": enqueue(msg.entry); break;
         case "part": onPart(msg); break;
+        case "interrupt": onInterrupt(msg); break;
         case "terminalSet": setTerminal(msg.id, false); break; // the Warden moved us
         case "lineEnd": onLineEnd(msg); break;
         case "pong": onPong(msg); break;

@@ -403,3 +403,22 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .tcard .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 99px; padding: 2px 9px; color: var(--fg); }
 .tcard .chip input { width: auto; }
 .pc select[data-move] { width: auto; padding: 3px 6px; }
+
+/* Lines cut off by a player before they were said */
+.entry.cut { opacity: 0.45; }
+.entry.cut .txt { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 70%, transparent); }
+.settingsdlg .talkrow { margin-top: 10px; }
+
+/* ---- tabs, hints ---- */
+.tabs { display: flex; width: 100%; }
+.tabs button { flex: 1; }
+.tabpanel { display: flex; flex-direction: column; gap: 10px; }
+.tabpanel[hidden] { display: none; }
+.hint { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--line2); color: var(--muted); font-size: 10px; font-weight: 600; cursor: help; letter-spacing: 0; text-transform: none; }
+.hint:hover { color: var(--fg); border-color: var(--muted); }
+h2 .hint { margin-left: -4px; }
+.settingsdlg { max-height: calc(100vh - 40px); overflow-y: auto; }
+.settingsdlg .agent select { width: auto; padding: 5px 7px; }
+.settingsdlg .agent select:disabled { display: none; }
+#mapPanel .seg button { padding: 2px 10px; font-size: 12px; }
+.top .ghost { color: var(--fg); }

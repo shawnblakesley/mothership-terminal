@@ -106,10 +106,19 @@ Each player's screen is a physical terminal somewhere on the station, or a porta
 
 Every player hears a line at the same moment. The server makes each voice clip once, measures it, and puts every line and spoken sentence on one timeline; each screen syncs its clock with the server and plays to that schedule (a screen that's a little late starts the clip part-way in). Beats such as a blackout are part of the schedule, and a player who reloads mid-speech rejoins in step.
 
+## Check first, then answer
+
+Every password attempt, and anything else the players try that could go either way (a hack, an override, a bluff, a risky move), goes to you **before the players see anything**. Before writing a reply to a player, the agent answers one quick question: does this need the Warden? If it does, the players see PROCESSING while you choose **It works**, **It fails** or **Call for a roll** (the card says whether a password matches the secrets). Then the agent writes what happens, knowing the result. Turn it off with **check with you first** in Settings.
+
+## Interrupting
+
+If a player types while lines are still playing, the comms cut off on every screen. Lines that hadn't started were never said: they vanish from the players' screens and from the agent's memory (your log keeps them, struck through). A line cut off mid-way keeps only what was spoken. The agent carries on from exactly what the players heard.
+
 ## Settings
 
-**⚙ Settings** in the console header holds the station name and screen colour, and switches for what the agent and players may do:
+**⚙ Settings** in the console header holds the join code and player link, the AI provider, model and **API key**, the station name and screen colour, **how much the characters say** (Terse, Brief, Normal or Expansive; Brief by default, and enforced on every reply), the session actions (clear screen, restart story, factory reset, Warden link, end session), and switches for what the agent and players may do:
 
+- the agent may check with you first;
 - the agent may trigger screen effects; send different versions of a line to different players; change the crew's health, wounds and stress,
 - players may change their own health, wounds and stress; roll their own stats and saves; move between terminals,
 - voices speak aloud on the players' screens.
@@ -118,6 +127,7 @@ Every player hears a line at the same moment. The server makes each voice clip o
 
 | Area | What it does |
 |---|---|
+| **Layout** | Left: the comms log and compose box. Middle: the next response, then tabs for **Roll**, **Effects** and **Sounds**. Right: tabs for **Map** (drawing or status board, plus the raw station state), **Crew** (player characters and terminals) and **Story** (voices & personas, standing orders, lore & secrets). |
 | **Mode** (top right) | **Auto**: agent replies go straight to players. **Review**: every reply arrives as an editable draft that you send, regenerate with steering, or discard. **Manual**: agent is off. |
 | **Comms log** | Full transcript. **⚑ Command agent** (Ctrl+Enter) gives the agent an order it must obey; it acts on it right away and players never see the order. **Send as voice** puts your exact words on screen as any voice (see below). **✉ Note to agent** is private between you and the agent (see below). Deleting an entry also removes it from the agent's memory. |
 | **Command for the next reply** | A one-shot order applied to the agent's next reply, e.g. "lie about the door". |

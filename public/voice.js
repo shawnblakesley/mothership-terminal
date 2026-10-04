@@ -1,10 +1,9 @@
-// Spoken lines. The server returns dry eSpeak audio; this file gives each voice
+// Spoken lines. The server returns dry audio (eSpeak or Kokoro); this file gives each voice
 // its character with one configurable Web Audio chain (parameters in voices.js:
 // rate, band filters, drive, ring mod, comb, chorus, echo, reverb, radio noise).
-// Lines play one at a time, fetched ahead so there's no gap between them.
 //
-// Used by the player screen (through FX.Sound's master volume) and by the DM
-// console's "Test" button (its own audio context).
+// Player screens play lines on the server's schedule (load + playNow, through
+// FX.Sound's master volume); the DM console's "Test" button uses test().
 (() => {
   const queue = [];
   let playing = false;
@@ -25,15 +24,6 @@
       master.connect(destination());
     }
     return master;
-  }
-
-  // Player: speak a log line (audio from `url`) with its voice's effect settings.
-  // Returns { started, ended } promises so the text can be revealed in step with
-  // the voice (both resolve even if the clip fails, is skipped or is cut off),
-  // or null when nothing will be spoken.
-  function say(url, fx) {
-    if (!ready() || blocked()) return null;
-    return enqueue(fetch(url), fx);
   }
 
   // Warden console: hear a voice (unsaved settings included) with sample text.
@@ -275,7 +265,6 @@
   }
 
   window.Voice = {
-    say,
     test,
     stop,
     // Cut off whatever is being said right now, but keep the queue (lines later

@@ -11,7 +11,7 @@ import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VIT
 import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
 import { DEFAULT_TERMINALS, sanitizeTerminals } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
-import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
+import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
 const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
 const MAX_SOCKETS = 40; // per session
@@ -88,6 +88,8 @@ export function defaultGame(keys = {}) {
       agentEffects: true, // the agent may fire screen effects
       agentVariants: true, // the agent may send different versions of a line to different players
       agentCrew: true, // the agent may change the crew's health, wounds and stress
+      checkFirst: true, // replies that need the Warden's call are held until the Warden rules
+      talk: "brief", // how much the characters say: terse | brief | normal | long (agent.js TALK)
       playerVitals: true, // players may change their own health, wounds and stress
       playerRolls: true, // players may roll their own stats and saves
       tts: true,
@@ -258,7 +260,7 @@ export class Session {
   playerView() {
     return {
       version: APP_VERSION,
-      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued),
+      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut),
       header: this.playerHeader(),
       effects: this.state.effects,
       playing: this.state.playing.filter((p) => p.loop),
@@ -292,6 +294,8 @@ export class Session {
       ...this.state,
       claims: this.claims(),
       screens: this.screens(),
+      // (timed cues are listed for a while after they end; only show what's running)
+      effects: this.state.effects.filter((e) => this.effectRunning(e)),
       builderBusy: this.builderBusy,
       code: this.code,
       providers: catalog(this.keys),
@@ -317,6 +321,53 @@ export class Session {
   }
 
   setBusy(busy) { this.toPlayers({ t: "busy", busy }); }
+
+  // Nothing reaches the players until the Warden rules (it works / it fails /
+  // roll); then the agent writes what happens, knowing the result.
+  holdForWarden(raw, note) {
+    const s = this.state;
+    const oc = { needed: true, attempt: String(raw.attempt || "").slice(0, 140), suggested_check: CHECKS[raw.suggested_check] ? raw.suggested_check : "none", advantage: ["advantage", "disadvantage"].includes(raw.advantage) ? raw.advantage : "none", why: String(raw.why || "").slice(0, 300) };
+    s.outcomeCheck = { ...oc, id: Date.now().toString(36), at: Date.now(), held: true };
+    this.addLog("note", `⚖ Your call first (nothing shown to players yet): ${oc.attempt || "(unspecified)"}${oc.suggested_check !== "none" ? ` · suggests ${CHECKS[oc.suggested_check].label}${oc.advantage === "advantage" ? " [+]" : oc.advantage === "disadvantage" ? " [-]" : ""}` : ""}`);
+    if (note) this.addLog("note", `Agent: ${note}`);
+    s.pending = null;
+    this.setBusy(true); // players see PROCESSING meanwhile
+    this.touch();
+    this.syncDm();
+  }
+
+  // A player typed while lines were still playing: the comms are cut off on every
+  // screen. Lines not yet started were never said (marked cut: kept in the
+  // Warden's log, gone from the players' screens and the agent's memory); a line
+  // cut off mid-way keeps only what was already spoken.
+  interruptComms() {
+    const now = Date.now();
+    const cut = [], trimmed = [];
+    const c = this.state.config;
+    for (const e of this.state.log) {
+      if (PRIVATE_KINDS.has(e.kind) || e.kind === "player" || e.cut || e.interrupted) continue;
+      const t = e.timing;
+      if (e.queued || (t && t.speakAt > now)) { e.cut = true; cut.push(e.id); continue; }
+      if (!t || (t.end ?? Infinity) <= now) continue;
+      const voice = SPOKEN_KINDS.has(e.kind) ? voiceFor(c.voices, e) : null;
+      const chunked = voice?.voice.engine === "neural";
+      const keep = (text, parts) => {
+        const n = parts.filter((p) => p.at <= now).length;
+        return chunked ? `${speechParts(text).slice(0, n).join("\n")} —` : `${text} —`;
+      };
+      e.text = keep(e.text, t.versions[0] || []);
+      (e.variants || []).forEach((v, i) => { v.text = keep(v.text, t.versions[i + 1] || []); });
+      t.versions = t.versions.map((ps) => ps.filter((p) => p.at <= now));
+      t.end = now;
+      e.interrupted = true;
+      trimmed.push(e.id);
+    }
+    if (!cut.length && !trimmed.length) return;
+    for (const fx of [...this.state.effects]) if (fx.atEntry && cut.includes(fx.atEntry)) this.endEffect(fx.id); // never fires
+    this.playhead = now;
+    this.toPlayers({ t: "interrupt", at: now, cut, trimmed });
+    this.addLog("note", `Comms cut off by a player${cut.length ? `: ${cut.length} line${cut.length > 1 ? "s" : ""} never said` : ""}.`);
+  }
 
   // ---------------------------------------------------------------- shared timeline
   // Every player screen shows and speaks a line at the same moment. The server
@@ -345,10 +396,11 @@ export class Session {
     const at = Math.max(this.playhead, Date.now() + LEAD);
     const timing = { at, speakAt: at + hold, versions: texts.map(() => []) };
     const cursors = texts.map(() => timing.speakAt);
-    const live = () => this.state.log.includes(entry);
+    const live = () => this.state.log.includes(entry) && !entry.cut && !entry.interrupted;
     let sent = false;
     const most = Math.max(0, ...pieces.map((p) => p.length));
     for (let i = 0; i < most; i++) {
+      if (entry.cut || entry.interrupted) break;
       for (let v = 0; v < texts.length; v++) {
         if (i >= pieces[v].length) continue;
         const wav = await jobs[v][i];
@@ -361,16 +413,18 @@ export class Session {
       }
       if (!sent) {
         sent = true;
+        if (entry.cut) break;
         entry.timing = timing;
         delete entry.queued;
         if (live()) this.toPlayers({ t: "line", entry });
       }
     }
-    if (!sent) { // nothing to show anyone (shouldn't happen): keep the order, move on
+    if (!sent && !entry.cut) { // nothing to show anyone (shouldn't happen): keep the order, move on
       entry.timing = timing;
       delete entry.queued;
       if (live()) this.toPlayers({ t: "line", entry });
     }
+    if (entry.cut || entry.interrupted) return; // (cut off: the timeline already moved on)
     timing.end = Math.max(timing.speakAt, ...cursors.map((x) => x - PIECE_GAP));
     if (live()) this.toPlayers({ t: "lineEnd", id: entry.id, end: timing.end });
     this.playhead = timing.end + LINE_GAP;
@@ -410,6 +464,7 @@ export class Session {
     const now = Date.now();
     if (now - ws.lastInput < PLAYER_INPUT_GAP_MS) return;
     ws.lastInput = now;
+    this.interruptComms();
     const pc = this.characterOf(ws);
     this.addLog("player", text, pc ? { by: pc.name } : {});
     if (this.state.config.mode === "manual") {
@@ -421,7 +476,18 @@ export class Session {
   }
 
   isLockedOut() {
-    return this.state.effects.some((e) => e.type === "lockout");
+    return this.state.effects.some((e) => e.type === "lockout" && this.effectRunning(e));
+  }
+
+  // Is an effect on the players' screens right now? One timed to a line (a cue)
+  // runs from when that line comes up on the shared timeline, for its duration.
+  effectRunning(e) {
+    if (!e.atEntry) return true;
+    const t = this.state.log.find((x) => x.id === e.atEntry)?.timing;
+    if (!t) return false; // its line hasn't been scheduled (or was cut)
+    const start = e.when === "after" ? t.end ?? Infinity : t.at;
+    const now = Date.now();
+    return now >= start && (!e.seconds || now < start + e.seconds * 1000);
   }
 
   // ---------------------------------------------------------------- Warden
@@ -429,7 +495,7 @@ export class Session {
     const s = this.state;
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "playerVitals", "playerRolls", "playerTerminals", "tts", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "tts", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
         // Switching provider snaps to its cheapest model; invalid efforts snap to the cheapest valid one.
@@ -546,7 +612,10 @@ export class Session {
         break;
       case "rollRequest": {
         s.roll = sanitizeRequest(msg.roll);
-        if (msg.fromOutcome) s.outcomeCheck = null;
+        if (msg.fromOutcome) {
+          s.outcomeCheck = null;
+          this.setBusy(false); // the roll prompt replaces PROCESSING
+        }
         this.addLog("note", `Roll called: ${[checkLabel(s.roll), skillLabel(s.roll), s.roll.reason].filter(Boolean).join(" · ")}`);
         this.toPlayers({ t: "roll", roll: this.publicRoll() });
         break;
@@ -571,6 +640,7 @@ export class Session {
         break;
       }
       case "outcomeDismiss":
+        if (s.outcomeCheck?.held) this.setBusy(false);
         s.outcomeCheck = null;
         break;
       case "endSession":
@@ -819,7 +889,7 @@ export class Session {
       let reply;
       for (let attempt = 1; ; attempt++) {
         try {
-          reply = parseReply(await provider.generate(request), s.config.voices);
+          reply = limitLength(parseReply(await provider.generate(request), s.config.voices), s.config.talk);
           break;
         } catch (err) {
           if (!err.malformed || attempt >= 2) throw err;
@@ -1035,6 +1105,15 @@ export class Session {
       if (!provider) throw new Error(`Unknown provider "${providerId}".`);
       const apiKey = keyFor(providerId, this.keys);
       if (!apiKey) throw new Error(`No ${provider.label} API key for this session. Add one under "Agent" at the top of the console.`);
+      // Check first: answering a player who is attempting something uncertain
+      // waits for the Warden's ruling, so nothing is shown before it.
+      const latest = s.log.findLast((e) => ["player", "warden", "roll", "aside"].includes(e.kind));
+      if (s.config.checkFirst !== false && latest?.kind === "player" && !steer && !directives.length) {
+        let oc = null;
+        try { oc = await this.ask(buildPrecheck(s)); } catch (err) { console.warn(`[${this.code}] check-first skipped: ${err?.message || err}`); }
+        if (myGen !== this.genCounter) return;
+        if (oc?.needed) return this.holdForWarden(oc, "");
+      }
       const request = { apiKey, model, effort, ...buildRequest({ ...s, screens: this.screens() }, steer) };
       // One silent retry for malformed output (empty / not JSON) before bothering the Warden.
       let reply;
@@ -1051,7 +1130,11 @@ export class Session {
 
       // The one-shot whisper is consumed once a reply exists.
       s.whisper = "";
-      if (s.config.mode === "auto") {
+      if (reply.outcome_check.needed && s.config.checkFirst !== false) {
+        // (The reply flagged a check the first question missed: hold it too.)
+        this.logDirectives(directives);
+        return this.holdForWarden(reply.outcome_check, reply.dm_note);
+      } else if (s.config.mode === "auto") {
         this.logDirectives(directives);
         this.deliver(reply, "agent");
         if (reply.dm_note) this.addLog("note", `Agent: ${reply.dm_note}`);
