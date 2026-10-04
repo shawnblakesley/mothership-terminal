@@ -111,12 +111,30 @@
   // Human (neural) voices are slow to generate, so they're fetched one text line at a
   // time: the first line plays while the next is generated. (Same split as the
   // server's speechParts in voices.js.)
+  //
+  // Returns the line's text split into the pieces being spoken, each with the
+  // voice's { started, ended } handle, so typeNext() can reveal the text in step
+  // with the voice. Null when nothing will be spoken (sound off, not unlocked...).
   function speak(entry) {
+    if (muted || volume === 0) return null; // muted terminals don't wait on silent audio
     const v = voiceOf(entry);
     const url = `api/sessions/${code}/tts/${entry.id}`;
-    if (!v?.chunked) return Voice.say(url, v?.fx);
-    const parts = entry.text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
-    parts.forEach((_, i) => Voice.say(`${url}?part=${i}`, v.fx));
+    if (!v?.chunked) {
+      const handle = Voice.say(url, v?.fx);
+      return handle && [{ text: entry.text, handle }];
+    }
+    // One clip per non-empty text line; blank lines ride along with the next one.
+    const pieces = [];
+    let pending = "";
+    for (const row of entry.text.split("\n")) {
+      if (!row.trim()) { pending += `${row}\n`; continue; }
+      const handle = Voice.say(`${url}?part=${pieces.length}`, v.fx);
+      if (!handle) return null;
+      pieces.push({ text: pending + row, handle });
+      pending = "";
+    }
+    if (pending && pieces.length) pieces.at(-1).text += `\n${pending.replace(/\n$/, "")}`;
+    return pieces.length ? pieces : null;
   }
 
   // Which voice a line belongs to: its entity, or the built-in terminal/broadcast voice.
@@ -158,12 +176,33 @@
       scrollDown();
       return;
     }
+    // Speech is requested now (so audio starts generating right away); the text
+    // waits for it in typeNext().
+    entry.speech = header.tts && entry.kind !== "roll" ? speak(entry) : null;
     typingQueue.push(entry);
     if (!typing) typeNext();
-    if (header.tts && entry.kind !== "roll") speak(entry);
   }
 
-  function typeNext() {
+  // Type `text` onto the end of `div`, a few characters at a time.
+  function typeInto(div, text) {
+    return new Promise((resolve) => {
+      const start = div.textContent;
+      let i = 0;
+      // Faster for long dumps so the table doesn't take forever.
+      const perTick = text.length > 600 ? 6 : text.length > 200 ? 3 : 1;
+      const step = () => {
+        i = Math.min(text.length, i + perTick);
+        div.textContent = start + text.slice(0, i);
+        if (i % 3 === 0) FX.Sound.tick();
+        scrollDown();
+        if (i < text.length) setTimeout(step, text[i - 1] === "\n" ? 60 : 14);
+        else resolve();
+      };
+      step();
+    });
+  }
+
+  async function typeNext() {
     const entry = typingQueue.shift();
     if (!entry) { typing = false; updateBusy(); return; }
     typing = true;
@@ -172,23 +211,19 @@
     div.classList.add("typing");
     linesEl.append(div);
     if (entry.kind !== "terminal") FX.Sound.beep(entry.kind === "system" ? 520 : 380, 0.15, 0.08);
-    const text = entry.text;
-    let i = 0;
-    // Faster for long dumps so the table doesn't take forever.
-    const perTick = text.length > 600 ? 6 : text.length > 200 ? 3 : 1;
-    const step = () => {
-      i = Math.min(text.length, i + perTick);
-      div.textContent = text.slice(0, i);
-      if (i % 3 === 0) FX.Sound.tick();
-      scrollDown();
-      if (i < text.length) setTimeout(step, text[i - 1] === "\n" ? 60 : 14);
-      else {
-        div.classList.remove("typing");
-        div.classList.add("done");
-        setTimeout(typeNext, 120);
+    if (entry.speech) {
+      // Spoken: each piece appears as its voice starts saying it, and the next
+      // piece (or line) waits until the voice has finished.
+      for (const [i, piece] of entry.speech.entries()) {
+        await piece.handle.started;
+        await Promise.all([typeInto(div, (i ? "\n" : "") + piece.text), piece.handle.ended]);
       }
-    };
-    step();
+    } else {
+      await typeInto(div, entry.text);
+    }
+    div.classList.remove("typing");
+    div.classList.add("done");
+    setTimeout(typeNext, 120);
   }
 
   function scrollDown() { screenEl.scrollTop = screenEl.scrollHeight; }

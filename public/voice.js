@@ -27,9 +27,12 @@
   }
 
   // Player: speak a log line (audio from `url`) with its voice's effect settings.
+  // Returns { started, ended } promises so the text can be revealed in step with
+  // the voice (both resolve even if the clip fails, is skipped or is cut off),
+  // or null when nothing will be spoken.
   function say(url, fx) {
-    if (!ready() || blocked()) return;
-    enqueue(fetch(url), fx);
+    if (!ready() || blocked()) return null;
+    return enqueue(fetch(url), fx);
   }
 
   // Warden console: hear a voice (unsaved settings included) with sample text.
@@ -51,8 +54,16 @@
       .then((r) => (r.ok && r.status !== 204 ? r.arrayBuffer() : null))
       .then((buf) => (buf ? ctx().decodeAudioData(buf) : null))
       .catch(() => null);
-    queue.push({ audio, fx: fx || {} });
+    const item = { audio, fx: fx || {} };
+    const handle = {
+      started: new Promise((r) => (item.onStart = r)),
+      ended: new Promise((r) => (item.onEnd = r)),
+    };
+    // Settle both promises (for clips that never play).
+    item.settle = () => { item.onStart(); item.onEnd(); };
+    queue.push(item);
     if (!playing) next(gen);
+    return handle;
   }
 
   async function next(myGen) {
@@ -61,23 +72,24 @@
     if (!item) { playing = false; return; }
     playing = true;
     const buffer = await item.audio;
-    if (myGen !== gen) return;
-    if (blocked()) return stop();
-    if (!buffer || !ready()) return next(myGen);
-    await play(buffer, item.fx, myGen);
+    if (myGen !== gen) return item.settle();
+    if (blocked()) { item.settle(); return stop(); }
+    if (!buffer || !ready()) { item.settle(); return next(myGen); }
+    await play(buffer, item, myGen);
     setTimeout(() => next(myGen), 250);
   }
 
-  function play(buffer, fx, myGen) {
+  function play(buffer, item, myGen) {
     return new Promise((resolve) => {
       const c = ctx();
       const src = c.createBufferSource();
       src.buffer = buffer;
-      const sources = chain(c, src, getMaster(), fx, buffer.duration);
+      const sources = chain(c, src, getMaster(), item.fx, buffer.duration);
       let done = false;
       const finish = () => {
         if (done) return;
         done = true;
+        item.onEnd();
         resolve();
         // Let reverb/echo tails ring out before stopping modulators and noise.
         setTimeout(() => sources.forEach((s) => { try { s.stop(); } catch {} }), 6000);
@@ -90,6 +102,7 @@
       src.addEventListener("ended", () => clearInterval(watch));
       sources.forEach((s) => s.start());
       src.start();
+      item.onStart();
     });
   }
 
@@ -211,6 +224,7 @@
 
   function stop() {
     gen++;
+    for (const item of queue) item.settle(); // let any text waiting on these appear
     queue.length = 0;
     playing = false;
     if (master) {

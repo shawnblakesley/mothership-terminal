@@ -117,7 +117,9 @@ Speech is generated on the server, with no API key and no per-use cost:
 - **Human voices** use [Kokoro](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) (the `kokoro-js` package). Its 89 MB model downloads once and is cached in `node_modules`. It runs at roughly real time on a CPU, so a human line can take a few seconds to start. Generation begins the moment a line is sent, while the text types out, and the model loads at server start whenever a human voice exists. If the model can't load, those voices fall back to eSpeak.
 - **Synthetic voices** use eSpeak (the `mespeak` package) and are instant. The player's browser applies the effects. Speech starts once a player presses a key on the boot screen, because browsers block sound until then. The DM preview is always silent.
 
-A **blackout** cuts off all speech instantly, including queued lines. Anything said during the blackout is never spoken.
+Spoken text is revealed in step with the voice: each line appears as it starts being said, and the next waits until the voice has finished. Terminals that are muted, or have sound off, just type the text out.
+
+A **blackout** cuts off all speech instantly, including queued lines; any text still waiting on the voice appears at once. Anything said during the blackout is never spoken.
 
 Players have a **volume control** in the top-right corner: a ten-segment meter you can click, drag, scroll or use the arrow keys on. Click **VOL** to mute. It's remembered per device and controls all sound, both effects and voices.
 
