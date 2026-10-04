@@ -288,3 +288,22 @@ body {
 @media (prefers-reduced-motion: reduce) {
   #crt { animation: none; }
 }
+
+/* Crew files: picker and the player's own sheet (replace the log while open). */
+#hdr .hdr-btn { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; text-shadow: inherit; letter-spacing: inherit; text-transform: uppercase; }
+#hdr .hdr-btn:hover, #hdr .hdr-btn:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
+body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { display: none; }
+.panel { border: 3px double var(--fg); padding: 0.6em 0.9em; margin: 0.2em 0 0.8em; max-width: 52em; }
+.panel[hidden] { display: none; }
+.p-title { margin-bottom: 0.2em; }
+.p-dim { color: var(--dim); }
+.p-dim b { font-weight: normal; color: var(--fg); }
+.panel ol { list-style: none; padding: 0; margin: 0.6em 0; }
+.panel li { margin: 0 0 0.6em; }
+.p-crime { padding-left: 2.2em; }
+.p-btn { background: none; border: 0; padding: 0; cursor: pointer; color: var(--fg); font: inherit; text-shadow: inherit; text-align: left; text-transform: uppercase; }
+.p-btn:hover, .p-btn:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
+.p-sec { margin-top: 0.45em; }
+.p-text { white-space: pre-wrap; }
+.p-stat { display: inline-block; margin: 0 1.1em 0 0; }
+.p-actions { margin-top: 0.8em; display: flex; gap: 2em; flex-wrap: wrap; }

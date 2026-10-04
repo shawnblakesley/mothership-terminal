@@ -264,6 +264,8 @@
     renderSounds();
     renderCastLists();
     renderMap();
+    renderCrew();
+    renderBuilder();
   }
 
   function fillSelect(sel, options, value) {
@@ -291,7 +293,7 @@
     const by = e.source === "dm" ? "you" : e.source === "agent" ? "agent" : "";
     const who = (name) => (e.character ? `${name} · ${e.character}` : name);
     switch (e.kind) {
-      case "player": return { name: "Players", c: "var(--player)" };
+      case "player": return { name: e.by ? `Player · ${e.by}` : "Players", c: "var(--player)" };
       case "warden": return { name: "Warden → agent", c: "var(--warden)" };
       case "aside": return { name: "Note → agent", by: "private", c: "var(--aside)" };
       case "aside_reply": return { name: "Agent → you", by: "private", c: "var(--aside)" };
@@ -407,6 +409,170 @@
           <button data-endfx="${f.id}">End</button></li>`).join("")
       : `<li class="none">None</li>`;
   }
+
+  // ------------------------------------------------------------ crew (player characters)
+  const CREW_CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
+  let crewDraft = null, crewTimer = null, crewSentAt = 0;
+
+  function renderCrew(fromDraft = false) {
+    const panel = $("crew");
+    if (!fromDraft) {
+      const editing = panel.contains(document.activeElement) || crewTimer !== null || Date.now() - crewSentAt < 1500;
+      const json = JSON.stringify([S.config.crew, S.claims]);
+      if ((crewDraft && editing) || panel.dataset.json === json) return;
+      panel.dataset.json = json;
+      crewDraft = structuredClone(S.config.crew);
+    }
+    const num = (k, v, label) => `<label>${label}<input type="number" data-c="${k}" value="${v}" min="0" max="99"></label>`;
+    const txt = (k, v, label, rows = 0) => rows
+      ? `<label class="wide">${label}<textarea data-c="${k}" rows="${rows}">${esc(v)}</textarea></label>`
+      : `<label class="wide">${label}<input data-c="${k}" value="${esc(v)}"></label>`;
+    panel.innerHTML = crewDraft.map((c, i) => {
+      const playing = S.claims?.[c.id] || 0;
+      return `<details class="pc" data-i="${i}">
+        <summary><span class="pcname">${esc(c.name || "Unnamed")}</span>
+          <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
+          <span class="pill ${playing ? "ok" : ""}">${playing ? `playing on ${playing} screen${playing > 1 ? "s" : ""}` : "not picked"}</span></summary>
+        <div class="pcgrid">
+          ${txt("name", c.name, "Name")}
+          <label>Pronouns<input data-c="pronouns" value="${esc(c.pronouns)}"></label>
+          <label>Class<select data-c="className">${CREW_CLASSES.map((k) => `<option ${k === c.className ? "selected" : ""}>${k}</option>`).join("")}</select></label>
+          ${txt("role", c.role, "Role")}
+          ${Object.entries(c.stats).map(([k, v]) => num(`stats.${k}`, v, k[0].toUpperCase() + k.slice(1))).join("")}
+          ${Object.entries(c.saves).map(([k, v]) => num(`saves.${k}`, v, `${k[0].toUpperCase() + k.slice(1)} save`)).join("")}
+          ${num("health.current", c.health.current, "Health")}${num("health.max", c.health.max, "Max health")}
+          ${num("wounds.current", c.wounds.current, "Wounds")}${num("wounds.max", c.wounds.max, "Max wounds")}
+          ${num("stress", c.stress, "Stress")}
+          ${txt("skills", c.skills.join(", "), "Skills (comma-separated)")}
+          ${txt("crime", c.crime, "Conviction", 2)}
+          ${txt("backstory", c.backstory, "Backstory", 4)}
+          ${txt("loadout", c.loadout, "Loadout", 2)}
+          ${txt("trinket", c.trinket, "Trinket")}
+          ${txt("patch", c.patch, "Patch")}
+          ${txt("notes", c.notes, "Warden notes (the agent reads these; players don't see them)", 2)}
+        </div>
+        <div class="row"><span class="grow"></span><button data-cact="del" class="danger">Remove character</button></div>
+      </details>`;
+    }).join("") || `<p class="muted small">No player characters. Add some, or build a story.</p>`;
+    // Keep open whichever cards were open.
+    for (const i of openCrew) panel.querySelector(`.pc[data-i="${i}"]`)?.setAttribute("open", "");
+    $("addCrew").disabled = crewDraft.length >= 4;
+  }
+  const openCrew = new Set();
+  $("crew").addEventListener("toggle", (e) => {
+    const i = e.target.dataset?.i;
+    if (i !== undefined) e.target.open ? openCrew.add(i) : openCrew.delete(i);
+  }, true);
+
+  function saveCrew() {
+    clearTimeout(crewTimer);
+    crewTimer = setTimeout(() => {
+      crewTimer = null;
+      crewSentAt = Date.now();
+      send({ t: "crew", crew: crewDraft });
+    }, 500);
+  }
+  $("crew").addEventListener("input", (e) => {
+    const card = e.target.closest(".pc");
+    const key = e.target.dataset.c;
+    if (!card || !key) return;
+    const c = crewDraft[Number(card.dataset.i)];
+    const [a, b] = key.split(".");
+    const val = e.target.type === "number" ? Number(e.target.value) : key === "skills" ? e.target.value.split(",").map((x) => x.trim()).filter(Boolean) : e.target.value;
+    if (b) c[a][b] = val;
+    else c[a] = val;
+    saveCrew();
+  });
+  $("crew").addEventListener("click", async (e) => {
+    if (e.target.closest("[data-cact]")?.dataset.cact !== "del") return;
+    const i = Number(e.target.closest(".pc").dataset.i);
+    if (!(await sure(`Remove ${crewDraft[i].name || "this character"}?`, "Their crew file is deleted; a player using it goes back to choosing.", "Remove"))) return;
+    crewDraft.splice(i, 1);
+    openCrew.clear();
+    send({ t: "crew", crew: crewDraft });
+    crewSentAt = 0;
+  });
+  $("addCrew").onclick = () => {
+    if (crewDraft.length >= 4) return;
+    crewDraft.push({
+      name: "New convict", pronouns: "", className: "Teamster", role: "", crime: "", backstory: "",
+      stats: { strength: 30, speed: 30, intellect: 30, combat: 30 }, saves: { sanity: 25, fear: 25, body: 25 },
+      health: { current: 12, max: 12 }, wounds: { current: 0, max: 2 }, stress: 2, skills: [], loadout: "", trinket: "", patch: "", notes: "",
+    });
+    openCrew.add(String(crewDraft.length - 1));
+    send({ t: "crew", crew: crewDraft });
+    crewSentAt = 0;
+  };
+
+  // ------------------------------------------------------------ story builder
+  let builderKey = "";
+  function renderBuilder() {
+    if (!$("builderDialog").open) return;
+    const b = S.builder, busy = S.builderBusy;
+    const key = JSON.stringify([b, busy]);
+    if (key === builderKey) return;
+    builderKey = key;
+    const msgs = $("bmsgs");
+    const intro = `<div class="bmsg agent"><b>Agent</b><div>Let's build a new scenario. Tell me what you have in mind (a place, a monster, a twist, who the players are), or just say "surprise me". I'll ask questions; when it's ready, press <b>Draft it</b>.</div></div>`;
+    msgs.innerHTML = intro + b.messages.map((m) => `<div class="bmsg ${m.role}${m.error ? " err" : ""}"><b>${m.role === "warden" ? "You" : "Agent"}</b><div>${esc(m.text)}</div></div>`).join("")
+      + (busy ? `<div class="bmsg agent"><b>Agent</b><div><span class="spinner"></span>${busy === "draft" ? "Writing the whole scenario… (this can take a minute)" : "Thinking…"}</div></div>` : "");
+    msgs.scrollTop = msgs.scrollHeight;
+    for (const id of ["bSend", "bDraft", "bReset"]) $(id).disabled = !!busy;
+    $("bDraft").classList.toggle("primary", !!b.messages.at(-1)?.ready);
+    $("bDraft").textContent = b.draft ? "✎ Redraft" : "✎ Draft it";
+    renderDraft(b.draft);
+  }
+
+  function renderDraft(d) {
+    const el = $("bdraft");
+    if (!d) { el.innerHTML = `<div class="muted bempty">The draft appears here: station, lore, secrets, cast, crew and map.</div>`; return; }
+    const cast = d.voices.map((v) => `<div class="bcard"><b>${esc(v.name)}</b> <span class="muted small">${esc(v.preset)}</span>
+        <div class="small">${esc(v.persona)}</div>
+        ${v.characters.length ? `<ul>${v.characters.map((c) => `<li><b>${esc(c.name)}</b> <span class="muted small">${esc(S.voiceOptions.speakers[c.voice] || c.sex)}</span> · ${esc(c.notes)}</li>`).join("")}</ul>` : ""}</div>`).join("");
+    const crew = d.crew.map((c) => `<div class="bcard"><b>${esc(c.name)}</b> <span class="muted small">${esc([c.pronouns, c.className, c.role].filter(Boolean).join(" · "))}</span>
+        <div class="small">${esc(c.crime)}</div><div class="small muted">${esc(c.backstory)}</div>
+        <div class="small mono">${["strength", "speed", "intellect", "combat"].map((k) => `${k.slice(0, 3).toUpperCase()} ${c.stats?.[k]}`).join(" · ")} | ${["sanity", "fear", "body"].map((k) => `${k.slice(0, 3).toUpperCase()} ${c.saves?.[k]}`).join(" · ")} | HP ${c.health_max}</div>
+        <div class="small muted">${esc((c.skills || []).join(", "))}</div></div>`).join("");
+    el.innerHTML = `
+      <div class="row"><div class="grow"><div class="btitle">${esc(d.title)}</div><div class="muted">${esc(d.stationName)} · ${esc(d.theme)} screen</div></div>
+        <button id="bApply" class="primary">Apply to this session</button></div>
+      <p>${esc(d.pitch)}</p>
+      <details open><summary>Map</summary><div id="bmap" class="smap"></div></details>
+      <details><summary>Lore <span class="muted">(public)</span></summary><pre class="bpre">${esc(d.lore)}</pre></details>
+      <details><summary>Secrets</summary><pre class="bpre">${esc(d.secrets)}</pre></details>
+      <details><summary>Computer: ${esc(d.computer.name)}</summary><pre class="bpre">${esc(d.computer.persona)}</pre>${d.standingOrders ? `<div class="small"><b>Standing orders:</b> ${esc(d.standingOrders)}</div>` : ""}</details>
+      <details open><summary>Cast <span class="muted">(voices and characters)</span></summary>${cast || '<p class="muted">None.</p>'}</details>
+      <details open><summary>Player characters</summary>${crew || '<p class="muted">None.</p>'}</details>`;
+    // Preview the map from the draft's own state and layout.
+    const st = {};
+    for (const { path, value } of d.station) {
+      const ks = path.split(".");
+      let o = st;
+      for (const k of ks.slice(0, -1)) o = o[k] = typeof o[k] === "object" ? o[k] : {};
+      o[ks.at(-1)] = /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value;
+    }
+    StationMap.draw($("bmap"), st, d.map, { editable: false });
+  }
+
+  $("builderBtn").onclick = () => { builderKey = ""; $("builderDialog").showModal(); renderBuilder(); $("bInput").focus(); };
+  $("builderClose").onclick = () => $("builderDialog").close();
+  const builderSend = () => {
+    const text = $("bInput").value.trim();
+    if (!text || S.builderBusy) return;
+    send({ t: "builderSay", text });
+    $("bInput").value = "";
+  };
+  $("bSend").onclick = builderSend;
+  $("bInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); builderSend(); } });
+  $("bDraft").onclick = () => send({ t: "builderDraft" });
+  $("bReset").onclick = async () => (await sure("Start over?", "Clears the builder conversation and draft. Your current story isn't touched.", "Start over")) && send({ t: "builderReset" });
+  $("bdraft").addEventListener("click", async (e) => {
+    if (e.target.id !== "bApply") return;
+    if (!(await sure(`Apply "${S.builder.draft.title}"?`, "Replaces the station, lore, secrets, voices, map and crew, and clears the log. Players stay connected and pick a new crew file. Your provider, key, mode and sounds stay.", "Apply story", "primary"))) return;
+    send({ t: "builderApply" });
+    $("builderDialog").close();
+    toast("New story applied.");
+  });
 
   // ------------------------------------------------------------ station map
   let mapKey = "";

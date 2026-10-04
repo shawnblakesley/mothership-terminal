@@ -84,7 +84,7 @@ export const PRESETS = {
   },
 };
 
-function fromPreset(name) {
+export function fromPreset(name) {
   const p = PRESETS[name];
   return { voice: { ...p.voice }, fx: fillFx(p.fx), preset: name };
 }
@@ -165,7 +165,15 @@ export function defaultVoices() {
 // with their own base voice: a Kokoro speaker for human voices, an eSpeak
 // variant for synthetic ones. The agent picks who speaks each line.
 const DEFAULT_INTERCOM_CHARACTERS = [
-  { name: "Dr. Imre Salk", voice: "am_michael", notes: "The station medic, in med bay. Kind, exhausted, frightened." },
+  { name: "Administrator Ruth Okonkwo", voice: "bf_emma", notes: "Station administrator, sealed in on the command deck. Clipped, controlled, company first. Gives orders, never answers questions about what she has reported." },
+  { name: "Dr. Imre Salk", voice: "am_michael", notes: "The station medic, in med bay. Kind, exhausted, frightened. Rambles when scared; insists the fever is under control." },
+  { name: "Chief Engineer Hana Marlowe", voice: "af_sarah", notes: "Runs the reactor deck. Blunt, practical, swears. Wants the cargo bay opened and dealt with; has no patience for Okonkwo." },
+  { name: "Security Officer Dmitri Voss", voice: "am_onyx", notes: "Station security. Speaks slowly now, with long pauses, far too calm. Repeats the last thing said to him." },
+  { name: "Comms Officer Juno Adar", voice: "af_nova", notes: "Young comms officer on Deck 1, trying to fix the jammed relay for days. Talks fast, scared but hopeful; overjoyed to hear new voices." },
+  { name: "Anton Petrov", voice: "bm_george", notes: "Drill team lead, hiding behind reactor access. Whispers; paranoid; hums the same three notes between sentences." },
+  { name: "Carys Webb", voice: "bf_lily", notes: "Driller, a 'fever' patient in med bay. Drowsy and sweet; says gentle, unsettling things about the cold." },
+  { name: "Pell Ostrand", voice: "am_eric", notes: "Driller, a 'fever' patient in med bay. Mostly silent; when he does speak, it's in someone else's rhythm." },
+  { name: "Sam Yusuf", voice: "am_puck", notes: "Refinery hand hiding in the dark on Deck 3. Whispers; cracks jokes when he's terrified." },
 ];
 
 const MAX_CHARACTERS = 30;

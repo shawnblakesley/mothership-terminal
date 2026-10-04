@@ -1,0 +1,204 @@
+// The story builder: the Warden and the agent talk a brand-new scenario into
+// shape (station, what went wrong, secrets, the people who can talk, the
+// computer's personality, the players' characters), then the agent drafts it
+// in full and the Warden applies it to the session.
+//
+// Two kinds of call: a conversation turn ({ reply, ready }) and a full draft.
+import { BUILTIN, PRESETS, SPEAKERS, defaultVoices, fromPreset, sanitizeVoices, castCharacter } from "./voices.js";
+import { CLASSES, STATS, SAVES, sanitizeCrew } from "./crew.js";
+
+const THEMES = ["green", "amber", "cyan", "white", "red"];
+const PRESET_IDS = Object.keys(PRESETS);
+
+const APP_BRIEF = `HOW THIS GAME IS PLAYED
+This is a Mothership (sci-fi horror TTRPG) session run through an app. The players sit at a computer terminal aboard a station or ship and type to it. An AI (you, later, in play) voices everything that can talk to them: the station computer (its OS, with its own name and personality), station-wide announcements, and other voices such as the intercom, where several named people can speak, each with their own voice, or something that should not be in the system. The Warden (game master) steers, calls for Mothership rolls (Stats: Strength, Speed, Intellect, Combat; Saves: Sanity, Fear, Body; roll d100 under the number), and can fire screen effects (alarms, glitches, blackouts...).
+The scenario needs: a station or ship; public lore; secrets the computer guards by access level (passwords, company directives, what really happened); a station state the computer tracks (doors, lights per deck, cameras, systems...); a deck/room layout; the cast of people who can be heard; and up to 4 player characters with backstories tied to why they are there.`;
+
+const BUILDER_CHAT = `You are co-writing a brand-new scenario with the Warden.
+
+${APP_BRIEF}
+
+HOW TO TALK WITH THE WARDEN
+- Be a creative partner: offer vivid, specific ideas and 2-3 options when there's a choice, and build on what the Warden likes. Classic Mothership tone: blue-collar crews, corporate greed, isolation, body horror, dread.
+- Ask at most 2-3 focused questions at a time. Keep replies short (under ~150 words), plain text, no markdown headings.
+- Cover, over the conversation: the setting, what went wrong and when, the threat, the secrets, who is still alive and can talk, the computer's personality, and who the players are and why they came.
+- When there's enough to write the whole scenario (it's fine to fill gaps yourself), say so and set ready=true; the Warden then presses "Draft it". Until then ready=false.`;
+
+const BUILDER_DRAFT = `You are writing the complete scenario the Warden and you have just discussed, ready to play.
+
+${APP_BRIEF}
+
+Follow the conversation; invent anything it left open, consistent with it. Write for play: concrete, evocative, usable at the table.
+
+FIELDS
+- title, pitch: the scenario's name and a 1-2 sentence hook for the Warden.
+- stationName: short, caps-friendly (e.g. "KESTREL-9").
+- theme: the terminal's screen colour.
+- lore: what the station's systems hold as public knowledge, as short labelled lines (STATION:, CREW COMPLEMENT:, DECKS:, KEY CREW:, RECENT EVENTS:, and why the players are here).
+- secrets: bullet lines ("- ...") the computer knows and guards by access level: what really happened, the threat, passwords, directives, who is infected or lying.
+- standingOrders: optional persistent steering for the AI during play (tone, slow reveals), or "".
+- station: the computer's live state as path/value pairs, e.g. access_level=GUEST, doors.med_bay=OPEN, lights.deck_2=FLICKERING, cameras.cargo_bay=OFFLINE, life_support.oxygen_pct=87, power.reactor=ONLINE, comms=JAMMED, quarantine=INACTIVE. access_level must be GUEST. Use room ids from the map in door/camera paths and deck_N for lights.
+- map: the layout, one line per deck: "Deck 1 · Command / Comms: room_id=Room Name, other_room=Other Name". Then optional connections: "Link: room_a - room_b (air vents)". Room ids are snake_case and match the station state paths. 2-5 decks, 1-6 rooms each.
+- computer: the station computer's display name (e.g. "HV-CORE") and persona: who it is and how it writes (it prints on a monochrome CRT terminal; casing, tone, length), what it knows, how it treats access levels and hacking attempts. Write the persona as instructions addressed to it ("You are ...").
+- broadcastPersona: the automated public-address voice's persona (announces, never converses).
+- voices: other voices that can speak (at least an intercom-style voice for the living cast; optionally something uncanny). For each: id (snake_case), name (as shown on screen, e.g. "INTERCOM"), preset (sound: intercom/human for people, robotic, ethereal, radio, demonic, whisper, clean), color (#rrggbb or ""), persona (who uses it and how it sounds; for a shared voice like the intercom, the general rules), and characters: the named people who speak through it, each with sex (f/m), a voice (a distinct speaker id from the list; never reuse one within a voice) and notes (who they are, where, what they want, how they talk, and anything the AI must keep in mind).
+- crew: the players' characters (1-4, normally 4), Mothership 1e. className one of ${CLASSES.join(", ")}. Stats ${STATS.join("/")} roughly 20-50 (class strengths higher); Saves ${SAVES.join("/")} roughly 15-40 (Android: Fear 60ish, Sanity lower). Health max 10-20, Wounds max 2 (Android 3), Stress 2. 3-5 skills (e.g. Zero-G, Mechanical Repair, Computers, Chemistry, Firearms, Military Training, Hacking, Piloting, Athletics, Medicine). Give each a role, pronouns, crime or reason they're here (field "crime"; for non-convicts, why they took the job), a 3-5 sentence backstory with a hook, loadout (realistic for why they came), trinket and patch. notes: anything only the Warden should know about them, or "".
+
+LENGTH (it must fit in one reply): lore and secrets under ~200 words each; each persona under ~150 words; each character note under ~40 words; backstories 3-4 sentences; 15-35 station values; at most ~10 named characters.`;
+
+const str = { type: "string" };
+const strDesc = (description) => ({ type: "string", description });
+const obj = (properties) => ({ type: "object", additionalProperties: false, required: Object.keys(properties), properties });
+const num = { type: "integer" };
+
+export const CHAT_SCHEMA = obj({
+  reply: strDesc("Your message to the Warden."),
+  ready: { type: "boolean", description: "True once there's enough to draft the whole scenario." },
+});
+
+export const DRAFT_SCHEMA = obj({
+  title: str,
+  pitch: str,
+  stationName: str,
+  theme: { type: "string", enum: THEMES },
+  lore: str,
+  secrets: str,
+  standingOrders: str,
+  station: { type: "array", items: obj({ path: str, value: str }) },
+  map: str,
+  computer: obj({ name: str, persona: str }),
+  broadcastPersona: str,
+  voices: {
+    type: "array",
+    items: obj({
+      id: str,
+      name: str,
+      preset: { type: "string", enum: PRESET_IDS },
+      color: str,
+      persona: str,
+      characters: {
+        type: "array",
+        items: obj({ name: str, sex: { type: "string", enum: ["f", "m"] }, voice: { type: "string", enum: Object.keys(SPEAKERS) }, notes: str }),
+      },
+    }),
+  },
+  crew: {
+    type: "array",
+    items: obj({
+      name: str, pronouns: str, className: { type: "string", enum: CLASSES }, role: str, crime: str, backstory: str,
+      stats: obj(Object.fromEntries(STATS.map((k) => [k, num]))),
+      saves: obj(Object.fromEntries(SAVES.map((k) => [k, num]))),
+      health_max: num, wounds_max: num, stress: num,
+      skills: { type: "array", items: str },
+      loadout: str, trinket: str, patch: str, notes: str,
+    }),
+  },
+});
+
+const SPEAKER_LIST = `SPEAKER VOICES (for characters): ${Object.entries(SPEAKERS).map(([id, d]) => `${id} = ${d}`).join("; ")}.`;
+
+// The conversation so far, as alternating turns.
+function transcript(b) {
+  const msgs = b.messages.map((m) => ({ role: m.role === "warden" ? "user" : "assistant", content: m.role === "warden" ? m.text : JSON.stringify({ reply: m.text, ready: false }) }));
+  if (!msgs.length || msgs[0].role !== "user") msgs.unshift({ role: "user", content: "Let's make a new scenario." });
+  return msgs;
+}
+
+export function chatRequest(b) {
+  return {
+    system: BUILDER_CHAT,
+    context: b.draft ? `A DRAFT ALREADY EXISTS (the Warden may want changes; discuss them, then they press "Draft it" again):\n${summary(b.draft)}` : "No draft yet.",
+    messages: transcript(b),
+    schema: CHAT_SCHEMA,
+    example: { reply: "A derelict ore hauler, or a research station? ...", ready: false },
+  };
+}
+
+export function draftRequest(b) {
+  const convo = b.messages.map((m) => `${m.role === "warden" ? "WARDEN" : "YOU"}: ${m.text}`).join("\n\n") || "(The Warden gave no details: invent an original scenario.)";
+  return {
+    system: `${BUILDER_DRAFT}\n\n${SPEAKER_LIST}`,
+    context: b.draft ? `PREVIOUS DRAFT (revise it according to the conversation since; keep what wasn't changed):\n${JSON.stringify(b.draft)}` : "No previous draft.",
+    messages: [{ role: "user", content: `THE CONVERSATION:\n\n${convo}\n\nWrite the complete scenario now.` }],
+    schema: DRAFT_SCHEMA,
+    example: null,
+  };
+}
+
+const summary = (d) => `${d.title}: ${d.pitch}\nStation: ${d.stationName}. Cast: ${d.voices.flatMap((v) => v.characters.map((c) => c.name)).join(", ") || "none"}. Crew: ${d.crew.map((c) => c.name).join(", ")}.`;
+
+// Coerce a model's draft into a safe, complete shape.
+export function normalizeDraft(raw) {
+  const s = (v, n) => String(v ?? "").slice(0, n);
+  const d = raw && typeof raw === "object" ? raw : {};
+  return {
+    title: s(d.title, 120) || "Untitled scenario",
+    pitch: s(d.pitch, 600),
+    stationName: s(d.stationName, 40) || "STATION",
+    theme: THEMES.includes(d.theme) ? d.theme : "green",
+    lore: s(d.lore, 6000),
+    secrets: s(d.secrets, 6000),
+    standingOrders: s(d.standingOrders, 3000),
+    station: (Array.isArray(d.station) ? d.station : []).filter((p) => p && p.path).slice(0, 120).map((p) => ({ path: s(p.path, 80), value: s(p.value, 120) })),
+    map: s(d.map, 4000),
+    computer: { name: s(d.computer?.name, 40) || "STATION OS", persona: s(d.computer?.persona, 8000) },
+    broadcastPersona: s(d.broadcastPersona, 4000),
+    voices: (Array.isArray(d.voices) ? d.voices : []).slice(0, 8).map((v) => ({
+      id: s(v?.id, 40), name: s(v?.name, 40), preset: PRESET_IDS.includes(v?.preset) ? v.preset : "intercom",
+      color: /^#[0-9a-f]{6}$/i.test(v?.color || "") ? v.color : "", persona: s(v?.persona, 8000),
+      characters: (Array.isArray(v?.characters) ? v.characters : []).slice(0, 30).map((c) => ({ name: s(c?.name, 40), sex: c?.sex === "m" ? "m" : "f", voice: SPEAKERS[c?.voice] ? c.voice : "", notes: s(c?.notes, 500) })),
+    })).filter((v) => v.name),
+    crew: (Array.isArray(d.crew) ? d.crew : []).slice(0, 4),
+  };
+}
+
+// The pieces of session state a draft replaces.
+export function applyDraft(d) {
+  const base = defaultVoices();
+  const terminal = { ...base.find((v) => v.id === BUILTIN.terminal), name: d.computer.name, persona: d.computer.persona || base[0].persona };
+  const broadcast = { ...base.find((v) => v.id === BUILTIN.broadcast), persona: d.broadcastPersona || base[1].persona };
+  const others = d.voices.map((v) => {
+    const voice = {
+      id: v.id || v.name, name: v.name, style: "label", color: v.color, persona: v.persona, ...fromPreset(v.preset),
+      characters: [],
+    };
+    // Each character keeps the voice it was given (if it suits the voice's engine), or is cast one.
+    for (const c of v.characters) {
+      if (!c.name) continue;
+      const fits = voice.voice.engine === "neural" && c.voice && !voice.characters.some((x) => x.voice === c.voice);
+      if (fits) voice.characters.push({ name: c.name, voice: c.voice, notes: c.notes });
+      else {
+        castCharacter(voice, `${c.name} (${c.sex})`);
+        voice.characters.at(-1).notes = c.notes;
+      }
+    }
+    return voice;
+  });
+  const station = {};
+  for (const { path, value } of d.station) {
+    const keys = path.split(".").map((k) => k.trim()).filter(Boolean);
+    if (!keys.length || keys.some((k) => ["__proto__", "constructor", "prototype"].includes(k))) continue;
+    let o = station;
+    for (const k of keys.slice(0, -1)) o = typeof o[k] === "object" && o[k] ? o[k] : (o[k] = {});
+    o[keys.at(-1)] = /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value;
+  }
+  station.access_level = "GUEST";
+  const crew = sanitizeCrew(d.crew.map((c) => ({
+    ...c,
+    health: { current: c.health_max, max: c.health_max },
+    wounds: { current: 0, max: c.wounds_max },
+  })));
+  return {
+    config: {
+      stationName: d.stationName,
+      theme: d.theme,
+      lore: d.lore,
+      secrets: d.secrets,
+      standingOrders: d.standingOrders,
+      map: d.map,
+      voices: sanitizeVoices([terminal, broadcast, ...others]),
+      crew,
+    },
+    station,
+  };
+}

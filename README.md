@@ -7,7 +7,7 @@ Play it at **[shawnofthe.dev/mothership](https://shawnofthe.dev/mothership/)**, 
 ## How a game works
 
 1. **The Warden opens `/dm`**, picks a provider and pastes their own API key, and clicks **Create session**. They get a six-character **session code**.
-2. **Players open `/`** (the terminal) on a laptop or TV, enter the code, and start typing.
+2. **Players open `/`** (the terminal) on a laptop or TV, enter the code, pick their **crew file** (character), and start typing.
 3. Many sessions can run at once; each is separate.
 
 **API keys:**
@@ -56,6 +56,33 @@ The picker in the console's top bar sets the **provider**, **model** and **think
 Providers live in `providers/`. Each one is a module exposing `{ id, label, envKey, keyHint, keyUrl, models, generate({ apiKey, ... }) }`.
 
 For anything that speaks the OpenAI chat-completions format (OpenRouter, Groq, Together, a local Ollama or LM Studio), copy `providers/deepseek.js`. Change the `baseURL`, key details and model list, then add it to `PROVIDERS` in `providers/index.js`. The console picks it up automatically.
+
+## The default story: KESTREL-9
+
+A rimward ice-mining platform where the drill team broke into a "pressurised void" 19 days ago. The players are a **convict maintenance crew** sent by Hollis-Vane on the prison tug SECOND CHANCE to fix a minor comms fault. Everything went wrong while they were in transit, so nobody briefed them and they brought tools, not weapons.
+
+- **Player characters:** Teodora "Rook" Rusk (Teamster rigger, hijacked a hauler to save her brother's kids), Elias "Tick" Varga (Scientist, cooked combat stims), MOLL-7 (Android, refused an order that would have killed two workers) and Dax Oyelaran (ex-Marine, struck an officer to hold an evac ramp). Each has full Mothership stats, saves, health, skills, loadout, trinket and patch.
+- **Cast on the intercom,** each with a description and their own voice: Administrator Ruth Okonkwo, Dr. Imre Salk, Chief Engineer Hana Marlowe, Security Officer Dmitri Voss, Comms Officer Juno Adar, drill lead Anton Petrov, drillers Carys Webb and Pell Ostrand, and refinery hand Sam Yusuf.
+
+## Player characters
+
+Up to four **crew files** per session. When a player joins, their screen asks which one is theirs (number keys or click; or "just watching"). The device remembers the choice. **FILE** in the header opens the character sheet: conviction, backstory, stats, saves, health, wounds, stress, skills, loadout, trinket and patch.
+
+- When the Warden calls for a roll, the player's Stat or Save is filled in from their file.
+- A failed roll adds 1 Stress to that character.
+- What a player types is tagged with their character (`[PLAYER · Rook]`), and the agent knows every character's background, so it can answer them personally.
+- The Warden sees and edits every sheet under **Crew** in the console, with who is playing each one.
+
+## Story builder
+
+**✎ Story builder** (top of the console) creates a brand-new scenario with the agent. Describe what you have in mind, or ask it to surprise you. It asks questions and pitches ideas. When you press **Draft it**, it writes the whole scenario:
+
+- station name, screen colour, public lore and guarded secrets,
+- the station state and a deck/room layout with connections (previewed as a map),
+- the computer's name and personality, the broadcast voice, and other voices with a named cast, each character with a description and their own speaker voice,
+- up to four player characters with full sheets and backstories.
+
+Keep talking to change things, then **Redraft**. **Apply to this session** replaces the station, lore, secrets, voices, map and crew, and clears the log; your provider, key, mode and sounds stay. Players stay connected and pick a new crew file. The builder uses the session's model and key; with DeepSeek a draft takes under a minute and costs a fraction of a cent.
 
 ## DM console
 

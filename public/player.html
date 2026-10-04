@@ -13,19 +13,35 @@
     <header id="hdr">
       <span id="hdr-station">----</span>
       <span class="sep">//</span>
-      <span>HV-CORE OS v4.1</span>
+      <span id="hdr-os">TERMINAL OS v4.1</span>
       <span class="grow"></span>
       <span>ACCESS: <b id="hdr-access">GUEST</b></span>
       <span class="sep">//</span>
       <span id="hdr-clock">00:00:00</span>
       <span id="hdr-link" class="link" title="Connection">● LINK</span>
       <span class="sep">//</span>
+      <button id="hdr-file" class="hdr-btn" type="button" title="Your crew file" hidden>FILE</button>
+      <span class="sep" id="hdr-file-sep" hidden>//</span>
       <span class="vol">
         <button id="vol-mute" type="button" title="Mute / unmute">VOL</button>
         <span id="vol-bars" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="10"></span>
       </span>
     </header>
     <main id="screen">
+      <!-- Crew file selection (the players' characters), and your own file. -->
+      <section id="crewpick" class="panel" hidden>
+        <div class="p-title">■ CREW IDENTIFICATION ■</div>
+        <div class="p-dim">SELECT YOUR CREW FILE (PRESS 1-4).</div>
+        <ol id="crewpick-list"></ol>
+        <button type="button" id="crewpick-none" class="p-btn">[ NO FILE: JUST WATCHING ]</button>
+      </section>
+      <section id="crewfile" class="panel" hidden>
+        <div id="crewfile-body"></div>
+        <div class="p-actions">
+          <button type="button" id="crewfile-close" class="p-btn">[ CLOSE ]</button>
+          <button type="button" id="crewfile-change" class="p-btn">[ CHANGE FILE ]</button>
+        </div>
+      </section>
       <div id="lines" aria-live="polite"></div>
       <div id="busy" hidden>PROCESSING<span class="dots"></span></div>
       <!-- Ability roll called by the Warden (Mothership: roll d100 under Stat + Skill). -->

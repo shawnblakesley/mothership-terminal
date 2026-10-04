@@ -75,7 +75,7 @@
     document.querySelector(".vol").hidden = true;
   } else {
     (async () => {
-      await printBoot(["HV-CORE OS v4.1  (C) HOLLIS-VANE SYSTEMS", "MEMORY CHECK ............ 65536K OK", "NEURAL CORE ............. ONLINE"]);
+      await printBoot(["TERMINAL BIOS v4.1", "MEMORY CHECK ............ 65536K OK", "NEURAL CORE ............. ONLINE"]);
       if (!code) return askForCode();
       try {
         const info = await lookup(code);
@@ -100,6 +100,7 @@
     header = h;
     $("hdr-station").textContent = h.stationName;
     $("hdr-access").textContent = h.accessLevel;
+    $("hdr-os").textContent = `${h.voices?.terminal?.name || "TERMINAL"} OS v4.1`;
     promptEl.textContent = `${h.accessLevel}@${h.stationName}>`;
     document.body.className = `theme-${h.theme || "green"}`;
     for (const el of linesEl.querySelectorAll(".line.player")) el.dataset.prompt = el.dataset.prompt || "";
@@ -334,7 +335,7 @@
     requestAnimationFrame(placeCaret);
   });
   // Clicking anywhere on the screen focuses the prompt.
-  screenEl.addEventListener("click", () => { if (!getSelection().toString()) input.focus(); });
+  screenEl.addEventListener("click", () => { if (!getSelection().toString() && !document.body.classList.contains("panel-open")) input.focus(); });
 
   // ------------------------------------------------------------ volume
   // Ten-segment retro meter, top right. Click/drag a segment, scroll, or use
@@ -373,6 +374,105 @@
   volBtn.addEventListener("click", () => { muted = !muted; applyVolume(); input.focus(); });
   applyVolume();
 
+  // ------------------------------------------------------------ crew files
+  // The players' characters. Each screen claims one (remembered per session on
+  // this device); FILE in the header shows its sheet.
+  let crew = [], claims = {}, myId = null;
+  const crewKey = () => `crew:${code}`;
+  const mine = () => crew.find((c) => c.id === myId) || null;
+  const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+  function openPanel(id) {
+    for (const p of ["crewpick", "crewfile"]) $(p).hidden = p !== id;
+    document.body.classList.toggle("panel-open", !!id);
+    // (Not before power-on: the key that wakes the terminal would also press the button.)
+    if (id === "crewpick" && bootEl.classList.contains("gone")) $("crewpick-list").querySelector("button")?.focus();
+    if (!id && !spectate) input.focus();
+  }
+
+  function setCrew(list, taken) {
+    crew = list || [];
+    claims = taken || {};
+    if (myId && !mine()) {
+      // Their file was removed (or a new story began): choose again.
+      myId = null;
+      if (!spectate && crew.length) setTimeout(() => { renderPicker(); openPanel("crewpick"); });
+    }
+    const pc = mine();
+    $("hdr-file").hidden = $("hdr-file-sep").hidden = spectate || !crew.length;
+    $("hdr-file").textContent = pc ? `FILE: ${shortName(pc)}` : "FILE: NONE";
+    if (!$("crewpick").hidden) renderPicker();
+    if (!$("crewfile").hidden) renderFile();
+  }
+  // A nickname in quotes ("Rook", 'Beck') if there is one, else the first name.
+  const shortName = (c) => (c.name.match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || c.name.split(" ")[0]).toUpperCase();
+
+  function renderPicker() {
+    $("crewpick-list").innerHTML = crew.map((c, i) => {
+      const others = (claims[c.id] || 0) - (c.id === myId ? 1 : 0);
+      return `<li><button type="button" class="p-btn pick" data-id="${escH(c.id)}">[${i + 1}] ${escH(c.name.toUpperCase())}</button>
+        <span class="p-dim"> · ${escH(c.className.toUpperCase())} · ${escH(c.role.toUpperCase())}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>YOU</b>" : ""}</span>
+        <div class="p-dim p-crime">${escH(c.crime)}</div></li>`;
+    }).join("");
+  }
+
+  function renderFile() {
+    const c = mine();
+    if (!c) { $("crewfile-body").innerHTML = '<div class="p-dim">NO CREW FILE SELECTED.</div>'; return; }
+    const row = (obj) => Object.entries(obj).map(([k, v]) => `<span class="p-stat"><span class="p-dim">${k.toUpperCase()}</span> ${v}</span>`).join("");
+    $("crewfile-body").innerHTML = `
+      <div class="p-title">■ CREW FILE: ${escH(c.name.toUpperCase())} ■</div>
+      <div class="p-dim">${escH([c.pronouns, c.className, c.role].filter(Boolean).join(" · ").toUpperCase())}</div>
+      <div class="p-sec">CONVICTION: ${escH(c.crime)}</div>
+      <div class="p-sec p-text">${escH(c.backstory)}</div>
+      <div class="p-sec"><span class="p-dim">STATS</span> ${row(c.stats)}</div>
+      <div class="p-sec"><span class="p-dim">SAVES</span> ${row(c.saves)}</div>
+      <div class="p-sec"><span class="p-stat"><span class="p-dim">HEALTH</span> ${c.health.current}/${c.health.max}</span><span class="p-stat"><span class="p-dim">WOUNDS</span> ${c.wounds.current}/${c.wounds.max}</span><span class="p-stat"><span class="p-dim">STRESS</span> ${c.stress}</span></div>
+      <div class="p-sec"><span class="p-dim">SKILLS</span> ${escH(c.skills.join(" · ") || "NONE")}</div>
+      <div class="p-sec"><span class="p-dim">LOADOUT</span> ${escH(c.loadout)}</div>
+      ${c.trinket ? `<div class="p-sec"><span class="p-dim">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
+      ${c.patch ? `<div class="p-sec"><span class="p-dim">PATCH</span> ${escH(c.patch)}</div>` : ""}`;
+  }
+
+  function claim(id) {
+    myId = id;
+    try { localStorage.setItem(crewKey(), id || "none"); } catch {}
+    ws?.readyState === 1 && ws.send(JSON.stringify({ t: "claim", id }));
+    setCrew(crew, claims);
+    FX.Sound.beep(880, 0.06, 0.05);
+  }
+
+  // After (re)connecting: reclaim this device's file, or ask which one is theirs.
+  function crewOnInit() {
+    if (spectate || !crew.length) return;
+    let saved = null;
+    try { saved = localStorage.getItem(crewKey()); } catch {}
+    if (saved === "none") return claim(null);
+    if (saved && crew.some((c) => c.id === saved)) return claim(saved);
+    renderPicker();
+    openPanel("crewpick");
+  }
+
+  $("crewpick-list").addEventListener("click", (e) => {
+    const id = e.target.closest("[data-id]")?.dataset.id;
+    if (!id) return;
+    claim(id);
+    renderFile();
+    openPanel("crewfile");
+  });
+  addEventListener("keydown", (e) => {
+    if ($("crewpick").hidden || !bootEl.classList.contains("gone") || e.ctrlKey || e.metaKey || e.altKey) return; // (not the key that powers the terminal on)
+    const c = crew[Number(e.key) - 1];
+    if (c) { e.preventDefault(); claim(c.id); renderFile(); openPanel("crewfile"); $("crewfile-close").focus(); }
+  });
+  $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
+  $("hdr-file").onclick = () => { renderFile(); openPanel($("crewfile").hidden ? "crewfile" : null); };
+  $("crewfile-close").onclick = () => openPanel(null);
+  $("crewfile-change").onclick = () => { renderPicker(); openPanel("crewpick"); $("crewpick-list").querySelector("button")?.focus(); };
+  addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.body.classList.contains("panel-open") && !$("crewfile").hidden) openPanel(null);
+  });
+
   // ------------------------------------------------------------ ability rolls
   // The Warden calls for a Mothership check/save; the players enter their Stat
   // (unless the Warden already set it) and either roll here or type their dice.
@@ -388,14 +488,17 @@
     $("rb-stat-row").hidden = roll.statKnown;
     $("rb-stat-name").textContent = `YOUR ${roll.statName.toUpperCase()}${roll.bonus ? ` (SKILL +${roll.bonus} IS ADDED)` : ""}`;
     rbDice.placeholder = roll.advantage === "none" ? "47" : "47 82";
-    rbStat.value = "";
+    // Their crew file knows the number: fill it in (they can still change it).
+    const own = mine();
+    rbStat.value = own && !roll.statKnown ? String(own.stats[roll.check] ?? own.saves[roll.check] ?? "") : "";
     rbDice.value = "";
+    if (!$("crewfile").hidden || !$("crewpick").hidden) openPanel(null);
     rbErr.textContent = "";
     for (const el of rollbox.querySelectorAll("input, button")) el.disabled = spectate;
     FX.Sound.beep(660, 0.12, 0.07);
     setTimeout(() => FX.Sound.beep(880, 0.16, 0.07), 140);
     scrollDown();
-    if (!spectate) (roll.statKnown ? $("rb-roll") : rbStat).focus();
+    if (!spectate) (roll.statKnown || rbStat.value ? $("rb-roll") : rbStat).focus();
   }
 
   function sendRoll(manual) {
@@ -499,6 +602,11 @@
           busy = msg.busy;
           updateBusy();
           showRoll(msg.roll || null);
+          setCrew(msg.crew, msg.claims);
+          // Reconnected with a file: claim it again. Otherwise (first visit, or a
+          // new story replaced the crew): reclaim a remembered file or pick one.
+          if (mine()) ws.send(JSON.stringify({ t: "claim", id: myId }));
+          else crewOnInit();
           scrollDown();
           break;
         case "header":
@@ -509,6 +617,7 @@
         case "busy": busy = msg.busy; updateBusy(); break;
         case "effect": onEffect(msg.effect); break;
         case "roll": showRoll(msg.roll); break;
+        case "crew": setCrew(msg.crew, msg.claims); break;
         case "rollResult": showRollResult(msg); break;
         case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); break;
         case "endEffect": dropCue(msg.id); FX.end(msg.id); break;

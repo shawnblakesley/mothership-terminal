@@ -50,6 +50,28 @@
     </form>
   </dialog>
 
+  <!-- Story builder: talk a new scenario into shape with the agent, then apply it. -->
+  <dialog id="builderDialog" class="builderdlg">
+    <div class="row">
+      <h2 class="grow">Story builder</h2>
+      <span class="muted small">Talk it through with the agent, press <b>Draft it</b>, review, then apply. Uses this session's model and key.</span>
+      <button id="builderClose" class="ghost" aria-label="Close">✕</button>
+    </div>
+    <div class="bgrid">
+      <section class="bchat">
+        <div id="bmsgs" class="bmsgs"></div>
+        <textarea id="bInput" rows="3" placeholder="e.g. A derelict research ship found drifting near a gas giant. The players are salvagers… (Ctrl+Enter sends)"></textarea>
+        <div class="row wrap">
+          <button id="bSend" class="primary">Send</button>
+          <button id="bDraft" title="Write the whole scenario from the conversation so far">✎ Draft it</button>
+          <span class="grow"></span>
+          <button id="bReset" class="ghost">Start over</button>
+        </div>
+      </section>
+      <section class="bdraft" id="bdraft"></section>
+    </div>
+  </dialog>
+
   <!-- The full station map, with its layout editor. -->
   <dialog id="mapDialog" class="mapdlg">
     <div class="row">
@@ -96,6 +118,7 @@
       <select id="model" aria-label="Model"></select>
       <select id="effort" aria-label="Thinking effort" title="Thinking effort (off/low = fastest & cheapest)"></select>
       <button id="keyBtn" title="Your API key for this session">🔑 Key</button>
+      <button id="builderBtn" title="Create a brand-new station, cast and crew with the agent">✎ Story builder</button>
       <span id="keywarn" class="pill bad" hidden></span>
     </div>
     <div class="seg" id="mode" role="radiogroup" aria-label="Response mode">
@@ -220,6 +243,12 @@
         <div class="row"><span id="stationErr" class="err"></span><span class="grow"></span><button id="stationSave">Save state</button></div>
       </details>
 
+      <details id="crewPanel" open>
+        <summary>Crew <span class="muted">(the players' characters)</span></summary>
+        <p class="muted small">Each player picks one of these on their screen and can read its file. The agent knows who they are and who typed what. A failed roll adds 1 Stress to the roller's character.</p>
+        <div id="crew"></div>
+        <div class="row"><button id="addCrew">+ Add character</button><span class="grow"></span><span class="muted small">Up to 4</span></div>
+      </details>
       <details id="voicesPanel" open>
         <summary>Voices, personas &amp; settings</summary>
         <div class="fxopts">

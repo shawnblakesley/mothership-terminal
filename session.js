@@ -3,10 +3,12 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey } from "./providers/index.js";
 import { warmNeural, synthesize } from "./tts.js";
-import { speechParts, speakingVoice, castCharacter } from "./voices.js";
+import { speechParts, speakingVoice, castCharacter, findCharacter } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
+import { DEFAULT_CREW, sanitizeCrew } from "./crew.js";
+import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -17,12 +19,27 @@ const PLAYER_INPUT_GAP_MS = 1200; // per connection: stops spamming the agent (a
 const DEFAULT_LORE = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
 CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
 DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
+KEY CREW: Administrator Ruth Okonkwo (command), Dr. Imre Salk (medic), Chief Engineer Hana Marlowe (reactor), Security Officer Dmitri Voss, Comms Officer Juno Adar, drill team lead Anton Petrov, drillers Carys Webb and Pell Ostrand, refinery hand Sam Yusuf. Five more refinery and habitation crew.
+RECENT EVENTS (public log): Drill team hit a "pressurised void" in the ice 19 days ago. Two crew hospitalised with "fever". Comms degraded since.
+MAINTENANCE TICKET #4471 (filed 23 days ago): comms relay intermittent. Hollis-Vane dispatched a convict maintenance crew (the PLAYERS) on the prison tug SECOND CHANCE. They have just docked at Airlock A with tools for a routine relay repair. Everything in RECENT EVENTS happened while they were in transit: nobody briefed them, and they are not equipped for it.`;
+const OLD_DEFAULT_LORE = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
+CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
+DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
 RECENT EVENTS (public log): Drill team hit a "pressurised void" in the ice 19 days ago. Two crew hospitalised with "fever". Comms degraded since.`;
 
 const DEFAULT_SECRETS = `- The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
+- Okonkwo reported the organism to Hollis-Vane 17 days ago. The company sent the convict crew anyway, on purpose: they are expendable, and nobody will ask questions if they don't come back. Okonkwo has sealed herself on the command deck.
+- Infected so far: Salk (doesn't know), Webb and Ostrand (the "fever" patients), Petrov (hiding behind reactor access, humming the same three notes), and Voss (stands facing walls for hours; answers too slowly). The infected hear the organism and drift toward the cargo bay.
+- Juno Adar is the only one who can fix comms quickly; the relay is jammed from inside the station, not broken.
 - Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
 - Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
 - Dr. Imre Salk (medic) is infected but does not know it.`;
+const OLD_DEFAULT_SECRETS = [
+  `- The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
+- Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
+- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- Dr. Imre Salk (medic) is infected but does not know it.`,
+];
 
 // The Warden's station map: one line per deck, "Deck name: room, room=Label, ...".
 // Room ids match keys in the station state (doors.med_bay, cameras.med_bay...).
@@ -72,6 +89,7 @@ export function defaultGame(keys = {}) {
       voices: defaultVoices(),
       theme: "green",
       map: DEFAULT_MAP,
+      crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -81,6 +99,18 @@ export function defaultGame(keys = {}) {
 }
 
 // Bring saved games from older versions up to date.
+// The default cast joins a voice's characters: existing ones (matched by name)
+// get the default description and voice; the agent's own additions are kept.
+function mergeCast(current, defaults) {
+  const out = (current || []).map((c) => ({ ...c }));
+  for (const d of defaults) {
+    const match = out.find((c) => findCharacter({ characters: [d] }, c.name));
+    if (match) Object.assign(match, { name: d.name, voice: d.voice, notes: match.notes || d.notes });
+    else out.push({ ...d });
+  }
+  return out;
+}
+
 function migrateGame(saved) {
   const base = defaultGame();
   const { persona: legacyPersona, ...config } = { ...base.config, ...saved.config };
@@ -101,6 +131,14 @@ function migrateGame(saved) {
   }
   config.secrets = String(config.secrets).replace("WARDEN is to seal all decks", "HV-CORE is to seal all decks");
   if (OLD_DEFAULT_MAPS.includes(config.map)) config.map = DEFAULT_MAP;
+  // Still the original KESTREL-9 story: bring in the full cast and the convict crew's arrival.
+  if (config.lore === OLD_DEFAULT_LORE) {
+    config.lore = DEFAULT_LORE;
+    if (OLD_DEFAULT_SECRETS.includes(config.secrets)) config.secrets = DEFAULT_SECRETS;
+    const intercom = voices.find((v) => v.id === "intercom");
+    if (intercom) intercom.characters = mergeCast(intercom.characters, defaultVoices().find((v) => v.id === "intercom").characters);
+  }
+  config.crew = sanitizeCrew(config.crew);
   return {
     config: { ...config, ...fixSelection(config), voices },
     station: saved.station ?? base.station,
@@ -109,6 +147,8 @@ function migrateGame(saved) {
     roll: saved.roll ?? null, // the current/last ability roll (see rolls.js)
     outcomeCheck: saved.outcomeCheck ?? null, // an uncertain player action the agent left to the Warden
     sounds: Array.isArray(saved.sounds) ? saved.sounds : [], // the Warden's uploaded sounds (files: sounds.js)
+    // The story builder's conversation and latest draft (builder.js).
+    builder: { messages: Array.isArray(saved.builder?.messages) ? saved.builder.messages.slice(-60) : [], draft: saved.builder?.draft ?? null },
   };
 }
 
@@ -142,6 +182,7 @@ export class Session {
     this.lastActive = saved.lastActive ?? Date.now();
     // playing: sounds on the players' screens right now (loops stay listed until stopped).
     this.state = { ...migrateGame(saved.game ?? {}), pending: null, effects: [], playing: [] };
+    this.builderBusy = ""; // "", "chat" or "draft" while the story builder waits on the agent
     this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
@@ -185,7 +226,11 @@ export class Session {
     ws.role = role;
     ws.lastInput = 0;
     this.sockets.add(ws);
-    ws.on("close", () => this.sockets.delete(ws));
+    ws.character = null; // the crew file this player screen has claimed (crew.js)
+    ws.on("close", () => {
+      this.sockets.delete(ws);
+      if (ws.character) this.crewChanged();
+    });
     if (role === "dm") ws.send(JSON.stringify({ t: "state", state: this.dmView() }));
     else ws.send(JSON.stringify({ t: "init", ...this.playerView() }));
     return true;
@@ -205,6 +250,8 @@ export class Session {
       header: this.playerHeader(),
       effects: this.state.effects,
       playing: this.state.playing.filter((p) => p.loop),
+      crew: this.state.config.crew,
+      claims: this.claims(),
       busy: !!this.state.pending,
       roll: this.publicRoll(),
     };
@@ -227,6 +274,8 @@ export class Session {
     return {
       version: APP_VERSION,
       ...this.state,
+      claims: this.claims(),
+      builderBusy: this.builderBusy,
       code: this.code,
       providers: catalog(this.keys),
       allEffects: ALL_EFFECTS,
@@ -249,15 +298,37 @@ export class Session {
   setBusy(busy) { this.toPlayers({ t: "busy", busy }); }
 
   // ---------------------------------------------------------------- players
+  // Which crew files are taken, and how many screens each: { id: count }.
+  claims() {
+    const out = {};
+    for (const ws of this.sockets) if (ws.role === "player" && ws.character) out[ws.character] = (out[ws.character] || 0) + 1;
+    return out;
+  }
+
+  crewChanged() {
+    this.toPlayers({ t: "crew", crew: this.state.config.crew, claims: this.claims() });
+    this.syncDm();
+  }
+
+  characterOf(ws) {
+    return this.state.config.crew.find((c) => c.id === ws.character) || null;
+  }
+
   handlePlayer(ws, msg) {
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
+    if (msg.t === "claim") {
+      // A player picks their character (or none). Several screens may share one.
+      ws.character = this.state.config.crew.some((c) => c.id === msg.id) ? msg.id : null;
+      return this.crewChanged();
+    }
     if (msg.t !== "input") return;
     const text = String(msg.text || "").slice(0, 1000).trim();
     if (!text || this.isLockedOut()) return;
     const now = Date.now();
     if (now - ws.lastInput < PLAYER_INPUT_GAP_MS) return;
     ws.lastInput = now;
-    this.addLog("player", text);
+    const pc = this.characterOf(ws);
+    this.addLog("player", text, pc ? { by: pc.name } : {});
     if (this.state.config.mode === "manual") {
       this.state.pending = null;
       this.syncDm();
@@ -421,6 +492,26 @@ export class Session {
         console.log(`  - session ${this.code} ended by its Warden`);
         this.onEnd?.(this);
         return;
+      case "builderSay": {
+        const text = String(msg.text || "").trim().slice(0, 4000);
+        if (!text || this.builderBusy) break;
+        s.builder.messages.push({ role: "warden", text });
+        this.builderTurn("chat");
+        break;
+      }
+      case "builderDraft":
+        if (!this.builderBusy) this.builderTurn("draft");
+        break;
+      case "builderReset":
+        if (!this.builderBusy) s.builder = { messages: [], draft: null };
+        break;
+      case "builderApply":
+        if (s.builder.draft && !this.builderBusy) this.applyStory(s.builder.draft);
+        break;
+      case "crew":
+        s.config.crew = sanitizeCrew(msg.crew);
+        this.crewChanged();
+        break;
       case "soundPlay": {
         const snd = s.sounds.find((x) => x.id === msg.id);
         if (!snd) break;
@@ -463,7 +554,7 @@ export class Session {
         for (const e of [...s.effects]) this.endEffect(e.id);
         this.stopSounds();
         // The sound library is kept (its files are the Warden's uploads).
-        this.state = { ...defaultGame(this.keys), sounds: s.sounds, pending: null, effects: [], playing: [] };
+        this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [] };
         this.toPlayers({ t: "init", ...this.playerView() });
         break;
       default:
@@ -559,6 +650,63 @@ export class Session {
     if (added) this.touch();
   }
 
+  // One call to the session's model, with a silent retry on malformed output. Returns parsed JSON.
+  async ask(request) {
+    const s = this.state;
+    const provider = getProvider(s.config.provider);
+    if (!provider) throw new Error(`Unknown provider "${s.config.provider}".`);
+    const apiKey = keyFor(s.config.provider, this.keys);
+    if (!apiKey) throw new Error(`No ${provider.label} API key for this session. Add one under "Agent".`);
+    for (let attempt = 1; ; attempt++) {
+      const text = await provider.generate({ apiKey, model: s.config.model, effort: s.config.effort, ...request });
+      try {
+        return JSON.parse(String(text).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+      } catch {
+        if (attempt >= 2) throw new Error("The model didn't return valid JSON. Try again.");
+      }
+    }
+  }
+
+  // The story builder: a conversation turn, or a full draft of the scenario.
+  async builderTurn(kind) {
+    const b = this.state.builder;
+    this.builderBusy = kind;
+    this.syncDm();
+    try {
+      if (kind === "chat") {
+        const r = await this.ask(chatRequest(b));
+        b.messages.push({ role: "agent", text: String(r?.reply || "…").slice(0, 6000), ready: !!r?.ready });
+      } else {
+        b.draft = normalizeDraft(await this.ask(draftRequest(b)));
+        b.messages.push({ role: "agent", text: `Draft ready: "${b.draft.title}". Look it over, ask me for changes, or apply it.`, draft: true });
+      }
+    } catch (err) {
+      console.error(`[${this.code}] story builder failed:`, err?.message || err);
+      b.messages.push({ role: "agent", text: `(Something went wrong: ${err?.message || err})`, error: true });
+    }
+    b.messages = b.messages.slice(-60);
+    this.builderBusy = "";
+    this.touch();
+    this.syncDm();
+  }
+
+  // Replace the story with a builder draft: new station, lore, secrets, voices,
+  // map and crew; a fresh log. Provider, mode and the sound library stay.
+  applyStory(draft) {
+    const s = this.state;
+    const { config, station } = applyDraft(draft);
+    this.genCounter++;
+    Object.assign(s.config, config);
+    Object.assign(s, { station, log: [], pending: null, whisper: "", roll: null, outcomeCheck: null });
+    for (const e of [...s.effects]) this.endEffect(e.id);
+    this.stopSounds();
+    for (const ws of this.sockets) if (ws.role === "player") ws.character = null; // everyone picks a new crew file
+    if (this.usesNeural()) warmNeural();
+    this.addLog("note", `New story applied: "${draft.title}".`);
+    this.toPlayers({ t: "init", ...this.playerView() });
+    this.setBusy(false);
+  }
+
   // A private note from the Warden: the agent takes it in (updating the station
   // state if needed) and answers the Warden; the players see nothing.
   async aside(text) {
@@ -597,7 +745,7 @@ export class Session {
   publicRoll() {
     const r = this.state.roll;
     if (!r || r.status !== "waiting") return null;
-    return { id: r.id, label: checkLabel(r), skill: skillLabel(r), reason: r.reason, advantage: r.advantage, statKnown: r.stat !== null, statName: CHECKS[r.check].label, bonus: r.bonus };
+    return { id: r.id, check: r.check, label: checkLabel(r), skill: skillLabel(r), reason: r.reason, advantage: r.advantage, statKnown: r.stat !== null, statName: CHECKS[r.check].label, bonus: r.bonus };
   }
 
   // A player answers the roll: digital dice from the server, or physical dice typed in.
@@ -618,7 +766,13 @@ export class Session {
     this.state.roll = { ...r, status: "done", result, manual: !!msg.manual, finishedAt: Date.now() };
     this.toPlayers({ t: "roll", roll: null });
     this.toPlayers({ t: "rollResult", result, label: checkLabel(r) });
-    this.addLog("roll", resultText(r, result), { outcome: result.outcome });
+    const pc = this.characterOf(ws);
+    this.addLog("roll", `${pc ? `${pc.name}: ` : ""}${resultText(r, result)}`, { outcome: result.outcome, ...(pc ? { by: pc.name } : {}) });
+    if (pc && !result.success) {
+      pc.stress = Math.min(20, pc.stress + 1);
+      this.addLog("note", `${pc.name}: Stress ${pc.stress - 1} → ${pc.stress} (failed roll).`);
+      this.crewChanged();
+    }
     this.syncDm();
   }
 
