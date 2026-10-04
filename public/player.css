@@ -1,0 +1,249 @@
+:root {
+  --bg: #050805;
+  --fg: #3bff7a;
+  --dim: #1d8a43;
+  --glow: rgba(59, 255, 122, 0.55);
+  --font: "VT323", "Consolas", monospace;
+}
+body.theme-amber { --fg: #ffb22e; --dim: #9a6a14; --glow: rgba(255, 178, 46, 0.5); --bg: #0a0702; }
+body.theme-cyan  { --fg: #5ef2ff; --dim: #2a8a94; --glow: rgba(94, 242, 255, 0.5); --bg: #02080a; }
+body.theme-white { --fg: #e6e6e0; --dim: #85857f; --glow: rgba(230, 230, 224, 0.4); --bg: #070707; }
+body.theme-red   { --fg: #ff4a3d; --dim: #8a2620; --glow: rgba(255, 74, 61, 0.5); --bg: #0a0302; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: clamp(18px, 2.3vw, 26px);
+  line-height: 1.15;
+  /* Phosphor bloom plus a faint red/blue fringe, like a slightly misconverged tube */
+  text-shadow:
+    0 0 2px var(--glow),
+    0 0 9px var(--glow),
+    0 0 22px color-mix(in srgb, var(--glow) 40%, transparent),
+    -0.7px 0 rgba(255, 0, 70, 0.35),
+    0.7px 0 rgba(0, 150, 255, 0.35);
+}
+
+#crt {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+  /* Extra inset so text clears the curved bezel corners */
+  padding: clamp(24px, 4.5vh, 48px) clamp(28px, 5vw, 72px) clamp(26px, 5vh, 52px);
+  animation: flicker 7s infinite steps(1);
+}
+@keyframes flicker {
+  0%, 100% { opacity: 1; transform: none; }
+  31% { opacity: 0.96; }
+  32% { opacity: 1; }
+  47% { opacity: 0.92; transform: translateX(0.6px); }
+  48% { opacity: 1; transform: none; }
+  82% { opacity: 0.97; transform: translateX(-0.4px); }
+  83% { transform: none; }
+}
+
+/* CRT power-on after the boot screen: a bright line that opens into the picture */
+#crt.power-on { animation: powerOn 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes powerOn {
+  0%   { transform: scale(1, 0.004); filter: brightness(6); opacity: 1; }
+  40%  { transform: scale(1, 0.004); filter: brightness(4); }
+  70%  { transform: scale(1, 1.03); filter: brightness(1.8); }
+  100% { transform: none; filter: none; }
+}
+
+#hdr {
+  display: flex; gap: 0.6em; flex-wrap: wrap; align-items: baseline;
+  border-bottom: 2px solid var(--dim);
+  padding-bottom: 6px; margin-bottom: 10px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+#hdr .grow { flex: 1; }
+#hdr .sep { color: var(--dim); }
+#hdr b { font-weight: normal; background: var(--fg); color: var(--bg); padding: 0 0.3em; text-shadow: none; }
+#hdr .link { color: var(--fg); }
+#hdr .link.down { color: var(--dim); animation: blink 1s infinite steps(1); }
+
+/* Volume: VOL toggle + ten-segment meter */
+.vol { display: inline-flex; align-items: center; gap: 0.35em; }
+#vol-mute {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: inherit; font: inherit; text-shadow: inherit; letter-spacing: inherit;
+}
+#vol-mute.muted { color: var(--dim); animation: blink 1.2s infinite steps(1); }
+#vol-bars { display: inline-flex; gap: 2px; cursor: pointer; padding: 4px 0; touch-action: none; outline: none; }
+#vol-bars:focus-visible { outline: 1px dashed var(--fg); outline-offset: 2px; }
+#vol-bars i { width: 0.32em; height: 0.8em; border: 1px solid var(--dim); box-shadow: 0 0 4px var(--glow); }
+#vol-bars i.on { background: var(--fg); border-color: var(--fg); }
+
+#screen {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: none;
+}
+#screen::-webkit-scrollbar { display: none; }
+
+.line { white-space: pre-wrap; word-break: break-word; margin: 0 0 0.35em; }
+.line.player { color: var(--dim); text-transform: uppercase; }
+.line.player::before { content: attr(data-prompt); }
+/* Per-voice display styles (set by the Warden in the DM console) */
+.line.style-boxed { border: 1px solid var(--fg); padding: 0.2em 0.5em; display: inline-block; }
+.line.style-label::before { content: attr(data-label); opacity: 0.75; }
+.line.typing::after { content: "█"; animation: blink 0.6s infinite steps(1); }
+
+#busy { color: var(--dim); margin-bottom: 0.35em; }
+.dots::after { content: ""; animation: dots 1.2s infinite steps(4); }
+@keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+
+#inputrow { display: flex; align-items: baseline; gap: 0.4em; position: relative; }
+#prompt { white-space: nowrap; }
+#in {
+  flex: 1; min-width: 0;
+  background: transparent; border: 0; outline: 0;
+  color: var(--fg); font: inherit; text-shadow: inherit;
+  text-transform: uppercase; caret-color: transparent;
+  padding: 0;
+}
+#caret { position: absolute; width: 0.55em; height: 1em; background: var(--fg); animation: blink 1s infinite steps(1); pointer-events: none; }
+#inputrow.disabled { opacity: 0.35; }
+#inputrow.disabled #caret { display: none; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ----- CRT overlays ----- */
+/* The glass sits above everything (boot screen and effects included) and never takes clicks. */
+.crt-glass { position: fixed; inset: 0; pointer-events: none; z-index: 200; overflow: hidden; }
+.crt-glass > * { position: absolute; inset: 0; }
+
+/* RGB aperture grille: fine vertical phosphor stripes */
+.crt-glass .grille {
+  background: repeating-linear-gradient(to right,
+    rgba(255, 40, 40, 0.06) 0 1px, rgba(40, 255, 80, 0.06) 1px 2px, rgba(40, 90, 255, 0.06) 2px 3px);
+  mix-blend-mode: screen;
+}
+
+/* Scanlines, drifting very slowly */
+.crt-glass .scan {
+  inset: -4px 0;
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.32) 2px 3px, rgba(0,0,0,0) 3px 4px);
+  animation: scanDrift 1.2s linear infinite;
+}
+@keyframes scanDrift { to { transform: translateY(4px); } }
+
+/* Refresh band rolling down the tube */
+.crt-glass .roll {
+  inset: auto 0;
+  height: 22vh;
+  top: -22vh;
+  background: linear-gradient(to bottom,
+    transparent, color-mix(in srgb, var(--glow) 9%, transparent) 50%, transparent);
+  mix-blend-mode: screen;
+  animation: roll 9s linear infinite;
+}
+@keyframes roll { to { transform: translateY(122vh); } }
+
+/* Film-grain noise */
+.crt-glass .grain {
+  inset: -50%;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  opacity: 0.07;
+  mix-blend-mode: overlay;
+  animation: grain 0.5s steps(5) infinite;
+}
+@keyframes grain {
+  0% { transform: translate(0, 0); } 20% { transform: translate(-7%, 4%); } 40% { transform: translate(5%, -6%); }
+  60% { transform: translate(-3%, 8%); } 80% { transform: translate(8%, 2%); } 100% { transform: translate(0, 0); }
+}
+
+/* Curved tube: dark edges, rounded bezel corners, and a soft reflection on the glass */
+.crt-glass .bezel {
+  border-radius: 4% / 6%;
+  box-shadow:
+    0 0 0 60px #000,                                    /* mask outside the rounded corners */
+    inset 0 0 6vmin 1vmin rgba(0, 0, 0, 0.85),          /* tube edge falloff */
+    inset 0 0 22vmin rgba(0, 0, 0, 0.55);
+  background:
+    radial-gradient(ellipse 120% 90% at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.55) 100%),
+    radial-gradient(ellipse 55% 35% at 28% 18%, rgba(255, 255, 255, 0.045), transparent 70%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crt-glass .scan, .crt-glass .roll, .crt-glass .grain { animation: none; }
+  .crt-glass .roll { display: none; }
+  #crt.power-on { animation: none; }
+}
+
+/* ----- boot ----- */
+#boot {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--bg);
+  padding: 24px clamp(16px, 3vw, 48px);
+  display: flex; flex-direction: column; cursor: pointer;
+}
+#boot pre { margin: 0; font: inherit; white-space: pre-wrap; }
+#boot-press { margin-top: 1em; animation: blink 1.2s infinite steps(1); }
+#boot.gone { display: none; }
+
+/* ----- effects ----- */
+#fx { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+#fx > * { position: absolute; inset: 0; }
+.fx-in { animation: fxIn 0.25s ease-out; }
+.fx-out { transition: opacity 1.4s ease; opacity: 0 !important; }
+@keyframes fxIn { from { opacity: 0; } }
+
+.fx-canvas { width: 100%; height: 100%; }
+.fx-goo { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)) saturate(1.2); }
+.fx-static { image-rendering: pixelated; mix-blend-mode: screen; }
+
+.fx-crack svg { width: 100%; height: 100%; }
+.fx-crack path { fill: none; stroke-linejoin: round; }
+.fx-crack .shadow path { stroke: rgba(0,0,0,0.7); stroke-width: 4; }
+.fx-crack .line path { stroke: rgba(230,255,240,0.65); stroke-width: 1.3; }
+.fx-crack .impact { fill: rgba(220,255,230,0.25); stroke: rgba(255,255,255,0.6); }
+
+.fx-alarm {
+  display: grid; place-items: center;
+  box-shadow: inset 0 0 0 10px #ff2020, inset 0 0 120px rgba(255,0,0,0.6);
+  animation: alarmFlash 0.5s infinite steps(1);
+}
+@keyframes alarmFlash { 50% { box-shadow: inset 0 0 0 10px transparent, inset 0 0 60px rgba(255,0,0,0.15); } }
+.fx-alarm .box, .fx-lockout .box {
+  background: rgba(10,0,0,0.92); color: #ff3030; text-shadow: 0 0 10px #f00;
+  border: 3px double #ff3030; padding: 1em 2em; text-align: center; max-width: 90vw;
+}
+.fx-alarm .warn { font-size: 2.2em; animation: blink 0.5s infinite steps(1); }
+.fx-alarm .trace { margin-top: 0.6em; color: #ff8080; }
+
+.fx-redalert { background: rgba(255,0,0,0.18); animation: redPulse 2.2s infinite ease-in-out; mix-blend-mode: hard-light; }
+@keyframes redPulse { 0%, 100% { background: rgba(255,0,0,0.05); } 50% { background: rgba(255,0,0,0.38); } }
+.fx-redalert .strip {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: #b00000; color: #fff; text-shadow: none; text-align: center; padding: 4px; white-space: nowrap; overflow: hidden;
+}
+
+.fx-blackout { background: #000; z-index: 60; display: flex; align-items: flex-end; padding: 24px; }
+.fx-blackout .aux { color: #400; text-shadow: none; animation: blink 2s infinite steps(1); }
+.fx-blackout.restoring { animation: restore 1.6s forwards steps(8); }
+@keyframes restore { 0% { opacity: 1; } 15% { opacity: 0; } 25% { opacity: 1; } 40% { opacity: 0; } 50% { opacity: 0.8; } 70% { opacity: 0; } 80% { opacity: 0.4; } 100% { opacity: 0; } }
+
+.fx-lockout { background: rgba(0,0,0,0.75); display: grid; place-items: center; pointer-events: auto !important; }
+.fx-lockout .big { font-size: 2.6em; }
+
+.fx-banner { display: grid; place-items: center; }
+.fx-banner .txt {
+  font-size: clamp(40px, 9vw, 140px); text-align: center; line-height: 1;
+  background: var(--bg); color: var(--fg); border: 4px solid var(--fg); padding: 0.1em 0.4em; max-width: 92vw;
+  animation: blink 0.8s infinite steps(1);
+}
+
+/* glitch is applied to #crt itself */
+#crt.glitching { animation: none; }
+#crt.glitching #screen, #crt.glitching #hdr {
+  transform: translate(var(--gx, 0), var(--gy, 0));
+  text-shadow: calc(var(--gx, 0) * -0.6) 0 rgba(255,0,60,0.8), var(--gx, 0) 0 rgba(0,180,255,0.8), 0 0 6px var(--glow);
+  clip-path: polygon(0 0, 100% 0, 100% var(--gs), 96% var(--gs), 96% calc(var(--gs) + 3%), 100% calc(var(--gs) + 3%), 100% 100%, 0 100%);
+}
+#crt.glitch-3 { filter: hue-rotate(40deg) contrast(1.3); }
+
+@media (prefers-reduced-motion: reduce) {
+  #crt { animation: none; }
+}

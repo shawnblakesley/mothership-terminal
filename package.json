@@ -1,0 +1,17 @@
+{
+  "name": "mothership-terminal",
+  "version": "1.0.0",
+  "description": "A DM-steerable, Claude-powered station computer terminal for Mothership RPG sessions",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "express": "^4.21.2",
+    "kokoro-js": "^1.2.1",
+    "mespeak": "^2.0.2",
+    "ws": "^8.18.0"
+  }
+}

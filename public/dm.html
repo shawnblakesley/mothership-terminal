@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Warden Console</title>
+  <link rel="stylesheet" href="dm.css">
+</head>
+<body>
+  <header class="top">
+    <h1>WARDEN CONSOLE</h1>
+    <span id="conn" class="pill bad">offline</span>
+    <span class="grow"></span>
+    <div class="agent" title="Which AI runs the terminal. Lists are cheapest-first.">
+      <select id="provider" aria-label="Provider"></select>
+      <select id="model" aria-label="Model"></select>
+      <select id="effort" aria-label="Thinking effort" title="Thinking effort (off/low = fastest & cheapest)"></select>
+      <span id="keywarn" class="pill bad" hidden></span>
+    </div>
+    <div class="seg" id="mode" role="radiogroup" aria-label="Response mode">
+      <button data-mode="auto" title="Agent replies go straight to players">Auto</button>
+      <button data-mode="review" title="You approve/edit every agent reply">Review</button>
+      <button data-mode="manual" title="Agent is off; you type every reply">Manual</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- ================= LOG ================= -->
+    <section class="col">
+      <h2>Comms log</h2>
+      <div id="log" class="log"></div>
+      <div class="compose">
+        <textarea id="compose" rows="3" placeholder="Command the agent, type as the terminal, send a broadcast, or leave a private note…  (Ctrl+Enter = command agent)"></textarea>
+        <div class="row wrap">
+          <button id="sendCommand" class="primary" title="The agent must obey. Players never see this; the agent responds to it right away.">⚑ Command agent</button>
+          <span class="sendas">
+            <select id="sendAs" aria-label="Voice to send as" title="Which voice says it. Add voices under Voices &amp; entities."></select>
+            <button id="sendVoice" title="Appears on the players' screen word for word, spoken in that voice">Send as voice</button>
+          </span>
+          <button id="sendNote" class="ghost" title="Only you see this; the agent doesn't">Private note</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= RESPONSE + FX ================= -->
+    <section class="col">
+      <h2>Next response</h2>
+      <label class="field">
+        <span>⚑ Command for the next reply <em>(obeyed once, applied when the players next type)</em></span>
+        <textarea id="whisper" rows="2" placeholder="e.g. Pretend the cargo door opened, but it's lying. Mention a heartbeat sensor spike."></textarea>
+      </label>
+      <div id="pending" class="card empty">No reply pending.</div>
+      <div class="row">
+        <button id="promptNow" title="Make the agent speak now, even without new player input">Prompt agent now</button>
+      </div>
+
+      <h2>Screen effects</h2>
+      <div class="fxopts">
+        <label>Caption <input id="fxText" placeholder="optional text (alarm, banner, lockout, blackout)"></label>
+        <label>Seconds <input id="fxSecs" type="number" min="0" value="8" title="0 = until cleared"></label>
+        <label>Intensity
+          <select id="fxIntensity"><option value="1">Low</option><option value="2" selected>Med</option><option value="3">High</option></select>
+        </label>
+      </div>
+      <div id="fxButtons" class="fxgrid"></div>
+      <div class="row">
+        <h3 class="grow">Active</h3>
+        <button id="fxClear" class="danger">Clear all</button>
+      </div>
+      <ul id="fxActive" class="fxlist"></ul>
+    </section>
+
+    <!-- ================= PREVIEW + SETUP ================= -->
+    <section class="col">
+      <h2>Player screen</h2>
+      <div class="preview"><iframe id="preview" src="/?spectate=1" title="Player terminal preview"></iframe></div>
+      <p class="muted small">Players open <code id="playerUrl"></code></p>
+
+      <details open>
+        <summary>Station state <span class="muted">(the agent reads &amp; edits this)</span></summary>
+        <textarea id="station" class="code" rows="14" spellcheck="false"></textarea>
+        <div class="row"><span id="stationErr" class="err"></span><span class="grow"></span><button id="stationSave">Save state</button></div>
+      </details>
+
+      <details id="voicesPanel" open>
+        <summary>Voices, personas &amp; settings</summary>
+        <div class="fxopts">
+          <label>Station name <input id="stationName"></label>
+          <label>Theme
+            <select id="theme"><option>green</option><option>amber</option><option>cyan</option><option>white</option><option>red</option></select>
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" id="agentEffects"> Agent may trigger screen effects</label>
+        <label class="check"><input type="checkbox" id="tts"> Voices speak aloud on the players' screen</label>
+        <p class="muted small">Every line on the players' screen is said by a voice, and the agent can speak as any of them. Each voice's <b>persona</b> tells the agent who it is and how it talks. HV-CORE (the terminal) and System Broadcast are built in; add others (an intercom, a stranger on comms, the thing in the vents). You can also send lines as any voice from the comms box.</p>
+        <input id="testText" placeholder="Test line" value="Attention. This is a test of the station voice system.">
+        <div id="voices"></div>
+        <div class="row"><button id="addVoice">+ Add voice</button></div>
+      </details>
+
+      <details>
+        <summary>Standing orders <span class="muted">(persistent steering)</span></summary>
+        <textarea id="standingOrders" rows="4" placeholder="e.g. The computer is slowly being taken over by the organism. Occasionally slip in words like HUNGRY or WARM."></textarea>
+      </details>
+
+      <details>
+        <summary>Lore &amp; secrets</summary>
+        <label class="field"><span>Station lore (public)</span><textarea id="lore" rows="7"></textarea></label>
+        <label class="field"><span>Secrets (computer knows, guards by access level)</span><textarea id="secrets" rows="7"></textarea></label>
+      </details>
+
+      <details>
+        <summary>Session</summary>
+        <div class="row wrap">
+          <button id="clearScreen" title="Players' screen goes blank; the agent still remembers">Clear player screen</button>
+          <button id="resetSession" class="danger" title="Wipe log & effects; keep lore/persona">New session</button>
+          <button id="resetAll" class="danger" title="Everything back to defaults">Factory reset</button>
+        </div>
+      </details>
+    </section>
+  </div>
+
+  <script src="voice.js"></script>
+  <script src="dm.js"></script>
+</body>
+</html>
