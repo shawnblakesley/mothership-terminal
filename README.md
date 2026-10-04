@@ -68,9 +68,9 @@ A rimward ice-mining platform where the drill team broke into a "pressurised voi
 
 ## Synopsis
 
-**Synopsis** (top of the console) has the agent write a briefing to share with the players: who they are, where they are, what they know about the station and what they're expected to do. Once the story has started, it is written from the comms so far and tells the players only what their characters have actually learned.
+**Synopsis** (top of the console) has the agent write a short, bulleted briefing to share with the players: who they are, where they are, what they know, their job, and their **next goals**. Once the story has started, it is written from the comms so far and tells the players only what their characters have actually learned.
 
-- Sections marked **For the Warden only** cover what is really going on, the story beats still to come and the next steps (and, once play is under way, which beats have happened and where everyone is now).
+- Sections marked **For the Warden only** cover what is really going on (once play is under way, which beats have landed and where everyone is now) and **next obstacles** to throw at the players, each with how it shows up and ways through.
 - **Copy for players** copies just the player sections.
 - The synopsis is kept with the session. When the log has moved on since it was written, **Update to now** rewrites it. It uses the session's model and key.
 

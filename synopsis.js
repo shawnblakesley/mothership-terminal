@@ -1,8 +1,9 @@
-// The Warden's synopsis: a briefing to read or hand to the players (who they
-// are, where they are, what they know, what they're here to do), with sections
-// for the Warden only (what's really going on, story beats, next steps). Before
-// play it covers the setup; once the story has started it is brought up to date
-// from the comms log, telling the players only what they have actually learned.
+// The Warden's synopsis: a punchy, bulleted briefing to read or hand to the
+// players (who they are, where they are, what they know, their job, their next
+// goals), with sections for the Warden only (what's really going on, and the
+// next obstacles to throw at them). Before play it covers the setup; once the
+// story has started it is brought up to date from the comms log, telling the
+// players only what they have actually learned.
 import { crewBrief, crewStatus } from "./crew.js";
 import { terminalsBrief } from "./terminals.js";
 import { voiceIdOf } from "./agent.js";
@@ -12,20 +13,25 @@ const ENTRY_CHARS = 600;
 
 const SYSTEM = `You help the Warden (game master) of a Mothership (sci-fi horror TTRPG) session run through a station computer terminal: the players type to the station, and an AI voices the computer, announcements and the people on the intercom.
 
-Write the Warden a SYNOPSIS of the story so far, in sections.
+Write the Warden a SYNOPSIS: a punchy briefing, not prose. Every section is short bullet lines ("- ..."), each under ~20 words. No paragraphs, no scene-setting flourishes, no repeating yourself between sections.
 
-PLAYER SECTIONS (audience "players"): read aloud or shared with the players.
-- Second person, to the crew ("You are...", "You know..."). Evocative but plain, a few short paragraphs at most per section.
-- Cover, in this order: who they are (the crew, one line each, by name), where they are (the place and exactly where they are standing now), what they know about the station, and what they are expected to do (their job, and what must happen before they can leave).
-- If play has started, add what has happened so far and where things stand now, from the COMMS LOG.
-- Only what the players' characters actually know: the public lore, their own briefing, and what they have seen and heard in the comms log. NEVER reveal SECRETS, Warden notes, or anything they haven't learned. If they discovered a secret in play, they know it now.
+Use exactly these sections, in this order, with these headings:
+
+PLAYER SECTIONS (audience "players"): read aloud or shared with the players. Second person ("You...").
+1. "Who you are": one bullet per crew member: name, role, one telling detail.
+2. "Where you are": 1-2 bullets: the place, and exactly where they are standing now.
+3. "What you know": 3-6 bullets of the facts that matter.
+4. "Your job": 1-3 bullets: what they were sent to do, and what must happen before they can leave.
+5. "So far": ONLY if play has started: 3-6 bullets of what has happened, from the COMMS LOG, most important first.
+6. "Next goals": 2-4 bullets: concrete things the crew could do next, from what they know (a place to reach, a person to find, a system to fix). Actionable, not hints at secrets.
+
+Player sections hold only what the characters actually know: the public lore, their briefing, and what they have seen and heard in the comms log. NEVER reveal SECRETS, Warden notes, or anything they haven't learned. If they discovered a secret in play, they know it now.
 
 WARDEN-ONLY SECTIONS (audience "warden"): for the Warden's eyes only.
-- What is really going on (the truth behind what the players know), the important story beats still to come, the threads in play, and concrete next steps: what to push, who might reach out, what the players could try, and where each path leads (including what it takes to get home).
-- Once play has started, say which beats have already happened, what the players have missed or misread, and where the characters and the threat are now.
-- Terse and practical: short bullet lines ("- ..."). Don't copy SECRETS out wholesale: pick what matters for running the next part of the game, and say when and how each reveal should land.
+7. "What's really going on": 3-6 bullets: the truth that matters for the next stretch of play (not SECRETS copied out). Once play has started, also which beats have landed, what the players have missed or misread, and where the characters and the threat are now.
+8. "Next obstacles": 3-5 bullets, each one obstacle the Warden can throw at the players next, written as "obstacle → how it shows up → ways through (a fitting Stat or Save to roll, if any)". Tie them to the players' next goals and where they are; escalate the horror.
 
-Put each Warden-only section right after the player section it relates to, or at the end. 4-8 sections in all. Plain text, no markdown headings or bold.`;
+Plain text, no markdown headings or bold.`;
 
 const str = { type: "string" };
 export const SYNOPSIS_SCHEMA = {
@@ -90,7 +96,7 @@ export function synopsisRequest(state, screens = []) {
     started,
     request: {
       system: SYSTEM, context, messages: [{ role: "user", content: ask }], schema: SYNOPSIS_SCHEMA,
-      example: { sections: [{ heading: "Who you are", audience: "players", text: "..." }, { heading: "What's really going on", audience: "warden", text: "- ..." }] },
+      example: { sections: [{ heading: "Who you are", audience: "players", text: "- ...\n- ..." }, { heading: "Next goals", audience: "players", text: "- ..." }, { heading: "Next obstacles", audience: "warden", text: "- ... → ... → ..." }] },
     },
   };
 }
