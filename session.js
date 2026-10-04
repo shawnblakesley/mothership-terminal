@@ -9,7 +9,7 @@ import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
-import { DEFAULT_TERMINALS, sanitizeTerminals } from "./terminals.js";
+import { DEFAULT_TERMINALS, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -22,13 +22,28 @@ CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
 DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
 KEY CREW: Administrator Ruth Okonkwo (command), Dr. Imre Salk (medic), Chief Engineer Hana Marlowe (reactor), Security Officer Dmitri Voss, Comms Officer Juno Adar, drill team lead Anton Petrov, drillers Carys Webb and Pell Ostrand, refinery hand Sam Yusuf. Five more refinery and habitation crew.
 RECENT EVENTS (public log): Drill team hit a "pressurised void" in the ice 19 days ago. Two crew hospitalised with "fever". Comms degraded since.
+MAINTENANCE TICKET #4471 (filed 23 days ago): comms relay intermittent. Hollis-Vane dispatched a convict maintenance crew (the PLAYERS) on the prison tug SECOND CHANCE. They have just docked and are standing in Airlock A, at its terminal, with tools for a routine relay repair. The inner airlock door to the station is SEALED: getting it open is their first job, and their work order carries the maintenance override code for it (4471-MAINT). Everything in RECENT EVENTS happened while they were in transit: nobody briefed them, and they are not equipped for it.`;
+// Earlier defaults, upgraded when a saved session still has one unedited.
+const LORE_V1 = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
+CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
+DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
+KEY CREW: Administrator Ruth Okonkwo (command), Dr. Imre Salk (medic), Chief Engineer Hana Marlowe (reactor), Security Officer Dmitri Voss, Comms Officer Juno Adar, drill team lead Anton Petrov, drillers Carys Webb and Pell Ostrand, refinery hand Sam Yusuf. Five more refinery and habitation crew.
+RECENT EVENTS (public log): Drill team hit a "pressurised void" in the ice 19 days ago. Two crew hospitalised with "fever". Comms degraded since.
 MAINTENANCE TICKET #4471 (filed 23 days ago): comms relay intermittent. Hollis-Vane dispatched a convict maintenance crew (the PLAYERS) on the prison tug SECOND CHANCE. They have just docked at Airlock A with tools for a routine relay repair. Everything in RECENT EVENTS happened while they were in transit: nobody briefed them, and they are not equipped for it.`;
 const OLD_DEFAULT_LORE = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
 CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
 DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
 RECENT EVENTS (public log): Drill team hit a "pressurised void" in the ice 19 days ago. Two crew hospitalised with "fever". Comms degraded since.`;
 
-const DEFAULT_SECRETS = `- The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
+const DEFAULT_SECRETS = `- Airlock A's inner door: the work order's override code 4471-MAINT works (it was issued for exactly this). Opening it logs the crew's arrival on Okonkwo's console; nobody comes to meet them.
+- The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
+- Okonkwo reported the organism to Hollis-Vane 17 days ago. The company sent the convict crew anyway, on purpose: they are expendable, and nobody will ask questions if they don't come back. Okonkwo has sealed herself on the command deck.
+- Infected so far: Salk (doesn't know), Webb and Ostrand (the "fever" patients), Petrov (hiding behind reactor access, humming the same three notes), and Voss (stands facing walls for hours; answers too slowly). The infected hear the organism and drift toward the cargo bay.
+- Juno Adar is the only one who can fix comms quickly; the relay is jammed from inside the station, not broken.
+- Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
+- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- Dr. Imre Salk (medic) is infected but does not know it.`;
+const SECRETS_V1 = `- The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
 - Okonkwo reported the organism to Hollis-Vane 17 days ago. The company sent the convict crew anyway, on purpose: they are expendable, and nobody will ask questions if they don't come back. Okonkwo has sealed herself on the command deck.
 - Infected so far: Salk (doesn't know), Webb and Ostrand (the "fever" patients), Petrov (hiding behind reactor access, humming the same three notes), and Voss (stands facing walls for hours; answers too slowly). The infected hear the organism and drift toward the cargo bay.
 - Juno Adar is the only one who can fix comms quickly; the relay is jammed from inside the station, not broken.
@@ -141,6 +156,10 @@ function migrateGame(saved) {
   config.secrets = String(config.secrets).replace("WARDEN is to seal all decks", "HV-CORE is to seal all decks");
   if (OLD_DEFAULT_MAPS.includes(config.map)) config.map = DEFAULT_MAP;
   // Still the original KESTREL-9 story: bring in the full cast and the convict crew's arrival.
+  if (config.lore === LORE_V1) { // (before the sealed-airlock start)
+    config.lore = DEFAULT_LORE;
+    if (config.secrets === SECRETS_V1) config.secrets = DEFAULT_SECRETS;
+  }
   if (config.lore === OLD_DEFAULT_LORE) {
     config.lore = DEFAULT_LORE;
     if (OLD_DEFAULT_SECRETS.includes(config.secrets)) config.secrets = DEFAULT_SECRETS;
@@ -148,7 +167,7 @@ function migrateGame(saved) {
     if (intercom) intercom.characters = mergeCast(intercom.characters, defaultVoices().find((v) => v.id === "intercom").characters);
   }
   config.crew = sanitizeCrew(config.crew);
-  config.terminals = sanitizeTerminals(config.terminals);
+  config.terminals = upgradeTerminals(sanitizeTerminals(config.terminals));
   return {
     config: { ...config, ...fixSelection(config), voices },
     station: saved.station ?? base.station,
@@ -279,7 +298,7 @@ export class Session {
       theme: c.theme,
       tts: c.tts,
       vitals: c.playerVitals, // players may edit their own health/wounds/stress
-      terminals: c.terminals.map(({ id, name, look, theme, open }) => ({ id, name, look, theme, open })),
+      terminals: c.terminals.map((t) => ({ id: t.id, name: t.name, look: t.look, theme: t.theme, open: reachable(t, this.state.station) })),
       moveTerminals: c.playerTerminals, // players may switch terminals themselves
       selfRolls: c.playerRolls, // players may roll their own stats/saves
       // What each voice looks like on screen and its effect chain (no personas or base-voice internals).
@@ -380,7 +399,7 @@ export class Session {
   // The line goes out once each version's first piece is ready; later pieces
   // follow as "part" messages, then "lineEnd".
   async scheduleLine(entry) {
-    const LEAD = 450, PIECE_GAP = 250, LINE_GAP = 150;
+    const LEAD = 1200, PIECE_GAP = 250, LINE_GAP = 150; // LEAD: time for every screen to load the first clip
     const c = this.state.config;
     const spoken = c.tts && SPOKEN_KINDS.has(entry.kind);
     const voice = SPOKEN_KINDS.has(entry.kind) ? voiceFor(c.voices, entry) : null;
@@ -527,6 +546,7 @@ export class Session {
         break;
       case "station":
         if (msg.station && typeof msg.station === "object" && !Array.isArray(msg.station)) s.station = msg.station;
+        // (opening a door can make a terminal reachable: the header carries that)
         this.toPlayers({ t: "header", header: this.playerHeader() });
         break;
       case "whisper":
@@ -609,6 +629,9 @@ export class Session {
         for (const e of [...s.effects]) this.endEffect(e.id);
         this.stopSounds();
         this.toPlayers({ t: "init", ...this.playerView() });
+        // Everyone back where the story starts: the first terminal they can reach.
+        { const start = s.config.terminals.find((t) => reachable(t, s.station));
+          if (start) for (const ws of this.sockets) if (ws.role === "player" && ws.terminal) { ws.terminal = null; this.playerTerminal(ws, start.id, "warden"); } }
         break;
       case "rollRequest": {
         s.roll = sanitizeRequest(msg.roll);
@@ -949,8 +972,9 @@ export class Session {
     if (!t || ws.terminal === id) return;
     // Players can't walk into a terminal that isn't reachable, or move at all if the Warden says so
     // (but a screen that has no terminal yet takes the one it asks for).
-    if (by === "player" && ws.terminal && (!this.state.config.playerTerminals || !t.open)) return;
-    if (by === "player" && !ws.terminal && !t.open) return;
+    const canReach = reachable(t, this.state.station);
+    if (by === "player" && ws.terminal && (!this.state.config.playerTerminals || !canReach)) return;
+    if (by === "player" && !ws.terminal && !canReach) return;
     const had = ws.terminal;
     ws.terminal = id;
     if (by === "warden") ws.send(JSON.stringify({ t: "terminalSet", id }));

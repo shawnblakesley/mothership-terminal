@@ -59,7 +59,7 @@ For anything that speaks the OpenAI chat-completions format (OpenRouter, Groq, T
 
 ## The default story: KESTREL-9
 
-A rimward ice-mining platform where the drill team broke into a "pressurised void" 19 days ago. The players are a **convict maintenance crew** sent by Hollis-Vane on the prison tug SECOND CHANCE to fix a minor comms fault. Everything went wrong while they were in transit, so nobody briefed them and they brought tools, not weapons.
+A rimward ice-mining platform where the drill team broke into a "pressurised void" 19 days ago. The players are a **convict maintenance crew** sent by Hollis-Vane on the prison tug SECOND CHANCE to fix a minor comms fault. Everything went wrong while they were in transit, so nobody briefed them and they brought tools, not weapons. They start in **Airlock A** with the inner door sealed: opening it (their work order has the override code) is the first thing they do, and the rest of the station opens up from there.
 
 - **Player characters:** Teodora "Rook" Rusk (Teamster rigger, hijacked a hauler to save her brother's kids), Elias "Tick" Varga (Scientist, cooked combat stims), MOLL-7 (Android, refused an order that would have killed two workers) and Dax Oyelaran (ex-Marine, struck an officer to hold an evac ramp). Each has full Mothership stats, saves, health, skills, loadout, trinket and patch.
 - **Cast on the intercom,** each with a description and their own voice: Administrator Ruth Okonkwo, Dr. Imre Salk, Chief Engineer Hana Marlowe, Security Officer Dmitri Voss, Comms Officer Juno Adar, drill lead Anton Petrov, drillers Carys Webb and Pell Ostrand, and refinery hand Sam Yusuf.
@@ -100,7 +100,7 @@ Each player's screen is a physical terminal somewhere on the station, or a porta
 
 - **Each terminal looks the part:** clean, blood on the screen, goo, a cracked screen, flickering, a dim failing backlight, grime, or a handheld frame with a weak-signal strip, and its own screen colour. In the default story the airlock terminal is clean, the med bay one grimy and flickering, the cargo bay one cracked and bloody, and the reactor one red and failing.
 - **The agent knows where everyone is** and answers from that place (local cameras, doors, what happened there; the portable unit has remote-only access). With players at different terminals, per-player variants can give each their own view.
-- Set them up under **Terminals** in the console: name, room on the map, look, colour, whether players can reach it yet, and notes for the agent, with who's at each one. The story builder creates terminals for new stories.
+- Set them up under **Terminals** in the console: name, room on the map, look, colour, whether players can reach it, the door it **opens with** (it becomes reachable once that door is OPEN: the med bay once the airlock is open), and notes for the agent, with who's at each one. Restarting the story puts everyone back at the first reachable terminal. The story builder creates terminals for new stories.
 
 ## All screens in step
 

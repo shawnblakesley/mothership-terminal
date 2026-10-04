@@ -623,6 +623,7 @@
           <button data-tact="del" class="ghost" title="Remove">✕</button></div>
         <div class="row wrap small">
           <label>Room <select data-t="room"><option value="">(none / portable)</option>${rooms.map(([id, label]) => `<option value="${esc(id)}" ${id === t.room ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
+          <label title="A door in the station state: the terminal becomes reachable once it reads OPEN">Opens with <select data-t="requires"><option value="">(nothing)</option>${doorPaths().map((p) => `<option value="${esc(p)}" ${p === t.requires ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
           <label>Colour <select data-t="theme">${["", "green", "amber", "cyan", "white", "red"].map((x) => `<option value="${x}" ${x === t.theme ? "selected" : ""}>${x || "station's"}</option>`).join("")}</select></label>
         </div>
         <div class="looks">${Object.entries(LOOKS).map(([k, label]) => `<label class="chip"><input type="checkbox" data-look="${k}" ${t.look.includes(k) ? "checked" : ""}> ${label}</label>`).join("")}</div>
@@ -631,6 +632,14 @@
       </div>`;
     }).join("");
   }
+  // Door-like paths in the station state (doors.*, hatches...), for "opens with".
+  function doorPaths() {
+    const out = [];
+    const walk = (o, path) => { for (const [k, v] of Object.entries(o || {})) { const p = [...path, k]; if (v && typeof v === "object") walk(v, p); else if (/door|hatch|airlock|lock|gate/i.test(p.join("."))) out.push(p.join(".")); } };
+    walk(S.station, []);
+    return out;
+  }
+
   function saveTerminals() {
     clearTimeout(termTimer);
     termTimer = setTimeout(() => { termTimer = null; termSentAt = Date.now(); send({ t: "terminals", terminals: termDraft }); }, 500);

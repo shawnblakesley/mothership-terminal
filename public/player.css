@@ -117,7 +117,7 @@ body {
 /* Per-voice display styles (set by the Warden in the DM console) */
 .line.style-boxed { border: 1px solid var(--fg); padding: 0.2em 0.5em; display: inline-block; }
 .line.style-label::before { content: attr(data-label); opacity: 0.75; }
-.line.typing::after { content: "█"; animation: blink 0.6s infinite steps(1); }
+/* (no cursor on output: the only blinking cursor is where the player types) */
 
 #busy { color: var(--dim); margin-bottom: 0.35em; }
 .dots::after { content: ""; animation: dots 1.2s infinite steps(4); }
@@ -134,7 +134,7 @@ body {
 }
 #caret { position: absolute; width: 0.55em; height: 1em; background: var(--fg); animation: blink 1s infinite steps(1); pointer-events: none; }
 #inputrow.disabled { opacity: 0.35; }
-#inputrow.disabled #caret { display: none; }
+#inputrow.disabled #caret, #inputrow:not(:focus-within) #caret { display: none; }
 @keyframes blink { 50% { opacity: 0; } }
 
 /* ----- CRT overlays ----- */

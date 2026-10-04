@@ -637,7 +637,8 @@
     if (spectate || !terminals().length) return applyTerminal();
     let saved = null;
     try { saved = localStorage.getItem(termKey()); } catch {}
-    const t = terminals().find((x) => x.id === (termId || saved)) || terminals().find((x) => x.open);
+    // (Only one they can reach now: a new story or a sealed door may have moved them.)
+    const t = terminals().find((x) => x.id === (termId || saved) && x.open) || terminals().find((x) => x.open);
     if (t) setTerminal(t.id, true);
   }
   function setTerminal(id, tell) {
