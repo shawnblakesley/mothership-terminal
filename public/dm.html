@@ -196,15 +196,17 @@
       <h2>Comms log</h2>
       <div id="log" class="log"></div>
       <div class="compose">
-        <textarea id="compose" rows="3" placeholder="Command the agent, speak as any voice, or send the agent a private note…  (Ctrl+Enter = command agent)"></textarea>
+        <textarea id="compose" rows="3"></textarea>
         <div id="castLists" hidden></div>
         <div class="row wrap">
-          <button id="sendCommand" class="primary" title="The agent must obey. Players never see this; the agent responds to it right away.">⚑ Command agent</button>
+          <button id="sendCommand" title="Direction: the agent must obey and acts on it right away. Players never see it.">Direction</button>
           <span class="sendas">
-            <select id="sendAs" aria-label="Voice to send as" title="Which voice says it. Add voices under Voices &amp; entities."></select>
-            <button id="sendVoice" title="Appears on the players' screen word for word, spoken in that voice">Send as voice</button>
+            <select id="sendAs" aria-label="Who speaks" title="Which voice or character says it. Add voices under Story."></select>
+            <button id="sendVoice" title="Speak: your exact words on the players' screens, in that voice">Speak</button>
           </span>
-          <button id="sendNote" class="ghost" title="Private, between you and the agent: tell it what changed (e.g. 'Voss is dead', 'the cargo door is now open'). It updates the station state and replies here. Players see nothing.">✉ Note to agent</button>
+          <button id="sendNote" title="Note (Ctrl+Enter): private, between you and the agent. Tell it what changed ('Voss is dead', 'the cargo door is now open'). It updates the station state and replies here. Players see nothing.">Note</button>
+          <span class="grow"></span>
+          <span class="muted small keyhint">Tab switches · Enter sends · Shift+Enter new line · Ctrl+Enter note</span>
         </div>
       </div>
     </section>

@@ -987,23 +987,61 @@
     }
   });
 
+  // The comms box sends as a Direction (the agent obeys), as a voice speaking
+  // (the Speak picker), or as a private Note. Keyboard first: Tab / Shift+Tab
+  // cycle Direction → each voice and character → Note; Enter sends in the
+  // current mode, Shift+Enter is a new line, Ctrl+Enter always sends a Note.
+  let composeMode = "command"; // "command" | "voice" (as $("sendAs")) | "note"
+  const composeModes = () => ["command", ...[...$("sendAs").options].map((o) => `voice:${o.value}`), "note"];
+  const currentComposeMode = () => (composeMode === "voice" ? `voice:${$("sendAs").value}` : composeMode);
+
+  function setComposeMode(mode) {
+    if (mode.startsWith("voice:")) {
+      $("sendAs").value = mode.slice(6);
+      composeMode = "voice";
+    } else composeMode = mode;
+    renderComposeMode();
+  }
+
+  function renderComposeMode() {
+    for (const [id, mode] of [["sendCommand", "command"], ["sendVoice", "voice"], ["sendNote", "note"]]) $(id).classList.toggle("primary", composeMode === mode);
+    $("sendAs").classList.toggle("on", composeMode === "voice");
+    const who = $("sendAs").selectedOptions[0]?.text || "a voice";
+    $("compose").placeholder = composeMode === "command" ? "Direction for the agent: it obeys and acts on it now. Players never see it."
+      : composeMode === "note" ? "Note to the agent: what's true now. Private; nothing happens on the players' screens."
+      : `Speak as ${who}: your exact words, on every player's screen.`;
+    $("compose").dataset.mode = composeMode;
+  }
+
   function compose(as) {
     const text = $("compose").value.trim();
     if (!text) return;
     if (as === "note") send({ t: "note", text });
     else if (as === "command") send({ t: "command", text });
     else {
-      const [as, character = ""] = $("sendAs").value.split("::");
-      send({ t: "inject", as, character, text, clearPending: true });
+      const [voice, character = ""] = $("sendAs").value.split("::");
+      send({ t: "inject", as: voice, character, text, clearPending: true });
     }
     $("compose").value = "";
   }
-  $("sendCommand").onclick = () => compose("command");
-  $("sendVoice").onclick = () => compose("voice");
-  $("sendNote").onclick = () => compose("note");
+  // A button sends in its mode and makes it the current one; the box keeps focus.
+  const sendIn = (mode) => () => { setComposeMode(mode === "voice" ? `voice:${$("sendAs").value}` : mode); compose(mode); $("compose").focus(); };
+  $("sendCommand").onclick = sendIn("command");
+  $("sendVoice").onclick = sendIn("voice");
+  $("sendNote").onclick = sendIn("note");
+  $("sendAs").addEventListener("change", () => { setComposeMode(`voice:${$("sendAs").value}`); $("compose").focus(); });
   $("compose").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); compose("command"); }
+    if (e.key === "Tab" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      const modes = composeModes();
+      const i = modes.indexOf(currentComposeMode());
+      setComposeMode(modes[(i + (e.shiftKey ? -1 : 1) + modes.length) % modes.length]);
+    } else if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      compose(e.ctrlKey || e.metaKey ? "note" : composeMode);
+    }
   });
+  renderComposeMode();
 
   $("log").addEventListener("click", (e) => {
     const id = e.target.closest("[data-del]")?.dataset.del;
@@ -1112,6 +1150,7 @@
       ...(v.characters || []).map((c) => [`${v.id}::${c.name}`, `${v.name} · ${c.name}`]),
     ]), prev);
     if (!sel.value) sel.value = "terminal";
+    renderComposeMode(); // (names may have changed)
   }
 
   function saveVoices() {
