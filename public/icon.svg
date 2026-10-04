@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Station Terminal: a green CRT prompt. -->
+  <rect x="2" y="6" width="60" height="46" rx="8" fill="#0a120c" stroke="#3a4a3e" stroke-width="3"/>
+  <rect x="9" y="13" width="46" height="32" rx="4" fill="#06240f"/>
+  <path d="M16 22l8 7-8 7" fill="none" stroke="#5dff8a" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="29" y="33" width="15" height="4.5" rx="1" fill="#5dff8a"/>
+  <rect x="22" y="54" width="20" height="5" rx="2" fill="#3a4a3e"/>
+</svg>

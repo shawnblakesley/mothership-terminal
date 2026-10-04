@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Warden Console: the same CRT in amber, with a watching eye. -->
+  <rect x="2" y="6" width="60" height="46" rx="8" fill="#140e06" stroke="#4a3d2a" stroke-width="3"/>
+  <rect x="9" y="13" width="46" height="32" rx="4" fill="#2a1a05"/>
+  <path d="M14 29c5-8 11-11 18-11s13 3 18 11c-5 8-11 11-18 11s-13-3-18-11z" fill="none" stroke="#ffb340" stroke-width="3.5" stroke-linejoin="round"/>
+  <circle cx="32" cy="29" r="5.5" fill="#ffb340"/>
+  <rect x="22" y="54" width="20" height="5" rx="2" fill="#4a3d2a"/>
+</svg>
