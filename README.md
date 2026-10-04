@@ -40,7 +40,7 @@ For a private LAN game you can set `ALLOW_SERVER_KEYS=1` plus `DEEPSEEK_API_KEY`
 
 If a session has no key, the console still works in **Manual** mode and you type every reply.
 
-To host it publicly, see [deploy/README.md](deploy/README.md).
+To host it publicly, see [deploy/README.md](deploy/README.md). The hosted copy at [shawnofthe.dev/mothership](https://shawnofthe.dev/mothership/) deploys automatically on every push to `main`.
 
 ## Choosing the AI
 
