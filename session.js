@@ -220,6 +220,10 @@ export class Session {
     // Lines reach the players on one shared timeline (see scheduleLine), in order.
     this.playhead = 0;
     this.lineChain = Promise.resolve();
+    // The agent's recent responses, newest last, so the Warden can retcon them
+    // (in memory only): { entries, effects, station, crew, outcome }.
+    this.undoStack = [];
+    this.delivering = null;
     this.rerun = false; // a player typed while the agent was busy: answer once it's done
     this.effectTimers = new Map();
     this.onChange = onChange;
@@ -313,6 +317,7 @@ export class Session {
       ...this.state,
       claims: this.claims(),
       screens: this.screens(),
+      canRetcon: this.undoStack.length,
       // (timed cues are listed for a while after they end; only show what's running)
       effects: this.state.effects.filter((e) => this.effectRunning(e)),
       builderBusy: this.builderBusy,
@@ -328,6 +333,7 @@ export class Session {
   addLog(kind, text, extra = {}) {
     const entry = { id: this.nextId++, kind, text, ts: Date.now(), ...extra };
     this.state.log.push(entry);
+    this.delivering?.entries.push(entry.id);
     if (this.state.log.length > MAX_LOG) this.state.log.splice(0, this.state.log.length - MAX_LOG);
     if (SPOKEN_KINDS.has(kind)) this.pregenerate([entry]);
     if (kind === "player") this.toPlayers({ t: "line", entry }); // what they typed: at once
@@ -622,6 +628,7 @@ export class Session {
       case "resetSession":
         this.genCounter++;
         this.playhead = 0;
+        this.undoStack = [];
         s.log = [];
         s.pending = null;
         s.whisper = "";
@@ -652,6 +659,9 @@ export class Session {
         if (s.roll?.status === "waiting") this.addLog("note", "Roll cancelled.");
         s.roll = null;
         this.toPlayers({ t: "roll", roll: null });
+        break;
+      case "retcon":
+        this.retcon();
         break;
       case "rollNarrate":
         // The [ROLL RESULT] is already the latest thing in the agent's history.
@@ -776,6 +786,7 @@ export class Session {
       ...(cue ? { atEntry: cue.atEntry, when: cue.when, ...(cue.hold ? { hold: true } : {}) } : {}),
     };
     this.state.effects.push(effect);
+    this.delivering?.effects.push(effect.id);
     this.toPlayers({ t: "effect", effect });
     // A cue starts when the players reach its line, which may be a while (voices
     // play first), so the server keeps it listed for a generous margin.
@@ -969,6 +980,9 @@ export class Session {
       this.crewChanged();
     }
     this.syncDm();
+    // The agent narrates what happens, with the [ROLL RESULT] as the latest input
+    // (in Manual mode the Warden does it, or asks for it from the roll panel).
+    if (this.state.config.mode !== "manual") this.generate();
   }
 
   // A screen is at a terminal: the player chose it (if allowed), or the Warden moved them.
@@ -1062,6 +1076,43 @@ export class Session {
   }
 
   deliver(reply, source) {
+    // Remember how things were, so the Warden can retcon this response.
+    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), outcome: this.state.outcomeCheck };
+    try {
+      this.deliverReply(reply, source);
+    } finally {
+      const undo = this.delivering;
+      this.delivering = null;
+      if (source === "agent" && undo.entries.length) this.undoStack = [...this.undoStack, undo].slice(-5);
+    }
+  }
+
+  // Roll back the agent's last response: its lines leave the players' screens
+  // and the agent's memory (the Warden's log keeps them, struck through), and its
+  // station and crew changes and effects are undone.
+  retcon() {
+    const undo = this.undoStack.pop();
+    if (!undo) return;
+    const s = this.state;
+    this.genCounter++; // (and drop any reply still being written)
+    s.pending = null;
+    this.setBusy(false);
+    for (const e of s.log) if (undo.entries.includes(e.id)) { e.cut = true; e.retcon = true; delete e.queued; }
+    for (const id of undo.effects) this.endEffect(id);
+    s.station = undo.station;
+    // Crew: only their condition goes back (sheet edits made since are kept).
+    for (const pc of s.config.crew) {
+      const was = undo.crew.find((x) => x.id === pc.id);
+      if (was) Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress });
+    }
+    s.outcomeCheck = undo.outcome;
+    this.playhead = 0;
+    this.addLog("note", "↶ Retconned the agent's last response.");
+    this.toPlayers({ t: "init", ...this.playerView() });
+    this.crewChanged();
+  }
+
+  deliverReply(reply, source) {
     const oc = reply?.outcome_check;
     if (oc?.needed) {
       this.state.outcomeCheck = { ...oc, id: Date.now().toString(36), at: Date.now() };

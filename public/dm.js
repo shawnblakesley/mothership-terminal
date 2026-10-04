@@ -267,6 +267,8 @@
     renderCrew();
     renderTerminals();
     renderBuilder();
+    $("retcon").disabled = !S.canRetcon;
+    $("retcon").textContent = S.canRetcon > 1 ? `↶ Retcon last response (${S.canRetcon})` : "↶ Retcon last response";
   }
 
   function fillSelect(sel, options, value) {
@@ -330,8 +332,8 @@
         return `<div class="entry note${fx ? " fx" : ""}"><span class="txt">${txt}</span>${when}${del}</div>`;
       }
       return `
-      <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? 'title="Cut off by a player before it was said: the players never saw it and the agent doesn\'t remember it."' : ""}>
-        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? '<span class="by">never said (cut off)</span>' : ""}${when}</div>
+      <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? `title="${e.retcon ? "Retconned: gone from the players' screens and the agent's memory." : "Cut off by a player before it was said: the players never saw it and the agent doesn't remember it."}"` : ""}>
+        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? `<span class="by">${e.retcon ? "retconned" : "never said (cut off)"}</span>` : ""}${when}</div>
         <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
       </div>`;
     }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew to type something…</div>`;
@@ -975,6 +977,7 @@
     }
   });
   $("promptNow").onclick = () => send({ t: "generate" });
+  $("retcon").onclick = () => send({ t: "retcon" });
 
   // Effect buttons
   $("fxButtons").innerHTML = Object.entries(FX_META)
@@ -1299,7 +1302,7 @@
       const dice = res.dice.map((d) => String(d).padStart(2, "0")).join(" / ");
       box.innerHTML = `<div class="res ${res.success ? "ok" : "bad"}">🎲 ${esc(label)}
 ${dice}${res.dice.length > 1 ? ` → ${String(res.used).padStart(2, "0")}` : ""} vs ${res.target}${r.manual ? " (table dice)" : ""} — ${res.outcome.toUpperCase()}${res.success ? "" : " · +1 STRESS"}</div>
-        <div class="row"><button data-roll="narrate" class="primary">Have the agent narrate it</button><span class="grow"></span><button data-roll="clear" class="ghost">Clear</button></div>`;
+        <div class="row">${S.config.mode === "manual" ? '<button data-roll="narrate" class="primary">Have the agent narrate it</button>' : '<span class="muted small">The agent narrates the result.</span>'}<span class="grow"></span><button data-roll="clear" class="ghost">Clear</button></div>`;
     }
   }
 

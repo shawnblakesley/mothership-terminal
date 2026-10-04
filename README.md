@@ -110,6 +110,10 @@ Every player hears a line at the same moment. The server makes each voice clip o
 
 Every password attempt, and anything else the players try that could go either way (a hack, an override, a bluff, a risky move), goes to you **before the players see anything**. Before writing a reply to a player, the agent answers one quick question: does this need the Warden? If it does, the players see PROCESSING while you choose **It works**, **It fails** or **Call for a roll** (the card says whether a password matches the secrets). Then the agent writes what happens, knowing the result. Turn it off with **check with you first** in Settings.
 
+## Retcon
+
+**↶ Retcon last response** (under Next response) undoes the agent's last response: its lines vanish from the players' screens and from the agent's memory (your log keeps them, struck through as retconned), its station and crew-condition changes are reverted, and its effects end. Press it again to go back further (up to five responses). The player input or roll that prompted it stays, so you can prompt the agent again or narrate it yourself.
+
 ## Interrupting
 
 If a player types while lines are still playing, the comms cut off on every screen. Lines that hadn't started were never said: they vanish from the players' screens and from the agent's memory (your log keeps them, struck through). A line cut off mid-way keeps only what was spoken. The agent carries on from exactly what the players heard.
@@ -191,7 +195,7 @@ The agent says yes to cool ideas but **never decides whether an uncertain action
 - If you know the character's value, enter it. Otherwise the players are asked for it.
 - The players' terminal shows a **ROLL REQUIRED** box. They roll d100 on screen, or type in their physical dice.
 - **Success:** under Stat + Skill. **Criticals:** doubles (00, 11 … 99). **[+] / [−]:** roll twice and keep the better or worse result. **Failure:** +1 Stress.
-- The result appears on everyone's screen and in your console. **Have the agent narrate it** turns it into story. The agent never mentions dice or stats in-world.
+- The result appears on everyone's screen and in your console, and the agent narrates what happens straight away (in Manual mode, **Have the agent narrate it** does it on request). The agent never mentions dice or stats in-world.
 
 ## Screen effects from the agent
 
