@@ -128,12 +128,16 @@ setInterval(() => {
   for (const [k, b] of buckets) if (now - b.start > 3600_000) buckets.delete(k);
 }, 600_000).unref();
 
-// Behind CloudFront, its CloudFront-Viewer-Address header ("ip:port") is the real
-// client; X-Forwarded-For can be forged by the browser. (The origin only accepts
-// requests that come through CloudFront: see deploy/Caddyfile.)
+// The real client address, for rate limits. Behind CloudFront + Caddy, Caddy
+// passes CloudFront's X-Forwarded-For through as X-CDN-Forwarded-For; CloudFront
+// appends the viewer's IP as its LAST entry (earlier entries can be forged by the
+// browser). The origin only accepts CloudFront traffic: see deploy/Caddyfile.
 function clientIp(req) {
+  const cdn = req.headers["x-cdn-forwarded-for"];
+  if (cdn) return String(cdn).split(",").at(-1).trim();
   const cf = req.headers["cloudfront-viewer-address"];
-  return cf ? String(cf).replace(/:\d+$/, "") : req.socket.remoteAddress || "";
+  if (cf) return String(cf).replace(/:\d+$/, "");
+  return req.socket.remoteAddress || "";
 }
 
 // ---------------------------------------------------------------------------

@@ -42,7 +42,7 @@ On the existing distribution:
 | Viewer protocol | Redirect HTTP to HTTPS |
 | Allowed methods | GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE |
 | Cache policy | `CachingDisabled` |
-| Origin request policy | `AllViewerAndCloudFrontHeaders-2022-06`. This forwards the WebSocket upgrade headers and `CloudFront-Viewer-Address`, which the server uses for rate limiting. |
+| Origin request policy | `AllViewerExceptHostHeader`. This forwards the WebSocket upgrade headers but not `Host`, which must stay the origin name so its certificate matches. CloudFront's `X-Forwarded-For` (always sent) gives the server the real viewer IP for rate limiting. |
 
 ## Notes
 

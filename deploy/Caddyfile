@@ -6,7 +6,11 @@
 	@cdn header X-Origin-Secret "{ORIGIN_SECRET}"
 	handle @cdn {
 		# WebSockets are proxied automatically.
-		reverse_proxy localhost:3000
+		reverse_proxy localhost:3000 {
+			# Caddy replaces untrusted X-Forwarded-For, so hand CloudFront's original
+			# on under another name. Its last entry is the viewer's real IP.
+			header_up X-CDN-Forwarded-For {http.request.header.X-Forwarded-For}
+		}
 	}
 	handle {
 		respond "Forbidden" 403
