@@ -915,8 +915,13 @@
   $("soundList").addEventListener("input", (e) => { if (e.target.classList.contains("svol")) syncVolume(e.target); });
   $("soundList").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.target.classList.contains("sname") || e.target.classList.contains("volpct"))) e.target.blur(); });
   $("soundPlaying").addEventListener("click", (e) => {
-    const pid = e.target.closest("[data-stop]")?.dataset.stop;
-    if (pid) send({ t: "soundStop", pid });
+    const stop = e.target.closest("[data-stop]");
+    if (!stop) return;
+    send({ t: "soundStop", pid: stop.dataset.stop });
+    // Gone at once (the list doesn't redraw while the button still has focus).
+    stop.blur();
+    stop.closest("li").remove();
+    if (!$("soundPlaying").children.length) $("soundPlaying").innerHTML = `<li class="none">Silence</li>`;
   });
   $("soundPlaying").addEventListener("input", (e) => {
     const li = e.target.closest("li[data-pid]");
