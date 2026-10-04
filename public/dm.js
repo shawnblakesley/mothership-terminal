@@ -308,6 +308,11 @@
     }
   }
 
+  // Per-player versions of a line: "↳ MOLL-7 (Android): ..."
+  const crewName = (id) => S.config.crew.find((c) => c.id === id)?.name || id;
+  const variantsHtml = (e) => (e.variants || []).map((v) =>
+    `<div class="var"><span class="vfor">↳ ${esc(v.to.map(crewName).join(", "))}${v.for && !v.to.some((id) => crewName(id).toLowerCase() === v.for.toLowerCase()) ? ` (${esc(v.for)})` : ""}</span>\n${esc(v.text)}</div>`).join("");
+
   function renderLog() {
     const log = $("log");
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
@@ -326,7 +331,7 @@
       return `
       <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""}" style="--c: ${sp.c}">
         <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${when}</div>
-        <div class="txt">${esc(e.text)}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
+        <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
       </div>`;
     }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew to type something…</div>`;
     if (atBottom || S.log.length !== lastLogLen) log.scrollTop = log.scrollHeight;
@@ -390,12 +395,20 @@
       </div>
       <textarea rows="${Math.min(12, Math.max(2, l.text.split("\n").length))}" placeholder="${l.effects?.length ? "(effect only: no text)" : ""}">${esc(l.text)}</textarea>
       <button data-act="delLine" class="ghost" title="Remove line">✕</button>
+      <div class="dvars">${(l.variants || []).map(variantRow).join("")}
+        <button data-act="addVar" class="ghost small" title="A different version of this line for one player, or a class (e.g. Android, Humans)">+ Variant for a player</button></div>
       ${l.effects?.length ? `<div class="dfx">${l.effects.map((f, i) => `<label class="chip"><input type="checkbox" data-leff="${i}" ${S.config.agentEffects ? "checked" : ""}> ⚡ ${FX_META[f.type]?.[0] || ""} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s <span class="muted">as this line starts</span></label>`).join("")}</div>` : ""}
     </div>`;
+  const variantRow = (v) => `<div class="dvar">
+      <input class="dvfor" list="variantTargets" value="${esc(v.for)}" placeholder="for: name, Android, Humans…" aria-label="Variant for">
+      <textarea class="dvtext" rows="${Math.min(8, Math.max(1, v.text.split("\n").length))}" aria-label="Their version">${esc(v.text)}</textarea>
+      <button data-act="delVar" class="ghost" title="Remove variant">✕</button></div>`;
   const hasCast = (voiceId) => !!S.config.voices.find((v) => v.id === voiceId)?.characters?.length;
   // Name suggestions for each voice's speaker box.
   function renderCastLists() {
-    $("castLists").innerHTML = S.config.voices.map((v) =>
+    // Who a variant can be for: each crew member, their classes, and Humans.
+    const targets = [...S.config.crew.map((c) => c.name), ...new Set(S.config.crew.map((c) => c.className)), "Humans"];
+    $("castLists").innerHTML = `<datalist id="variantTargets">${targets.map((t) => `<option value="${esc(t)}">`).join("")}</datalist>` + S.config.voices.map((v) =>
       `<datalist id="chars-${esc(v.id)}">${(v.characters || []).map((c) => `<option value="${esc(c.name)}">`).join("")}</datalist>`).join("");
   }
   const steerRow = () => `<input id="steer" placeholder="Steer the rewrite: e.g. 'more evasive', 'deny the door is open', 'glitch mid-sentence'">`;
@@ -825,9 +838,11 @@
       lines: [...card.querySelectorAll(".dline")]
         .map((row) => {
           const fx = JSON.parse(row.dataset.effects || "[]").filter((_, i) => row.querySelector(`[data-leff="${i}"]`)?.checked);
-          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), text: row.querySelector("textarea").value, effects: fx };
+          const variants = [...row.querySelectorAll(".dvar")].map((d) => ({ for: d.querySelector(".dvfor").value.trim(), text: d.querySelector(".dvtext").value }))
+            .filter((v) => v.for && v.text.trim());
+          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), text: row.querySelector(".dwho + textarea").value, effects: fx, variants };
         })
-        .filter((l) => l.text.trim() || l.effects.length), // effect-only beats count
+        .filter((l) => l.text.trim() || l.effects.length || l.variants.length), // effect-only beats count
       station_changes: r.station_changes.filter((_, i) => card.querySelector(`[data-chg="${i}"]`)?.checked),
       effects: r.effects.filter((_, i) => card.querySelector(`[data-eff="${i}"]`)?.checked),
     };
@@ -838,6 +853,8 @@
     if (act === "approve") approve();
     else if (act === "addLine") $("draftLines").insertAdjacentHTML("beforeend", draftLine({ voice: "terminal", text: "" }));
     else if (act === "delLine") e.target.closest(".dline").remove();
+    else if (act === "addVar") { e.target.insertAdjacentHTML("beforebegin", variantRow({ for: "", text: "" })); e.target.previousElementSibling.querySelector("input").focus(); }
+    else if (act === "delVar") e.target.closest(".dvar").remove();
     else if (act === "discard") send({ t: "discard" });
     else if (act === "regen") send({ t: "generate", steer: $("steer")?.value || "" });
   });

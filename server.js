@@ -218,7 +218,9 @@ router.get("/api/sessions/:code/tts/:id", async (req, res) => {
   if (!s || !s.state.config.tts || !entry || entry.hidden || !SPOKEN_KINDS.has(entry.kind)) return res.status(404).end();
   try {
     // ?part=N: just that text line (human voices are fetched line by line so speech starts sooner).
-    const text = req.query.part === undefined ? entry.text : speechParts(entry.text)[Number(req.query.part)];
+    // ?v=N: the per-player variant this screen shows instead of the main text.
+    const whole = req.query.v === undefined ? entry.text : entry.variants?.[Number(req.query.v)]?.text;
+    const text = whole === undefined ? undefined : req.query.part === undefined ? whole : speechParts(whole)[Number(req.query.part)];
     if (text === undefined) return res.status(404).end();
     const wav = await synthesize(text, speakingVoice(s.state.config.voices, entry));
     if (!wav) return res.status(204).end();

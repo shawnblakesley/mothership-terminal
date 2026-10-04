@@ -129,6 +129,24 @@ export function sanitizeCrew(list) {
   return out;
 }
 
+// Which crew a variant is for: a class ("Android", "androids"), "Humans" (everyone
+// but androids), or a character
+// by id, name, nickname or any part of their name. Returns crew ids.
+export function crewTargets(target, crew) {
+  const t = String(target || "").trim().toLowerCase().replace(/^the\s+/, "");
+  if (!t) return [];
+  if (t === "human" || t === "humans") return crew.filter((c) => c.className !== "Android").map((c) => c.id);
+  const cls = CLASSES.find((k) => t === k.toLowerCase() || t === `${k.toLowerCase()}s`);
+  if (cls) return crew.filter((c) => c.className === cls).map((c) => c.id);
+  const words = (s) => s.toLowerCase().replace(/["'“”‘’()]/g, " ").split(/\s+/).filter((w) => w.length > 1);
+  return crew.filter((c) => c.id === t || c.name.toLowerCase() === t || words(c.name).some((w) => words(t).includes(w))).map((c) => c.id);
+}
+
+// Resolve a line's variants against the crew: [{ for, to: [ids], text }], targets that match nobody dropped.
+export function resolveVariants(list, crew) {
+  return (list || []).map((v) => ({ for: v.for, to: crewTargets(v.for, crew), text: v.text })).filter((v) => v.to.length);
+}
+
 // One line per character for the agent.
 export function crewBrief(crew) {
   return crew.map((c) => `- ${c.name} (${c.pronouns || "?"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.join(", ") || "none"}. Carrying: ${c.loadout}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");

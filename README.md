@@ -66,12 +66,19 @@ A rimward ice-mining platform where the drill team broke into a "pressurised voi
 
 ## Player characters
 
-Up to four **crew files** per session. When a player joins, their screen asks which one is theirs (number keys or click; or "just watching"). The device remembers the choice. **FILE** in the header opens the character sheet: conviction, backstory, stats, saves, health, wounds, stress, skills, loadout, trinket and patch.
+Up to four **crew files** per session. When a player joins, their screen asks which one is theirs (number keys or click; or "just watching"). The device remembers the choice. On wide screens their character sits in a sidebar beside the terminal (stats, saves, health, wounds and stress bars, skills, loadout, trinket), updating live; **FILE** in the header hides or shows it, and **FULL FILE** opens the whole sheet with conviction and backstory. On narrow screens **FILE** opens the full sheet.
 
 - When the Warden calls for a roll, the player's Stat or Save is filled in from their file.
 - A failed roll adds 1 Stress to that character.
 - What a player types is tagged with their character (`[PLAYER · Rook]`), and the agent knows every character's background, so it can answer them personally.
 - The Warden sees and edits every sheet under **Crew** in the console, with who is playing each one.
+
+### Different messages for different players
+
+Each player reads their own screen as their own character, so one line can say different things to each of them. The agent does this when it fits: the thing in the system tells the Android it is just a cold machine, while the humans hear that they are warm and full of blood; a voice uses one player's real name; someone hears a private warning the others don't. You can ask for it too ("Marla alone hears him say her brother's name").
+
+- A line has its main text plus **variants**, each for a crew member (by name), a class (Android, Marine, Scientist, Teamster) or **Humans** (everyone but androids). Each screen shows, and speaks, the version for its character; everyone else sees the main text. A line can be for certain players only.
+- Your log shows every version under the line ("↳ MARLA VOCEK"). In Review mode you can edit, add (**+ Variant for a player**) or remove variants before sending.
 
 ## Story builder
 

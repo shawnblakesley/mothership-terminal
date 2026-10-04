@@ -119,9 +119,16 @@
   function speak(entry) {
     if (muted || volume === 0) return null; // muted terminals don't wait on silent audio
     const v = voiceOf(entry);
-    const url = `api/sessions/${code}/tts/${entry.id}`;
+    // ?v=N: this screen's own variant of the line; ?part=N: one text line of it.
+    const url = (part) => {
+      const q = new URLSearchParams();
+      if (entry.vi >= 0) q.set("v", entry.vi);
+      if (part !== undefined) q.set("part", part);
+      const qs = q.toString();
+      return `api/sessions/${code}/tts/${entry.id}${qs ? `?${qs}` : ""}`;
+    };
     if (!v?.chunked) {
-      const handle = Voice.say(url, v?.fx);
+      const handle = Voice.say(url(), v?.fx);
       return handle && [{ text: entry.text, handle }];
     }
     // One clip per non-empty text line; blank lines ride along with the next one.
@@ -129,7 +136,7 @@
     let pending = "";
     for (const row of entry.text.split("\n")) {
       if (!row.trim()) { pending += `${row}\n`; continue; }
-      const handle = Voice.say(`${url}?part=${pieces.length}`, v.fx);
+      const handle = Voice.say(url(pieces.length), v.fx);
       if (!handle) return null;
       pieces.push({ text: pending + row, handle });
       pending = "";
@@ -165,14 +172,32 @@
     return div;
   }
 
-  function renderInstant(entry) {
+  // Lines can read differently per character (variants): this screen shows the
+  // one for its crew file, if any. Null when the line isn't for this screen at all.
+  function forMe(entry) {
+    const vi = (entry.variants || []).findIndex((v) => myId && v.to.includes(myId));
+    if (vi >= 0) return { ...entry, text: entry.variants[vi].text, vi };
+    return entry.text || entry.kind === "player" ? entry : null;
+  }
+
+  function renderInstant(raw) {
+    const entry = forMe(raw);
+    if (!entry) return;
     const div = makeLine(entry);
     div.textContent = entry.text;
     div.classList.add("done");
     linesEl.append(div);
   }
 
-  function enqueue(entry) {
+  function enqueue(raw) {
+    const entry = forMe(raw);
+    if (!entry) {
+      // Not for this screen: nothing shows, but it keeps its place so its effects fire in order.
+      cueState.set(raw.id, "queued");
+      typingQueue.push({ ...raw, silent: true });
+      if (!typing) typeNext();
+      return;
+    }
     if (entry.kind === "player") {
       renderInstant(entry);
       scrollDown();
@@ -249,6 +274,14 @@
     if (!entry) { typing = false; updateBusy(); return; }
     typing = true;
     updateBusy();
+    if (entry.silent) {
+      cueState.set(entry.id, "showing");
+      const pause = releaseCues(entry.id, "before");
+      if (pause) await new Promise((r) => setTimeout(r, pause * 1000));
+      cueState.set(entry.id, "done");
+      releaseCues(entry.id, "after");
+      return setTimeout(typeNext, 0);
+    }
     const div = makeLine(entry);
     div.classList.add("typing");
     linesEl.append(div);

@@ -7,7 +7,7 @@ import { speechParts, speakingVoice, castCharacter, findCharacter } from "./voic
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
-import { DEFAULT_CREW, sanitizeCrew } from "./crew.js";
+import { DEFAULT_CREW, sanitizeCrew, resolveVariants } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
@@ -631,7 +631,9 @@ export class Session {
     for (const l of lines) {
       const base = speakingVoice(this.state.config.voices, l);
       if (base.engine !== "neural") continue; // synthetic voices are instant anyway
-      for (const part of speechParts(l.text)) synthesize(part, base).catch(() => {});
+      for (const text of [l.text, ...(l.variants || []).map((v) => v.text)]) {
+        for (const part of speechParts(text)) synthesize(part, base).catch(() => {});
+      }
     }
   }
 
@@ -789,7 +791,7 @@ export class Session {
     }
     const voices = this.state.config.voices;
     const lines = splitVoiceTags(
-      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), text: String(l.text ?? "").slice(0, 8000), effects: l.effects })),
+      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), text: String(l.text ?? "").slice(0, 8000), effects: l.effects, variants: l.variants })),
       voices,
     );
     const useEffects = this.state.config.agentEffects;
@@ -803,16 +805,18 @@ export class Session {
     let waiting = [];
     let lastEntry = null;
     this.castCharacters(lines);
-    for (const { voice, character, text, effects: lineFx } of lines) {
+    for (const { voice, character, text, effects: lineFx, variants: rawVariants } of lines) {
+      // Per-player versions of this line, for the crew they name.
+      const variants = resolveVariants(rawVariants, this.state.config.crew);
       // Effects from an effect-only beat are marked hold: the next line waits for them.
       const cues = useEffects ? [...waiting, ...normalizeEffects(lineFx)] : [];
-      if (!text) { waiting = cues.map((c) => ({ ...c, hold: true })); continue; }
+      if (!text && !variants.length) { waiting = cues.map((c) => ({ ...c, hold: true })); continue; }
       // A blackout hides the screen and silences voices, so it always plays as a
       // beat: the dialogue pauses for it, then this line appears once it's over.
       for (const c of cues) if (c.type === "blackout") c.hold = true;
       waiting = [];
       const kind = kindOf(voice);
-      const entry = this.addLog(kind, text, { source, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...meta, ...(cues.length ? { cues } : {}) });
+      const entry = this.addLog(kind, text, { source, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
       lastEntry = entry;
       for (const c of cues) this.startEffect(c, "agent", { atEntry: entry.id, when: "before", hold: c.hold });

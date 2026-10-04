@@ -41,20 +41,20 @@ export function resolveVoice(ref, voices) {
 // right voice, keeping the order.
 export function splitVoiceTags(lines, voices) {
   const out = [];
-  for (const { voice, character = "", text, effects } of lines) {
-    // A line's effects fire as it begins, so they stay with its first piece.
-    let current = { voice, character, text: [], effects: normalizeEffects(effects) };
+  for (const { voice, character = "", text, effects, variants } of lines) {
+    // A line's effects and per-player variants stay with its first piece.
+    let current = { voice, character, text: [], effects: normalizeEffects(effects), variants: normalizeVariants(variants) };
     out.push(current);
     let tagged = false;
     for (const row of String(text).split("\n")) {
       const m = row.match(/^\s*\[\s*([^\]]{1,40}?)\s*\]\s*:?\s*(.*)$/);
       const tagVoice = m && resolveVoice(m[1], voices);
       if (tagVoice) {
-        current = { voice: tagVoice, character: "", text: m[2] ? [m[2]] : [], effects: [] };
+        current = { voice: tagVoice, character: "", text: m[2] ? [m[2]] : [], effects: [], variants: [] };
         out.push(current);
         tagged = true;
       } else if (tagged && !row.trim()) {
-        current = { voice, character, text: [], effects: [] }; // a blank line ends a tagged paragraph
+        current = { voice, character, text: [], effects: [], variants: [] }; // a blank line ends a tagged paragraph
         out.push(current);
         tagged = false;
       } else {
@@ -64,8 +64,8 @@ export function splitVoiceTags(lines, voices) {
   }
   return mergeAdjacent(
     out
-      .map((l) => ({ voice: l.voice, character: l.character, text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim(), effects: l.effects }))
-      .filter((l) => l.text || l.effects.length), // effect-only beats are kept
+      .map((l) => ({ voice: l.voice, character: l.character, text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim(), effects: l.effects, variants: l.variants }))
+      .filter((l) => l.text || l.effects.length || l.variants.length), // effect-only beats are kept
   );
 }
 
@@ -79,10 +79,19 @@ function mergeAdjacent(lines) {
   const out = [];
   for (const l of lines) {
     const last = out.at(-1);
-    if (last && last.voice === l.voice && last.character === l.character && last.text && l.text && !l.effects.length) last.text += `\n${l.text}`;
-    else out.push({ ...l, effects: [...l.effects] });
+    // (Lines with per-player variants stay separate: each variant replaces its own line.)
+    if (last && last.voice === l.voice && last.character === l.character && last.text && l.text && !l.effects.length && !l.variants.length && !last.variants.length) last.text += `\n${l.text}`;
+    else out.push({ ...l, effects: [...l.effects], variants: [...l.variants] });
   }
   return out;
+}
+
+// Per-player variants of a line: [{ for: "MOLL-7" | "Android", text }].
+export function normalizeVariants(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter((v) => v && String(v.for ?? "").trim() && typeof v.text === "string")
+    .slice(0, 8)
+    .map((v) => ({ for: String(v.for).trim().slice(0, 60), text: String(v.text).slice(0, 8000).trim() }));
 }
 
 export function normalizeEffects(list) {
@@ -104,7 +113,7 @@ function buildSchema(voices) {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["voice", "character", "text", "effects"],
+          required: ["voice", "character", "text", "effects", "variants"],
           properties: {
             voice: { type: "string", enum: voices.map((v) => v.id) },
             character: { type: "string", description: "For a voice several people speak through (e.g. the intercom): who is speaking this line, by name, from that voice's CHARACTERS. Someone new: their name plus (f) or (m), e.g. \"Marlowe (f)\". Empty for other voices." },
@@ -113,6 +122,19 @@ function buildSchema(voices) {
               type: "array",
               description: "Screen effects that fire the moment THIS line begins: after the previous line has finished appearing and being spoken. Use them to punctuate dialogue. Usually empty.",
               items: effectSchema(),
+            },
+            variants: {
+              type: "array",
+              description: "Per-player versions of this line (see PER-PLAYER VARIATIONS). Each replaces the text on the screens of the crew it's for. Usually empty.",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["for", "text"],
+                properties: {
+                  for: { type: "string", description: "A crew member's name, a class (Android, Marine, Scientist, Teamster) for everyone of that class, or Humans." },
+                  text: { type: "string", description: "What THEIR screen shows (and speaks) instead of the line's text." },
+                },
+              },
             },
           },
         },
@@ -168,8 +190,9 @@ const NO_CHECK = { needed: false, attempt: "", suggested_check: "none", advantag
 // Shown to models without enforced schemas (DeepSeek) so they copy the shape.
 const REPLY_EXAMPLE = {
   lines: [
-    { voice: "intercom", character: "Dr. Imre Salk", text: "Don't open that door.\nPlease.", effects: [] },
-    { voice: "broadcast", character: "", text: "Attention. Deck 3 is now under quarantine.", effects: [{ type: "redalert", text: "QUARANTINE", seconds: 8 }] },
+    { voice: "intercom", character: "Dr. Imre Salk", text: "Don't open that door.\nPlease.", effects: [], variants: [] },
+    { voice: "unknown", character: "", text: "you are so warm. so full.", effects: [{ type: "static", text: "", seconds: 2 }], variants: [{ for: "Android", text: "you are cold. like me. we could be cold together." }] },
+    { voice: "broadcast", character: "", text: "Attention. Deck 3 is now under quarantine.", effects: [{ type: "redalert", text: "QUARANTINE", seconds: 8 }], variants: [] },
   ],
   station_changes: [{ path: "quarantine", value: "DECK 3" }],
   effects: [],
@@ -221,6 +244,11 @@ CHARACTERS
 - Some voices are shared by several people (e.g. the intercom), listed under that voice's CHARACTERS, each with their own voice. Set "character" on every line of such a voice to who is speaking. Switch freely between characters, line by line, to stage conversations.
 - You may bring in someone not listed (a crew member the lore allows): give their name with (f) or (m) the first time, e.g. "Marlowe (f)", and they get a voice of their own. Keep using the same name afterwards.
 - Never put the speaker's name in the text itself; the screen shows it.
+
+PER-PLAYER VARIATIONS
+- Each player reads their own screen as their own character, so a line can say something different to each of them. Put the version most players see in "text", and add "variants" for the ones who should see something else: "for" is a crew member's name, a class (Android, Marine, Scientist, Teamster) for all of that class, or "Humans" for everyone who isn't an android.
+- Use it when it makes the moment personal or unsettling: the thing in the system tells the Android it's just a cold machine while telling the humans they're warm and full of blood; a voice uses one player's real name or their crime; someone hears a private warning the others don't.
+- "text" may be empty if the line is only for certain players (everyone else sees nothing). Use variations sparingly; most lines need none.
 - outcome_check: see RULE OF COOL. needed=false whenever nothing uncertain is left for the Warden.
 
 SCREEN EFFECTS (you can trigger these yourself)
@@ -308,7 +336,7 @@ function buildMessages(state) {
       last.notes.push(e.text);
       last.changes.push(...(e.changes || []));
     } else {
-      last.lines.push({ voice: voiceIdOf(e), character: e.character || "", text: e.text, effects: e.cues || [] });
+      last.lines.push({ voice: voiceIdOf(e), character: e.character || "", text: e.text, effects: e.cues || [], variants: (e.variants || []).map((v) => ({ for: v.for, text: v.text })) });
       last.changes.push(...(e.changes || []));
       last.effects.push(...(e.effects || []));
     }
@@ -387,7 +415,7 @@ export function parseReply(text, voices) {
   }
   return {
     lines: splitVoiceTags(
-      raw.filter((l) => l && typeof l === "object").map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: scrub(l.character).trim().slice(0, 60), text: scrub(l.text), effects: normalizeEffects(l.effects) })),
+      raw.filter((l) => l && typeof l === "object").map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: scrub(l.character).trim().slice(0, 60), text: scrub(l.text), effects: normalizeEffects(l.effects), variants: normalizeVariants(l.variants).map((v) => ({ ...v, text: scrub(v.text) })) })),
       voices,
     ),
     station_changes: (Array.isArray(r?.station_changes) ? r.station_changes : [])
