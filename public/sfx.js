@@ -92,24 +92,5 @@
       for (const p of list) if (!wanted.has(p.pid)) wanted.set(p.pid, p);
       sync();
     },
-    // Warden console: listen to a sound locally (its own audio, not the players').
-    preview: (() => {
-      let ctx = null, cur = null;
-      return async (url, volume = 0.8) => {
-        ctx ??= new (window.AudioContext || window.webkitAudioContext)();
-        await ctx.resume();
-        try { cur?.stop(); } catch {}
-        const buf = await fetch(url).then((r) => r.arrayBuffer()).then((b) => ctx.decodeAudioData(b)).catch(() => null);
-        if (!buf) return null;
-        const src = ctx.createBufferSource();
-        const g = ctx.createGain();
-        g.gain.value = volume;
-        src.buffer = buf;
-        src.connect(g).connect(ctx.destination);
-        src.start();
-        cur = src;
-        return { duration: buf.duration, stop: () => { try { src.stop(); } catch {} } };
-      };
-    })(),
   };
 })();

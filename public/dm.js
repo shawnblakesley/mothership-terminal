@@ -796,6 +796,29 @@
   const soundUrl = (id) => `api/sessions/${code}/sounds/${id}`;
   let soundsKey = "";
 
+  // A volume slider with a percent box beside it, for fine control; the two stay in step.
+  const volumeControl = (cls, volume, title) => {
+    const pct = Math.round(volume * 100);
+    return `<span class="volctl" title="${title}">
+      <input class="${cls}" type="range" min="0" max="1" step="0.01" value="${volume}" aria-label="${title}">
+      <input class="volpct" type="number" min="0" max="100" step="1" value="${pct}" aria-label="${title}, percent"><span class="muted">%</span>
+    </span>`;
+  };
+  // Typing a percent moves the slider (and the other way round). Returns the volume, 0-1.
+  function syncVolume(target) {
+    const ctl = target.closest(".volctl");
+    const slider = ctl.querySelector('input[type="range"]'), pct = ctl.querySelector(".volpct");
+    if (target === pct) {
+      if (pct.value === "") return null; // (still typing)
+      const v = Math.max(0, Math.min(100, Math.round(Number(pct.value) || 0)));
+      pct.value = v;
+      slider.value = v / 100;
+      return v / 100;
+    }
+    pct.value = Math.round(Number(slider.value) * 100);
+    return Number(slider.value);
+  }
+
   function renderSounds() {
     // Don't redraw the library under the Warden's fingers (renaming, dragging a slider).
     const list = $("soundList");
@@ -805,8 +828,7 @@
       list.innerHTML = S.sounds.length
         ? S.sounds.map((s) => `<li data-id="${s.id}">
             <input class="sname" value="${esc(s.name)}" aria-label="Sound name" title="Rename">
-            <input class="svol" type="range" min="0" max="1" step="0.05" value="${s.volume}" aria-label="Volume" title="Volume">
-            <button class="ghost" data-sact="preview" title="Listen here (players don't hear it)">👂</button>
+            ${volumeControl("svol", s.volume, "Volume")}
             <button data-sact="play" title="Play once on the players' screens">▶ Once</button>
             <button data-sact="loop" title="Loop on the players' screens until stopped (ambience, a growl…)">🔁 Loop</button>
             <button class="ghost" data-sact="del" title="Delete this sound">✕</button>
@@ -819,7 +841,7 @@
       pl.innerHTML = playing.length
         ? playing.map((p) => `<li data-pid="${p.pid}"><span>${p.loop ? "🔁" : "▶"}</span>
             <span class="grow">${esc(p.name)}${p.loop ? "" : " · once"}</span>
-            ${p.loop ? `<input class="pvol" type="range" min="0" max="1" step="0.05" value="${p.volume}" aria-label="Volume" title="Volume (live)">` : ""}
+            ${p.loop ? volumeControl("pvol", p.volume, "Volume (live)") : ""}
             <button data-stop="${p.pid}">Stop</button></li>`).join("")
         : `<li class="none">Silence</li>`;
     }
@@ -874,7 +896,6 @@
     if (!s) return;
     const volume = Number(li.querySelector(".svol").value);
     if (act === "play" || act === "loop") send({ t: "soundPlay", id: s.id, loop: act === "loop", volume });
-    else if (act === "preview") { if (!(await Sfx.preview(soundUrl(s.id), volume))) toast("Couldn't play that file in this browser.", "error"); }
     else if (act === "del" && await sure(`Delete "${s.name}"?`, "The sound file is removed from this session (and stops if it's playing).", "Delete")) {
       const r = await fetch(soundUrl(s.id), { method: "DELETE", headers: { "X-Warden-Token": key } });
       if (!r.ok && r.status !== 404) toast("Couldn't delete that sound.", "error");
@@ -884,19 +905,27 @@
     const li = e.target.closest("li[data-id]");
     if (!li) return;
     if (e.target.classList.contains("sname")) send({ t: "soundEdit", id: li.dataset.id, name: e.target.value });
-    if (e.target.classList.contains("svol")) send({ t: "soundEdit", id: li.dataset.id, volume: Number(e.target.value) });
+    if (e.target.closest(".volctl")) {
+      const volume = syncVolume(e.target);
+      if (volume !== null) send({ t: "soundEdit", id: li.dataset.id, volume });
+    }
     e.target.blur();
   });
-  $("soundList").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList.contains("sname")) e.target.blur(); });
+  // Dragging the slider shows its percent as it moves; the volume is saved on release.
+  $("soundList").addEventListener("input", (e) => { if (e.target.classList.contains("svol")) syncVolume(e.target); });
+  $("soundList").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.target.classList.contains("sname") || e.target.classList.contains("volpct"))) e.target.blur(); });
   $("soundPlaying").addEventListener("click", (e) => {
     const pid = e.target.closest("[data-stop]")?.dataset.stop;
     if (pid) send({ t: "soundStop", pid });
   });
   $("soundPlaying").addEventListener("input", (e) => {
     const li = e.target.closest("li[data-pid]");
-    if (li && e.target.classList.contains("pvol")) send({ t: "soundVolume", pid: li.dataset.pid, volume: Number(e.target.value) });
+    if (!li || !e.target.closest(".volctl")) return;
+    const volume = syncVolume(e.target); // (live: the players hear it change)
+    if (volume !== null) send({ t: "soundVolume", pid: li.dataset.pid, volume });
   });
   $("soundPlaying").addEventListener("change", (e) => e.target.blur());
+  $("soundPlaying").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList.contains("volpct")) e.target.blur(); });
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
   // On/off features in the Settings window (config keys of the same name).

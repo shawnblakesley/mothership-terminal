@@ -226,8 +226,7 @@ Upload your own audio in **Sounds** (under **Actions**): monster growls, attacks
 
 - **▶ Once** plays a sound on every player screen (an attack, a bang on the hull).
 - **🔁 Loop** keeps it going until you stop it (a low growl, reactor hum, dripping). Loops fade in and out, and you can change a loop's volume live under **Playing**.
-- **👂** lets you hear a sound yourself without the players hearing it.
-- Each sound has its own name and volume, saved with the session. Restart story stops everything; the library stays (even through Factory reset).
+- Each sound has its own name and volume, saved with the session. Set the volume with the slider, or type an exact percent in the box beside it. Restart story stops everything; the library stays (even through Factory reset).
 
 Sounds play through the players' VOL control. Players who join or reload mid-scene pick up any running loops once they press a key. Files are kept under `data/sounds/<CODE>/` and deleted with their session.
 

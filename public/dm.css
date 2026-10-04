@@ -235,7 +235,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .drop { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 10px; background: var(--panel); transition: border-color 0.15s, background 0.15s; }
 .drop.over { border-color: var(--accent-soft); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
 .soundlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.soundlist li { display: grid; grid-template-columns: 1fr 70px auto auto auto auto; gap: 4px; align-items: center; background: var(--panel2); border-radius: 6px; padding: 4px 4px 4px 6px; }
+.soundlist li { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 4px; align-items: center; background: var(--panel2); border-radius: 6px; padding: 4px 4px 4px 6px; }
 .soundlist li.none { display: block; background: transparent; color: var(--muted); font-style: italic; padding-left: 2px; }
 .soundlist .sname { background: transparent; border-color: transparent; padding: 4px 6px; min-width: 0; }
 .soundlist .sname:hover { border-color: var(--line); }
@@ -243,6 +243,9 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .soundlist button { padding: 4px 8px; font-size: 12.5px; }
 .soundlist input[type="range"], .fxlist input[type="range"] { padding: 0; border: 0; background: transparent; accent-color: var(--accent-soft); box-shadow: none; }
 .fxlist .pvol { width: 80px; }
+.volctl { display: inline-flex; align-items: center; gap: 4px; }
+.volctl input[type="range"] { width: 80px; }
+.volctl .volpct { width: 52px; padding: 3px 4px; text-align: right; font-size: 12.5px; }
 
 /* ---- characters & private notes ---- */
 :root { --aside: #5fd3c6; }
