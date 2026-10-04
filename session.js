@@ -399,7 +399,7 @@ export class Session {
   // The line goes out once each version's first piece is ready; later pieces
   // follow as "part" messages, then "lineEnd".
   async scheduleLine(entry) {
-    const LEAD = 1200, PIECE_GAP = 250, LINE_GAP = 150; // LEAD: time for every screen to load the first clip
+    const LEAD = 700, PIECE_GAP = 250, LINE_GAP = 150; // LEAD: time for every screen to decode the first clip
     const c = this.state.config;
     const spoken = c.tts && SPOKEN_KINDS.has(entry.kind);
     const voice = SPOKEN_KINDS.has(entry.kind) ? voiceFor(c.voices, entry) : null;
@@ -409,6 +409,10 @@ export class Session {
     const texts = [entry.text, ...(entry.variants || []).map((v) => v.text)];
     const pieces = texts.map((t) => (!t ? [] : chunked ? speechParts(t) : [t]));
     const jobs = pieces.map((ps) => ps.map((p) => (spoken ? synthesize(p, base).catch(() => null) : Promise.resolve(null))));
+    // The audio itself goes out with the line (and its later pieces): every
+    // screen gets the same clip at the same moment, nothing to fetch.
+    const wavs = texts.map(() => []);
+    const withAudio = () => ({ ...entry, timing: { ...entry.timing, versions: entry.timing.versions.map((ps, v) => ps.map((p) => ({ ...p, wav: wavs[v][p.i] }))) } });
     // A beat (e.g. a blackout) holds the line back for its length, plus a moment so the lights are surely back.
     const beat = Math.max(0, ...(entry.cues || []).filter((x) => x.hold).map((x) => Math.min(10, x.seconds || 3) * 1000));
     const hold = beat ? beat + 400 : 0;
@@ -423,19 +427,20 @@ export class Session {
       for (let v = 0; v < texts.length; v++) {
         if (i >= pieces[v].length) continue;
         const wav = await jobs[v][i];
+        if (wav) wavs[v][i] = wav.toString("base64");
         // Unspoken text gets reading time instead.
         const dur = wav ? Math.round((wavSeconds(wav) / rate) * 1000) : Math.min(6000, 400 + pieces[v][i].length * 18);
         const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!wav, last: i === pieces[v].length - 1 };
         cursors[v] = part.at + dur + PIECE_GAP;
         timing.versions[v].push(part);
-        if (sent && live()) this.toPlayers({ t: "part", id: entry.id, v, part });
+        if (sent && live()) this.toPlayers({ t: "part", id: entry.id, v, part: { ...part, wav: wavs[v][i] } });
       }
       if (!sent) {
         sent = true;
         if (entry.cut) break;
         entry.timing = timing;
         delete entry.queued;
-        if (live()) this.toPlayers({ t: "line", entry });
+        if (live()) this.toPlayers({ t: "line", entry: withAudio() });
       }
     }
     if (!sent && !entry.cut) { // nothing to show anyone (shouldn't happen): keep the order, move on

@@ -104,7 +104,7 @@ Each player's screen is a physical terminal somewhere on the station, or a porta
 
 ## All screens in step
 
-Every player hears a line at the same moment. The server makes each voice clip once, measures it, and puts every line and spoken sentence on one timeline; each screen syncs its clock with the server and plays to that schedule (a screen that's a little late starts the clip part-way in). Beats such as a blackout are part of the schedule, and a player who reloads mid-speech rejoins in step.
+Every player hears a line at the same moment. The server makes each voice clip once, measures it, puts every line and spoken sentence on one timeline, and sends the audio itself with the line to every screen (nothing to download). Each screen syncs its clock with the server and plays to that schedule. Clips always play in full: a screen that's a moment behind starts a clip a moment late rather than skipping its beginning, and never talks over its previous clip. Beats such as a blackout are part of the schedule, and a player who reloads mid-speech rejoins in step.
 
 ## Check first, then answer
 

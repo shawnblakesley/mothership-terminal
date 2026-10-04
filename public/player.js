@@ -230,8 +230,10 @@
   }
 
   function schedulePart(play, part) {
-    // Fetch the clip ahead so it's ready on time (the server has already made it).
-    const audio = part.audio && canHear() ? Voice.load(clipUrl(play.entry, part.i)) : null;
+    // The clip came with the message (or, for a line already under way when this
+    // screen joined, fetch it); decode it now so it's ready on time.
+    const audio = !part.audio || !canHear() ? null : part.wav ? Voice.decode(part.wav) : Voice.load(clipUrl(play.entry, part.i));
+    delete part.wav; // (don't keep the audio around in the timeline)
     setTimeout(() => playPart(play, part, audio), untilServer(part.at));
   }
 
@@ -245,7 +247,8 @@
     }
     const text = (part.i ? "\n" : "") + (play.pieces[part.i] ?? "");
     const late = serverNow() - part.at;
-    if (audio) audio.then((buf) => play.gen === lineGen && Voice.playNow(buf, voiceOf(play.entry)?.fx, serverNow() - part.at));
+    // The whole clip always plays: a screen that's a moment late starts it a moment late.
+    if (audio) audio.then((buf) => play.gen === lineGen && !play.cut && Voice.playNow(buf, voiceOf(play.entry)?.fx));
     // Type it out within the piece's time (all at once if this screen is late).
     if (late > part.dur * 0.6) { play.div.textContent += text; scrollDown(); }
     else typeInto(play.div, text, part.dur - Math.max(0, late));

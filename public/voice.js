@@ -231,24 +231,39 @@
       .then((buf) => (buf ? ctx().decodeAudioData(buf) : null))
       .catch(() => null);
   }
-  function playNow(buffer, fx = {}, lateMs = 0) {
+  // A clip sent inline (base64 WAV) with the line.
+  function decode(b64) {
+    try {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return ctx().decodeAudioData(bytes.buffer).catch(() => null);
+    } catch {
+      return Promise.resolve(null);
+    }
+  }
+
+  // Play a whole clip now, or right after the clip before it if that one is
+  // still going (a screen that started a clip late never talks over itself).
+  let busyUntil = 0; // audio-clock time the last clip ends
+  function playNow(buffer, fx = {}) {
     if (!buffer || !ready() || blocked()) return;
     const c = ctx();
     const rate = fx.rate || 1;
-    const offset = Math.max(0, (lateMs / 1000) * rate);
-    if (offset >= buffer.duration - 0.05) return; // missed it entirely
+    const when = Math.max(c.currentTime, busyUntil);
+    busyUntil = when + buffer.duration / rate;
     const src = c.createBufferSource();
     src.buffer = buffer;
-    const sources = chain(c, src, getMaster(), fx, buffer.duration - offset);
+    const sources = chain(c, src, getMaster(), fx, buffer.duration);
     live.add(src);
     src.onended = () => {
       live.delete(src);
-      setTimeout(() => sources.forEach((s) => { try { s.stop(); } catch {} }), 6000); // let tails ring out
+      setTimeout(() => sources.forEach((x) => { try { x.stop(); } catch {} }), 6000); // let tails ring out
     };
-    sources.forEach((s) => s.start());
-    src.start(0, offset);
+    sources.forEach((x) => x.start(when));
+    src.start(when);
   }
-  const cutLive = () => { for (const s of live) { try { s.stop(); } catch {} } live.clear(); };
+  const cutLive = () => { for (const x of live) { try { x.stop(); } catch {} } live.clear(); busyUntil = 0; };
 
   function stop() {
     gen++;
@@ -271,6 +286,7 @@
     // in the reply still speak, e.g. after a blackout beat ends).
     interrupt() { cutCurrent(); cutLive(); },
     load,
+    decode,
     playNow,
     // e.g. Voice.setBlocked(() => FX.has("blackout")): nothing speaks while it's true.
     setBlocked(fn) { blocked = fn; },
