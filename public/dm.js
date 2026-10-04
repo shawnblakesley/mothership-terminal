@@ -259,6 +259,7 @@
     renderVoices();
     renderOutcome();
     renderRoll();
+    renderSounds();
   }
 
   function fillSelect(sel, options, value) {
@@ -390,6 +391,113 @@
           <button data-endfx="${f.id}">End</button></li>`).join("")
       : `<li class="none">None</li>`;
   }
+
+  // ------------------------------------------------------------ sounds
+  const soundUrl = (id) => `api/sessions/${code}/sounds/${id}`;
+  let soundsKey = "";
+
+  function renderSounds() {
+    // Don't redraw the library under the Warden's fingers (renaming, dragging a slider).
+    const list = $("soundList");
+    const key = JSON.stringify(S.sounds);
+    if (key !== soundsKey && !list.contains(document.activeElement)) {
+      soundsKey = key;
+      list.innerHTML = S.sounds.length
+        ? S.sounds.map((s) => `<li data-id="${s.id}">
+            <input class="sname" value="${esc(s.name)}" aria-label="Sound name" title="Rename">
+            <input class="svol" type="range" min="0" max="1" step="0.05" value="${s.volume}" aria-label="Volume" title="Volume">
+            <button class="ghost" data-sact="preview" title="Listen here (players don't hear it)">👂</button>
+            <button data-sact="play" title="Play once on the players' screens">▶ Once</button>
+            <button data-sact="loop" title="Loop on the players' screens until stopped (ambience, a growl…)">🔁 Loop</button>
+            <button class="ghost" data-sact="del" title="Delete this sound">✕</button>
+          </li>`).join("")
+        : `<li class="none">No sounds yet. Upload growls, attacks, ambience…</li>`;
+    }
+    const playing = S.playing || [];
+    const pl = $("soundPlaying");
+    if (!pl.contains(document.activeElement)) {
+      pl.innerHTML = playing.length
+        ? playing.map((p) => `<li data-pid="${p.pid}"><span>${p.loop ? "🔁" : "▶"}</span>
+            <span class="grow">${esc(p.name)}${p.loop ? "" : " · once"}</span>
+            ${p.loop ? `<input class="pvol" type="range" min="0" max="1" step="0.05" value="${p.volume}" aria-label="Volume" title="Volume (live)">` : ""}
+            <button data-stop="${p.pid}">Stop</button></li>`).join("")
+        : `<li class="none">Silence</li>`;
+    }
+  }
+
+  // How long a clip lasts (so a one-shot leaves the "Playing" list when it ends). 0 if unknown.
+  let measureCtx = null;
+  async function clipSeconds(file) {
+    try {
+      measureCtx ??= new (window.AudioContext || window.webkitAudioContext)();
+      return (await measureCtx.decodeAudioData(await file.arrayBuffer())).duration;
+    } catch {
+      return 0;
+    }
+  }
+
+  async function uploadSounds(files) {
+    for (const file of files) {
+      toast(`Uploading ${file.name}…`);
+      try {
+        const seconds = await clipSeconds(file);
+        const r = await fetch(`api/sessions/${code}/sounds?name=${encodeURIComponent(file.name)}&seconds=${seconds.toFixed(2)}`, {
+          method: "POST",
+          headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" },
+          body: file,
+        });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error || `Upload failed (${r.status}).`);
+        toast(`Added "${body.name}".`);
+      } catch (err) {
+        toast(`${file.name}: ${err.message}`, "error");
+      }
+    }
+  }
+
+  $("soundUpload").onclick = () => $("soundFile").click();
+  $("soundFile").onchange = (e) => { uploadSounds([...e.target.files]); e.target.value = ""; };
+  const drop = $("soundDrop");
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    drop.classList.remove("over");
+    uploadSounds([...e.dataTransfer.files]);
+  });
+
+  $("soundList").addEventListener("click", async (e) => {
+    const act = e.target.closest("[data-sact]")?.dataset.sact;
+    const li = e.target.closest("li[data-id]");
+    if (!act || !li) return;
+    const s = S.sounds.find((x) => x.id === li.dataset.id);
+    if (!s) return;
+    const volume = Number(li.querySelector(".svol").value);
+    if (act === "play" || act === "loop") send({ t: "soundPlay", id: s.id, loop: act === "loop", volume });
+    else if (act === "preview") { if (!(await Sfx.preview(soundUrl(s.id), volume))) toast("Couldn't play that file in this browser.", "error"); }
+    else if (act === "del" && await sure(`Delete "${s.name}"?`, "The sound file is removed from this session (and stops if it's playing).", "Delete")) {
+      const r = await fetch(soundUrl(s.id), { method: "DELETE", headers: { "X-Warden-Token": key } });
+      if (!r.ok && r.status !== 404) toast("Couldn't delete that sound.", "error");
+    }
+  });
+  $("soundList").addEventListener("change", (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (!li) return;
+    if (e.target.classList.contains("sname")) send({ t: "soundEdit", id: li.dataset.id, name: e.target.value });
+    if (e.target.classList.contains("svol")) send({ t: "soundEdit", id: li.dataset.id, volume: Number(e.target.value) });
+    e.target.blur();
+  });
+  $("soundList").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList.contains("sname")) e.target.blur(); });
+  $("soundPlaying").addEventListener("click", (e) => {
+    const pid = e.target.closest("[data-stop]")?.dataset.stop;
+    if (pid) send({ t: "soundStop", pid });
+  });
+  $("soundPlaying").addEventListener("input", (e) => {
+    const li = e.target.closest("li[data-pid]");
+    if (li && e.target.classList.contains("pvol")) send({ t: "soundVolume", pid: li.dataset.pid, volume: Number(e.target.value) });
+  });
+  $("soundPlaying").addEventListener("change", (e) => e.target.blur());
+  $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
   function renderConfig() {
     const c = S.config;

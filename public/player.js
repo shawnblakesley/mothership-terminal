@@ -465,6 +465,7 @@
 
   function connect() {
     if (!code) return;
+    Sfx.setUrl((id) => `api/sessions/${code}/sounds/${id}`);
     ws = new WebSocket(socketUrl());
     ws.onopen = () => $("hdr-link").classList.remove("down");
     ws.onclose = (ev) => {
@@ -493,6 +494,7 @@
           heldCues.clear();
           // Timed cues were played when they happened; don't replay them on reload.
           FX.sync(msg.effects.filter((e) => !(e.atEntry && e.seconds > 0)));
+          Sfx.sync(msg.playing || []); // loops (ambience, a growl) that are running
           busy = msg.busy;
           updateBusy();
           showRoll(msg.roll || null);
@@ -509,6 +511,9 @@
         case "rollResult": showRollResult(msg); break;
         case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); break;
         case "endEffect": dropCue(msg.id); FX.end(msg.id); break;
+        case "sound": Sfx.play(msg.play); break;
+        case "soundStop": msg.all ? Sfx.stopAll() : Sfx.stop(msg.pid); break;
+        case "soundVolume": Sfx.setVolume(msg.pid, msg.volume); break;
       }
     };
   }

@@ -10,6 +10,7 @@ import { synthesize, setCacheDir, warmNeural } from "./tts.js";
 import { sanitizeVoices, voiceFor, speechParts } from "./voices.js";
 import { getProvider, looksLikeKey, catalog } from "./providers/index.js";
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
+import { setSoundsDir, saveSound, soundPath, deleteSoundFile, deleteSessionSounds, MAX_SOUND_BYTES } from "./sounds.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -72,6 +73,7 @@ function deleteSession(code) {
   sessions.delete(code);
   clearTimeout(saveTimers.get(code));
   fs.rmSync(path.join(SESSIONS_DIR, `${code}.json`), { force: true });
+  deleteSessionSounds(code);
 }
 
 function loadSessions() {
@@ -227,6 +229,55 @@ router.get("/api/sessions/:code/tts/:id", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Sound library: the Warden uploads audio files and plays them on the players'
+// screens (play/stop go over the WebSocket; see Session "soundPlay").
+// ---------------------------------------------------------------------------
+
+const wardenOf = (req) => {
+  const s = sessions.get(normCode(req.params.code));
+  return s?.checkToken(req.get("x-warden-token")) ? s : null;
+};
+
+// Upload: the file is the raw request body; ?name= is its display name.
+router.post("/api/sessions/:code/sounds", express.raw({ type: () => true, limit: MAX_SOUND_BYTES + 1024 }), (req, res) => {
+  noStore(res);
+  const s = wardenOf(req);
+  if (!s) return res.status(403).json({ error: "Not this session's Warden." });
+  if (limited(`sound-up:${s.code}`, 60, 600_000)) return res.status(429).json({ error: "Too many uploads. Wait a few minutes." });
+  try {
+    const sound = saveSound(s.code, s.state.sounds, Buffer.isBuffer(req.body) ? req.body : null, req.query.name, req.query.seconds);
+    s.addSound(sound);
+    res.json(sound);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete("/api/sessions/:code/sounds/:id", (req, res) => {
+  noStore(res);
+  const s = wardenOf(req);
+  if (!s) return res.status(403).end();
+  const sound = s.removeSound(req.params.id);
+  if (sound) deleteSoundFile(s.code, sound);
+  res.status(sound ? 204 : 404).end();
+});
+
+// The audio itself (players fetch it when it's played; ids never change, so it caches).
+router.get("/api/sessions/:code/sounds/:id", (req, res) => {
+  const s = sessions.get(normCode(req.params.code));
+  const sound = s?.state.sounds.find((x) => x.id === req.params.id);
+  if (!sound) return res.status(404).end();
+  res.set({ "Content-Type": sound.type, "Cache-Control": "private, max-age=604800, immutable" });
+  res.sendFile(soundPath(s.code, sound), (err) => err && !res.headersSent && res.status(404).end());
+});
+
+// Upload errors (e.g. too large) as JSON the console can show.
+router.use((err, req, res, next) => {
+  if (err?.type === "entity.too.large") return res.status(413).json({ error: `Sounds can be up to ${MAX_SOUND_BYTES / 1048576} MB each.` });
+  next(err);
+});
+
 if (BASE) {
   // "/mothership" -> "/mothership/" so the pages' relative links resolve under the mount point.
   app.use((req, res, next) => {
@@ -296,6 +347,7 @@ wss.on("connection", (ws, req) => {
 process.on("unhandledRejection", (err) => console.error("unhandled:", err));
 
 setCacheDir(path.join(DATA_DIR, "tts-cache"));
+setSoundsDir(path.join(DATA_DIR, "sounds"));
 // Every new session has a human-voiced intercom, so load + warm the model now, not on the first line.
 warmNeural();
 loadSessions();

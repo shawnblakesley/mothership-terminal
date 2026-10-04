@@ -170,6 +170,20 @@
         <button id="fxClear" class="danger">Clear all</button>
       </div>
       <ul id="fxActive" class="fxlist"></ul>
+
+      <h2>Sounds</h2>
+      <!-- The Warden's own audio: monster growls, attacks, ambience. Plays on every player screen. -->
+      <div id="soundDrop" class="drop">
+        <input type="file" id="soundFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.webm" multiple hidden>
+        <button id="soundUpload">⬆ Upload sounds</button>
+        <span class="muted small">or drop audio files here · MP3, WAV, OGG, M4A · up to 10 MB each</span>
+      </div>
+      <ul id="soundList" class="soundlist"></ul>
+      <div class="row">
+        <h3 class="grow">Playing</h3>
+        <button id="soundStopAll" class="danger">Stop all sounds</button>
+      </div>
+      <ul id="soundPlaying" class="fxlist"></ul>
     </section>
 
     <!-- ================= PREVIEW + SETUP ================= -->
@@ -230,6 +244,7 @@
   </div>
 
   <script src="voice.js"></script>
+  <script src="sfx.js"></script>
   <script src="dm.js"></script>
 </body>
 </html>

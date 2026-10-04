@@ -6,6 +6,7 @@ import { warmNeural, synthesize } from "./tts.js";
 import { speechParts, voiceFor } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
+import { cleanName } from "./sounds.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -62,6 +63,7 @@ export function defaultGame(keys = {}) {
     station: structuredClone(DEFAULT_STATION),
     log: [],
     whisper: "",
+    sounds: [],
   };
 }
 
@@ -92,8 +94,11 @@ function migrateGame(saved) {
     whisper: String(saved.whisper ?? ""),
     roll: saved.roll ?? null, // the current/last ability roll (see rolls.js)
     outcomeCheck: saved.outcomeCheck ?? null, // an uncertain player action the agent left to the Warden
+    sounds: Array.isArray(saved.sounds) ? saved.sounds : [], // the Warden's uploaded sounds (files: sounds.js)
   };
 }
+
+const clampVol = (v) => Math.max(0, Math.min(1, Number(v) || 0));
 
 export const hashToken = (token) => crypto.createHash("sha256").update(String(token)).digest("hex");
 
@@ -121,7 +126,8 @@ export class Session {
     this.tokenHash = saved.tokenHash;
     this.createdAt = saved.createdAt ?? Date.now();
     this.lastActive = saved.lastActive ?? Date.now();
-    this.state = { ...migrateGame(saved.game ?? {}), pending: null, effects: [] };
+    // playing: sounds on the players' screens right now (loops stay listed until stopped).
+    this.state = { ...migrateGame(saved.game ?? {}), pending: null, effects: [], playing: [] };
     this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
@@ -134,7 +140,7 @@ export class Session {
   }
 
   toJSON() {
-    const { pending, effects, ...game } = this.state;
+    const { pending, effects, playing, ...game } = this.state;
     return { code: this.code, tokenHash: this.tokenHash, createdAt: this.createdAt, lastActive: this.lastActive, game };
   }
 
@@ -184,6 +190,7 @@ export class Session {
       log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden),
       header: this.playerHeader(),
       effects: this.state.effects,
+      playing: this.state.playing.filter((p) => p.loop),
       busy: !!this.state.pending,
       roll: this.publicRoll(),
     };
@@ -357,6 +364,7 @@ export class Session {
         // rest of the station (doors, systems...) is kept.
         s.station.access_level = DEFAULT_STATION.access_level;
         for (const e of [...s.effects]) this.endEffect(e.id);
+        this.stopSounds();
         this.toPlayers({ t: "init", ...this.playerView() });
         break;
       case "rollRequest": {
@@ -392,10 +400,49 @@ export class Session {
         console.log(`  - session ${this.code} ended by its Warden`);
         this.onEnd?.(this);
         return;
+      case "soundPlay": {
+        const snd = s.sounds.find((x) => x.id === msg.id);
+        if (!snd) break;
+        const play = { pid: `sp${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, id: snd.id, name: snd.name, loop: !!msg.loop, volume: clampVol(msg.volume ?? snd.volume), at: Date.now() };
+        // Loops are listed until stopped; one-shots until they end (so the Warden can cut them off).
+        s.playing = [...s.playing.filter((p) => p.loop || Date.now() - p.at < 120_000), play].slice(-30);
+        this.toPlayers({ t: "sound", play });
+        if (!play.loop) {
+          setTimeout(() => {
+            if (!s.playing.includes(play)) return;
+            s.playing = s.playing.filter((p) => p !== play);
+            this.syncDm();
+          }, Math.min(120, snd.seconds || 10) * 1000 + 500);
+        }
+        break;
+      }
+      case "soundStop":
+        if (msg.all) this.stopSounds();
+        else if (s.playing.some((p) => p.pid === msg.pid)) {
+          s.playing = s.playing.filter((p) => p.pid !== msg.pid);
+          this.toPlayers({ t: "soundStop", pid: msg.pid });
+        }
+        break;
+      case "soundVolume": {
+        const p = s.playing.find((x) => x.pid === msg.pid);
+        if (!p) break;
+        p.volume = clampVol(msg.volume);
+        this.toPlayers({ t: "soundVolume", pid: p.pid, volume: p.volume });
+        break;
+      }
+      case "soundEdit": {
+        const snd = s.sounds.find((x) => x.id === msg.id);
+        if (!snd) break;
+        if (msg.name !== undefined) snd.name = cleanName(msg.name) || snd.name;
+        if (msg.volume !== undefined) snd.volume = clampVol(msg.volume);
+        break;
+      }
       case "resetAll":
         this.genCounter++;
         for (const e of [...s.effects]) this.endEffect(e.id);
-        this.state = { ...defaultGame(this.keys), pending: null, effects: [] };
+        this.stopSounds();
+        // The sound library is kept (its files are the Warden's uploads).
+        this.state = { ...defaultGame(this.keys), sounds: s.sounds, pending: null, effects: [], playing: [] };
         this.toPlayers({ t: "init", ...this.playerView() });
         break;
       default:
@@ -431,6 +478,29 @@ export class Session {
     const listed = cue ? seconds + 180 : seconds;
     if (seconds > 0) this.effectTimers.set(effect.id, setTimeout(() => { this.endEffect(effect.id); this.syncDm(); }, listed * 1000));
     if (source === "agent") this.addLog("note", `Agent triggered effect: ${effect.type}${effect.text ? ` "${effect.text}"` : ""} (${seconds || "∞"}s)${cue ? ` ${cue.when} line #${cue.atEntry}` : ""}`);
+  }
+
+  // ---------------------------------------------------------------- sounds
+  addSound(sound) {
+    this.state.sounds.push(sound);
+    this.touch();
+    this.syncDm();
+  }
+
+  removeSound(id) {
+    const snd = this.state.sounds.find((x) => x.id === id);
+    if (!snd) return null;
+    this.state.sounds = this.state.sounds.filter((x) => x !== snd);
+    for (const p of this.state.playing.filter((x) => x.id === id)) this.toPlayers({ t: "soundStop", pid: p.pid });
+    this.state.playing = this.state.playing.filter((x) => x.id !== id);
+    this.touch();
+    this.syncDm();
+    return snd;
+  }
+
+  stopSounds() {
+    this.state.playing = [];
+    this.toPlayers({ t: "soundStop", all: true });
   }
 
   endEffect(id) {
