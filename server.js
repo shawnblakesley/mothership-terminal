@@ -157,7 +157,8 @@ const noStore = (res) => res.set("Cache-Control", "no-store");
 
 router.get("/", (_req, res) => noStore(res).sendFile(path.join(pub, "player.html")));
 router.get("/dm", (_req, res) => noStore(res).sendFile(path.join(pub, "dm.html")));
-router.get("/healthz", (_req, res) => res.json({ ok: true, sessions: sessions.size }));
+// "you" = the address rate limits use for this request (checks proxy setup).
+router.get("/healthz", (req, res) => res.json({ ok: true, sessions: sessions.size, you: clientIp(req) }));
 // Revalidate on every load (cheap with ETags) so players never run stale code after a deploy.
 router.use(express.static(pub, { index: false, maxAge: 0 }));
 
