@@ -149,10 +149,44 @@
     <div id="mapBig" class="smap"></div>
     <details class="maplayout">
       <summary>Layout <span class="muted">(decks and rooms)</span></summary>
-      <p class="muted small">One line per deck: <code>Deck 2 · Med Bay: med_bay=Med Bay, galley</code>. Extra connections between rooms (drawn as pipes): <code>Link: med_bay - cargo_bay_deck3 (air vents)</code>. Room ids match keys in the station state (<code>doors.med_bay</code>, <code>cameras.med_bay</code>); "Deck 2" matches deck-wide keys like <code>lights.deck_2</code>. Anything not placed still shows up, under systems or "Not on the map yet".</p>
+      <p class="muted small">One line per deck: <code>Deck 2 · Med Bay: med_bay=Med Bay, galley</code>. Extra connections between rooms (drawn as pipes): <code>Link: med_bay - cargo_bay_deck3 (air vents)</code>. A room joined straight onto another, with no corridor (a docked ship): <code>Docked: second_chance=SECOND CHANCE @ airlock_a</code>. The decks the lift reaches: <code>Lift: Deck 1, Deck 2</code> (<code>lift.deck_2</code> in the state: RESTRICTED shows yellow stripes, FAULT red). The agent can change all of it. Room ids match keys in the station state (<code>doors.med_bay</code>, <code>cameras.med_bay</code>); "Deck 2" matches deck-wide keys like <code>lights.deck_2</code>. Anything not placed still shows up, under systems or "Not on the map yet".</p>
       <textarea id="mapLayout" class="code" rows="7" spellcheck="false"></textarea>
       <div class="row"><span class="grow"></span><button id="mapLayoutSave">Save layout</button></div>
     </details>
+  </dialog>
+
+  <!-- One room: its floor plan (view, edit, show the players), who and what is in it, its state. -->
+  <dialog id="roomDialog" class="roomdlg">
+    <div class="row wrap">
+      <h2 class="grow"><span id="roomTitle">Room</span> <span id="roomDeck" class="muted small"></span></h2>
+      <button id="roomClose" class="ghost" aria-label="Close">✕</button>
+    </div>
+    <div class="roomgrid">
+      <section class="roomplanbox">
+        <div class="row wrap">
+          <button id="roomEdit" title="Paint tiles on the floor plan">✎ Edit</button>
+          <button id="roomRedraw" class="ghost" title="Have the agent draw this room again (uses the session's model and key)">↻ Redraw with agent</button>
+          <span class="grow"></span>
+          <select id="roomShowTo" aria-label="Show to" title="Who sees the layout"></select>
+          <button id="roomShow" class="primary" title="Put this floor plan on the players' screens: the layout only, never who or what is in the room">Show players</button>
+          <button id="roomHide" class="ghost" title="Take it off their screens">Hide</button>
+        </div>
+        <div id="roomTools" class="rptools" hidden></div>
+        <div id="roomPlan"></div>
+        <div id="roomLegend" class="rplegend"></div>
+      </section>
+      <section class="roomside">
+        <h2>Here now</h2>
+        <div id="roomPlayers" class="chips"></div>
+        <label class="field"><span>Who else (the agent keeps this current)</span><textarea id="roomOccupants" rows="2" placeholder="Nobody. Names, comma separated."></textarea></label>
+        <label class="field"><span>What's here</span><textarea id="roomContents" rows="2" placeholder="Nothing notable. Comma separated."></textarea></label>
+        <div class="row"><span class="grow"></span><button id="roomSaveWho">Save</button></div>
+        <h2>Room state</h2>
+        <div id="roomValues" class="chips"></div>
+        <h2>Terminals</h2>
+        <div id="roomTerminals" class="small muted"></div>
+      </section>
+    </div>
   </dialog>
 
   <dialog id="keyDialog">
@@ -348,6 +382,7 @@
 
   <script src="voice.js"></script>
   <script src="stationmap.js"></script>
+  <script src="roomplan.js"></script>
   <script src="dm.js"></script>
 </body>
 </html>

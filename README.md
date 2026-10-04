@@ -169,7 +169,9 @@ You can also ask it questions this way. Notes need an API key; they work in ever
 
 The **Station map** has two views (switch with **Drawing / Status**):
 
-- **Drawing:** a schematic of the station. Decks are stacked on a lift shaft; each has a corridor its rooms open off. Doors sit in the doorways (green open, amber closed, red locked or sealed), cameras show on their rooms, airlocks open to space, and extra connections such as air vents or maintenance shafts are drawn as pipes between rooms. Click a door, light, camera or value to change it.
+- **Drawing:** a schematic of the station. Decks are stacked beside a lift shaft; each has a corridor its rooms open off. Doors sit in the doorways (green open, amber closed, red locked or sealed), cameras show on their rooms, airlocks open to space, and extra connections such as air vents or maintenance shafts are drawn as pipes between rooms. Each room counts who is there (◆ player characters, ● other people, ▪ notable things). Click a door, light, camera or value to change it, or a room to open its **room view**.
+  - **The lift** only stops at the decks it reaches; a deck it doesn't reach has no connection to the shaft. A stop it can't use is striped: **yellow** when it needs clearance (`lift.deck_4 = RESTRICTED` or LOCKED), **red** when it's broken (FAULT, OFFLINE, DAMAGED). A value for the whole lift (`lift.status = OFFLINE`) stripes the entire shaft.
+  - **Docked rooms** (like the SECOND CHANCE on Airlock A) have no corridor: they sit directly against the room they're docked to, outside its deck, joined by a docking collar.
 - **Status:** a board of every value by deck and room.
 
 Both show every value in the state: doors, cameras and lights in their rooms and decks, and everything else (life support, power, comms, quarantine, crew...) as system panels. Values are coloured at a glance (green fine, amber degraded, red locked, offline or dangerous); a deck with its lights off goes dark, flickering lights flicker, and a quarantined deck is striped red. Anything the agent adds that isn't on the layout yet appears under "Not on the map yet".
@@ -180,7 +182,24 @@ Click a value to change it: pick a common one (OPEN, LOCKED, SEALED...) or type 
 Deck 2 · Habitation / Med Bay: med_bay=Med Bay, galley
 ```
 
-Room ids match station state keys anywhere in their path (`doors.med_bay`, `cameras.med_bay`), and "Deck 2" matches deck-wide keys like `lights.deck_2`. Add connections between rooms with `Link:` lines, e.g. `Link: med_bay - cargo_bay_deck3 (air vents)`.
+Room ids match station state keys anywhere in their path (`doors.med_bay`, `cameras.med_bay`), and "Deck 2" matches deck-wide keys like `lights.deck_2`. Three more kinds of line:
+
+```
+Link: med_bay - cargo_bay_deck3 (air vents)        another way between two rooms
+Docked: second_chance=SECOND CHANCE @ airlock_a    a room joined straight onto another, no corridor
+Lift: Deck 1, Deck 2, Deck 3, Deck 4               the decks the lift reaches (all "Deck N" decks if left out)
+```
+
+### Room view
+
+Click a room on the map to open it:
+
+- **Floor plan:** a top-down grid of walls, doors, hatches, windows, consoles, beds, tables, seats, lockers, crates, vents, machinery, reactor cores, pipes and debris. The default story's rooms come drawn; any other room is drawn by the agent the first time you open it (or press **↻ Redraw with agent**). **✎ Edit** lets you paint tiles (click or drag) and add or remove rows and columns; it saves as you go.
+- **Show players:** puts the floor plan on every player's screen, or one player's, as a blueprint in their screen colour. It shows the layout only, never who or what is in the room. They close it with Esc or a click; **Hide** takes it off their screens.
+- **Here now:** the player characters at this room's terminals, who else is there (`occupants.<room>`) and what's there (`contents.<room>`). You can edit both; the agent keeps them current as people move and things happen.
+- **Room state:** every value for the room (door, camera, anything else), click to change; and the room's terminals.
+
+**The agent can change all of it**, as the story demands: every value on the map (doors, lights, the lift, who and what is where) through the station state; the **layout** itself (a ship docks or leaves, a breach opens a new way through, a shaft collapses, a room is found); and **floor plans** (a wall blown out, a barricade, debris). Each change is noted in your log, and **Retcon** undoes it with the rest of the response.
 
 ## Warden vs players
 

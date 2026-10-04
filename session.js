@@ -10,6 +10,7 @@ import { cleanName } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
 import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
+import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
@@ -78,8 +79,12 @@ const OLD_DEFAULT_SECRETS = [
 
 // The Warden's station map: one line per deck, "Deck name: room, room=Label, ...".
 // Room ids match keys in the station state (doors.med_bay, cameras.med_bay...).
-// The SECOND CHANCE is docked at Airlock A: its cabin is a "room" (second_chance),
-// so the tug's state (second_chance.departure_clearance) shows on it.
+// The SECOND CHANCE is docked on Airlock A: its cabin is a "room" (second_chance)
+// drawn on top of the airlock, outside Deck 1, so the tug's state
+// (second_chance.departure_clearance) shows on it.
+const SHIP_DOCKED = "Docked: second_chance=SECOND CHANCE @ airlock_a";
+const LIFT = "Lift: Deck 1, Deck 2, Deck 3, Deck 4";
+// (How the tug was first added: its own deck and a link. Upgraded to SHIP_DOCKED.)
 const SHIP_DECK = "Docked · Prison tug: second_chance=SECOND CHANCE";
 const SHIP_LINK = "Link: airlock_a - second_chance (docking collar)";
 const MAP_V2 = `Deck 1 · Command / Comms: command_deck=Command, airlock_a=Airlock A
@@ -88,9 +93,26 @@ Deck 3 · Cargo / Refinery: cargo_bay_deck3=Cargo Bay
 Deck 4 · Reactor: reactor_access=Reactor Access
 Link: med_bay - cargo_bay_deck3 (air vents)
 Link: cargo_bay_deck3 - reactor_access (maintenance shaft)`;
-const DEFAULT_MAP = `${SHIP_DECK}\n${MAP_V2}\n${SHIP_LINK}`;
-// Earlier default layouts, upgraded when unedited: without links, then without the tug.
-const OLD_DEFAULT_MAPS = [MAP_V2.split("\nLink:")[0], MAP_V2];
+const DEFAULT_MAP = `${SHIP_DOCKED}\n${MAP_V2.replace("\nLink:", `\n${LIFT}\nLink:`)}`;
+// Earlier default layouts, upgraded when unedited: without links, without the
+// tug, then with the tug as its own deck.
+const OLD_DEFAULT_MAPS = [MAP_V2.split("\nLink:")[0], MAP_V2, `${SHIP_DECK}\n${MAP_V2}\n${SHIP_LINK}`];
+
+// Who is where and what's there (the agent keeps these current), and where
+// the lift can go (RESTRICTED and LOCKED: not allowed; FAULT, OFFLINE: broken).
+const ROOM_STATE = {
+  lift: { deck_1: "ONLINE", deck_2: "ONLINE", deck_3: "FAULT", deck_4: "RESTRICTED" },
+  occupants: {
+    command_deck: "Administrator Ruth Okonkwo, Comms Officer Juno Adar",
+    med_bay: "Dr. Imre Salk, Carys Webb, Pell Ostrand",
+    reactor_access: "Anton Petrov (hiding), Chief Engineer Hana Marlowe",
+  },
+  contents: {
+    cargo_bay_deck3: "The organism, grown into the Deck 3 power trunk",
+    reactor_access: "Reactor core (70%); the junction that can cut the Deck 3 trunk",
+    airlock_a: "The crew's tool kits",
+  },
+};
 
 const DEFAULT_STATION = {
   access_level: "GUEST",
@@ -109,6 +131,7 @@ const DEFAULT_STATION = {
   quarantine: "INACTIVE",
   self_destruct: "DISARMED",
   second_chance: { docked: "AIRLOCK A", departure_clearance: "WITHHELD" },
+  ...ROOM_STATE,
 };
 
 // Log kinds players never see: Warden notes, the Warden's commands to the agent,
@@ -139,7 +162,8 @@ export function defaultGame(keys = {}) {
       crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
       playerTerminals: true, // players may move between terminals themselves
-      upgrades: ["ship"], // one-time additions already made to this story (see migrateGame)
+      rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
+      upgrades: ["ship", "rooms"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -216,8 +240,17 @@ function migrateGame(saved) {
       config.terminals.splice(at || config.terminals.length, 0, structuredClone(SHIP_TERMINAL));
     }
     if (!voices.some((v) => v.id === "ship")) voices.splice(2, 0, shipVoice());
-    if (!/\bsecond_chance\s*=/.test(config.map)) config.map = `${SHIP_DECK}\n${config.map}\n${SHIP_LINK}`;
+    if (!/\bsecond_chance\s*=/.test(config.map)) config.map = `${SHIP_DOCKED}\n${config.map}`;
     config.upgrades.push("ship");
+  }
+  config.rooms = sanitizeRooms(config.rooms);
+  // Once, for a KESTREL-9 story from before them: floor plans, who and what is
+  // where, the lift, and the tug docked on the airlock instead of on its own deck.
+  if (!config.upgrades.includes("rooms") && config.stationName === "KESTREL-9") {
+    for (const [id, plan] of Object.entries(DEFAULT_ROOMS)) config.rooms[id] ??= structuredClone(plan);
+    config.map = config.map.split("\n").map((l) => (l.trim() === SHIP_DECK ? SHIP_DOCKED : l)).filter((l) => l.trim() !== SHIP_LINK).join("\n");
+    if (saved.station) for (const [k, v] of Object.entries(ROOM_STATE)) saved.station[k] ??= structuredClone(v);
+    config.upgrades.push("rooms");
   }
   return {
     config: { ...config, ...fixSelection(config), voices },
@@ -266,6 +299,7 @@ export class Session {
     this.state = { ...migrateGame(saved.game ?? {}), pending: null, effects: [], playing: [] };
     this.builderBusy = ""; // "", "chat" or "draft" while the story builder waits on the agent
     this.synopsisBusy = false; // the agent is writing the Warden's synopsis
+    this.roomBusy = ""; // the map room whose floor plan the agent is drawing
     this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
@@ -374,6 +408,7 @@ export class Session {
       // (timed cues are listed for a while after they end; only show what's running)
       effects: this.state.effects.filter((e) => this.effectRunning(e)),
       builderBusy: this.builderBusy,
+      roomBusy: this.roomBusy,
       synopsisBusy: this.synopsisBusy,
       code: this.code,
       providers: catalog(this.keys),
@@ -772,6 +807,31 @@ export class Session {
       case "synopsis":
         if (!this.synopsisBusy) this.writeSynopsis();
         break;
+      case "roomLayout": {
+        // The Warden's edits to a room's floor plan (rows: null removes it).
+        const id = String(msg.room || "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 60);
+        if (!id) break;
+        const rows = sanitizeRows(msg.rows);
+        if (rows) s.config.rooms[id] = { rows };
+        else delete s.config.rooms[id];
+        break;
+      }
+      case "roomDraft":
+        if (!this.roomBusy) this.draftRoom(msg);
+        return;
+      case "roomShow": {
+        // A room's floor plan on the players' screens (all, or one character's): the layout only.
+        const plan = s.config.rooms[msg.room];
+        const to = [...this.sockets].filter((ws) => ws.role === "player" && (!msg.pc || ws.character === msg.pc));
+        const payload = JSON.stringify(msg.hide ? { t: "roomPlan", rows: null } : { t: "roomPlan", name: String(msg.label || msg.room).slice(0, 60), rows: plan?.rows || null });
+        if (!msg.hide && !plan) return;
+        for (const ws of to) ws.send(payload);
+        if (!msg.hide) {
+          const who = msg.pc ? s.config.crew.find((c) => c.id === msg.pc)?.name || "one player" : "the players";
+          this.addLog("note", `Showed ${who} the layout of ${String(msg.label || msg.room)}.`);
+        }
+        break;
+      }
       case "builderReset":
         if (!this.builderBusy) s.builder = { messages: [], draft: null };
         break;
@@ -990,6 +1050,30 @@ export class Session {
     this.syncDm();
   }
 
+  // The agent draws a room's floor plan (the first time the Warden opens it, or on request).
+  async draftRoom(msg) {
+    const s = this.state;
+    const room = {
+      id: String(msg.room || "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 60),
+      label: String(msg.label || msg.room || "").slice(0, 60),
+      deck: String(msg.deck || "the station").slice(0, 80),
+    };
+    if (!room.id) return;
+    this.roomBusy = room.id;
+    this.syncDm();
+    try {
+      const rows = sanitizeRows((await this.ask(roomDraftRequest(s, room)))?.rows);
+      if (!rows) throw new Error("The model returned an empty plan. Try again.");
+      s.config.rooms[room.id] = { rows };
+    } catch (err) {
+      console.error(`[${this.code}] room plan failed:`, err?.message || err);
+      this.send("dm", { t: "toast", level: "error", text: `Couldn't draw ${room.label}: ${err?.message || err}` });
+    }
+    this.roomBusy = "";
+    this.touch();
+    this.syncDm();
+  }
+
   // Replace the story with a builder draft: new station, lore, secrets, voices,
   // map and crew; a fresh log. Provider, mode and the sound library stay.
   applyStory(draft) {
@@ -997,7 +1081,7 @@ export class Session {
     const { config, station } = applyDraft(draft);
     this.genCounter++;
     this.playhead = 0;
-    Object.assign(s.config, config);
+    Object.assign(s.config, config, { rooms: {} }); // (new rooms: plans are drawn when first opened)
     Object.assign(s, { station, log: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopsis: null });
     for (const e of [...s.effects]) this.endEffect(e.id);
     this.stopSounds();
@@ -1031,7 +1115,9 @@ export class Session {
       }
       const changes = reply.station_changes.filter((c) => c.path);
       for (const c of changes) setPath(s.station, c.path, c.value);
-      this.addLog("aside_reply", reply.dm_note.trim() || "Noted.", { changes: changes.map(({ path, value }) => ({ path, value })) });
+      const mapChanges = this.mapChanges(reply);
+      this.addLog("aside_reply", reply.dm_note.trim() || "Noted.", { changes: changes.map(({ path, value }) => ({ path, value })), ...mapChanges });
+      this.applyMapChanges(mapChanges);
       if (changes.length) this.toPlayers({ t: "header", header: this.playerHeader() });
     } catch (err) {
       console.error(`[${this.code}] note failed:`, err?.message || err);
@@ -1189,7 +1275,7 @@ export class Session {
 
   deliver(reply, source) {
     // Remember how things were, so the Warden can retcon this response.
-    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), outcome: this.state.outcomeCheck };
+    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms) };
     try {
       this.deliverReply(reply, source);
     } finally {
@@ -1212,6 +1298,7 @@ export class Session {
     s.log = s.log.filter((e) => !undo.entries.includes(e.id));
     for (const id of undo.effects) this.endEffect(id);
     s.station = undo.station;
+    if (undo.map !== undefined) Object.assign(s.config, { map: undo.map, rooms: undo.rooms });
     // Crew: only their condition goes back (sheet edits made since are kept).
     for (const pc of s.config.crew) {
       const was = undo.crew.find((x) => x.id === pc.id);
@@ -1240,7 +1327,8 @@ export class Session {
     const effects = this.state.config.agentEffects ? (reply?.effects || []) : [];
     // The first entry carries the reply's changes/effects so the agent's history
     // shows that it really changed things (otherwise it learns to leave them empty).
-    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [] };
+    const mapChanges = this.mapChanges(reply);
+    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], ...mapChanges };
     // Effects on a line fire as it begins. An effect-only beat (no text) fires
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
@@ -1268,8 +1356,32 @@ export class Session {
       this.addLog("note", `Station: ${c.path} → ${c.value}`);
     }
     if (changes.length) this.toPlayers({ t: "header", header: this.playerHeader() });
+    this.applyMapChanges(mapChanges);
     for (const e of effects) this.startEffect(e, "agent");
     this.applyCrewChanges(reply?.crew_changes);
+  }
+
+  // The map changes in an agent reply that really change something: a new
+  // layout, and redrawn floor plans. { layout?, roomPlans? }
+  mapChanges(reply) {
+    const out = {};
+    const layout = String(reply?.layout || "").trim();
+    if (layout && layout !== this.state.config.map.trim()) out.layout = layout.slice(0, 4000);
+    const plans = (reply?.room_plans || []).map((p) => ({ room: p.room, rows: sanitizeRows(p.rows) })).filter((p) => p.room && p.rows);
+    if (plans.length) out.roomPlans = plans;
+    return out;
+  }
+
+  applyMapChanges({ layout, roomPlans = [] }) {
+    const c = this.state.config;
+    if (layout) {
+      c.map = layout;
+      this.addLog("note", "Map: the agent changed the layout.");
+    }
+    for (const p of roomPlans) {
+      c.rooms[p.room] = { rows: p.rows };
+      this.addLog("note", `Map: the agent redrew the floor plan of ${p.room}.`);
+    }
   }
 
   // Player input: one agent call at a time per session. Input that arrives while

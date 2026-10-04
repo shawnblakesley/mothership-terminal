@@ -18,9 +18,10 @@
   const singular = (w) => (w === "lights" ? w : /ies$/.test(w) ? w.replace(/ies$/, "y") : /(ss|us)$/.test(w) ? w : w.replace(/s$/, ""));
   const LINK = /^link\s*:\s*(.+?)\s*(?:-+|<->|–|—|to)\s*(.+?)(?:\s*\((.+)\))?$/i;
 
+  const SPECIAL = /^(link|lift|docked)\s*:/i;
   // Deck lines -> [{ id: "deck_1", label, rooms: [{ id, label }] }]
   function parseLayout(text) {
-    return lines(text).filter((l) => !/^link\s*:/i.test(l)).map((line) => {
+    return lines(text).filter((l) => !SPECIAL.test(l)).map((line) => {
       const at = line.indexOf(":");
       const head = (at < 0 ? line : line.slice(0, at)).trim();
       const rooms = at < 0 ? [] : line.slice(at + 1).split(",").map((r) => r.trim()).filter(Boolean).map((r) => {
@@ -34,6 +35,19 @@
   // "Link: a - b (label)" lines -> [{ a, b, label }]
   function parseLinks(text) {
     return lines(text).map((l) => l.match(LINK)).filter(Boolean).map((m) => ({ a: slug(m[1]), b: slug(m[2]), label: (m[3] || "").trim() }));
+  }
+  // "Docked: second_chance=SECOND CHANCE @ airlock_a" -> [{ id, label, parent }]:
+  // a room with no corridor of its own, drawn against its parent room, outside the deck.
+  function parseDocked(text) {
+    return lines(text).map((l) => l.match(/^docked\s*:\s*([^=@]+?)\s*(?:=\s*([^@]+?))?\s*@\s*(.+)$/i)).filter(Boolean)
+      .map((m) => ({ id: slug(m[1]), label: (m[2] || human(m[1])).trim(), parent: slug(m[3]) }));
+  }
+  // "Lift: Deck 1, Deck 2" -> the deck ids the lift reaches (null: every "Deck N").
+  function parseLift(text) {
+    const line = lines(text).find((l) => /^lift\s*:/i.test(l));
+    if (!line) return null;
+    return new Set(line.replace(/^lift\s*:/i, "").split(",").map((d) => d.trim()).filter(Boolean)
+      .map((d) => (d.match(/deck\s*(\d+)/i) ? `deck_${d.match(/deck\s*(\d+)/i)[1]}` : slug(d))));
   }
   const lines = (text) => String(text || "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
 
@@ -52,15 +66,16 @@
     const key = path.join(".").toLowerCase();
     if (typeof value === "number" && /pct|percent|level|integrity|charge/.test(key)) return value < 25 ? "bad" : value < 60 ? "warn" : "ok";
     if (/^(INACTIVE|DISARMED|NOMINAL|NORMAL|OK|ONLINE|ON|OPEN|GREEN|CLEAR|STABLE|SAFE|ALIVE|SECURE)$/.test(v)) return "ok";
-    if (/\bLOCK|SEAL|OFFLINE|^OFF$|JAM|FAIL|BREACH|DOWN|ARMED|CRITICAL|DANGER|ALERT|VENT|DEAD|DENIED|EMERGENCY|DESTROY|CONTAMIN|INFECT|^ACTIVE$|DECK\s*\d/.test(v)) return "bad";
-    if (/FLICKER|DEGRAD|STANDBY|LOW|PARTIAL|UNKNOWN|ELEVATED|WARN|CLOSED|DAMAGED|INTERMITTENT/.test(v)) return "warn";
+    if (/\bLOCK|SEAL|OFFLINE|^OFF$|JAM|FAIL|BREACH|DOWN|ARMED|CRITICAL|DANGER|ALERT|VENT|DEAD|DENIED|EMERGENCY|DESTROY|CONTAMIN|INFECT|FAULT|MALFUNC|ERROR|^ACTIVE$|DECK\s*\d/.test(v)) return "bad";
+    if (/FLICKER|DEGRAD|STANDBY|LOW|PARTIAL|UNKNOWN|ELEVATED|WARN|CLOSED|DAMAGED|INTERMITTENT|RESTRICT|WITHHELD/.test(v)) return "warn";
     return "info";
   }
 
   // Sort the state onto the layout: rooms, decks, "not on the map yet", systems.
   function build(station, layoutText) {
     const decks = parseLayout(layoutText);
-    const roomIds = new Set(decks.flatMap((d) => d.rooms.map((r) => r.id)));
+    const docked = parseDocked(layoutText);
+    const roomIds = new Set([...decks.flatMap((d) => d.rooms.map((r) => r.id)), ...docked.map((r) => r.id)]);
     const deckIds = new Set(decks.map((d) => d.id));
     const byRoom = new Map(), byDeck = new Map(), loose = [];
     const add = (map, key, item) => (map.get(key) || map.set(key, []).get(key)).push(item);
@@ -90,7 +105,7 @@
         quarantine: !!n && (new RegExp(`DECK\\s*${n}\\b`).test(quarantined) || /STATION|ALL/.test(quarantined)),
       };
     };
-    return { decks, links: parseLinks(layoutText), byRoom, byDeck, elsewhere, systems, deckLook };
+    return { decks, docked, lift: parseLift(layoutText), links: parseLinks(layoutText), byRoom, byDeck, elsewhere, systems, deckLook };
   }
 
   // A clickable value: "DOOR LOCKED".
@@ -110,8 +125,8 @@
   // ---------------------------------------------------------------- status board
   function render(el, station, layoutText, { editable = true } = {}) {
     const m = build(station, layoutText);
-    const roomTile = (label, items) => `<div class="mroom ${items.some((x) => tone(x.leaf.path, x.leaf.value) === "bad") ? "alarm" : ""}">
-        <div class="mrname">${esc(label)}</div>
+    const roomTile = (label, items, id = "", deck = "") => `<div class="mroom ${items.some((x) => tone(x.leaf.path, x.leaf.value) === "bad") ? "alarm" : ""}">
+        <div class="mrname" ${editable && id ? `data-room="${esc(id)}" data-label="${esc(label)}" data-deck="${esc(deck)}" title="Room view"` : ""}>${esc(label)}</div>
         <div class="mchips">${items.map((x) => chip(x.leaf, x.label, editable)).join("") || `<span class="mnone">no data</span>`}</div>
       </div>`;
     const deckBand = (d, rooms) => {
@@ -123,63 +138,102 @@
     };
     el.innerHTML = `${systemsHtml(m, editable)}
       <div class="mdecks">
-        ${m.decks.map((d) => deckBand(d, d.rooms.map((r) => roomTile(r.label, m.byRoom.get(r.id) || [])).join(""))).join("")}
+        ${m.decks.map((d) => deckBand(d, d.rooms.flatMap((r) => [r, ...m.docked.filter((x) => x.parent === r.id)]).map((r) => roomTile(r.label, m.byRoom.get(r.id) || [], r.id, d.label)).join(""))).join("")}
         ${m.elsewhere.size ? deckBand({ id: "_elsewhere", label: "Not on the map yet" }, [...m.elsewhere.entries()].map(([id, items]) => roomTile(human(id), items)).join("")) : ""}
       </div>`;
   }
 
+  // How a lift value reads: "perm" (needs clearance: yellow stripes), "fault" (broken: red stripes) or "".
+  const liftState = (v) => {
+    const s = String(v ?? "").toUpperCase();
+    if (/FAULT|OFFLINE|DAMAG|ERROR|MALFUNC|BROKEN|JAM|STUCK|FAIL|DOWN|DISABLED|NO POWER/.test(s)) return "fault";
+    if (/RESTRICT|LOCK|DENIED|CLEARANCE|AUTH|SECUR|SEALED/.test(s)) return "perm";
+    return "";
+  };
+  // Who and what is in a room (occupants.<room>, contents.<room>): kept off the
+  // room's value lines, counted on it instead, and listed in the room view.
+  const isRoster = (leaf) => leaf.path[0] === "occupants" || leaf.path[0] === "contents";
+  const names = (v) => String(v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+
   // ---------------------------------------------------------------- schematic
   // Decks stacked top to bottom on a lift shaft at the left. Each deck has a
   // corridor; its rooms sit in rows above and below it, joined by doorways.
-  function draw(el, station, layoutText, { editable = true } = {}) {
+  // The lift only connects to the decks it reaches ("Lift:" line). Docked rooms
+  // ("Docked:" lines) sit against their parent room, outside its deck.
+  // opts.people: { roomId: [player character names] } (from the terminals).
+  function draw(el, station, layoutText, { editable = true, people = {} } = {}) {
     const m = build(station, layoutText);
     const W = Math.max(560, Math.round(el.clientWidth || 900)); // ~1 unit per CSS pixel, so text stays readable
     const SHAFT = 34, X0 = SHAFT + 46, RIGHT = 28;
-    const ROOM_H = 62, GAP = 40, LABEL = 32;
+    const ROOM_H = 62, GAP = 40, LABEL = 32, DOCK_GAP = 24, DOCK = ROOM_H + DOCK_GAP;
     const perRow = Math.max(1, Math.floor((W - X0 - RIGHT) / 170));
-    const rooms = {}; // id -> { x, y, w, h, cx, cy }
+    const rooms = {}; // id -> { x, y, w, h, cx, cy, side, corridor, label, deck, parent? }
     let y = 12;
-    const out = { bands: [], links: [], fg: [] };
+    const out = { bands: [], links: [], fg: [], lift: [] };
     const path = (leaf) => (editable && leaf ? `data-path="${esc(JSON.stringify(leaf.path))}"` : "");
     const title = (s) => `<title>${esc(s)}</title>`;
-    const corridors = [];
+    const served = m.lift ?? new Set(m.decks.map((d) => d.id).filter((id) => /^deck_\d+$/.test(id)));
+    const stops = []; // served decks' corridor lines
+    const dockedOn = (ids) => m.docked.filter((r) => ids.includes(r.parent));
 
-    m.decks.forEach((d, di) => {
+    m.decks.forEach((d) => {
       const look = m.deckLook(d);
       const above = d.rooms.slice(0, perRow), below = d.rooms.slice(perRow, perRow * 2), extra = d.rooms.slice(perRow * 2);
-      const top = y;
+      const dockAbove = dockedOn(above.map((r) => r.id)), dockBelow = dockedOn(below.map((r) => r.id));
+      const top = y + (dockAbove.length ? DOCK : 0);
       const cy = top + LABEL + ROOM_H + GAP; // corridor centre line
       const bottom = cy + (below.length ? GAP + ROOM_H : 0) + 18;
-      corridors.push(cy);
+      const reached = served.has(d.id);
+      const liftLeaf = (m.byDeck.get(d.id) || []).find((x) => /lift|elevator/i.test(x.leaf.path[0]))?.leaf;
+      const ls = liftLeaf ? liftState(liftLeaf.value) : "";
+      if (reached) stops.push(cy);
       const cls = `sv-deck${look.dark ? " dark" : ""}${look.flicker ? " flicker" : ""}${look.quarantine ? " quarantine" : ""}`;
-      const lights = (m.byDeck.get(d.id) || []).map((x) => x.leaf);
+      const tags = (m.byDeck.get(d.id) || []).map((x) => x.leaf);
+      const bandX = SHAFT + 18;
       out.bands.push(`<g class="${cls}">
-        <rect class="sv-band" x="${SHAFT + 18}" y="${top}" width="${W - SHAFT - 18 - 8}" height="${bottom - top}" rx="10"/>
-        ${look.quarantine ? `<rect x="${SHAFT + 18}" y="${top}" width="${W - SHAFT - 18 - 8}" height="${bottom - top}" rx="10" fill="url(#sv-hatch)"/>` : ""}
+        <rect class="sv-band" x="${bandX}" y="${top}" width="${W - bandX - 8}" height="${bottom - top}" rx="10"/>
+        ${look.quarantine ? `<rect x="${bandX}" y="${top}" width="${W - bandX - 8}" height="${bottom - top}" rx="10" fill="url(#sv-hatch)"/>` : ""}
         <text class="sv-deckname" x="${X0}" y="${top + 20}">${esc(d.label.toUpperCase())}</text>
-        ${lights.map((leaf, i) => `<g class="sv-click ${tone(leaf.path, leaf.value)}" ${path(leaf)}><text class="sv-tag" x="${W - RIGHT - i * 150}" y="${top + 20}" text-anchor="end">${esc(labelFor(leaf.path, d.id))} ${esc(leaf.value)}</text>${title(leaf.path.join("."))}</g>`).join("")}
-        <line class="sv-corridor" x1="${SHAFT}" y1="${cy}" x2="${W - RIGHT}" y2="${cy}"/>
-        <rect class="sv-stop" x="${SHAFT - 9}" y="${cy - 9}" width="18" height="18" rx="3"/>
+        ${tags.map((leaf, i) => `<g class="sv-click ${tone(leaf.path, leaf.value)}" ${path(leaf)}><text class="sv-tag" x="${W - RIGHT - i * 150}" y="${top + 20}" text-anchor="end">${esc(labelFor(leaf.path, d.id))} ${esc(leaf.value)}</text>${title(leaf.path.join("."))}</g>`).join("")}
+        <line class="sv-corridor" x1="${reached ? SHAFT : bandX + 10}" y1="${cy}" x2="${W - RIGHT}" y2="${cy}"/>
       </g>`);
+      // Where the lift meets this deck: a stop, striped when it can't be used.
+      if (reached) {
+        const stripes = ls ? `fill="url(#sv-stripes-${ls === "perm" ? "warn" : "bad"})"` : "";
+        out.lift.push(`<g class="sv-liftstop ${ls}" ${path(liftLeaf)}>
+          ${ls ? `<rect class="sv-gate" x="${SHAFT + 10}" y="${cy - 8}" width="${X0 - SHAFT - 16}" height="16" rx="2" ${stripes}/>` : ""}
+          <rect class="sv-stop" x="${SHAFT - 9}" y="${cy - 9}" width="18" height="18" rx="3" ${stripes}/>
+          ${title(liftLeaf ? `${liftLeaf.path.join(".")}: ${liftLeaf.value}` : `Lift: ${d.label}`)}</g>`);
+      }
       // Rooms spread along the corridor (links get the right-hand margin).
       const place = (row, ry, side) => {
         const span = W - X0 - RIGHT - (m.links.length ? 70 : 0);
         const slot = span / Math.max(row.length, 2);
         row.forEach((r, i) => {
           const w = Math.min(240, slot - 26), x = X0 + i * slot + (slot - w) / 2;
-          rooms[r.id] = { x, y: ry, w, h: ROOM_H, cx: x + w / 2, cy: ry + ROOM_H / 2, side, corridor: cy, label: r.label };
+          rooms[r.id] = { x, y: ry, w, h: ROOM_H, cx: x + w / 2, cy: ry + ROOM_H / 2, side, corridor: cy, label: r.label, deck: d.label };
         });
       };
       place(above, top + LABEL, "above");
       place(below, cy + GAP, "below");
       extra.forEach((r) => (rooms[r.id] = null)); // too many for one deck: still listed on the status board
-      y = bottom + 14;
+      // Docked rooms: straight onto their parent, outside the deck.
+      for (const r of [...dockAbove, ...dockBelow]) {
+        const p = rooms[r.parent];
+        const ry = p.side === "above" ? top - DOCK_GAP - ROOM_H : bottom + DOCK_GAP;
+        rooms[r.id] = { x: p.x, y: ry, w: p.w, h: ROOM_H, cx: p.cx, cy: ry + ROOM_H / 2, side: "docked", parent: p, label: r.label, deck: `docked at ${p.label}` };
+      }
+      y = bottom + 14 + (dockBelow.length ? DOCK : 0);
     });
 
-    // Lift shaft through every deck.
-    const shaft = corridors.length
-      ? `<rect class="sv-shaft" x="${SHAFT - 13}" y="${corridors[0] - 26}" width="26" height="${corridors.at(-1) - corridors[0] + 52}" rx="6"/>
-         <text class="sv-tag sv-lift" x="${SHAFT}" y="${corridors[0] - 32}" text-anchor="middle">LIFT</text>`
+    // The lift shaft, between the decks it reaches. A fault or lockout of the whole lift stripes all of it.
+    const whole = [...(m.systems.get("lift") || []), ...(m.systems.get("elevator") || [])];
+    const wholeState = whole.map((l) => liftState(l.value)).find(Boolean) || "";
+    const shaft = stops.length
+      ? `<g class="sv-click" ${path(whole[0])}><rect class="sv-shaft" x="${SHAFT - 13}" y="${stops[0] - 26}" width="26" height="${stops.at(-1) - stops[0] + 52}" rx="6"/>
+         ${wholeState ? `<rect x="${SHAFT - 13}" y="${stops[0] - 26}" width="26" height="${stops.at(-1) - stops[0] + 52}" rx="6" fill="url(#sv-stripes-${wholeState === "perm" ? "warn" : "bad"})"/>` : ""}
+         ${whole.length ? title(whole.map((l) => `${l.path.join(".")}: ${l.value}`).join("\n")) : ""}</g>
+         <text class="sv-tag sv-lift" x="${SHAFT}" y="${stops[0] - 32}" text-anchor="middle">LIFT</text>`
       : "";
 
     // Rooms, their doorways and what's in them.
@@ -189,24 +243,41 @@
       const isDoor = (x) => /door|hatch|airlock|access|gate|lock/i.test(x.leaf.path[0]) || /^door|hatch/i.test(x.label);
       const door = items.find(isDoor)?.leaf;
       const cam = items.find((x) => /camera|cctv|feed/i.test(x.leaf.path.join(".")))?.leaf;
+      const values = items.filter((x) => !isRoster(x.leaf));
       // Shown in the room: door and camera first, then anything else.
-      const rest = [...items.filter((x) => x.leaf === door || x.leaf === cam), ...items.filter((x) => x.leaf !== door && x.leaf !== cam)];
-      const bad = items.some((x) => tone(x.leaf.path, x.leaf.value) === "bad");
-      // Doorway: a short passage from the room to the corridor, with the door across it.
-      const y1 = r.side === "above" ? r.y + r.h : r.corridor, y2 = r.side === "above" ? r.corridor : r.y;
-      const dy = r.side === "above" ? y1 + 9 : y2 - 9, dt = door ? tone(door.path, door.value) : "none";
+      const rest = [...values.filter((x) => x.leaf === door || x.leaf === cam), ...values.filter((x) => x.leaf !== door && x.leaf !== cam)];
+      const bad = values.some((x) => tone(x.leaf.path, x.leaf.value) === "bad");
+      const who = names(items.find((x) => x.leaf.path[0] === "occupants")?.leaf.value);
+      const pcs = people[id] || [];
+      const what = names(items.find((x) => x.leaf.path[0] === "contents")?.leaf.value);
+      const dt = door ? tone(door.path, door.value) : "none";
       const open = door && /OPEN/i.test(String(door.value));
-      out.fg.push(`<line class="sv-doorway" x1="${r.cx}" y1="${y1}" x2="${r.cx}" y2="${y2}"/>`);
-      out.fg.push(`<g class="sv-room${bad ? " alarm" : ""}${/airlock/.test(id) ? " airlock" : ""}">
-        <rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="6" ${path(items[0]?.leaf)}/>${title(`${r.label}${items.length ? "\n" + items.map((x) => `${x.leaf.path.join(".")}: ${x.leaf.value}`).join("\n") : ""}`)}
+      let dx = r.cx, dy;
+      if (r.side === "docked") {
+        // A docking collar straight into the parent room (no corridor).
+        const p = r.parent, up = r.y < p.y;
+        const y1 = up ? r.y + r.h : p.y + p.h, y2 = up ? p.y : r.y;
+        out.fg.push(`<g class="sv-collar"><line x1="${r.cx - 9}" y1="${y1}" x2="${r.cx - 9}" y2="${y2}"/><line x1="${r.cx + 9}" y1="${y1}" x2="${r.cx + 9}" y2="${y2}"/></g>`);
+        dy = (y1 + y2) / 2;
+      } else {
+        // Doorway: a short passage from the room to the corridor, with the door across it.
+        const y1 = r.side === "above" ? r.y + r.h : r.corridor, y2 = r.side === "above" ? r.corridor : r.y;
+        dy = r.side === "above" ? y1 + 9 : y2 - 9;
+        out.fg.push(`<line class="sv-doorway" x1="${r.cx}" y1="${y1}" x2="${r.cx}" y2="${y2}"/>`);
+      }
+      const count = who.length + pcs.length;
+      const roster = [...pcs.map((n) => `${n} (player)`), ...who, ...(what.length ? ["—", ...what] : [])].join("\n");
+      out.fg.push(`<g class="sv-room${bad ? " alarm" : ""}${/airlock/.test(id) ? " airlock" : ""}${r.side === "docked" ? " docked" : ""}">
+        <rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="6" ${editable ? `data-room="${esc(id)}" data-label="${esc(r.label)}" data-deck="${esc(r.deck)}"` : ""}/>${title(`${r.label}${editable ? " (click for the room view)" : ""}${roster ? `\n${roster}` : ""}`)}
         <text class="sv-roomname" x="${r.x + 10}" y="${r.y + 19}">${esc(r.label.toUpperCase())}</text>
         ${rest.slice(0, 2).map((x, i) => `<g class="sv-click ${tone(x.leaf.path, x.leaf.value)}" ${path(x.leaf)}><text class="sv-val" x="${r.x + 10}" y="${r.y + 37 + i * 14}">${esc(x.label)} ${esc(x.leaf.value)}</text>${title(x.leaf.path.join("."))}</g>`).join("")}
-        ${rest.length > 2 ? `<text class="sv-val sv-more" x="${r.x + r.w - 8}" y="${r.y + r.h - 7}" text-anchor="end">+${rest.length - 2}</text>` : ""}
+        ${rest.length > 2 ? `<text class="sv-val sv-more" x="${r.x + 10}" y="${r.y + r.h - 7}">+${rest.length - 2}</text>` : ""}
+        ${count || what.length ? `<text class="sv-val sv-people" x="${r.x + r.w - 8}" y="${r.y + r.h - 7}" text-anchor="end">${pcs.length ? `<tspan class="sv-pc">${pcs.length}◆</tspan> ` : ""}${who.length ? `${who.length}●` : ""}${what.length ? ` ${what.length}▪` : ""}</text>` : ""}
         ${cam ? `<g class="sv-click sv-cam ${tone(cam.path, cam.value)}" ${path(cam)} transform="translate(${r.x + r.w - 26} ${r.y + 8})"><rect width="13" height="9" rx="2"/><path d="M13 2.5 L18 0 L18 9 L13 6.5 Z"/>${title(`${cam.path.join(".")}: ${cam.value}`)}</g>` : ""}
         ${/airlock/.test(id) ? `<text class="sv-tag sv-space" x="${r.x + r.w + 6}" y="${r.cy + 4}">▸ SPACE</text>` : ""}
       </g>`);
       if (door) {
-        out.fg.push(`<g class="sv-click sv-door ${dt}${open ? " open" : ""}" ${path(door)} transform="translate(${r.cx} ${dy})">
+        out.fg.push(`<g class="sv-click sv-door ${dt}${open ? " open" : ""}" ${path(door)} transform="translate(${dx} ${dy})">
           ${open ? `<rect x="-13" y="-3" width="7" height="6" rx="1"/><rect x="6" y="-3" width="7" height="6" rx="1"/>` : `<rect x="-13" y="-4" width="26" height="8" rx="2"/>`}
           <rect class="sv-hit" x="-16" y="-9" width="32" height="18"/>${title(`${door.path.join(".")}: ${door.value}`)}</g>`);
       }
@@ -227,10 +298,12 @@
       ? `<div class="mdecks"><section class="mdeck"><header><span class="mdname">Not on the map yet</span></header><div class="mrooms">${[...m.elsewhere.entries()].map(([id, items]) =>
           `<div class="mroom"><div class="mrname">${esc(human(id))}</div><div class="mchips">${items.map((x) => chip(x.leaf, x.label, editable)).join("")}</div></div>`).join("")}</div></section></div>`
       : "";
+    const stripes = (id, cls) => `<pattern id="${id}" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" class="sv-stripe-bg"/><rect width="5" height="10" class="${cls}"/></pattern>`;
     el.innerHTML = `${systemsHtml(m, editable)}
       <svg class="sv" viewBox="0 0 ${W} ${y}" width="100%" role="img" aria-label="Station schematic">
-        <defs><pattern id="sv-hatch" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="12" class="sv-hatchline"/></pattern></defs>
-        ${out.bands.join("")}${shaft}${out.links.join("")}${out.fg.join("")}
+        <defs><pattern id="sv-hatch" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="12" class="sv-hatchline"/></pattern>
+          ${stripes("sv-stripes-warn", "sv-stripe-warn")}${stripes("sv-stripes-bad", "sv-stripe-bad")}</defs>
+        ${out.bands.join("")}${shaft}${out.lift.join("")}${out.links.join("")}${out.fg.join("")}
       </svg>${elsewhere}`;
   }
 
@@ -252,5 +325,5 @@
     return [];
   }
 
-  window.StationMap = { render, draw, parseLayout, parseLinks, choicesFor };
+  window.StationMap = { render, draw, parseLayout, parseLinks, parseDocked, choicesFor };
 })();

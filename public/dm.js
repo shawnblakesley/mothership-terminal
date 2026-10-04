@@ -268,6 +268,7 @@
     renderTerminals();
     renderBuilder();
     renderSynopsis();
+    renderRoom();
     // Something waits on the Warden under Actions (a reply to review, a ruling): flag the tab.
     const waiting = ["ready", "error"].includes(S.pending?.status) || !!S.outcomeCheck;
     $("actionsDot").hidden = !waiting || store.get("tab:side") === "actions";
@@ -734,10 +735,11 @@
   // Drawing (schematic) or Status (board); remembered on this device.
   let mapView = store.get("mapView") || "draw";
   function renderMap(force = false) {
-    const key = JSON.stringify([S.station, S.config.map, mapView]);
+    const people = playersByRoom();
+    const key = JSON.stringify([S.station, S.config.map, mapView, people]);
     if (!force && key === mapKey) return;
     mapKey = key;
-    const show = (el) => (mapView === "status" ? StationMap.render : StationMap.draw)(el, S.station, S.config.map);
+    const show = (el) => (mapView === "status" ? StationMap.render : StationMap.draw)(el, S.station, S.config.map, { people });
     for (const b of document.querySelectorAll(".mapview button")) b.classList.toggle("on", b.dataset.view === mapView);
     show($("map"));
     if ($("mapDialog").open) show($("mapBig"));
@@ -763,7 +765,9 @@
   for (const id of ["map", "mapBig"]) {
     $(id).addEventListener("click", (e) => {
       const p = e.target.closest("[data-path]")?.dataset.path;
-      if (p) editStationValue(JSON.parse(p));
+      if (p) return editStationValue(JSON.parse(p));
+      const r = e.target.closest("[data-room]");
+      if (r) openRoom(r.dataset.room, r.dataset.label, r.dataset.deck);
     });
   }
   $("mapExpand").onclick = (e) => {
@@ -791,6 +795,145 @@
     dirty.delete("map");
     send({ t: "config", patch: { map: $("mapLayout").value } });
   };
+
+  // ------------------------------------------------------------ room view
+  // One room: its floor plan (drawn by the agent the first time, editable tile by
+  // tile, shown to the players as layout only), who and what is there, its state.
+  let room = null; // { id, label, deck } while the room view is open
+  let roomEditing = false, roomTool = "#", roomRows = null, roomKey = "", roomSaveTimer = null, roomPainting = false;
+  // Player characters in each room, from the terminals their screens are at.
+  function playersByRoom() {
+    const out = {};
+    for (const sc of S.screens || []) {
+      const t = S.config.terminals.find((x) => x.id === sc.terminal);
+      if (t?.room && sc.character) (out[t.room] ||= []).push(sc.character);
+    }
+    return out;
+  }
+  const stationAt = (path) => path.reduce((o, k) => o?.[k], S.station);
+
+  function openRoom(id, label, deck) {
+    room = { id, label, deck };
+    roomEditing = false;
+    roomRows = null;
+    roomKey = "";
+    if (!$("roomDialog").open) $("roomDialog").showModal();
+    // No plan yet: the agent draws one (if it can).
+    if (!S.config.rooms?.[id] && !S.roomBusy && S.providers.find((p) => p.id === S.config.provider)?.configured) send({ t: "roomDraft", room: id, label, deck });
+    renderRoom(true);
+  }
+
+  function renderRoom(force = false) {
+    if (!room || !$("roomDialog").open) return;
+    const plan = S.config.rooms?.[room.id];
+    const busy = S.roomBusy === room.id;
+    const pcs = playersByRoom()[room.id] || [];
+    const key = JSON.stringify([plan, busy, pcs, S.station, S.config.terminals, S.config.crew.map((c) => c.id), roomEditing]);
+    if (!force && key === roomKey) return;
+    roomKey = key;
+    $("roomTitle").textContent = room.label;
+    $("roomDeck").textContent = room.deck;
+    // The plan (or the local copy being painted).
+    if (!roomEditing) roomRows = plan ? [...plan.rows] : null;
+    const box = $("roomPlan");
+    if (busy) box.innerHTML = `<div class="rpempty muted"><span class="spinner"></span>The agent is drawing ${esc(room.label)}…</div>`;
+    else if (!roomRows) box.innerHTML = `<div class="rpempty muted">No floor plan yet. <b>Redraw with agent</b> sketches one, or <b>Edit</b> to paint it yourself.</div>`;
+    else box.innerHTML = RoomPlan.svg(roomRows, { cell: 24, title: room.label, cls: roomEditing ? "editing" : "" });
+    $("roomLegend").innerHTML = roomRows ? RoomPlan.legend(roomRows).map(([c, n]) => `<span><b>${esc(c)}</b> ${esc(n)}</span>`).join("") : "";
+    $("roomEdit").textContent = roomEditing ? "✓ Done" : "✎ Edit";
+    $("roomEdit").classList.toggle("primary", roomEditing);
+    $("roomRedraw").disabled = busy || !!S.roomBusy;
+    $("roomShow").disabled = !plan;
+    $("roomTools").hidden = !roomEditing;
+    $("roomTools").innerHTML = roomEditing ? RoomPlan.CODES.filter((c) => c !== " ").concat(" ").map((c) =>
+      `<button data-tool="${esc(c)}" class="${c === roomTool ? "on" : ""}" title="${esc(RoomPlan.TILES[c][0])}">${c === " " ? "␣ erase" : `${esc(c)} ${esc(RoomPlan.TILES[c][0].split(" ")[0])}`}</button>`).join("")
+      + `<button data-tool="+col" title="Add a column">+ col</button><button data-tool="-col" title="Remove the last column">− col</button><button data-tool="+row" title="Add a row">+ row</button><button data-tool="-row" title="Remove the last row">− row</button>` : "";
+    // Who sees it.
+    const sel = $("roomShowTo"), was = sel.value;
+    sel.innerHTML = `<option value="">All players</option>` + S.config.crew.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
+    sel.value = [...sel.options].some((o) => o.value === was) ? was : "";
+    // Who and what is here.
+    $("roomPlayers").innerHTML = pcs.length ? pcs.map((n) => `<span class="pcchip">${esc(n)}</span>`).join("") : `<span class="muted small">No player characters here.</span>`;
+    for (const [id, k] of [["roomOccupants", "occupants"], ["roomContents", "contents"]]) {
+      if (document.activeElement !== $(id) && !dirty.has(id)) $(id).value = String(stationAt([k, room.id]) ?? "");
+    }
+    // The room's state: everything in the station state under this room's id.
+    const vals = [];
+    const walk = (o, p) => { for (const [k, v] of Object.entries(o || {})) { const q = [...p, k]; if (v && typeof v === "object") walk(v, q); else if (q.includes(room.id) && !["occupants", "contents"].includes(q[0])) vals.push([q, v]); } };
+    walk(S.station, []);
+    $("roomValues").innerHTML = vals.length ? vals.map(([p, v]) => `<button class="ghost small" data-path="${esc(JSON.stringify(p))}" title="${esc(p.join("."))}">${esc(p.filter((x) => x !== room.id).join(" ").replace(/_/g, " "))}: <b>${esc(v)}</b></button>`).join("") : `<span class="muted small">Nothing tracked here.</span>`;
+    const terms = S.config.terminals.filter((t) => t.room === room.id);
+    $("roomTerminals").innerHTML = terms.length ? terms.map((t) => `<div><b>${esc(t.name)}</b>: ${esc(t.notes)}</div>`).join("") : "None.";
+  }
+
+  // Painting: click or drag across tiles; the plan is saved a moment after.
+  function paintAt(el) {
+    const g = el?.closest("[data-x]");
+    if (!g || !roomRows) return;
+    const x = Number(g.dataset.x), yy = Number(g.dataset.y);
+    const row = [...roomRows[yy]];
+    if (row[x] === roomTool) return;
+    row[x] = roomTool;
+    roomRows[yy] = row.join("");
+    $("roomPlan").innerHTML = RoomPlan.svg(roomRows, { cell: 24, title: room.label, cls: "editing" });
+    saveRoomSoon();
+  }
+  function saveRoomSoon() {
+    clearTimeout(roomSaveTimer);
+    roomSaveTimer = setTimeout(() => send({ t: "roomLayout", room: room.id, rows: roomRows }), 400);
+  }
+  $("roomPlan").addEventListener("mousedown", (e) => { if (roomEditing) { roomPainting = true; paintAt(e.target); e.preventDefault(); } });
+  $("roomPlan").addEventListener("mouseover", (e) => { if (roomEditing && roomPainting) paintAt(e.target); });
+  addEventListener("mouseup", () => { roomPainting = false; });
+  $("roomTools").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-tool]")?.dataset.tool;
+    if (t === undefined) return;
+    const w = roomRows[0]?.length || 0;
+    if (t === "+col") roomRows = roomRows.map((r) => `${r}.`);
+    else if (t === "-col" && w > 3) roomRows = roomRows.map((r) => r.slice(0, -1));
+    else if (t === "+row") roomRows = [...roomRows, ".".repeat(w)];
+    else if (t === "-row" && roomRows.length > 3) roomRows = roomRows.slice(0, -1);
+    else roomTool = t;
+    if (t.length > 1) saveRoomSoon();
+    renderRoom(true);
+  });
+  // Saved now, and shown as saved (not the old plan until the server's copy arrives).
+  const saveRoomNow = () => { clearTimeout(roomSaveTimer); send({ t: "roomLayout", room: room.id, rows: roomRows }); (S.config.rooms ||= {})[room.id] = { rows: [...roomRows] }; };
+  $("roomEdit").onclick = () => {
+    if (roomEditing) saveRoomNow();
+    else if (!roomRows) roomRows = ["############", ...Array.from({ length: 6 }, () => "#..........#"), "#####DD#####"];
+    roomEditing = !roomEditing;
+    renderRoom(true);
+  };
+  $("roomRedraw").onclick = async () => {
+    if (S.config.rooms?.[room.id] && !(await sure(`Redraw ${room.label}?`, "The agent draws a new floor plan, replacing this one.", "Redraw", "primary"))) return;
+    roomEditing = false;
+    send({ t: "roomDraft", room: room.id, label: room.label, deck: room.deck });
+  };
+  $("roomShow").onclick = () => {
+    send({ t: "roomShow", room: room.id, label: room.label, pc: $("roomShowTo").value });
+    toast(`Showing ${room.label} to ${$("roomShowTo").selectedOptions[0].text.toLowerCase()} (layout only).`);
+  };
+  $("roomHide").onclick = () => send({ t: "roomShow", room: room.id, hide: true, pc: $("roomShowTo").value });
+  for (const id of ["roomOccupants", "roomContents"]) $(id).addEventListener("input", () => dirty.add(id));
+  $("roomSaveWho").onclick = () => {
+    const next = structuredClone(S.station);
+    (next.occupants ||= {})[room.id] = $("roomOccupants").value.trim();
+    (next.contents ||= {})[room.id] = $("roomContents").value.trim();
+    dirty.delete("roomOccupants");
+    dirty.delete("roomContents");
+    send({ t: "station", station: next });
+    toast("Saved. The agent sees it on its next reply.");
+  };
+  $("roomValues").addEventListener("click", (e) => {
+    const p = e.target.closest("[data-path]")?.dataset.path;
+    if (p) editStationValue(JSON.parse(p));
+  });
+  $("roomClose").onclick = () => $("roomDialog").close();
+  $("roomDialog").addEventListener("close", () => {
+    if (roomEditing) saveRoomNow();
+    room = null;
+  });
 
   // ------------------------------------------------------------ sounds
   const soundUrl = (id) => `api/sessions/${code}/sounds/${id}`;

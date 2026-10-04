@@ -874,6 +874,21 @@
     }, rollQueue.length > 1 ? 3400 : 5200);
   }
 
+  // ------------------------------------------------------------ room layouts
+  // The Warden shows a room's floor plan: walls, doors and furniture, as a
+  // blueprint on this screen (never who or what is in it). Esc or a click closes it.
+  function showPlan({ name, rows }) {
+    const fx = $("planfx");
+    fx.hidden = !rows;
+    if (!rows) return;
+    fx.querySelector(".pf-title").textContent = `LAYOUT: ${String(name || "").toUpperCase()}`;
+    fx.querySelector(".pf-plan").innerHTML = RoomPlan.svg(rows, { cell: 24, title: name });
+    FX.Sound.beep(520, 0.08, 0.05);
+    setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90);
+  }
+  $("planfx").addEventListener("click", () => { $("planfx").hidden = true; });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("planfx").hidden) $("planfx").hidden = true; });
+
   // ------------------------------------------------------------ socket
   // The socket lives next to this page (works under any mount point, e.g. /mothership/).
   function socketUrl() {
@@ -959,6 +974,7 @@
         case "roll": showRoll(msg.roll); break;
         case "crew": setCrew(msg.crew, msg.claims); break;
         case "rollResult": showRollResult(msg); break;
+        case "roomPlan": showPlan(msg); break;
         case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); $("sr-err").textContent = rbErr.textContent; break;
         case "endEffect": dropCue(msg.id); FX.end(msg.id); break;
         case "sound": Sfx.play(msg.play); break;

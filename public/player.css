@@ -109,6 +109,26 @@ body {
   background: rgba(0, 0, 0, 0.72); pointer-events: none;
 }
 .rollfx[hidden] { display: none; }
+/* A room's floor plan from the Warden: a blueprint in the screen's colour. */
+.planfx { position: fixed; inset: 0; z-index: 60; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8em; padding: 4vh 4vw; cursor: pointer; }
+.planfx[hidden] { display: none; }
+.pf-title { letter-spacing: 0.2em; text-shadow: 0 0 6px var(--glow); }
+.pf-hint { color: var(--dim); font-size: 0.85em; animation: blink 1.2s infinite steps(1); }
+.pf-plan { width: min(92vw, 900px); display: flex; justify-content: center; filter: drop-shadow(0 0 4px var(--glow)); }
+.pf-plan .roomplan { width: 100%; max-height: 72vh; color: var(--fg); }
+.roomplan .rp-wall { fill: color-mix(in srgb, currentColor 30%, #000); }
+.roomplan .rp-floor { fill: color-mix(in srgb, currentColor 6%, transparent); stroke: color-mix(in srgb, currentColor 14%, transparent); stroke-width: 0.5; }
+.roomplan .rp-glass { fill: color-mix(in srgb, currentColor 30%, #fff); }
+.roomplan .rp-door { fill: currentColor; }
+.roomplan .rp-door.hatch { fill: color-mix(in srgb, currentColor 70%, #fff); }
+.roomplan .rp-thing { fill: color-mix(in srgb, currentColor 25%, #000); stroke: currentColor; stroke-width: 1; }
+.roomplan .rp-thing.hollow { fill: none; }
+.roomplan .rp-screen, .roomplan .rp-soft { fill: currentColor; opacity: 0.7; }
+.roomplan .rp-line { stroke: currentColor; stroke-width: 1; fill: none; }
+.roomplan .rp-pipe { stroke: color-mix(in srgb, currentColor 70%, #000); stroke-width: 2; }
+.roomplan .rp-core { fill: color-mix(in srgb, currentColor 25%, #000); stroke: currentColor; stroke-width: 1.5; }
+.roomplan .rp-debris { stroke: currentColor; stroke-width: 2; fill: none; stroke-linejoin: round; }
+.roomplan .rp-hit { fill: transparent; }
 .rf-dice { font-size: clamp(64px, 16vw, 200px); line-height: 1; letter-spacing: 0.08em; }
 .rf-out { font-size: clamp(22px, 4vw, 48px); margin-top: 0.4em; min-height: 1.2em; }
 .rollfx.crit .rf-out { animation: blink 0.35s infinite steps(1); }

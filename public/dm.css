@@ -351,6 +351,59 @@ summary .muted { font-weight: 400; font-size: 12px; }
 @keyframes svflick { 0%, 100% { fill-opacity: 1; } 7% { fill-opacity: 0.35; } 9% { fill-opacity: 1; } 54% { fill-opacity: 0.4; } 56% { fill-opacity: 1; } }
 .sv .quarantine .sv-band { stroke: color-mix(in srgb, var(--danger) 60%, var(--line2)); }
 .sv .sv-hatchline { fill: color-mix(in srgb, var(--danger) 14%, transparent); }
+/* The lift: stops only on the decks it reaches; yellow stripes = needs clearance, red = broken. */
+.sv .sv-stripe-bg { fill: var(--panel3); }
+.sv .sv-stripe-warn { fill: var(--warn); }
+.sv .sv-stripe-bad { fill: var(--danger); }
+.sv .sv-gate { stroke: none; opacity: 0.85; }
+.sv .sv-liftstop.perm .sv-stop { stroke: var(--warn); }
+.sv .sv-liftstop.fault .sv-stop { stroke: var(--danger); }
+.sv .sv-liftstop[data-path] { cursor: pointer; }
+/* Docked rooms (a ship on an airlock): a collar straight into the parent room. */
+.sv .sv-collar line { stroke: color-mix(in srgb, var(--accent) 40%, var(--line2)); stroke-width: 3; }
+.sv .sv-room.docked > rect { stroke: color-mix(in srgb, var(--warn) 55%, var(--line2)); stroke-dasharray: 6 3; }
+/* Rooms open the room view; who's there is counted in the corner. */
+.sv .sv-room rect[data-room] { cursor: pointer; }
+.sv .sv-room rect[data-room]:hover { stroke: color-mix(in srgb, var(--accent) 60%, var(--line2)); }
+.sv .sv-people { fill: color-mix(in srgb, var(--fg) 70%, var(--muted)); }
+.sv .sv-pc { fill: var(--player); }
+.mrname[data-room] { cursor: pointer; }
+.mrname[data-room]:hover { color: var(--accent); }
+
+/* ---- room view and floor plans (public/roomplan.js) ---- */
+.roomdlg { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 40px); display: none; }
+.roomdlg[open] { display: flex; flex-direction: column; gap: 10px; }
+.roomdlg h2 { font-size: 14px; }
+.roomgrid { display: grid; grid-template-columns: minmax(300px, 1.5fr) minmax(240px, 1fr); gap: 14px; min-height: 0; overflow-y: auto; }
+@media (max-width: 760px) { .roomgrid { grid-template-columns: 1fr; } }
+.roomplanbox { background: #070a0c; border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.roomplanbox .roomplan { width: 100%; max-height: 52vh; }
+.roomplanbox .rpempty { margin: auto; text-align: center; padding: 30px 10px; }
+.rptools { display: flex; flex-wrap: wrap; gap: 4px; }
+.rptools button { padding: 3px 7px; font-family: var(--mono); font-size: 12px; }
+.rptools button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.roomplan { color: var(--accent-soft); }
+.roomplan .rp-wall { fill: color-mix(in srgb, currentColor 32%, #000); }
+.roomplan .rp-floor { fill: color-mix(in srgb, currentColor 7%, #000); stroke: color-mix(in srgb, currentColor 12%, transparent); stroke-width: 0.5; }
+.roomplan .rp-glass { fill: color-mix(in srgb, #9fd3ff 60%, transparent); }
+.roomplan .rp-door { fill: var(--warn); }
+.roomplan .rp-door.hatch { fill: color-mix(in srgb, var(--warn) 70%, #fff); }
+.roomplan .rp-thing { fill: color-mix(in srgb, currentColor 35%, #000); stroke: currentColor; stroke-width: 1; }
+.roomplan .rp-thing.hollow { fill: none; }
+.roomplan .rp-screen { fill: currentColor; opacity: 0.8; }
+.roomplan .rp-soft { fill: color-mix(in srgb, currentColor 60%, #000); }
+.roomplan .rp-line { stroke: currentColor; stroke-width: 1; fill: none; }
+.roomplan .rp-pipe { stroke: color-mix(in srgb, currentColor 70%, #000); stroke-width: 2; }
+.roomplan .rp-core { fill: color-mix(in srgb, var(--danger) 35%, #000); stroke: var(--danger); stroke-width: 1.5; }
+.roomplan .rp-debris { stroke: color-mix(in srgb, currentColor 80%, #000); stroke-width: 2; fill: none; stroke-linejoin: round; }
+.roomplan .rp-hit { fill: transparent; }
+.roomplan.editing .rp-hit { cursor: crosshair; }
+.roomplan.editing .rp-hit:hover { fill: color-mix(in srgb, var(--accent) 25%, transparent); }
+.rplegend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+.rplegend b { font-family: var(--mono); color: var(--fg); }
+.roomside { display: flex; flex-direction: column; gap: 10px; }
+.roomside .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.roomside .pcchip { background: color-mix(in srgb, var(--player) 14%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--player) 40%, var(--line)); border-radius: 999px; padding: 1px 9px; font-size: 12.5px; }
 
 /* ---- crew (player characters) ---- */
 #crew { display: flex; flex-direction: column; gap: 6px; }
