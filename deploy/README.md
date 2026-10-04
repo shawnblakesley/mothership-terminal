@@ -9,7 +9,9 @@ viewer ── HTTPS ── CloudFront
                                                 (Lightsail: Caddy → Node on :3000)
 ```
 
-## 1. Server (Lightsail, Ubuntu 24.04, 1 GB plan)
+## 1. Server (Lightsail, Ubuntu 24.04, 2 GB plan)
+
+Use at least 2 GB of RAM: the human-voice model at full precision needs about 650 MB, and on a 1 GB plan the server swaps and the first line after a quiet spell can stall. The 1 GB plan also runs out of burst CPU quickly.
 
 1. Create the instance and attach a **static IP**.
 2. Open ports **80** and **443** in the instance firewall. Caddy needs 80 for the certificate.
