@@ -84,9 +84,41 @@
   const playerLink = () => new URL(`./?s=${code}`, location.href).href;
   const wardenLink = () => `${new URL(`dm?s=${code}`, new URL("./", location.href)).href}#token=${key}`;
 
+  // In-page confirmation: ask(title, text, [[value, label, class?], ...]) resolves
+  // to the clicked button's value, or "" if dismissed. (Not confirm(): browsers let
+  // people block those, which silently answers "cancel".)
+  function ask(title, text, buttons, copyText) {
+    const dlg = $("askDialog");
+    $("askTitle").textContent = title;
+    $("askText").textContent = text;
+    $("askCopy").hidden = !copyText;
+    $("askCopy").value = copyText || "";
+    $("askButtons").innerHTML = buttons.map(([v, label, cls]) => `<button value="${esc(v)}" class="${cls || ""}">${esc(label)}</button>`).join("")
+      + '<span class="grow"></span><button value="" formnovalidate>Cancel</button>';
+    dlg.showModal();
+    if (copyText) $("askCopy").select();
+    return new Promise((resolve) => {
+      const done = (value) => {
+        dlg.removeEventListener("close", onClose);
+        $("askButtons").onclick = null;
+        if (dlg.open) dlg.close();
+        resolve(value);
+      };
+      const onClose = () => done(""); // Esc
+      dlg.addEventListener("close", onClose);
+      $("askButtons").onclick = (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        e.preventDefault();
+        done(btn.value);
+      };
+    });
+  }
+  const sure = async (title, text, label, cls = "danger") => (await ask(title, text, [["yes", label, cls]])) === "yes";
+
   async function copy(text, what) {
     try { await navigator.clipboard.writeText(text); toast(`${what} copied.`); }
-    catch { prompt(`Copy the ${what.toLowerCase()}:`, text); }
+    catch { ask(`Copy the ${what.toLowerCase()}`, "Your browser blocked copying. Select the text below and copy it.", [], text); }
   }
 
   // ------------------------------------------------------------ start screen
@@ -138,9 +170,9 @@
     }
   }
 
-  $("mine").addEventListener("click", (e) => {
+  $("mine").addEventListener("click", async (e) => {
     const c = e.target.closest("[data-forget]")?.dataset.forget;
-    if (c && confirm(`Forget session ${c} on this device? (It keeps running; you'd need its Warden link to get back in.)`)) {
+    if (c && await sure(`Forget session ${c}?`, "It keeps running on the server; you'd need its Warden link to get back in on this device.", "Forget")) {
       store.del(tokenKey(c));
       showStart();
     }
@@ -457,9 +489,13 @@
   setInterval(() => S && S.effects.length && renderEffects(), 1000);
 
   $("clearScreen").onclick = () => send({ t: "clearScreen" });
-  $("resetSession").onclick = () => confirm("Restart the story? Clears the log and effects; lore, voices and secrets are kept. Players stay connected and are logged back in as GUEST.") &&
-    send({ t: "resetSession", keepStation: confirm("Keep the current station state (doors, systems...)? Access level resets to GUEST either way. (Cancel = restore default station)") });
-  $("resetAll").onclick = () => confirm("Factory reset EVERYTHING (lore, persona, secrets, station) to defaults?") && send({ t: "resetAll" });
+  $("resetSession").onclick = async () => {
+    const how = await ask("Restart the story?",
+      "Clears the log and effects. Lore, voices and secrets are kept. Players stay connected and are logged back in as GUEST.",
+      [["default", "Restart", "danger"], ["keep", "Restart, keep doors & systems"]]);
+    if (how) send({ t: "resetSession", keepStation: how === "keep" });
+  };
+  $("resetAll").onclick = async () => (await sure("Factory reset?", "Everything (lore, personas, voices, secrets, station) goes back to the defaults.", "Factory reset")) && send({ t: "resetAll" });
 
   // ------------------------------------------------------------ voices & entities
   const BUILTIN_IDS = ["terminal", "broadcast"];
@@ -610,14 +646,18 @@
     card?.querySelector('[data-k="preset"]')?.focus();
   }
 
-  $("voices").addEventListener("click", (e) => {
+  $("voices").addEventListener("click", async (e) => {
     const act = e.target.closest("[data-act]")?.dataset.act;
     const card = e.target.closest(".vcard");
     if (!act || !card) return;
-    const i = Number(card.dataset.i);
+    let i = Number(card.dataset.i);
     if (act === "test") {
       Voice.test(voicesDraft[i], $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
-    } else if (act === "del" && confirm(`Delete the voice "${voicesDraft[i].name}"?`)) {
+    } else if (act === "del") {
+      const v = voicesDraft[i];
+      if (!(await sure(`Delete "${v.name}"?`, "The voice and its persona are removed.", "Delete"))) return;
+      i = voicesDraft.indexOf(v);
+      if (i < 0) return;
       voicesDraft.splice(i, 1);
       send({ t: "voices", voices: voicesDraft });
       voicesSentAt = 0;
@@ -736,10 +776,10 @@ ${dice}${res.dice.length > 1 ? ` → ${String(res.used).padStart(2, "0")}` : ""}
   $("keywarn").onclick = openKeyDialog;
   $("sessionCode").onclick = () => copy(playerLink(), "Player link");
   $("copyPlayer").onclick = () => copy(playerLink(), "Player link");
-  $("copyWarden").onclick = () => confirm("The Warden link opens this console on another device. Anyone who has it can run your session (but never sees your API key). Copy it?") && copy(wardenLink(), "Warden link");
+  $("copyWarden").onclick = async () => (await sure("Copy the Warden link?", "It opens this console on another device. Anyone who has it can run your session (but never sees your API key).", "Copy link", "primary")) && copy(wardenLink(), "Warden link");
   $("allSessions").onclick = () => { location.href = "dm"; };
-  $("endSession").onclick = () => {
-    if (!confirm(`End session ${code} for everyone? The log, voices and settings are deleted and players are disconnected.`)) return;
+  $("endSession").onclick = async () => {
+    if (!(await sure(`End session ${code}?`, "For everyone: the log, voices and settings are deleted and players are disconnected.", "End session"))) return;
     send({ t: "endSession" });
   };
 

@@ -39,6 +39,17 @@
     </section>
   </main>
 
+  <!-- In-page confirmations (browser confirm() boxes can be switched off by
+       "don't allow more dialogs", which silently cancels them). -->
+  <dialog id="askDialog">
+    <form method="dialog" class="stack">
+      <h2 id="askTitle"></h2>
+      <p id="askText"></p>
+      <input id="askCopy" readonly hidden>
+      <div class="row" id="askButtons"></div>
+    </form>
+  </dialog>
+
   <dialog id="keyDialog">
     <form method="dialog" class="stack" id="keyForm">
       <h2>Agent API key</h2>
