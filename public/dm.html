@@ -7,14 +7,67 @@
   <link rel="stylesheet" href="dm.css">
 </head>
 <body>
+  <!-- ================= START: create or reopen a session ================= -->
+  <main id="start" class="start" hidden>
+    <h1>WARDEN CONSOLE</h1>
+    <p class="muted">Run a Mothership session: your players join the station terminal with a code, and an AI voices the station while you steer it.</p>
+    <div id="startErr" class="err" role="alert"></div>
+
+    <section class="card">
+      <h2>Start a new session</h2>
+      <form id="createForm" class="stack">
+        <label class="field"><span>AI provider</span><select id="newProvider"></select></label>
+        <label class="field"><span>Your API key <a id="keyLink" target="_blank" rel="noopener">get one ↗</a></span>
+          <input id="newKey" type="password" autocomplete="off" spellcheck="false" required></label>
+        <label class="check"><input type="checkbox" id="newRemember"> Remember this key on this device</label>
+        <p class="muted small">You bring your own key, and you pay your provider for what the agent uses. DeepSeek Flash costs a fraction of a cent per reply. The key stays in the server's memory for this session only. It is never written to disk or shown to players. If the server restarts, you'll be asked for it again.</p>
+        <div class="row"><button class="primary" id="createBtn">Create session</button></div>
+      </form>
+    </section>
+
+    <section class="card" id="mineCard" hidden>
+      <h2>Your sessions on this device</h2>
+      <ul id="mine" class="mine"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Open from another device</h2>
+      <form id="linkForm" class="row">
+        <input id="wardenLink" placeholder="Paste a Warden link (Session → Copy Warden link)" autocomplete="off">
+        <button>Open</button>
+      </form>
+    </section>
+  </main>
+
+  <dialog id="keyDialog">
+    <form method="dialog" class="stack" id="keyForm">
+      <h2>Agent API key</h2>
+      <label class="field"><span>Provider</span><select id="keyProvider"></select></label>
+      <label class="field"><span>API key <a id="keyLink2" target="_blank" rel="noopener">get one ↗</a></span>
+        <input id="keyValue" type="password" autocomplete="off" spellcheck="false"></label>
+      <label class="check"><input type="checkbox" id="keyRemember"> Remember this key on this device</label>
+      <p class="muted small" id="keyStatus"></p>
+      <div class="row">
+        <button value="save" class="primary">Save key</button>
+        <button value="remove" class="danger" id="keyRemove">Remove key</button>
+        <span class="grow"></span>
+        <button value="cancel" formnovalidate>Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
   <header class="top">
     <h1>WARDEN CONSOLE</h1>
     <span id="conn" class="pill bad">offline</span>
+    <button id="sessionCode" class="code" title="Session code: click to copy the player link">------</button>
     <span class="grow"></span>
     <div class="agent" title="Which AI runs the terminal. Lists are cheapest-first.">
       <select id="provider" aria-label="Provider"></select>
       <select id="model" aria-label="Model"></select>
       <select id="effort" aria-label="Thinking effort" title="Thinking effort (off/low = fastest & cheapest)"></select>
+      <button id="keyBtn" title="Your API key for this session">🔑 Key</button>
       <span id="keywarn" class="pill bad" hidden></span>
     </div>
     <div class="seg" id="mode" role="radiogroup" aria-label="Response mode">
@@ -73,8 +126,8 @@
     <!-- ================= PREVIEW + SETUP ================= -->
     <section class="col">
       <h2>Player screen</h2>
-      <div class="preview"><iframe id="preview" src="/?spectate=1" title="Player terminal preview"></iframe></div>
-      <p class="muted small">Players open <code id="playerUrl"></code></p>
+      <div class="preview"><iframe id="preview" title="Player terminal preview"></iframe></div>
+      <p class="muted small">Players join with code <b id="codeInline"></b> at <code id="playerUrl"></code> <button id="copyPlayer" class="ghost">Copy link</button></p>
 
       <details open>
         <summary>Station state <span class="muted">(the agent reads &amp; edits this)</span></summary>
@@ -113,9 +166,16 @@
         <summary>Session</summary>
         <div class="row wrap">
           <button id="clearScreen" title="Players' screen goes blank; the agent still remembers">Clear player screen</button>
-          <button id="resetSession" class="danger" title="Wipe log & effects; keep lore/persona">New session</button>
+          <button id="resetSession" class="danger" title="Wipe log & effects; keep lore/persona">Restart story</button>
           <button id="resetAll" class="danger" title="Everything back to defaults">Factory reset</button>
         </div>
+        <div class="row wrap">
+          <button id="copyWarden" title="Opens this console on another device. Anyone with it can run your session.">Copy Warden link</button>
+          <button id="allSessions" class="ghost">All my sessions</button>
+          <span class="grow"></span>
+          <button id="endSession" class="danger" title="Deletes this session for everyone">End session</button>
+        </div>
+        <p class="muted small">Idle sessions are deleted after two weeks.</p>
       </details>
     </section>
   </div>

@@ -1,6 +1,8 @@
 (() => {
   const params = new URLSearchParams(location.search);
   const spectate = params.has("spectate");
+  const normCode = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  let code = normCode(params.get("s"));
 
   const $ = (id) => document.getElementById(id);
   const linesEl = $("lines"), screenEl = $("screen"), input = $("in"), form = $("inputrow");
@@ -13,37 +15,84 @@
 
   // ------------------------------------------------------------ boot
   const bootEl = $("boot");
+  const bootText = $("boot-text"), joinForm = $("join"), joinInput = $("join-code"), joinErr = $("join-err");
+  const printBoot = (lines, delay = 260) => new Promise((resolve) => {
+    let i = 0;
+    const iv = setInterval(() => {
+      if (i >= lines.length) { clearInterval(iv); return resolve(); }
+      bootText.textContent += lines[i++] + "\n";
+    }, delay);
+  });
+
+  // Turn on the terminal: unlock audio (needs a key press/click), CRT power-on.
+  function powerOn() {
+    FX.Sound.unlock();
+    FX.Sound.beep(1200, 0.05);
+    bootEl.classList.add("gone");
+    const crtEl = $("crt");
+    crtEl.classList.add("power-on");
+    crtEl.addEventListener("animationend", () => crtEl.classList.remove("power-on"), { once: true });
+    input.focus();
+  }
+
+  async function lookup(c) {
+    const r = await fetch(`api/sessions/${encodeURIComponent(c)}`).catch(() => null);
+    if (r?.ok) return r.json();
+    if (r?.status === 429) throw new Error("TOO MANY ATTEMPTS. WAIT A MINUTE.");
+    throw new Error(r ? "NO SESSION WITH THAT CODE." : "STATION LINK DOWN. TRY AGAIN.");
+  }
+
+  // Ask for a session code (shown when the link didn't include one, or it was wrong).
+  function askForCode(message) {
+    joinForm.hidden = false;
+    joinErr.textContent = message || "";
+    joinInput.value = code;
+    joinInput.focus();
+  }
+
+  joinForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const c = normCode(joinInput.value);
+    if (!c) return;
+    joinErr.textContent = "LINKING...";
+    try {
+      const info = await lookup(c);
+      code = info.code;
+      window.history.replaceState(null, "", `?s=${code}`); // (plain "history" is the command history below)
+      joinForm.hidden = true;
+      await printBoot([`STATION LINK ........... ${info.stationName}`, ""], 120);
+      powerOn(); // submitting the form counts as the key press browsers need for audio
+      connect();
+    } catch (err) {
+      joinErr.textContent = err.message;
+    }
+  });
+
   if (spectate) {
     bootEl.classList.add("gone");
     form.hidden = true;
     FX.Sound.muted = true;
     document.querySelector(".vol").hidden = true;
   } else {
-    const bootLines = [
-      "HV-CORE OS v4.1  (C) HOLLIS-VANE SYSTEMS",
-      "MEMORY CHECK ............ 65536K OK",
-      "NEURAL CORE ............. ONLINE",
-      "STATION LINK ............ ESTABLISHED",
-      "",
-    ];
-    let i = 0;
-    const iv = setInterval(() => {
-      if (i >= bootLines.length) return clearInterval(iv);
-      $("boot-text").textContent += bootLines[i++] + "\n";
-    }, 260);
-    const go = () => {
-      FX.Sound.unlock();
-      FX.Sound.beep(1200, 0.05);
-      bootEl.classList.add("gone");
-      const crtEl = $("crt");
-      crtEl.classList.add("power-on");
-      crtEl.addEventListener("animationend", () => crtEl.classList.remove("power-on"), { once: true });
-      input.focus();
-      removeEventListener("keydown", go);
-      bootEl.removeEventListener("click", go);
-    };
-    addEventListener("keydown", go);
-    bootEl.addEventListener("click", go);
+    (async () => {
+      await printBoot(["HV-CORE OS v4.1  (C) HOLLIS-VANE SYSTEMS", "MEMORY CHECK ............ 65536K OK", "NEURAL CORE ............. ONLINE"]);
+      if (!code) return askForCode();
+      try {
+        const info = await lookup(code);
+        await printBoot([`STATION LINK ........... ${info.stationName}`, ""]);
+        $("boot-press").hidden = false;
+        const go = () => {
+          removeEventListener("keydown", go);
+          bootEl.removeEventListener("click", go);
+          powerOn();
+        };
+        addEventListener("keydown", go);
+        bootEl.addEventListener("click", go);
+        connect();
+      } catch (err) {
+        askForCode(err.message);
+      }
+    })();
   }
 
   // ------------------------------------------------------------ header / clock
@@ -99,7 +148,7 @@
     }
     typingQueue.push(entry);
     if (!typing) typeNext();
-    if (header.tts) Voice.say(entry, voiceOf(entry)?.fx);
+    if (header.tts) Voice.say(`api/sessions/${code}/tts/${entry.id}`, voiceOf(entry)?.fx);
   }
 
   function typeNext() {
@@ -227,13 +276,28 @@
   applyVolume();
 
   // ------------------------------------------------------------ socket
+  // The socket lives next to this page (works under any mount point, e.g. /mothership/).
+  function socketUrl() {
+    const u = new URL(`ws?s=${encodeURIComponent(code)}`, location.href);
+    u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    return u;
+  }
+
   function connect() {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    ws = new WebSocket(`${proto}://${location.host}/?role=player`);
+    if (!code) return;
+    ws = new WebSocket(socketUrl());
     ws.onopen = () => $("hdr-link").classList.remove("down");
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       $("hdr-link").classList.add("down");
-      setTimeout(connect, 1500);
+      if (ev.code === 4004) {
+        // The session ended (or expired): back to the code prompt.
+        if (spectate) return;
+        bootEl.classList.remove("gone");
+        bootText.textContent = "SESSION TERMINATED.\n\n";
+        $("boot-press").hidden = true;
+        return askForCode();
+      }
+      setTimeout(connect, ev.code === 4029 ? 10000 : 1500);
     };
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
@@ -260,5 +324,5 @@
       }
     };
   }
-  connect();
+  if (spectate) connect();
 })();

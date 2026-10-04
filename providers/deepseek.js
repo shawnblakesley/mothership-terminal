@@ -6,6 +6,9 @@ export default openAICompatible({
   id: "deepseek",
   label: "DeepSeek",
   envKey: "DEEPSEEK_API_KEY",
+  keyHint: "sk-...",
+  keyUrl: "https://platform.deepseek.com/api_keys",
+  keyPattern: /^sk-/,
   baseURL: "https://api.deepseek.com",
   models: [
     { id: "deepseek-flash", label: "Flash · $0.15 / $0.60 per MTok", efforts: ["off", "low", "high"] },

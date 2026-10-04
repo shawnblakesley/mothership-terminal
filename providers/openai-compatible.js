@@ -3,20 +3,18 @@
 // These APIs don't enforce a JSON schema, so the schema goes into the prompt
 // and the server validates whatever comes back.
 
-export function openAICompatible({ id, label, envKey, baseURL, models, buildExtras = () => ({}) }) {
+export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPattern, baseURL, models, buildExtras = () => ({}) }) {
   return {
     id,
     label,
     envKey,
+    keyHint,
+    keyUrl,
+    keyPattern,
     models,
 
-    isConfigured() {
-      return !!process.env[envKey];
-    },
-
-    async generate({ model, effort, system, context, messages, schema, example }) {
-      const apiKey = process.env[envKey];
-      if (!apiKey) throw new Error(`${label}: no API key — set ${envKey} in .env and restart.`);
+    async generate({ apiKey, model, effort, system, context, messages, schema, example }) {
+      if (!apiKey) throw new Error(`${label}: no API key. Add one in the Warden console.`);
       const spec = models.find((m) => m.id === model) ?? models[0];
 
       const body = {
@@ -45,7 +43,7 @@ export function openAICompatible({ id, label, envKey, baseURL, models, buildExtr
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         const msg = data?.error?.message || res.statusText;
-        if (res.status === 401) throw new Error(`${label}: authentication failed — check ${envKey}.`);
+        if (res.status === 401) throw new Error(`${label}: authentication failed. Check the API key in the Warden console.`);
         if (res.status === 402) throw new Error(`${label}: out of credit (402). Top up or switch provider.`);
         if (res.status === 429) throw new Error(`${label}: rate limited — wait a moment and regenerate.`);
         throw new Error(`${label} API error ${res.status}: ${msg}`);

@@ -7,20 +7,28 @@ const MODELS = [
   { id: "claude-opus-5-5", label: "Opus 5.5 · $4 / $20", efforts: ["low", "medium", "high"], fallbacks: true },
 ];
 
-let client = null;
+// One client per API key (each Warden brings their own).
+const clients = new Map();
+function clientFor(apiKey) {
+  if (!clients.has(apiKey)) {
+    if (clients.size > 200) clients.delete(clients.keys().next().value);
+    clients.set(apiKey, new Anthropic({ apiKey }));
+  }
+  return clients.get(apiKey);
+}
 
 export default {
   id: "claude",
   label: "Claude (Anthropic)",
   envKey: "ANTHROPIC_API_KEY",
+  keyHint: "sk-ant-...",
+  keyUrl: "https://console.anthropic.com/settings/keys",
+  keyPattern: /^sk-ant-/,
   models: MODELS,
 
-  isConfigured() {
-    return !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_PROFILE);
-  },
-
-  async generate({ model, effort, system, context, messages, schema }) {
-    client ??= new Anthropic();
+  async generate({ apiKey, model, effort, system, context, messages, schema }) {
+    if (!apiKey) throw new Error("Claude: no API key. Add one in the Warden console.");
+    const client = clientFor(apiKey);
     const spec = MODELS.find((m) => m.id === model) ?? MODELS[0];
 
     const params = {
@@ -57,10 +65,10 @@ export default {
 };
 
 function describeError(err) {
-  if (err instanceof Anthropic.AuthenticationError) return "Claude: authentication failed — check ANTHROPIC_API_KEY.";
+  if (err instanceof Anthropic.AuthenticationError) return "Claude: authentication failed. Check the API key in the Warden console.";
   if (err instanceof Anthropic.RateLimitError) return "Claude: rate limited — wait a moment and regenerate.";
   if (err instanceof Anthropic.APIConnectionError) return "Claude: could not reach the API — check your connection.";
   if (err instanceof Anthropic.APIError) return `Claude API error ${err.status}: ${err.message}`;
-  if (/authentication method/i.test(err?.message || "")) return "Claude: no API key — set ANTHROPIC_API_KEY in .env and restart.";
+  if (/authentication method/i.test(err?.message || "")) return "Claude: no API key. Add one in the Warden console.";
   return `Claude: ${err?.message || err}`;
 }

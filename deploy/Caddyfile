@@ -1,0 +1,17 @@
+# Origin for the terminal. Caddy gets a Let's Encrypt certificate for
+# {ORIGIN_DOMAIN} automatically, so traffic from the CDN to here is encrypted
+# (Wardens' API keys pass through it). setup.sh fills in the placeholders.
+{ORIGIN_DOMAIN} {
+	# Only the CDN knows this header value: direct visitors get 403.
+	@cdn header X-Origin-Secret "{ORIGIN_SECRET}"
+	handle @cdn {
+		# WebSockets are proxied automatically.
+		reverse_proxy localhost:3000
+	}
+	handle {
+		respond "Forbidden" 403
+	}
+	log {
+		output discard
+	}
+}

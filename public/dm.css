@@ -13,6 +13,7 @@
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
 
@@ -113,6 +114,28 @@ details .fxopts { grid-template-columns: 1fr 1fr; }
 /* ---- preview ---- */
 .preview { position: relative; width: 100%; aspect-ratio: 16 / 10; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #000; }
 .preview iframe { position: absolute; top: 0; left: 0; width: 200%; height: 200%; transform: scale(0.5); transform-origin: 0 0; border: 0; }
+
+/* ---- session: start screen, code, key dialog, toasts ---- */
+body.starting > header.top, body.starting > .grid { display: none; }
+.start[hidden] { display: none; }
+.start { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.start h1 { font: 600 18px var(--mono); letter-spacing: 0.15em; color: var(--accent); margin: 0; }
+.start .card h2 { margin: 0 0 4px; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.field a { margin-left: 6px; color: var(--accent); }
+.mine { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mine li { display: flex; align-items: center; gap: 8px; background: var(--panel2); border-radius: 6px; padding: 6px 6px 6px 10px; }
+.mine code { font-size: 14px; letter-spacing: 0.15em; }
+a.btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; color: var(--fg); text-decoration: none; }
+#linkForm input { flex: 1; }
+.code { font: 600 15px var(--mono); letter-spacing: 0.25em; color: var(--accent); background: var(--panel2); }
+#codeInline { font-family: var(--mono); letter-spacing: 0.15em; color: var(--accent); }
+dialog { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; padding: 16px; width: min(460px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+dialog h2 { margin: 0; }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 10; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); max-width: calc(100vw - 32px); }
+.toast.error { border-color: var(--danger); color: var(--danger); }
+#keywarn { cursor: pointer; }
 
 /* ---- draft lines ---- */
 #draftLines { display: flex; flex-direction: column; gap: 6px; }

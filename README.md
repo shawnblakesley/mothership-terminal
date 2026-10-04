@@ -1,27 +1,50 @@
 # Mothership Terminal
 
-A station-computer terminal for Mothership RPG. Players type into a CRT screen and an AI model (DeepSeek or Claude) answers as the station's OS. The Warden (you) steers it from a separate console.
+A station-computer terminal for the Mothership RPG. Players type into a CRT screen and an AI model (DeepSeek or Claude) answers as the station, in any number of voices. The Warden (game master) steers it from a separate console.
 
-## Run
+Play it at **[shawnofthe.dev/mothership](https://shawnofthe.dev/mothership/)**, or run your own copy.
+
+## How a game works
+
+1. **The Warden opens `/dm`**, picks a provider and pastes their own API key, and clicks **Create session**. They get a six-character **session code**.
+2. **Players open `/`** (the terminal) on a laptop or TV, enter the code, and start typing.
+3. Many sessions can run at once; each is separate.
+
+**API keys:**
+
+- Each Warden brings their own key and pays their provider for what the agent uses. DeepSeek Flash costs a fraction of a cent per reply.
+- Keys are held in the server's memory only. They are never written to disk or sent to players.
+- After a server restart the Warden re-enters the key, or ticks **Remember this key on this device** to have their browser re-send it.
+
+**Getting back into your console:**
+
+- The console is tied to the device that created the session.
+- **Copy Warden link** opens it on another device.
+- Idle sessions are deleted after two weeks.
+
+## Run it yourself
 
 1. Install dependencies:
    ```bash
    npm install
    ```
-2. Copy `.env.example` to `.env` and add a `DEEPSEEK_API_KEY`, an `ANTHROPIC_API_KEY`, or both.
-3. Start the server:
+2. Start the server:
    ```bash
    npm start
    ```
+3. Open `http://localhost:3000/dm` to start a session. Players join at `http://<your-ip>:3000/`.
 
-- **Player terminal:** `http://<your-ip>:3000/`. Open it on the table laptop or TV. Press any key to boot, which also enables sound.
-- **DM console:** `http://localhost:3000/dm`
+Optional settings go in `.env` (see `.env.example`): `BASE_PATH` to serve under a sub-path, `DATA_DIR`, session limits.
 
-If no key is set, the console still works in **Manual** mode and you type every reply.
+For a private LAN game you can set `ALLOW_SERVER_KEYS=1` plus `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY`, so sessions use the server's keys. Never do that on a public server.
+
+If a session has no key, the console still works in **Manual** mode and you type every reply.
+
+To host it publicly, see [deploy/README.md](deploy/README.md).
 
 ## Choosing the AI
 
-The picker in the DM console's top bar sets the **provider**, **model** and **thinking effort**. You can change it at any time, even mid-session. Every list is ordered cheapest-first, and a new setup starts on the cheapest model you have a key for.
+The picker in the console's top bar sets the **provider**, **model** and **thinking effort**. You can change them at any time, even mid-session. **🔑 Key** adds or replaces the session's key for any provider. Every list is ordered cheapest-first, and a session starts on the cheapest model it has a key for.
 
 | Provider | Models (cheapest first) | Notes |
 |---|---|---|
@@ -30,9 +53,9 @@ The picker in the DM console's top bar sets the **provider**, **model** and **th
 
 ### Adding a provider
 
-Providers live in `providers/`. Each one is a module exposing `{ id, label, envKey, models, isConfigured(), generate() }`.
+Providers live in `providers/`. Each one is a module exposing `{ id, label, envKey, keyHint, keyUrl, models, generate({ apiKey, ... }) }`.
 
-For anything that speaks the OpenAI chat-completions format (OpenRouter, Groq, Together, a local Ollama or LM Studio), copy `providers/deepseek.js`. Change the `baseURL`, `envKey` and model list, then add it to `PROVIDERS` in `providers/index.js`. The DM console picks it up automatically.
+For anything that speaks the OpenAI chat-completions format (OpenRouter, Groq, Together, a local Ollama or LM Studio), copy `providers/deepseek.js`. Change the `baseURL`, key details and model list, then add it to `PROVIDERS` in `providers/index.js`. The console picks it up automatically.
 
 ## DM console
 
@@ -83,4 +106,4 @@ A **blackout** cuts off all speech instantly, including queued lines. Anything s
 
 Players have a **volume control** in the top-right corner: a ten-segment meter you can click, drag, scroll or use the arrow keys on. Click **VOL** to mute. It's remembered per device and controls all sound, both effects and voices.
 
-The state saves to `data/state.json`, so it survives a restart.
+Sessions save to `data/sessions/`, so they survive a restart. API keys are the exception: they're never saved.

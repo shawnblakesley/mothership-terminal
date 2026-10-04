@@ -26,19 +26,22 @@
     return master;
   }
 
-  // Player: speak a log line with its voice's effect settings.
-  function say(entry, fx) {
+  // Player: speak a log line (audio from `url`) with its voice's effect settings.
+  function say(url, fx) {
     if (!ready() || blocked()) return;
-    enqueue(fetch(`/tts/${entry.id}`), fx);
+    enqueue(fetch(url), fx);
   }
 
-  // DM console: hear a voice (unsaved settings included) with sample text.
-  function test(voice, text, key = "") {
+  // Warden console: hear a voice (unsaved settings included) with sample text.
+  function test(voice, text, url, token) {
     stop();
     ctx().resume?.();
-    const q = key ? `?key=${encodeURIComponent(key)}` : "";
     enqueue(
-      fetch(`/tts-test${q}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice, text }) }),
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Warden-Token": token },
+        body: JSON.stringify({ voice, text }),
+      }),
       voice.fx,
     );
   }

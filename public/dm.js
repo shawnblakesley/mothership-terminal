@@ -1,6 +1,23 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const key = new URLSearchParams(location.search).get("key") || "";
+  const normCode = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  // ------------------------------------------------------------ session + token
+  // The Warden token proves this console runs the session. It arrives once in a
+  // link's #fragment (never sent to the server in a URL) and is kept per device.
+  const store = {
+    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+    del: (k) => { try { localStorage.removeItem(k); } catch {} },
+  };
+  const tokenKey = (c) => `warden:${c}`;
+  let code = normCode(new URLSearchParams(location.search).get("s"));
+  const hashToken = new URLSearchParams(location.hash.slice(1)).get("token");
+  if (code && hashToken) {
+    store.set(tokenKey(code), hashToken);
+    history.replaceState(null, "", `?s=${code}`);
+  }
+  let key = code ? store.get(tokenKey(code)) : null; // the Warden token for this session
   let ws, S = null;
   let pendingKey = ""; // re-render the draft only when the pending reply actually changes
   const dirty = new Set(); // config fields the DM is mid-edit on
@@ -17,16 +34,182 @@
   };
 
   // ------------------------------------------------------------ socket
+  let autoKeySent = false;
   function connect() {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    ws = new WebSocket(`${proto}://${location.host}/?role=dm&key=${encodeURIComponent(key)}`);
-    ws.onopen = () => { $("conn").textContent = "online"; $("conn").className = "pill ok"; };
-    ws.onclose = () => { $("conn").textContent = "offline"; $("conn").className = "pill bad"; setTimeout(connect, 1500); };
+    const u = new URL(`ws?s=${encodeURIComponent(code)}&role=dm`, location.href);
+    u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(u);
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ t: "auth", token: key }));
+      $("conn").textContent = "online"; $("conn").className = "pill ok";
+    };
+    ws.onclose = (ev) => {
+      $("conn").textContent = "offline"; $("conn").className = "pill bad";
+      if (ev.code === 4003 || ev.code === 4004) {
+        store.del(tokenKey(code));
+        return showStart(ev.code === 4004 ? `Session ${code} has ended or expired.` : `This device isn't the Warden for session ${code}. Use its Warden link.`);
+      }
+      setTimeout(connect, ev.code === 4029 ? 10000 : 1500);
+    };
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
-      if (msg.t === "state") { S = msg.state; render(); }
+      if (msg.t === "state") {
+        S = msg.state;
+        render();
+        // After a server restart the session's key is gone: re-send a remembered one.
+        const p = S.providers.find((x) => x.id === S.config.provider);
+        const remembered = p && store.get(`wardenKey:${p.id}`);
+        if (p && !p.configured && remembered && !autoKeySent) {
+          autoKeySent = true;
+          send({ t: "apiKey", provider: p.id, key: remembered });
+        }
+      } else if (msg.t === "toast") toast(msg.text, msg.level);
     };
   }
+
+  function toast(text, level = "info") {
+    const el = $("toast");
+    el.textContent = text;
+    el.className = `toast ${level}`;
+    el.hidden = false;
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => (el.hidden = true), 5000);
+  }
+
+  // Player link for this session (relative to this page, so it works under /mothership/).
+  const playerLink = () => new URL(`./?s=${code}`, location.href).href;
+  const wardenLink = () => `${new URL(`dm?s=${code}`, new URL("./", location.href)).href}#token=${key}`;
+
+  async function copy(text, what) {
+    try { await navigator.clipboard.writeText(text); toast(`${what} copied.`); }
+    catch { prompt(`Copy the ${what.toLowerCase()}:`, text); }
+  }
+
+  // ------------------------------------------------------------ start screen
+  let providerCatalog = [];
+  async function loadProviders() {
+    if (providerCatalog.length) return providerCatalog;
+    const r = await fetch("api/providers").catch(() => null);
+    providerCatalog = r?.ok ? await r.json() : [];
+    return providerCatalog;
+  }
+
+  function mySessions() {
+    const out = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k?.startsWith("warden:")) out.push(k.slice(7));
+      }
+    } catch {}
+    return out;
+  }
+
+  async function showStart(error = "") {
+    document.body.classList.add("starting");
+    $("start").hidden = false;
+    $("startErr").textContent = error;
+    const provs = await loadProviders();
+    const sel = $("newProvider");
+    sel.innerHTML = provs.map((p) => `<option value="${esc(p.id)}">${esc(p.label)} · cheapest: ${esc(p.models[0].label)}</option>`).join("");
+    const syncProv = () => {
+      const p = provs.find((x) => x.id === sel.value);
+      $("newKey").placeholder = p?.keyHint || "";
+      $("keyLink").href = p?.keyUrl || "#";
+      const rem = p && store.get(`wardenKey:${p.id}`);
+      $("newKey").value = rem || "";
+      $("newRemember").checked = !!rem;
+    };
+    sel.onchange = syncProv;
+    syncProv();
+    const mine = mySessions();
+    $("mineCard").hidden = !mine.length;
+    $("mine").innerHTML = mine.map((c) => `<li><code>${esc(c)}</code> <span class="muted" data-name="${esc(c)}"></span>
+      <span class="grow"></span><a class="btn" href="dm?s=${esc(c)}">Open</a> <button data-forget="${esc(c)}" class="ghost">Forget</button></li>`).join("");
+    for (const c of mine) {
+      fetch(`api/sessions/${c}`).then((r) => (r.ok ? r.json() : null)).then((info) => {
+        const el = $("mine").querySelector(`[data-name="${c}"]`);
+        if (el) el.textContent = info ? info.stationName : "(ended)";
+      }).catch(() => {});
+    }
+  }
+
+  $("mine").addEventListener("click", (e) => {
+    const c = e.target.closest("[data-forget]")?.dataset.forget;
+    if (c && confirm(`Forget session ${c} on this device? (It keeps running; you'd need its Warden link to get back in.)`)) {
+      store.del(tokenKey(c));
+      showStart();
+    }
+  });
+
+  $("createForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const provider = $("newProvider").value, apiKey = $("newKey").value.trim();
+    $("createBtn").disabled = true;
+    $("startErr").textContent = "";
+    try {
+      const r = await fetch("api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, apiKey }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `Couldn't create a session (${r.status}).`);
+      if ($("newRemember").checked) store.set(`wardenKey:${provider}`, apiKey);
+      else store.del(`wardenKey:${provider}`);
+      store.set(tokenKey(data.code), data.token);
+      location.href = `dm?s=${data.code}`;
+    } catch (err) {
+      $("startErr").textContent = err.message;
+      $("createBtn").disabled = false;
+    }
+  });
+
+  $("linkForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    try {
+      const u = new URL($("wardenLink").value.trim());
+      const c = normCode(u.searchParams.get("s"));
+      const t = new URLSearchParams(u.hash.slice(1)).get("token");
+      if (!c || !t) throw new Error();
+      store.set(tokenKey(c), t);
+      location.href = `dm?s=${c}`;
+    } catch {
+      $("startErr").textContent = "That isn't a Warden link. It looks like …/dm?s=CODE#token=…";
+    }
+  });
+
+  // ------------------------------------------------------------ API key dialog
+  function openKeyDialog() {
+    const sel = $("keyProvider");
+    sel.innerHTML = S.providers.map((p) => `<option value="${esc(p.id)}">${esc(p.label)}${p.configured ? " ✓" : ""}</option>`).join("");
+    sel.value = S.config.provider;
+    const sync = () => {
+      const p = S.providers.find((x) => x.id === sel.value);
+      $("keyValue").value = "";
+      $("keyValue").placeholder = p.configured ? "•••••••• (set — paste to replace)" : p.keyHint;
+      $("keyLink2").href = p.keyUrl || "#";
+      $("keyRemember").checked = !!store.get(`wardenKey:${p.id}`);
+      $("keyRemove").hidden = !p.configured;
+      $("keyStatus").textContent = p.configured
+        ? "A key is set for this session."
+        : "No key yet. The agent can't reply with this provider until you add one.";
+    };
+    sel.onchange = sync;
+    sync();
+    $("keyDialog").showModal();
+  }
+  $("keyDialog").addEventListener("close", () => {
+    const action = $("keyDialog").returnValue;
+    const provider = $("keyProvider").value, k = $("keyValue").value.trim();
+    if (action === "save" && k) {
+      send({ t: "apiKey", provider, key: k });
+      if ($("keyRemember").checked) store.set(`wardenKey:${provider}`, k);
+      else store.del(`wardenKey:${provider}`);
+      send({ t: "config", patch: { provider } });
+    } else if (action === "save" && !$("keyRemember").checked) {
+      store.del(`wardenKey:${provider}`);
+    } else if (action === "remove") {
+      send({ t: "apiKey", provider, key: "" });
+      store.del(`wardenKey:${provider}`);
+    }
+  });
 
   // ------------------------------------------------------------ render
   function render() {
@@ -55,7 +238,7 @@
     fillSelect($("effort"), m.efforts.map((e) => [e, e === "off" ? "thinking off" : `effort ${e}`]), effort);
     $("effort").disabled = !m.efforts.length;
     $("keywarn").hidden = p.configured;
-    $("keywarn").textContent = `no ${p.envKey} — manual only`;
+    $("keywarn").textContent = `no ${p.label} key: click to add`;
   }
 
   let lastLogLen = -1;
@@ -261,7 +444,7 @@
   setInterval(() => S && S.effects.length && renderEffects(), 1000);
 
   $("clearScreen").onclick = () => send({ t: "clearScreen" });
-  $("resetSession").onclick = () => confirm("Start a new session? Clears the log and effects; lore, persona and secrets are kept.") &&
+  $("resetSession").onclick = () => confirm("Restart the story? Clears the log and effects; lore, voices and secrets are kept. Players stay connected.") &&
     send({ t: "resetSession", keepStation: confirm("Keep the current station state? (Cancel = restore default station)") });
   $("resetAll").onclick = () => confirm("Factory reset EVERYTHING (lore, persona, secrets, station) to defaults?") && send({ t: "resetAll" });
 
@@ -420,7 +603,7 @@
     if (!act || !card) return;
     const i = Number(card.dataset.i);
     if (act === "test") {
-      Voice.test(voicesDraft[i], $("testText").value || "Testing.", key);
+      Voice.test(voicesDraft[i], $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     } else if (act === "del" && confirm(`Delete the voice "${voicesDraft[i].name}"?`)) {
       voicesDraft.splice(i, 1);
       send({ t: "voices", voices: voicesDraft });
@@ -444,6 +627,26 @@
     send({ t: "voices", voices: voicesDraft });
   };
 
-  $("playerUrl").textContent = `${location.origin}/`;
-  connect();
+  // ------------------------------------------------------------ session controls
+  $("keyBtn").onclick = openKeyDialog;
+  $("keywarn").onclick = openKeyDialog;
+  $("sessionCode").onclick = () => copy(playerLink(), "Player link");
+  $("copyPlayer").onclick = () => copy(playerLink(), "Player link");
+  $("copyWarden").onclick = () => confirm("The Warden link opens this console on another device. Anyone who has it can run your session (but never sees your API key). Copy it?") && copy(wardenLink(), "Warden link");
+  $("allSessions").onclick = () => { location.href = "dm"; };
+  $("endSession").onclick = () => {
+    if (!confirm(`End session ${code} for everyone? The log, voices and settings are deleted and players are disconnected.`)) return;
+    send({ t: "endSession" });
+  };
+
+  if (code && key) {
+    $("sessionCode").textContent = code;
+    $("codeInline").textContent = code;
+    $("playerUrl").textContent = playerLink();
+    $("preview").src = `./?s=${code}&spectate=1`;
+    document.title = `Warden · ${code}`;
+    connect();
+  } else {
+    showStart(code ? `This device isn't the Warden for session ${code}. Open it with its Warden link.` : "");
+  }
 })();
