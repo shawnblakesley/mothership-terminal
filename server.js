@@ -1,3 +1,5 @@
+import "./logsafe.js"; // first: no console line may ever contain an LLM key
+import { rememberSecret } from "./redact.js";
 import express from "express";
 import http from "http";
 import fs from "fs";
@@ -11,6 +13,8 @@ import { sanitizeVoices, speakingVoice, speechParts } from "./voices.js";
 import { getProvider, looksLikeKey, catalog } from "./providers/index.js";
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
 import { setSoundsDir, saveSound, soundPath, deleteSoundFile, deleteSessionSounds, MAX_SOUND_BYTES } from "./sounds.js";
+import { track, gauge } from "./telemetry.js";
+for (const p of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) rememberSecret(process.env[p]);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -58,17 +62,20 @@ function addSession(saved) {
 }
 
 function createSession(keys = {}) {
+  for (const k of Object.values(keys)) rememberSecret(k);
   const code = newCode();
   const token = crypto.randomBytes(24).toString("base64url");
   const session = addSession({ code, tokenHash: hashToken(token), game: defaultGame(keys) });
   Object.assign(session.keys, keys);
   scheduleSave(session);
+  track("SessionCreated", { Provider: Object.keys(keys)[0] });
   return { session, token };
 }
 
-function deleteSession(code) {
+function deleteSession(code, reason = "warden") {
   const s = sessions.get(code);
   if (!s) return;
+  track("SessionEnded", { Reason: reason });
   s.close();
   sessions.delete(code);
   clearTimeout(saveTimers.get(code));
@@ -90,7 +97,7 @@ function loadSessions() {
 // Idle sessions expire so the server doesn't fill up.
 function sweep() {
   const cutoff = Date.now() - SESSION_TTL_DAYS * 86400_000;
-  for (const s of [...sessions.values()]) if (s.lastActive < cutoff && !s.sockets.size) deleteSession(s.code);
+  for (const s of [...sessions.values()]) if (s.lastActive < cutoff && !s.sockets.size) deleteSession(s.code, "expired");
 }
 
 // Before sessions existed there was one game in data/state.json: keep it as a session.
@@ -157,8 +164,8 @@ const router = express.Router();
 const pub = path.join(here, "public");
 const noStore = (res) => res.set("Cache-Control", "no-store");
 
-router.get("/", (_req, res) => noStore(res).sendFile(path.join(pub, "player.html")));
-router.get("/dm", (_req, res) => noStore(res).sendFile(path.join(pub, "dm.html")));
+router.get("/", (_req, res) => { track("PageView", { Page: "player" }); noStore(res).sendFile(path.join(pub, "player.html")); });
+router.get("/dm", (_req, res) => { track("PageView", { Page: "warden" }); noStore(res).sendFile(path.join(pub, "dm.html")); });
 // "you" = the address rate limits use for this request (checks proxy setup).
 router.get("/healthz", (req, res) => res.json({ ok: true, sessions: sessions.size, you: clientIp(req) }));
 // Revalidate on every load (cheap with ETags) so players never run stale code after a deploy.
@@ -173,6 +180,7 @@ router.post("/api/sessions", express.json({ limit: "4kb" }), (req, res) => {
   if (limited(`create:${clientIp(req)}`, 10, 3600_000)) return res.status(429).json({ error: "Too many new sessions from this address. Try again later." });
   const provider = getProvider(req.body?.provider);
   const key = String(req.body?.apiKey || "").trim();
+  rememberSecret(key);
   if (!provider) return res.status(400).json({ error: "Pick a provider." });
   if (!looksLikeKey(provider.id, key)) return res.status(400).json({ error: `That doesn't look like a ${provider.label} API key (expected ${provider.keyHint}).` });
   sweep();
@@ -309,6 +317,16 @@ setInterval(() => {
   }
 }, 30_000).unref();
 
+// Usage, every minute: sessions in use, and who's connected.
+setInterval(() => {
+  let activeSessions = 0, players = 0, wardens = 0;
+  for (const s of sessions.values()) {
+    if (s.sockets.size) activeSessions++;
+    for (const w of s.sockets) w.role === "dm" ? wardens++ : players++;
+  }
+  gauge({ activeSessions, players, wardens, storedSessions: sessions.size });
+}, 60_000).unref();
+
 wss.on("connection", (ws, req) => {
   ws.isAlive = true;
   ws.on("pong", () => (ws.isAlive = true));
@@ -321,6 +339,7 @@ wss.on("connection", (ws, req) => {
 
   let joined = false;
   if (!wantsDm) joined = session.attach(ws, "player");
+  if (joined) track("PlayerJoined");
   const authTimer = wantsDm ? setTimeout(() => !joined && ws.close(4001, "auth timeout"), 10_000) : null;
 
   ws.on("message", (raw) => {
@@ -333,6 +352,7 @@ wss.on("connection", (ws, req) => {
         if (msg.t !== "auth" || limited(`auth:${ip}`, 20, 600_000) || !session.checkToken(msg.token)) return ws.close(4003, "forbidden");
         clearTimeout(authTimer);
         joined = session.attach(ws, "dm");
+        if (joined) track("WardenJoined");
         return;
       }
       if (ws.role === "dm") session.handleDm(msg);

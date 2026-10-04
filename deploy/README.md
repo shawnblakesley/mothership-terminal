@@ -67,4 +67,6 @@ On the existing distribution:
   ```bash
   journalctl -u mothership -f
   ```
+  Every line is redacted before it's printed (`redact.js`): LLM keys never appear in them.
+- **Usage dashboard:** CloudWatch → Dashboards → **Mothership** (us-west-2), from MothershipStack. `deploy/update.sh` installs the CloudWatch agent and points it at the app's telemetry (`telemetry.js`, sent to the agent on 127.0.0.1:25888), which lands in the `/mothership/telemetry` log group (kept 3 months) and the `Mothership` metrics. The agent signs in with the credentials the Systems Manager agent keeps for the server (`/root/.aws/credentials`), and the server role may write to that log group only. Nothing else on the server is shipped. Telemetry problems never fail a deploy; check the agent with `sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a status`.
 - **Limits:** set in the systemd unit. `MAX_SESSIONS` defaults to 300, and idle sessions expire after `SESSION_TTL_DAYS` (default 14).

@@ -10,6 +10,8 @@ import { cleanName } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
 import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
+import { track } from "./telemetry.js";
+import { rememberSecret } from "./redact.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
@@ -17,7 +19,13 @@ import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, p
 
 const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
 const MAX_SOCKETS = 40; // per session
-const PLAYER_INPUT_GAP_MS = 1200; // per connection: stops spamming the agent (and the Warden's bill)
+const PLAYER_INPUT_GAP_MS = 1200;
+// Warden messages counted as actions in telemetry (what they used, never what they wrote).
+const WARDEN_ACTIONS = {
+  command: "direction", inject: "speak", note: "note", effect: "effect", soundPlay: "sound", rollRequest: "roll", retcon: "retcon",
+  synopsis: "synopsis", roomShow: "room_show", roomDraft: "room_draft", builderSay: "builder_chat", builderDraft: "builder_draft",
+  builderApply: "builder_apply", resetSession: "story_restart",
+}; // per connection: stops spamming the agent (and the Warden's bill)
 
 const DEFAULT_LORE = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
 CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
@@ -583,6 +591,7 @@ export class Session {
     const now = Date.now();
     if (now - ws.lastInput < PLAYER_INPUT_GAP_MS) return;
     ws.lastInput = now;
+    track("PlayerInput");
     this.interruptComms();
     const pc = this.characterOf(ws);
     const term = this.state.config.terminals.find((t) => t.id === ws.terminal);
@@ -613,6 +622,8 @@ export class Session {
   // ---------------------------------------------------------------- Warden
   handleDm(msg) {
     const s = this.state;
+    const action = WARDEN_ACTIONS[msg.t];
+    if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
       case "config": {
         const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "tts", "theme", "map"];
@@ -628,8 +639,9 @@ export class Session {
       case "apiKey": {
         // Keys stay in this process's memory only.
         const p = getProvider(msg.provider);
-        if (!p) break;
+        if (!p) { rememberSecret(msg.key); break; }
         const key = String(msg.key || "").trim();
+        rememberSecret(key);
         if (!key) delete this.keys[p.id];
         else if (looksLikeKey(p.id, key)) this.keys[p.id] = key;
         else {
@@ -993,14 +1005,28 @@ export class Session {
   }
 
   // One call to the session's model, with a silent retry on malformed output. Returns parsed JSON.
-  async ask(request) {
+  // One model call, counted (provider, model, how long, whether it worked).
+  async callModel(provider, request, kind) {
+    const t = Date.now();
+    const fields = { Kind: kind, Provider: provider.id, Model: request.model };
+    try {
+      const out = await provider.generate(request);
+      track("AgentCall", { ...fields, Outcome: "ok", LatencyMs: Date.now() - t });
+      return out;
+    } catch (err) {
+      track("AgentCall", { ...fields, Outcome: "error", LatencyMs: Date.now() - t });
+      throw err;
+    }
+  }
+
+  async ask(request, kind = "reply") {
     const s = this.state;
     const provider = getProvider(s.config.provider);
     if (!provider) throw new Error(`Unknown provider "${s.config.provider}".`);
     const apiKey = keyFor(s.config.provider, this.keys);
     if (!apiKey) throw new Error("No LLM API key for this session. Add one under ⚙ Settings → LLM.");
     for (let attempt = 1; ; attempt++) {
-      const text = await provider.generate({ apiKey, model: s.config.model, effort: s.config.effort, ...request });
+      const text = await this.callModel(provider, { apiKey, model: s.config.model, effort: s.config.effort, ...request }, kind);
       try {
         return JSON.parse(String(text).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
       } catch {
@@ -1016,10 +1042,10 @@ export class Session {
     this.syncDm();
     try {
       if (kind === "chat") {
-        const r = await this.ask(chatRequest(b));
+        const r = await this.ask(chatRequest(b), "builder");
         b.messages.push({ role: "agent", text: String(r?.reply || "…").slice(0, 6000), ready: !!r?.ready });
       } else {
-        b.draft = normalizeDraft(await this.ask(draftRequest(b)));
+        b.draft = normalizeDraft(await this.ask(draftRequest(b), "builder"));
         b.messages.push({ role: "agent", text: `Draft ready: "${b.draft.title}". Look it over, ask me for changes, or apply it.`, draft: true });
       }
     } catch (err) {
@@ -1039,7 +1065,7 @@ export class Session {
     this.syncDm();
     try {
       const { started, request } = synopsisRequest(s, this.screens());
-      const sections = normalizeSynopsis(await this.ask(request));
+      const sections = normalizeSynopsis(await this.ask(request, "synopsis"));
       s.synopsis = { sections, started, at: Date.now(), logId: s.log.at(-1)?.id ?? 0 };
     } catch (err) {
       console.error(`[${this.code}] synopsis failed:`, err?.message || err);
@@ -1062,7 +1088,7 @@ export class Session {
     this.roomBusy = room.id;
     this.syncDm();
     try {
-      const rows = sanitizeRows((await this.ask(roomDraftRequest(s, room)))?.rows);
+      const rows = sanitizeRows((await this.ask(roomDraftRequest(s, room), "room"))?.rows);
       if (!rows) throw new Error("The model returned an empty plan. Try again.");
       s.config.rooms[room.id] = { rows };
     } catch (err) {
@@ -1107,7 +1133,7 @@ export class Session {
       let reply;
       for (let attempt = 1; ; attempt++) {
         try {
-          reply = limitLength(parseReply(await provider.generate(request), s.config.voices), s.config.talk);
+          reply = limitLength(parseReply(await this.callModel(provider, request, "note"), s.config.voices), s.config.talk);
           break;
         } catch (err) {
           if (!err.malformed || attempt >= 2) throw err;
@@ -1158,6 +1184,7 @@ export class Session {
     const r = this.state.roll;
     const { stat, bonus } = rollTarget(r, pc);
     const result = resolve(r, stat, dice, bonus); // (throws on bad dice)
+    track("Roll", { Kind: r.check === PANIC ? "panic" : CHECKS[r.check].kind === "Save" ? "save" : "stat", Who: r.all ? "all" : "one" });
     r.results[pc.id] = { result, manual, by };
     this.toPlayers({ t: "rollResult", result, label: checkLabel(r), who: pc.name });
     this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(r, result)}`, { outcome: result.outcome, by: pc.name });
@@ -1241,6 +1268,7 @@ export class Session {
       ws.send(JSON.stringify({ t: "rollError", text: err.message }));
       return;
     }
+    track("Roll", { Kind: CHECKS[r.check].kind === "Save" ? "save" : "stat", Who: "self" });
     ws.send(JSON.stringify({ t: "rollResult", result, label: checkLabel(r) }));
     this.addLog("roll", `${pc.name} rolled: ${resultText(r, result)}`, { outcome: result.outcome, by: pc.name, self: true });
     if (!result.success) {
@@ -1414,7 +1442,7 @@ export class Session {
       const latest = s.log.findLast((e) => ["player", "warden", "roll", "aside"].includes(e.kind));
       if (s.config.checkFirst !== false && latest?.kind === "player" && !steer && !directives.length) {
         let oc = null;
-        try { oc = await this.ask(buildPrecheck(s)); } catch (err) { console.warn(`[${this.code}] check-first skipped: ${err?.message || err}`); }
+        try { oc = await this.ask(buildPrecheck(s), "precheck"); } catch (err) { console.warn(`[${this.code}] check-first skipped: ${err?.message || err}`); }
         if (myGen !== this.genCounter) return;
         if (oc?.needed) return this.holdForWarden(oc, "");
       }
@@ -1423,7 +1451,7 @@ export class Session {
       let reply;
       for (let attempt = 1; ; attempt++) {
         try {
-          reply = parseReply(await provider.generate(request), s.config.voices);
+          reply = parseReply(await this.callModel(provider, request, "reply"), s.config.voices);
           break;
         } catch (err) {
           if (!err.malformed || attempt >= 2 || myGen !== this.genCounter) throw err;

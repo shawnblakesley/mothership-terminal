@@ -42,6 +42,12 @@ If a session has no key, the console still works in **Manual** mode and you type
 
 To host it publicly, see [deploy/README.md](deploy/README.md). The hosted copy at [shawnofthe.dev/mothership](https://shawnofthe.dev/mothership/) deploys automatically on every push to `main`.
 
+### Telemetry and keys
+
+The server counts how it's used (page views, sessions, connections, player messages, LLM calls and how long they take, rolls, which Warden tools get used) and sends the counts to a CloudWatch agent on the same machine, if there is one (`telemetry.js`). The hosted copy's numbers are on a CloudWatch dashboard (see [deploy/README.md](deploy/README.md)). Running it yourself, nothing is sent anywhere; set `TELEMETRY=0` to turn it off completely.
+
+**LLM keys are never logged or recorded.** Telemetry can only hold fixed values (a provider or model name, a number, one of a few known words), never text: no keys, session codes, names, IPs or anything anyone typed, and any record that looked like it held a key would be dropped. Every line the server prints goes through `redact.js` too, which blanks out the keys sessions hold and anything shaped like a key.
+
 ## Choosing the AI
 
 The picker in the console's top bar sets the **provider**, **model** and **thinking effort**. You can change them at any time, even mid-session. **🔑 Key** adds or replaces the session's key for any provider. Every list is ordered cheapest-first, and a session starts on the cheapest model it has a key for.
