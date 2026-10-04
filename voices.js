@@ -157,7 +157,9 @@ export function defaultVoices() {
     { id: BUILTIN.terminal, name: "HV-CORE", style: "plain", color: "", persona: DEFAULT_PERSONAS.terminal, ...fromPreset("robotic") },
     { id: BUILTIN.broadcast, name: "SYSTEM BROADCAST", style: "boxed", color: "", persona: DEFAULT_PERSONAS.broadcast, ...fromPreset("ethereal") },
     { id: "intercom", name: "INTERCOM", style: "label", color: "#9fd3ff", persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom"), characters: DEFAULT_INTERCOM_CHARACTERS },
-    { id: "unknown", name: "???", style: "label", color: "#ff5a5a", persona: DEFAULT_PERSONAS.unknown, ...fromPreset("demonic") },
+    // The entity: the demonic effects over slowed human voices, speaking as more than one.
+    { id: "unknown", name: "???", style: "label", color: "#ff5a5a", persona: DEFAULT_PERSONAS.unknown, ...fromPreset("demonic"),
+      preset: "custom", voice: { engine: "neural", speaker: "am_onyx", pace: 0.75 }, characters: DEFAULT_ENTITY_VOICES },
   ];
 }
 
@@ -176,6 +178,11 @@ const DEFAULT_INTERCOM_CHARACTERS = [
   { name: "Carys Webb", voice: "af_nicole", notes: "Driller, a 'fever' patient in med bay. Drowsy and sweet; says gentle, unsettling things about the cold." },
   { name: "Pell Ostrand", voice: "am_eric", notes: "Driller, a 'fever' patient in med bay. Mostly silent; when he does speak, it's in someone else's rhythm." },
   { name: "Sam Yusuf", voice: "am_puck", notes: "Refinery hand hiding in the dark on Deck 3. Whispers; cracks jokes when he's terrified." },
+];
+
+const DEFAULT_ENTITY_VOICES = [
+  { name: "????", voice: "", notes: "One of the voices of the entity" }, // (the ??? voice's own speaker)
+  { name: "???", voice: "af_nicole", notes: "One of the voices of the entity" },
 ];
 
 const MAX_CHARACTERS = 30;
