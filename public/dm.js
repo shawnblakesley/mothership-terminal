@@ -19,6 +19,7 @@
   }
   let key = code ? store.get(tokenKey(code)) : null; // the Warden token for this session
   let ws, S = null;
+  let appVersion = null; // the server's code version (see version.js)
   let pendingKey = ""; // re-render the draft only when the pending reply actually changes
   const dirty = new Set(); // config fields the DM is mid-edit on
 
@@ -54,6 +55,9 @@
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.t === "state") {
+        // The server was updated while this page was open: load the new code.
+        if (appVersion && msg.state.version && msg.state.version !== appVersion) return location.reload();
+        appVersion = msg.state.version;
         S = msg.state;
         render();
         // After a server restart the session's key is gone: re-send a remembered one.

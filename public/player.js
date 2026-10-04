@@ -454,6 +454,15 @@
     return u;
   }
 
+  // The server was updated while this page was open: load the new code (the
+  // old script can't follow the new server, e.g. effect timing).
+  let version = null;
+  function newCode(v) {
+    if (version && v && v !== version) { location.reload(); return true; }
+    version = v || version;
+    return false;
+  }
+
   function connect() {
     if (!code) return;
     ws = new WebSocket(socketUrl());
@@ -474,6 +483,7 @@
       const msg = JSON.parse(ev.data);
       switch (msg.t) {
         case "init":
+          if (newCode(msg.version)) return;
           applyHeader(msg.header);
           typingQueue = [];
           Voice.stop();

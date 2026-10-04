@@ -5,6 +5,7 @@ import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLike
 import { warmNeural, synthesize } from "./tts.js";
 import { speechParts, voiceFor } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
+import { APP_VERSION } from "./version.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -179,6 +180,7 @@ export class Session {
 
   playerView() {
     return {
+      version: APP_VERSION,
       log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden),
       header: this.playerHeader(),
       effects: this.state.effects,
@@ -202,6 +204,7 @@ export class Session {
 
   dmView() {
     return {
+      version: APP_VERSION,
       ...this.state,
       code: this.code,
       providers: catalog(this.keys),
