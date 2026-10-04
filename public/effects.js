@@ -148,24 +148,43 @@
   }
 
   // Players can drag across blood/goo to smear it off the glass.
-  function makeWipeable(c, ctx, onTap) {
-    let down = false, moved = false, last = null;
-    c.style.pointerEvents = "auto";
-    c.style.cursor = "grab";
-    c.addEventListener("pointerdown", (e) => { down = true; moved = false; last = [e.clientX, e.clientY]; c.setPointerCapture(e.pointerId); });
-    c.addEventListener("pointerup", () => { down = false; if (!moved) onTap?.(); });
-    c.addEventListener("pointermove", (e) => {
-      if (!down) return;
-      moved = true;
+  // Blood and goo can be wiped off the glass by dragging across them. The
+  // overlay itself never takes the mouse (clicks go through to the buttons and
+  // text underneath); the drag is watched on the whole page instead.
+  function makeWipeable(c, ctx) {
+    let last = null, dragged = 0;
+    const wipe = (x, y) => {
       ctx.save();
       ctx.globalCompositeOperation = "destination-out";
       ctx.lineCap = "round";
       ctx.lineWidth = 70;
       ctx.strokeStyle = "rgba(0,0,0,0.35)";
-      ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(e.clientX, e.clientY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(x, y); ctx.stroke();
       ctx.restore();
+    };
+    const down = (e) => { last = [e.clientX, e.clientY]; dragged = 0; };
+    const move = (e) => {
+      if (!c.isConnected) return off();
+      if (!last || !(e.buttons & 1)) return;
+      dragged += Math.hypot(e.clientX - last[0], e.clientY - last[1]);
+      // A real drag (not a click): wipe, and don't select text while doing it.
+      if (dragged > 8) {
+        document.body.style.userSelect = "none";
+        getSelection()?.removeAllRanges();
+        wipe(e.clientX, e.clientY);
+      }
       last = [e.clientX, e.clientY];
-    });
+    };
+    const up = () => { last = null; document.body.style.userSelect = ""; };
+    const off = () => {
+      removeEventListener("pointerdown", down, true);
+      removeEventListener("pointermove", move, true);
+      removeEventListener("pointerup", up, true);
+    };
+    addEventListener("pointerdown", down, true);
+    addEventListener("pointermove", move, true);
+    addEventListener("pointerup", up, true);
+    c.style.pointerEvents = "none";
   }
 
   function blob(ctx, x, y, r, color) {

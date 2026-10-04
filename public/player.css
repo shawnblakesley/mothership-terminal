@@ -266,7 +266,7 @@ body {
 .fx-blackout.restoring { animation: restore 1.6s forwards steps(8); }
 @keyframes restore { 0% { opacity: 1; } 15% { opacity: 0; } 25% { opacity: 1; } 40% { opacity: 0; } 50% { opacity: 0.8; } 70% { opacity: 0; } 80% { opacity: 0.4; } 100% { opacity: 0; } }
 
-.fx-lockout { background: rgba(0,0,0,0.75); display: grid; place-items: center; pointer-events: auto !important; }
+.fx-lockout { background: rgba(0,0,0,0.75); display: grid; place-items: center; } /* (typing is blocked by disabling the input; clicks still go through) */
 .fx-lockout .big { font-size: 2.6em; }
 
 .fx-banner { display: grid; place-items: center; }
