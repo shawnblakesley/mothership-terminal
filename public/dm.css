@@ -184,6 +184,10 @@ dialog h2::after { display: none; }
 #rollStatus .res { font-family: var(--mono); white-space: pre-wrap; font-size: 13px; }
 #rollStatus .res.ok { color: var(--accent); }
 #rollStatus .res.bad { color: var(--danger); }
+#rollStatus .rollres { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+#rollStatus .rollres li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+#rollStatus .rollres button { padding: 2px 8px; font-size: 12px; }
+#rollTarget { line-height: 1.5; }
 
 /* ---- draft lines ---- */
 #draftLines { display: flex; flex-direction: column; gap: 6px; }
@@ -432,6 +436,15 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .hint { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--line2); color: var(--muted); font-size: 10px; font-weight: 600; cursor: help; letter-spacing: 0; text-transform: none; }
 .hint:hover { color: var(--fg); border-color: var(--muted); }
 h2 .hint { margin-left: -4px; }
+/* Collapsible sections that look like plain section headings (Story tab). */
+details.sec { background: none; border: 0; border-radius: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+details.sec[open] { padding-bottom: 0; }
+details.sec > *:not(summary) { margin-top: 0; }
+details.sec > summary { display: block; }
+details.sec > summary::before { display: none; }
+details.sec > summary h2::before { content: "▸"; font-size: 10px; transition: transform 0.15s; display: inline-block; width: 8px; margin-right: -4px; }
+details.sec[open] > summary h2::before { transform: rotate(90deg); }
+details.sec > summary:hover h2 { color: var(--fg); }
 .settingsdlg { max-height: calc(100vh - 40px); overflow-y: auto; }
 .settingsdlg .agent select { width: auto; padding: 5px 7px; }
 .settingsdlg .agent select:disabled { display: none; }

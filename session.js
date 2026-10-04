@@ -11,7 +11,7 @@ import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VIT
 import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
 import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
 import { DEFAULT_TERMINALS, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
-import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
+import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
 const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
@@ -206,7 +206,7 @@ function migrateGame(saved) {
     station: saved.station ?? base.station,
     log: Array.isArray(saved.log) ? saved.log.slice(-MAX_LOG) : [],
     whisper: String(saved.whisper ?? ""),
-    roll: saved.roll ?? null, // the current/last ability roll (see rolls.js)
+    roll: Array.isArray(saved.roll?.pcs) ? saved.roll : null, // the current/last roll (see rolls.js; older rolls weren't per character)
     outcomeCheck: saved.outcomeCheck ?? null, // an uncertain player action the agent left to the Warden
     sounds: Array.isArray(saved.sounds) ? saved.sounds : [], // the Warden's uploaded sounds (files: sounds.js)
     // The story builder's conversation and latest draft (builder.js).
@@ -683,16 +683,35 @@ export class Session {
           if (start) for (const ws of this.sockets) if (ws.role === "player" && ws.terminal) { ws.terminal = null; this.playerTerminal(ws, start.id, "warden"); } }
         break;
       case "rollRequest": {
-        s.roll = sanitizeRequest(msg.roll);
+        try {
+          s.roll = sanitizeRequest(msg.roll, s.config.crew);
+        } catch (err) {
+          this.send("dm", { t: "toast", level: "error", text: err.message });
+          break;
+        }
         if (msg.fromOutcome) {
           s.outcomeCheck = null;
           this.setBusy(false); // the roll prompt replaces PROCESSING
         }
-        this.addLog("note", `Roll called: ${[checkLabel(s.roll), skillLabel(s.roll), s.roll.reason].filter(Boolean).join(" · ")}`);
+        const who = s.roll.all ? "everyone" : s.roll.pcs[0].name;
+        this.addLog("note", `Roll called for ${who}: ${[checkLabel(s.roll), skillLabel(s.roll), s.roll.reason].filter(Boolean).join(" · ")}`);
         this.toPlayers({ t: "roll", roll: this.publicRoll() });
         break;
       }
+      case "rollFor": {
+        // The Warden rolls for a character (nobody's playing them, or to keep things moving).
+        const pc = s.config.crew.find((c) => c.id === msg.pc);
+        if (pc && s.roll?.status === "waiting") this.rollFor(pc, diceFor(s.roll), { by: "warden" });
+        return;
+      }
       case "rollCancel":
+        if (s.roll?.status === "waiting" && Object.keys(s.roll.results).length) {
+          // Some have rolled: stop waiting for the rest, and go on with what was rolled.
+          const missing = s.roll.pcs.filter((p) => !s.roll.results[p.id]).map((p) => p.name);
+          this.addLog("note", `Roll closed without ${missing.join(", ")}.`);
+          this.finishRoll();
+          return;
+        }
         if (s.roll?.status === "waiting") this.addLog("note", "Roll cancelled.");
         s.roll = null;
         this.toPlayers({ t: "roll", roll: null });
@@ -1009,36 +1028,54 @@ export class Session {
   publicRoll() {
     const r = this.state.roll;
     if (!r || r.status !== "waiting") return null;
-    return { id: r.id, check: r.check, label: checkLabel(r), skill: skillLabel(r), reason: r.reason, advantage: r.advantage, statKnown: r.stat !== null, statName: CHECKS[r.check].label, bonus: r.bonus };
+    return {
+      id: r.id, check: r.check, label: checkLabel(r), skill: skillLabel(r), skillName: r.skill, bonus: r.bonus, reason: r.reason, advantage: r.advantage,
+      panic: r.check === PANIC, all: r.all,
+      pcs: r.pcs.map((p) => ({ ...p, done: !!r.results[p.id] })), // who rolls, and who already has
+    };
   }
 
-  // A player answers the roll: digital dice from the server, or physical dice typed in.
+  // A player answers the roll for their character: digital dice from the server,
+  // or physical dice typed in.
   resolveRoll(ws, msg) {
     const r = this.state.roll;
-    if (!r || r.status !== "waiting" || msg.id !== r.id) return;
-    const n = r.advantage === "none" ? 1 : 2;
-    const dice = msg.manual
-      ? (Array.isArray(msg.dice) ? msg.dice : []).map((d) => Number(d))
-      : Array.from({ length: n }, rollD100);
-    let result;
+    const pc = this.characterOf(ws);
+    if (!r || r.status !== "waiting" || msg.id !== r.id || !pc || !r.pcs.some((p) => p.id === pc.id) || r.results[pc.id]) return;
+    const dice = msg.manual ? (Array.isArray(msg.dice) ? msg.dice : []).map(Number) : diceFor(r);
     try {
-      result = resolve(r, r.stat ?? msg.stat, dice);
+      this.rollFor(pc, dice, { manual: !!msg.manual, by: "player" });
     } catch (err) {
       ws.send(JSON.stringify({ t: "rollError", text: err.message }));
-      return;
     }
-    this.state.roll = { ...r, status: "done", result, manual: !!msg.manual, finishedAt: Date.now() };
-    this.toPlayers({ t: "roll", roll: null });
-    this.toPlayers({ t: "rollResult", result, label: checkLabel(r) });
-    const pc = this.characterOf(ws);
-    this.addLog("roll", `${pc ? `${pc.name}: ` : ""}${resultText(r, result)}`, { outcome: result.outcome, ...(pc ? { by: pc.name } : {}) });
-    if (pc && !result.success) {
-      pc.stress = Math.min(20, pc.stress + 1);
-      this.addLog("note", `${pc.name}: Stress ${pc.stress - 1} → ${pc.stress} (failed roll).`);
+  }
+
+  // One character's roll for the current request, against their own sheet.
+  rollFor(pc, dice, { manual = false, by = "player" } = {}) {
+    const r = this.state.roll;
+    const { stat, bonus } = rollTarget(r, pc);
+    const result = resolve(r, stat, dice, bonus); // (throws on bad dice)
+    r.results[pc.id] = { result, manual, by };
+    this.toPlayers({ t: "rollResult", result, label: checkLabel(r), who: pc.name });
+    this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(r, result)}`, { outcome: result.outcome, by: pc.name });
+    if (result.stress) {
+      const ch = setVital(pc, "stress", pc.stress + result.stress);
+      this.addLog("note", `${pc.name}: Stress ${ch[0]} → ${ch[1]} (failed roll).`);
       this.crewChanged();
     }
+    if (r.pcs.every((p) => r.results[p.id])) this.finishRoll();
+    else {
+      this.toPlayers({ t: "roll", roll: this.publicRoll() });
+      this.syncDm();
+    }
+  }
+
+  // Everyone has rolled (or the Warden stopped waiting).
+  finishRoll() {
+    const r = this.state.roll;
+    Object.assign(r, { status: "done", finishedAt: Date.now() });
+    this.toPlayers({ t: "roll", roll: null });
     this.syncDm();
-    // The agent narrates what happens, with the [ROLL RESULT] as the latest input
+    // The agent narrates what happens, with the [ROLL RESULT]s as the latest input
     // (in Manual mode the Warden does it, or asks for it from the roll panel).
     if (this.state.config.mode !== "manual") this.generate();
   }
@@ -1090,13 +1127,12 @@ export class Session {
     const now = Date.now();
     if (now - (ws.lastRoll || 0) < 1500) return;
     ws.lastRoll = now;
-    const r = sanitizeRequest({ check: msg.check, skill: msg.skill, skillLevel: msg.skill ? msg.skillLevel : "none", advantage: msg.advantage, stat: pc.stats[msg.check] ?? pc.saves[msg.check] });
-    const dice = msg.manual
-      ? (Array.isArray(msg.dice) ? msg.dice : []).map(Number)
-      : Array.from({ length: r.advantage === "none" ? 1 : 2 }, rollD100);
+    const r = sanitizeRequest({ pc: pc.id, check: msg.check, skill: msg.skill, skillLevel: msg.skill ? msg.skillLevel : "none", advantage: msg.advantage }, [pc]);
+    const dice = msg.manual ? (Array.isArray(msg.dice) ? msg.dice : []).map(Number) : diceFor(r);
     let result;
     try {
-      result = resolve(r, r.stat, dice);
+      // (They pick from their own skills, so the bonus always applies.)
+      result = resolve(r, pc.stats[msg.check] ?? pc.saves[msg.check], dice, r.bonus);
     } catch (err) {
       ws.send(JSON.stringify({ t: "rollError", text: err.message }));
       return;

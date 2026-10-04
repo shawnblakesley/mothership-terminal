@@ -80,7 +80,7 @@ Up to four **crew files** per session. When a player joins, their screen asks wh
 
 - **Players track their own condition:** [-] / [+] next to Health, Wounds and Stress, for anything settled at the table. Each change is noted in the Warden's log (several clicks in a row become one note).
 - **Players roll their own Stats and Saves:** click one on the sheet, tick a relevant skill (Trained +10, Expert +15 or Master +20) and [+]/[-] if it applies, then roll d100 or type their own dice. The result shows on their screen and in the Warden's log.
-- When the Warden calls for a roll, the player's Stat or Save is filled in from their file.
+- When the Warden calls for a roll, it's for a particular character (or all of them), and each rolls against their own sheet.
 - A failed roll adds 1 Stress to that character.
 - **The agent can hurt and frighten them:** when the fiction clearly calls for it, a reply can take health, add a wound or add stress (each change is noted in your log; in Review mode you can untick them).
 - What a player types is tagged with their character (`[PLAYER · Rook]`), and the agent knows every character's background, so it can answer them personally.
@@ -142,7 +142,7 @@ If a player types while lines are still playing, the comms cut off on every scre
 
 | Area | What it does |
 |---|---|
-| **Layout** | Left: the comms log and compose box. Right: the control panel, with tabs for **Actions** (the next response, then **Roll**, **Effects** and **Sounds**; a dot on the tab means a reply or ruling is waiting for you), **Map** (drawing or status board, plus the raw station state), **Crew** (player characters and terminals) and **Story** (voices & personas, standing orders, lore & secrets). |
+| **Layout** | Left: the comms log and compose box. Right: the control panel, with tabs for **Actions** (the next response, **Roll**, **Effects** and **Sounds**, one under another; a dot on the tab means a reply or ruling is waiting for you), **Map** (drawing or status board, plus the raw station state), **Crew** (player characters and terminals) and **Story** (voices & personas, standing orders, lore & secrets). |
 | **Mode** (top right) | **Auto**: agent replies go straight to players. **Review**: every reply arrives as an editable draft that you send, regenerate with steering, or discard. **Manual**: agent is off. |
 | **Comms log** | Full transcript. **⚑ Command agent** (Ctrl+Enter) gives the agent an order it must obey; it acts on it right away and players never see the order. **Send as voice** puts your exact words on screen as any voice (see below). **✉ Note to agent** is private between you and the agent (see below). Deleting an entry also removes it from the agent's memory. |
 | **Command for the next reply** | A one-shot order applied to the agent's next reply, e.g. "lie about the door". |
@@ -200,13 +200,15 @@ The agent says yes to cool ideas but **never decides whether an uncertain action
 - **The agent's side:** when players try something risky, like hacking a door, overriding a lockout, forcing a hatch or bluffing someone, the agent plays it up to the moment of truth and stops there. It never contradicts the players or flatly shuts an idea down.
 - **Your side:** an **⚖ Your call** card appears in the console with **It works**, **It fails** or **Call for a roll**. The agent suggests a Stat or Save and whether [+] or [−] fits. Choosing works or fails has the agent narrate the result and make any station changes.
 
-**Ability rolls** follow Mothership's rules:
+**Rolls** (under **Actions**) follow Mothership's rules:
 
-- Pick a Stat (Strength, Speed, Intellect, Combat) or Save (Sanity, Fear, Body). Optionally add a skill (Trained +10, Expert +15, Master +20) and [+] / [−].
-- If you know the character's value, enter it. Otherwise the players are asked for it.
-- The players' terminal shows a **ROLL REQUIRED** box. They roll d100 on screen, or type in their physical dice.
-- **Success:** under Stat + Skill. **Criticals:** doubles (00, 11 … 99). **[+] / [−]:** roll twice and keep the better or worse result. **Failure:** +1 Stress.
-- The result appears on everyone's screen and in your console, and the agent narrates what happens straight away (in Manual mode, **Have the agent narrate it** does it on request). The agent never mentions dice or stats in-world.
+- **Who rolls:** one character, or **All**, where each of them rolls. The numbers come from their sheets, and the form previews each character's target.
+- **What:** a Stat (Strength, Speed, Intellect, Combat), a Save (Sanity, Fear, Body) or a **Panic check**. Optionally add one of their skills (Trained +10, Expert +15, Master +20) and [+] / [−]. When everyone rolls, only the characters who have the skill get its bonus.
+- Only that character's terminal shows a **ROLL REQUIRED** box; everyone else sees who is still rolling. They roll on screen, or type in their physical dice.
+- **Stats and Saves:** success is under Stat + Skill on d100. **Criticals:** doubles (00, 11 … 99). **[+] / [−]:** roll twice and keep the better or worse result. **Failure:** +1 Stress.
+- **Panic check:** d20 against current Stress. Above it, they keep their cool. Equal or under, they **Panic**: the log gives the number to look up on the Panic Table, and you apply the effect. [+] / [−] keep the higher or lower die. No automatic Stress.
+- Nobody playing a character, or someone slow to roll? **Roll for them** rolls from the console. **Stop waiting** goes on with the rolls already made.
+- Each result appears on everyone's screen and in your console. When everyone has rolled, the agent narrates what happens (in Manual mode, **Have the agent narrate it** does it on request). The agent never mentions dice or stats in-world.
 
 ## Screen effects from the agent
 

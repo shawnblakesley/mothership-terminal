@@ -1279,7 +1279,7 @@
   };
 
   // ------------------------------------------------------------ rule of cool + ability rolls
-  const checkName = (id) => S?.rollOptions?.checks[id]?.label || id;
+  const checkName = (id) => (id === "panic" ? "Panic" : S?.rollOptions?.checks[id]?.label || id);
   const advMark = (a) => (a === "advantage" ? " [+]" : a === "disadvantage" ? " [−]" : "");
 
   // An attempt the agent left open: the Warden rules on it, or calls for a roll.
@@ -1312,41 +1312,111 @@
     if (act === "success" || act === "failure") send({ t: "outcome", verdict: act });
     else if (act === "dismiss") send({ t: "outcomeDismiss" });
     else if (act === "roll") {
-      // Pre-fill the roll form from the agent's suggestion.
+      // Pre-fill the roll form from the agent's suggestion, for whoever typed the attempt.
       if (oc.suggested_check !== "none") $("rollCheck").value = oc.suggested_check;
+      const by = S.log.findLast((e) => e.kind === "player" && e.by)?.by;
+      const pc = S.config.crew.find((c) => c.name === by);
+      if (pc) $("rollWho").value = pc.id;
       $("rollAdv").value = oc.advantage || "none";
       $("rollReason").value = oc.attempt || "";
       rollFromOutcome = true;
+      rollFormChanged();
       $("rollCard").scrollIntoView({ behavior: "smooth", block: "center" });
-      $("rollStat").focus();
+      $("rollWho").focus();
     }
   });
 
-  let rollFromOutcome = false;
+  let rollFromOutcome = false, rollWhoKey = "";
+  const rollSkillName = (v) => v.slice(2); // option values are "s:<skill>"
+  const hasSkill = (pc, skill) => pc.skills.some((k) => k.toLowerCase() === skill.toLowerCase());
+
+  // The roll form: who rolls (one character, or all), and the skills they have.
   function renderRoll() {
     const sel = $("rollCheck");
     if (!sel.options.length) {
       const checks = Object.entries(S.rollOptions.checks);
       const group = (kind) => checks.filter(([, c]) => c.kind === kind).map(([id, c]) => `<option value="${id}">${c.label}</option>`).join("");
-      sel.innerHTML = `<optgroup label="Stats">${group("Stat")}</optgroup><optgroup label="Saves">${group("Save")}</optgroup>`;
+      sel.innerHTML = `<optgroup label="Stats">${group("Stat")}</optgroup><optgroup label="Saves">${group("Save")}</optgroup>
+        <optgroup label="Stress"><option value="panic">Panic check (d20 vs Stress)</option></optgroup>`;
       sel.value = "intellect";
     }
+    const crew = S.config.crew;
+    const whoKey = JSON.stringify(crew.map((c) => [c.id, c.name, c.skills]));
+    if (whoKey !== rollWhoKey) {
+      rollWhoKey = whoKey;
+      const who = $("rollWho"), was = who.value;
+      who.innerHTML = crew.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("")
+        + (crew.length > 1 ? `<option value="all">All (each rolls)</option>` : "");
+      if ([...who.options].some((o) => o.value === was)) who.value = was;
+      $("rollSkill").dataset.for = ""; // rebuild the skill list
+    }
+    rollFormChanged();
+    renderRollStatus();
+  }
+
+  // The skills on offer and the target preview follow the chosen character and check.
+  function rollFormChanged() {
+    const crew = S.config.crew;
+    const who = $("rollWho").value;
+    const pcs = who === "all" ? crew : crew.filter((c) => c.id === who);
+    const panic = $("rollCheck").value === "panic";
+    const skillSel = $("rollSkill");
+    if (skillSel.dataset.for !== who) {
+      skillSel.dataset.for = who;
+      const was = skillSel.value;
+      const skills = [...new Set(pcs.flatMap((c) => c.skills))];
+      skillSel.innerHTML = `<option value="">No skill</option>` + skills.map((k) => {
+        const holders = who === "all" ? ` (${pcs.filter((c) => hasSkill(c, k)).map((c) => c.name.match(/"([^"]+)"/)?.[1] || c.name.split(/\s+/)[0]).join(", ")})` : "";
+        return `<option value="s:${esc(k)}">${esc(k + holders)}</option>`;
+      }).join("");
+      if ([...skillSel.options].some((o) => o.value === was)) skillSel.value = was;
+    }
+    for (const el of document.querySelectorAll("#rollCard .rollskill")) el.hidden = panic;
+    $("rollSkillLevel").closest("label").hidden = panic || !skillSel.value;
+    // What each of them will roll against, from their sheets.
+    const check = $("rollCheck").value, skill = rollSkillName(skillSel.value);
+    const bonus = { trained: 10, expert: 15, master: 20 }[$("rollSkillLevel").value];
+    const line = (c) => {
+      if (panic) return `${c.name}: Stress ${c.stress}, panics on a d20 of ${c.stress} or under`;
+      const stat = c.stats[check] ?? c.saves[check];
+      const plus = skill && hasSkill(c, skill) ? bonus : 0;
+      return `${c.name}: ${checkName(check)} ${stat}${plus ? ` + ${plus}` : ""}, roll under ${stat + plus}`;
+    };
+    $("rollTarget").innerHTML = pcs.length ? pcs.map((c) => esc(line(c))).join("<br>") : "Add player characters under Crew to call for rolls.";
+    $("rollCall").disabled = !pcs.length || S.roll?.status === "waiting";
+  }
+  for (const id of ["rollWho", "rollCheck", "rollSkill", "rollSkillLevel"]) $(id).addEventListener("change", rollFormChanged);
+
+  // The roll in progress (who has rolled, who hasn't), or the last one's results.
+  function renderRollStatus() {
     const r = S.roll;
     const box = $("rollStatus");
     box.hidden = !r;
-    $("rollCall").disabled = r?.status === "waiting";
     if (!r) return;
     const label = `${checkName(r.check)}${advMark(r.advantage)}${r.bonus ? ` · ${r.skill || "skill"} +${r.bonus}` : ""}${r.reason ? ` · ${r.reason}` : ""}`;
-    if (r.status === "waiting") {
-      box.innerHTML = `<div><span class="spinner"></span>Waiting for the players to roll: <b>${esc(label)}</b>${r.stat === null ? " (they'll enter their value)" : ` vs ${r.stat + r.bonus}`}</div>
-        <div class="row"><button data-roll="cancel" class="ghost">Cancel roll</button></div>`;
-    } else {
-      const res = r.result;
-      const dice = res.dice.map((d) => String(d).padStart(2, "0")).join(" / ");
-      box.innerHTML = `<div class="res ${res.success ? "ok" : "bad"}">🎲 ${esc(label)}
-${dice}${res.dice.length > 1 ? ` → ${String(res.used).padStart(2, "0")}` : ""} vs ${res.target}${r.manual ? " (table dice)" : ""} — ${res.outcome.toUpperCase()}${res.success ? "" : " · +1 STRESS"}</div>
-        <div class="row">${S.config.mode === "manual" ? '<button data-roll="narrate" class="primary">Have the agent narrate it</button>' : '<span class="muted small">The agent narrates the result.</span>'}<span class="grow"></span><button data-roll="clear" class="ghost">Clear</button></div>`;
-    }
+    const show = (d) => (r.check === "panic" ? String(d) : String(d).padStart(2, "0"));
+    const rows = r.pcs.map((p) => {
+      const got = r.results[p.id];
+      if (!got) {
+        if (r.status !== "waiting") return `<li class="muted">${esc(p.name)}: didn't roll</li>`;
+        const nobody = !S.claims[p.id] ? ` <span class="muted small">(nobody is playing them)</span>` : "";
+        return `<li><span class="spinner"></span>${esc(p.name)}: waiting${nobody} <button data-roll="for" data-pc="${esc(p.id)}" class="ghost" title="Roll their dice from here">🎲 Roll for them</button></li>`;
+      }
+      const res = got.result;
+      const dice = `${res.dice.map(show).join(" / ")}${res.dice.length > 1 ? ` → ${show(res.used)}` : ""}`;
+      const verdict = res.panic
+        ? (res.success ? "kept their cool" : `PANIC · Panic Table ${res.used}`)
+        : `${res.outcome.toUpperCase()}${res.success ? "" : " · +1 STRESS"}`;
+      const how = got.by === "warden" ? " (you rolled)" : got.manual ? " (table dice)" : "";
+      return `<li class="res ${res.success ? "ok" : "bad"}">${esc(p.name)}: ${dice} ${res.panic ? "vs Stress" : "vs"} ${res.target}${how}: ${esc(verdict)}</li>`;
+    }).join("");
+    const narrate = S.config.mode === "manual"
+      ? `<button data-roll="narrate" class="primary">Have the agent narrate it</button>`
+      : `<span class="muted small">The agent narrates the result.</span>`;
+    box.innerHTML = `<div>🎲 <b>${esc(label)}</b></div><ul class="rollres">${rows}</ul>
+      <div class="row">${r.status === "waiting"
+        ? `<span class="grow"></span><button data-roll="cancel" class="ghost">${Object.keys(r.results).length ? "Stop waiting" : "Cancel roll"}</button>`
+        : `${narrate}<span class="grow"></span><button data-roll="clear" class="ghost">Clear</button>`}</div>`;
   }
 
   $("rollCall").onclick = () => {
@@ -1354,20 +1424,22 @@ ${dice}${res.dice.length > 1 ? ` → ${String(res.used).padStart(2, "0")}` : ""}
       t: "rollRequest",
       fromOutcome: rollFromOutcome,
       roll: {
+        pc: $("rollWho").value,
         check: $("rollCheck").value,
         advantage: $("rollAdv").value,
-        skill: $("rollSkill").value,
-        skillLevel: $("rollSkillLevel").value,
-        stat: $("rollStat").value,
+        skill: rollSkillName($("rollSkill").value),
+        skillLevel: $("rollSkill").value ? $("rollSkillLevel").value : "none",
         reason: $("rollReason").value,
       },
     });
     rollFromOutcome = false;
   };
   $("rollStatus").addEventListener("click", (e) => {
-    const act = e.target.closest("[data-roll]")?.dataset.roll;
+    const b = e.target.closest("[data-roll]");
+    const act = b?.dataset.roll;
     if (act === "cancel" || act === "clear") send({ t: "rollCancel" });
     else if (act === "narrate") send({ t: "rollNarrate" });
+    else if (act === "for") send({ t: "rollFor", pc: b.dataset.pc });
   });
 
   // ------------------------------------------------------------ session controls

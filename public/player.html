@@ -71,13 +71,15 @@
       </section>
       <div id="lines" aria-live="polite"></div>
       <div id="busy" hidden>PROCESSING<span class="dots"></span></div>
-      <!-- Ability roll called by the Warden (Mothership: roll d100 under Stat + Skill). -->
+      <!-- A roll the Warden called for one character or all of them (d100 under Stat + Skill,
+           or a d20 Panic check against Stress). Only the characters who must roll get the dice. -->
       <section id="rollbox" class="rollbox" hidden aria-live="polite">
-        <div class="rb-title">■ ROLL REQUIRED ■</div>
+        <div id="rb-title" class="rb-title">■ ROLL REQUIRED ■</div>
         <div id="rb-label"></div>
         <div id="rb-reason" class="rb-dim"></div>
+        <div id="rb-wait" class="rb-dim"></div>
         <form id="rb-form" autocomplete="off">
-          <label id="rb-stat-row" for="rb-stat"><span id="rb-stat-name">YOUR STAT</span>: <input id="rb-stat" inputmode="numeric" maxlength="2" size="3"></label>
+          <div id="rb-target"></div>
           <div class="rb-actions">
             <button id="rb-roll" type="submit">[ ROLL D100 ]</button>
             <span class="rb-dim">OR ENTER YOUR DICE:</span>

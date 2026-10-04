@@ -216,6 +216,7 @@
       </div>
       <!-- The next response, rolls, effects and sounds. -->
       <div class="tabpanel" data-tabs="side" data-panel="actions">
+        <h2>Next response</h2>
         <label class="field">
           <span>⚑ Command for the next reply <em>(obeyed once, applied when the players next type)</em></span>
           <textarea id="whisper" rows="2" placeholder="e.g. Pretend the cargo door opened, but it's lying. Mention a heartbeat sensor spike."></textarea>
@@ -230,14 +231,25 @@
         <!-- An uncertain player action the agent left to the Warden (rule of cool). -->
         <div id="outcome" class="card outcome" hidden></div>
 
-        <div class="tabs seg" data-tabs="tools" role="tablist">
-          <button data-tab="roll">🎲 Roll</button><button data-tab="fx">⚡ Effects</button><button data-tab="sounds">🔊 Sounds</button>
-        </div>
-        <div class="tabpanel" data-tabs="tools" data-panel="roll">
+        <h2>Roll <span class="hint" title="Call for a roll from one character or all of them. Each rolls on their own screen against their own sheet.">?</span></h2>
+        <div class="stack">
         <div class="card stack" id="rollCard">
           <div class="rollgrid">
+            <label>Who rolls
+              <select id="rollWho" title="Each rolls on their own screen against their own sheet"></select>
+            </label>
             <label>Check
               <select id="rollCheck"></select>
+            </label>
+            <label class="rollskill">Skill
+              <select id="rollSkill" title="From their sheet. With everyone rolling, only those who have it get the bonus."></select>
+            </label>
+            <label class="rollskill">Skill level
+              <select id="rollSkillLevel">
+                <option value="trained">Trained +10</option>
+                <option value="expert">Expert +15</option>
+                <option value="master">Master +20</option>
+              </select>
             </label>
             <label>[+] / [−]
               <select id="rollAdv">
@@ -246,30 +258,18 @@
                 <option value="disadvantage">[−] Disadvantage</option>
               </select>
             </label>
-            <label>Skill
-              <input id="rollSkill" placeholder="e.g. Hacking (optional)">
-            </label>
-            <label>Skill level
-              <select id="rollSkillLevel">
-                <option value="none">None</option>
-                <option value="trained">Trained +10</option>
-                <option value="expert">Expert +15</option>
-                <option value="master">Master +20</option>
-              </select>
-            </label>
-            <label>Stat / Save value
-              <input id="rollStat" type="number" min="1" max="99" placeholder="players enter it">
-            </label>
-            <label class="wide">What for
+            <label>What for
               <input id="rollReason" placeholder="e.g. bypass the cargo bay lock">
             </label>
           </div>
-          <div class="row"><button id="rollCall" class="primary" title="Roll under Stat + Skill on d100 · doubles crit · a failure adds 1 Stress">🎲 Call for roll</button></div>
+          <div id="rollTarget" class="muted small"></div>
+          <div class="row"><button id="rollCall" class="primary" title="Stats and Saves: d100 under Stat + Skill, doubles crit, a failure adds 1 Stress. Panic: d20 above current Stress, or they Panic.">🎲 Call for roll</button></div>
           <div id="rollStatus" hidden></div>
         </div>
         </div>
 
-        <div class="tabpanel" data-tabs="tools" data-panel="fx">
+        <h2>Effects <span class="hint" title="Screen effects on every player's screen.">?</span></h2>
+        <div class="stack">
         <div class="fxopts">
           <label>Caption <input id="fxText" placeholder="optional text (alarm, banner, lockout, blackout)"></label>
           <label>Seconds <input id="fxSecs" type="number" min="0" value="8" title="0 = until cleared"></label>
@@ -285,7 +285,8 @@
         <ul id="fxActive" class="fxlist"></ul>
         </div>
 
-        <div class="tabpanel" data-tabs="tools" data-panel="sounds">
+        <h2>Sounds <span class="hint" title="Your own audio (growls, attacks, ambience), played on every player's screen.">?</span></h2>
+        <div class="stack">
         <!-- The Warden's own audio: monster growls, attacks, ambience. Plays on every player screen. -->
         <div id="soundDrop" class="drop">
           <input type="file" id="soundFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.webm" multiple hidden>
@@ -323,20 +324,20 @@
       </div>
 
       <div class="tabpanel" data-tabs="side" data-panel="story">
-        <details id="voicesPanel" open>
-          <summary>Voices &amp; personas <span class="hint" title="Every line is said by a voice; each persona tells the agent who it is and how it talks.">?</span></summary>
+        <details id="voicesPanel" class="sec" open>
+          <summary><h2>Voices &amp; personas <span class="hint" title="Every line is said by a voice; each persona tells the agent who it is and how it talks.">?</span></h2></summary>
           <input id="testText" placeholder="Test line" value="Attention. This is a test of the station voice system.">
           <div id="voices"></div>
           <div class="row"><button id="addVoice" class="ghost">+ Add voice</button></div>
         </details>
 
-      <details>
-        <summary>Standing orders <span class="muted">(persistent steering)</span></summary>
+      <details class="sec" open>
+        <summary><h2>Standing orders <span class="hint" title="Persistent steering: the agent follows these on every reply.">?</span></h2></summary>
         <textarea id="standingOrders" rows="4" placeholder="e.g. The computer is slowly being taken over by the organism. Occasionally slip in words like HUNGRY or WARM."></textarea>
       </details>
 
-      <details>
-        <summary>Lore &amp; secrets</summary>
+      <details class="sec" open>
+        <summary><h2>Lore &amp; secrets <span class="hint" title="Lore is public knowledge in the station's systems; secrets are what the computer knows and guards by access level.">?</span></h2></summary>
         <label class="field"><span>Station lore (public)</span><textarea id="lore" rows="7"></textarea></label>
         <label class="field"><span>Secrets (computer knows, guards by access level)</span><textarea id="secrets" rows="7"></textarea></label>
       </details>

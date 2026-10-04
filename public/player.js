@@ -590,6 +590,7 @@
     try { localStorage.setItem(crewKey(), id || "none"); } catch {}
     ws?.readyState === 1 && ws.send(JSON.stringify({ t: "claim", id }));
     setCrew(crew, claims);
+    if (curRoll) showRoll(curRoll); // (a roll may be waiting on this character)
     FX.Sound.beep(880, 0.06, 0.05);
   }
 
@@ -770,46 +771,57 @@
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("selfroll").hidden) { sr = null; openPanel(null); } });
 
   // ------------------------------------------------------------ ability rolls
-  // The Warden calls for a Mothership check/save; the players enter their Stat
-  // (unless the Warden already set it) and either roll here or type their dice.
-  const rollbox = $("rollbox"), rbStat = $("rb-stat"), rbDice = $("rb-dice"), rbErr = $("rb-err");
-  let curRoll = null;
+  // The Warden calls for a roll from one character or all of them. Each rolls
+  // on their own screen against their own sheet (here, or typing their dice);
+  // everyone else sees who is still rolling.
+  const rollbox = $("rollbox"), rbDice = $("rb-dice"), rbErr = $("rb-err");
+  let curRoll = null, alerted = "";
+
+  // What this character rolls against, from their own sheet.
+  function rollTargetText(roll, pc) {
+    if (roll.panic) return `YOUR STRESS: ${pc.stress} · ROLL ABOVE IT ON A D20 TO KEEP YOUR COOL`;
+    const stat = pc.stats[roll.check] ?? pc.saves[roll.check];
+    const bonus = roll.skillName && pc.skills.some((s) => s.toLowerCase() === roll.skillName.toLowerCase()) ? roll.bonus : 0;
+    return `YOUR ${roll.check.toUpperCase()}: ${stat}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}`;
+  }
 
   function showRoll(roll) {
     curRoll = roll;
     rollbox.hidden = !roll;
     if (!roll) { if (!spectate) input.focus(); return; }
+    const own = mine();
+    const mustRoll = !spectate && !!own && roll.pcs.some((p) => p.id === own.id && !p.done);
+    const waiting = roll.pcs.filter((p) => !p.done).map((p) => p.name.toUpperCase());
+    $("rb-title").textContent = mustRoll ? "■ ROLL REQUIRED ■" : "■ ROLL IN PROGRESS ■";
     $("rb-label").textContent = [roll.label, roll.skill].filter(Boolean).join(" · ");
     $("rb-reason").textContent = roll.reason ? roll.reason.toUpperCase() : "";
-    $("rb-stat-row").hidden = roll.statKnown;
-    $("rb-stat-name").textContent = `YOUR ${roll.statName.toUpperCase()}${roll.bonus ? ` (SKILL +${roll.bonus} IS ADDED)` : ""}`;
-    rbDice.placeholder = roll.advantage === "none" ? "47" : "47 82";
-    // Their crew file knows the number: fill it in (they can still change it).
-    const own = mine();
-    rbStat.value = own && !roll.statKnown ? String(own.stats[roll.check] ?? own.saves[roll.check] ?? "") : "";
+    $("rb-wait").textContent = waiting.length ? `WAITING ON: ${waiting.join(", ")}` : "";
+    $("rb-form").hidden = !mustRoll;
+    if (!mustRoll) return;
+    $("rb-target").textContent = rollTargetText(roll, own);
+    $("rb-roll").textContent = roll.panic ? "[ ROLL D20 ]" : "[ ROLL D100 ]";
+    rbDice.placeholder = roll.panic ? (roll.advantage === "none" ? "14" : "14 6") : (roll.advantage === "none" ? "47" : "47 82");
+    // A new roll for this character: clear the box, call them to it.
+    if (alerted === `${roll.id}:${own.id}`) return;
+    alerted = `${roll.id}:${own.id}`;
     rbDice.value = "";
-    if (!$("crewfile").hidden || !$("crewpick").hidden) openPanel(null);
     rbErr.textContent = "";
-    for (const el of rollbox.querySelectorAll("input, button")) el.disabled = spectate;
+    if (!$("crewfile").hidden || !$("crewpick").hidden) openPanel(null);
     FX.Sound.beep(660, 0.12, 0.07);
     setTimeout(() => FX.Sound.beep(880, 0.16, 0.07), 140);
     scrollDown();
-    if (!spectate) (roll.statKnown || rbStat.value ? $("rb-roll") : rbStat).focus();
+    $("rb-roll").focus();
   }
 
   function sendRoll(manual) {
     if (!curRoll) return;
-    const stat = rbStat.value.trim();
-    if (!curRoll.statKnown && !/^\d{1,2}$/.test(stat)) {
-      rbErr.textContent = `ENTER YOUR ${curRoll.statName.toUpperCase()} FIRST.`;
-      return rbStat.focus();
-    }
-    const msg = { t: "roll", id: curRoll.id, stat: Number(stat) };
+    const msg = { t: "roll", id: curRoll.id };
     if (manual) {
       const dice = rbDice.value.split(/[^0-9]+/).filter(Boolean).map(Number);
       const need = curRoll.advantage === "none" ? 1 : 2;
-      if (dice.length !== need || dice.some((d) => d > 99)) {
-        rbErr.textContent = need === 1 ? "ENTER ONE D100 ROLL (00-99)." : "ENTER BOTH D100 ROLLS, E.G. 47 82.";
+      const [lo, hi, die, eg] = curRoll.panic ? [1, 20, "D20", "14 6"] : [0, 99, "D100", "47 82"];
+      if (dice.length !== need || dice.some((d) => d < lo || d > hi)) {
+        rbErr.textContent = need === 1 ? `ENTER ONE ${die} ROLL (${curRoll.panic ? "1-20" : "00-99"}).` : `ENTER BOTH ${die} ROLLS, E.G. ${eg}.`;
         return rbDice.focus();
       }
       Object.assign(msg, { manual: true, dice });
@@ -822,28 +834,44 @@
   $("rb-enter").addEventListener("click", () => sendRoll(true));
   rbDice.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendRoll(true); } });
 
-  // Big dice tumble, then the verdict.
-  function showRollResult({ result, label }) {
+  // Big dice tumble, then the verdict. When everyone rolls, results play one after another.
+  const rollQueue = [];
+  function showRollResult(msg) {
+    rollQueue.push(msg);
+    if (rollQueue.length === 1) playRollResult();
+  }
+
+  function playRollResult() {
+    const { result, label, who } = rollQueue[0];
     const fx = $("rollfx"), diceEl = fx.querySelector(".rf-dice"), outEl = fx.querySelector(".rf-out");
-    const pad = (d) => String(d).padStart(2, "0");
+    const show = result.panic ? String : (d) => String(d).padStart(2, "0");
+    const random = () => (result.panic ? 1 + Math.floor(Math.random() * 20) : Math.floor(Math.random() * 100));
+    const name = who ? `${who.toUpperCase()}: ` : "";
     fx.className = "rollfx";
     fx.hidden = false;
-    outEl.textContent = label;
+    outEl.textContent = name + label;
     let n = 0;
     const tumble = setInterval(() => {
-      diceEl.textContent = result.dice.map(() => pad(Math.floor(Math.random() * 100))).join(" ");
+      diceEl.textContent = result.dice.map(() => show(random())).join(" ");
       if (n++ % 2 === 0) FX.Sound.tick();
     }, 60);
     setTimeout(() => {
       clearInterval(tumble);
-      diceEl.textContent = result.dice.length > 1 ? `${result.dice.map(pad).join(" / ")} → ${pad(result.used)}` : pad(result.used);
-      outEl.textContent = `${result.outcome.toUpperCase()} (UNDER ${result.target})${result.success ? "" : " · +1 STRESS"}`;
+      diceEl.textContent = result.dice.length > 1 ? `${result.dice.map(show).join(" / ")} → ${show(result.used)}` : show(result.used);
+      outEl.textContent = name + (result.panic
+        ? (result.success ? `KEPT THEIR COOL (ABOVE STRESS ${result.target})` : `PANIC! (STRESS ${result.target}) · PANIC TABLE ${result.used}`)
+        : `${result.outcome.toUpperCase()} (UNDER ${result.target})${result.success ? "" : " · +1 STRESS"}`);
       fx.classList.add(result.success ? "pass" : "fail");
       if (result.critical) fx.classList.add("crit");
       if (result.success) { FX.Sound.beep(880, 0.12, 0.08); setTimeout(() => FX.Sound.beep(1320, 0.2, 0.08), 120); }
       else { FX.Sound.beep(220, 0.3, 0.1); setTimeout(() => FX.Sound.beep(160, 0.4, 0.1), 260); }
     }, 1300);
-    setTimeout(() => { fx.hidden = true; }, 5200);
+    // The next result (if any) follows sooner, so a whole crew's rolls don't drag.
+    setTimeout(() => {
+      rollQueue.shift();
+      if (rollQueue.length) playRollResult();
+      else fx.hidden = true;
+    }, rollQueue.length > 1 ? 3400 : 5200);
   }
 
   // ------------------------------------------------------------ socket
