@@ -1,0 +1,39 @@
+# Deploys on every push to main. This repo is a submodule of the private
+# monster-land repo, whose CDK app runs the server; this points that submodule
+# at the new commit and pushes, and monster-land's own workflow deploys it
+# (MothershipStack checks out the commit on the server and restarts the app).
+# Needs secret MONSTER_LAND_DEPLOY_KEY: a deploy key with write access to monster-land.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: shawnblakesley/monster-land
+          ssh-key: ${{ secrets.MONSTER_LAND_DEPLOY_KEY }}
+      - name: Point monster-land at this commit
+        env:
+          SUBMODULE: mothership-terminal
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git fetch -q origin main && git reset -q --hard origin/main
+            git update-index --cacheinfo "160000,$GITHUB_SHA,$SUBMODULE"
+            if git diff --cached --quiet; then echo "Already at $GITHUB_SHA"; exit 0; fi
+            git commit -q -m "Deploy $SUBMODULE ${GITHUB_SHA::7}" -m "${MESSAGE%%$'\n'*}"
+            if git push -q origin HEAD:main; then exit 0; fi
+          done
+          exit 1
