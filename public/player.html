@@ -27,6 +27,7 @@
         <span id="vol-bars" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="10"></span>
       </span>
     </header>
+    <div id="mainrow">
     <main id="screen">
       <!-- Crew file selection (the players' characters), and your own file. -->
       <section id="crewpick" class="panel" hidden>
@@ -66,6 +67,9 @@
         <span id="caret"></span>
       </form>
     </main>
+    <!-- The player's character, always in view beside the terminal (wide screens). -->
+    <aside id="side" hidden aria-label="Your character"></aside>
+    </div>
   </div>
   <div id="fx"></div>
   <div id="rollfx" class="rollfx" hidden aria-live="assertive"><div class="rf-dice"></div><div class="rf-out"></div></div>

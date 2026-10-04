@@ -403,6 +403,7 @@
     $("hdr-file").textContent = pc ? `FILE: ${shortName(pc)}` : "FILE: NONE";
     if (!$("crewpick").hidden) renderPicker();
     if (!$("crewfile").hidden) renderFile();
+    renderSide();
   }
   // A nickname in quotes ("Rook", 'Beck') if there is one, else the first name.
   const shortName = (c) => (c.name.match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || c.name.split(" ")[0]).toUpperCase();
@@ -432,6 +433,46 @@
       <div class="p-sec"><span class="p-dim">LOADOUT</span> ${escH(c.loadout)}</div>
       ${c.trinket ? `<div class="p-sec"><span class="p-dim">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
       ${c.patch ? `<div class="p-sec"><span class="p-dim">PATCH</span> ${escH(c.patch)}</div>` : ""}`;
+  }
+
+  // ---- the sidebar: the player's sheet beside the terminal (on wide screens).
+  let sideOpen = true;
+  try { sideOpen = localStorage.getItem("side-open") !== "0"; } catch {}
+  const wide = () => matchMedia("(min-width: 900px)").matches;
+  const blocks = (n, max, cap = 20) => "■".repeat(Math.min(n, cap)) + "□".repeat(Math.max(0, Math.min(max, cap) - n));
+
+  function renderSide() {
+    const c = mine();
+    const side = $("side");
+    side.hidden = !c || !sideOpen || !wide() || spectate;
+    $("hdr-file").classList.toggle("on", !side.hidden);
+    if (side.hidden) return;
+    const grid = (obj) => `<div class="s-grid">${Object.entries(obj).map(([k, v]) => `<span class="s-k">${k.slice(0, 3).toUpperCase()}</span><span class="s-v">${v}</span>`).join("")}</div>`;
+    side.innerHTML = `
+      <div class="s-name">${escH(c.name.toUpperCase())}</div>
+      <div class="p-dim">${escH([c.className, c.role].filter(Boolean).join(" · ").toUpperCase())}</div>
+      <div class="s-sec"><span class="p-dim">STATS</span>${grid(c.stats)}</div>
+      <div class="s-sec"><span class="p-dim">SAVES</span>${grid(c.saves)}</div>
+      <div class="s-sec s-meters">
+        <div><span class="p-dim">HEALTH</span> ${c.health.current}/${c.health.max}<div class="s-bar">${blocks(c.health.current, c.health.max)}</div></div>
+        <div><span class="p-dim">WOUNDS</span> ${c.wounds.current}/${c.wounds.max}<div class="s-bar">${blocks(c.wounds.current, c.wounds.max)}</div></div>
+        <div><span class="p-dim">STRESS</span> ${c.stress}<div class="s-bar${c.stress >= 10 ? " hot" : ""}">${blocks(c.stress, Math.max(10, c.stress))}</div></div>
+      </div>
+      <div class="s-sec"><span class="p-dim">SKILLS</span><div>${escH(c.skills.join(" · ") || "NONE")}</div></div>
+      <div class="s-sec"><span class="p-dim">LOADOUT</span><div>${escH(c.loadout)}</div></div>
+      ${c.trinket ? `<div class="s-sec"><span class="p-dim">TRINKET</span><div>${escH(c.trinket)}</div></div>` : ""}
+      <div class="s-sec"><button type="button" class="p-btn" id="side-more">[ FULL FILE ]</button> <button type="button" class="p-btn" id="side-hide">[ HIDE ]</button></div>`;
+  }
+  addEventListener("resize", () => renderSide());
+  $("side").addEventListener("click", (e) => {
+    if (e.target.id === "side-more") { renderFile(); openPanel("crewfile"); }
+    if (e.target.id === "side-hide") setSide(false);
+  });
+  function setSide(open) {
+    sideOpen = open;
+    try { localStorage.setItem("side-open", open ? "1" : "0"); } catch {}
+    renderSide();
+    if (!spectate) input.focus();
   }
 
   function claim(id) {
@@ -466,7 +507,11 @@
     if (c) { e.preventDefault(); claim(c.id); renderFile(); openPanel("crewfile"); $("crewfile-close").focus(); }
   });
   $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
-  $("hdr-file").onclick = () => { renderFile(); openPanel($("crewfile").hidden ? "crewfile" : null); };
+  $("hdr-file").onclick = () => {
+    if (mine() && wide() && $("crewfile").hidden && $("crewpick").hidden) return setSide(!sideOpen);
+    renderFile();
+    openPanel($("crewfile").hidden ? "crewfile" : null);
+  };
   $("crewfile-close").onclick = () => openPanel(null);
   $("crewfile-change").onclick = () => { renderPicker(); openPanel("crewpick"); $("crewpick-list").querySelector("button")?.focus(); };
   addEventListener("keydown", (e) => {

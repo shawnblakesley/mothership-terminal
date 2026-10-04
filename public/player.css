@@ -307,3 +307,21 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { displ
 .p-text { white-space: pre-wrap; }
 .p-stat { display: inline-block; margin: 0 1.1em 0 0; }
 .p-actions { margin-top: 0.8em; display: flex; gap: 2em; flex-wrap: wrap; }
+
+/* The character sidebar beside the terminal. */
+#mainrow { flex: 1; min-height: 0; display: flex; gap: 0.9em; }
+#mainrow #screen { min-width: 0; }
+#side {
+  flex: 0 0 clamp(220px, 27%, 360px); overflow-y: auto; scrollbar-width: none;
+  border-left: 2px solid var(--dim); padding: 0 0 0 0.8em; font-size: 0.78em; line-height: 1.25;
+}
+#side::-webkit-scrollbar { display: none; }
+#side[hidden] { display: none; }
+.s-name { font-size: 1.15em; }
+.s-sec { margin-top: 0.7em; }
+.s-grid { display: grid; grid-template-columns: repeat(4, auto 1fr); gap: 0 0.4em; margin-top: 0.15em; }
+.s-k { color: var(--dim); }
+.s-meters > div + div { margin-top: 0.35em; }
+.s-bar { letter-spacing: 0.08em; word-break: break-all; }
+.s-bar.hot { animation: blink 1.2s infinite steps(1); }
+#hdr .hdr-btn.on { text-decoration: underline; }
