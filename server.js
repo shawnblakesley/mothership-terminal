@@ -6,7 +6,7 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
-import { synthesize } from "./tts.js";
+import { synthesize, setCacheDir, warmNeural } from "./tts.js";
 import { sanitizeVoices, voiceFor, speechParts } from "./voices.js";
 import { getProvider, looksLikeKey, catalog } from "./providers/index.js";
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
@@ -295,6 +295,9 @@ wss.on("connection", (ws, req) => {
 // Never let one bad request take every game down.
 process.on("unhandledRejection", (err) => console.error("unhandled:", err));
 
+setCacheDir(path.join(DATA_DIR, "tts-cache"));
+// Every new session has a human-voiced intercom, so load + warm the model now, not on the first line.
+warmNeural();
 loadSessions();
 sweep();
 setInterval(sweep, 3600_000).unref();

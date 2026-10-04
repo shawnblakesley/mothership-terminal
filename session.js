@@ -2,10 +2,11 @@
 // Warden consoles, and the agent loop. The server keeps many of these at once.
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey } from "./providers/index.js";
-import { warmNeural } from "./tts.js";
+import { warmNeural, synthesize } from "./tts.js";
+import { speechParts, voiceFor } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
-import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives } from "./agent.js";
+import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
 const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
 const MAX_SOCKETS = 40; // per session
@@ -216,6 +217,7 @@ export class Session {
     this.state.log.push(entry);
     if (this.state.log.length > MAX_LOG) this.state.log.splice(0, this.state.log.length - MAX_LOG);
     if (!PRIVATE_KINDS.has(kind)) this.toPlayers({ t: "line", entry });
+    if (SPOKEN_KINDS.has(kind)) this.pregenerate([entry]);
     this.touch();
     return entry;
   }
@@ -398,7 +400,11 @@ export class Session {
   }
 
   // ---------------------------------------------------------------- effects
-  startEffect(raw, source) {
+  // cue: { atEntry, when: "before" | "after" } = don't fire yet; the players'
+  // screens fire it when they reach that log line (so effects land between lines
+  // of dialogue, in step with the text and voices). Players time cue effects
+  // themselves; the server just keeps them listed until they're surely over.
+  startEffect(raw, source, cue = null) {
     if (!raw || !ALL_EFFECTS.includes(raw.type)) return;
     if (source === "agent" && !AGENT_EFFECTS.includes(raw.type)) return;
     const seconds = Math.max(0, Math.min(3600, Number(raw.seconds) || 0));
@@ -410,11 +416,15 @@ export class Session {
       seconds,
       source,
       startedAt: Date.now(),
+      ...(cue ? { atEntry: cue.atEntry, when: cue.when, ...(cue.hold ? { hold: true } : {}) } : {}),
     };
     this.state.effects.push(effect);
     this.toPlayers({ t: "effect", effect });
-    if (seconds > 0) this.effectTimers.set(effect.id, setTimeout(() => { this.endEffect(effect.id); this.syncDm(); }, seconds * 1000));
-    if (source === "agent") this.addLog("note", `Agent triggered effect: ${effect.type}${effect.text ? ` "${effect.text}"` : ""} (${seconds || "∞"}s)`);
+    // A cue starts when the players reach its line, which may be a while (voices
+    // play first), so the server keeps it listed for a generous margin.
+    const listed = cue ? seconds + 180 : seconds;
+    if (seconds > 0) this.effectTimers.set(effect.id, setTimeout(() => { this.endEffect(effect.id); this.syncDm(); }, listed * 1000));
+    if (source === "agent") this.addLog("note", `Agent triggered effect: ${effect.type}${effect.text ? ` "${effect.text}"` : ""} (${seconds || "∞"}s)${cue ? ` ${cue.when} line #${cue.atEntry}` : ""}`);
   }
 
   endEffect(id) {
@@ -423,6 +433,18 @@ export class Session {
     const before = this.state.effects.length;
     this.state.effects = this.state.effects.filter((e) => e.id !== id);
     if (this.state.effects.length !== before) this.toPlayers({ t: "endEffect", id });
+  }
+
+  // ---------------------------------------------------------------- speech
+  // Start making human-voice audio now (cached in tts.js), rather than when the
+  // players' browsers ask for it. Pieces match the /tts/:id?part=N requests.
+  pregenerate(lines) {
+    if (!this.state.config.tts) return;
+    for (const l of lines) {
+      const v = voiceFor(this.state.config.voices, l);
+      if (v?.voice.engine !== "neural") continue; // synthetic voices are instant anyway
+      for (const part of speechParts(l.text)) synthesize(part, v.voice).catch(() => {});
+    }
   }
 
   // ---------------------------------------------------------------- rolls
@@ -468,19 +490,34 @@ export class Session {
     }
     const voices = this.state.config.voices;
     const lines = splitVoiceTags(
-      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, text: String(l.text ?? "").slice(0, 8000) })),
+      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, text: String(l.text ?? "").slice(0, 8000), effects: l.effects })),
       voices,
     );
+    const useEffects = this.state.config.agentEffects;
     const changes = (reply?.station_changes || []).filter((c) => c && typeof c.path === "string" && c.path);
     const effects = this.state.config.agentEffects ? (reply?.effects || []) : [];
     // The first entry carries the reply's changes/effects so the agent's history
     // shows that it really changed things (otherwise it learns to leave them empty).
     let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })) };
-    for (const { voice, text } of lines) {
+    // Effects on a line fire as it begins. An effect-only beat (no text) fires
+    // before the next line, or after the last one if nothing follows.
+    let waiting = [];
+    let lastEntry = null;
+    for (const { voice, text, effects: lineFx } of lines) {
+      // Effects from an effect-only beat are marked hold: the next line waits for them.
+      const cues = useEffects ? [...waiting, ...normalizeEffects(lineFx)] : [];
+      if (!text) { waiting = cues.map((c) => ({ ...c, hold: true })); continue; }
+      // A blackout hides the screen and silences voices, so it always plays as a
+      // beat: the dialogue pauses for it, then this line appears once it's over.
+      for (const c of cues) if (c.type === "blackout") c.hold = true;
+      waiting = [];
       const kind = kindOf(voice);
-      this.addLog(kind, text, { source, ...(kind === "entity" ? { entity: voice } : {}), ...meta });
+      const entry = this.addLog(kind, text, { source, ...(kind === "entity" ? { entity: voice } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
+      lastEntry = entry;
+      for (const c of cues) this.startEffect(c, "agent", { atEntry: entry.id, when: "before", hold: c.hold });
     }
+    for (const c of waiting) this.startEffect(c, "agent", lastEntry ? { atEntry: lastEntry.id, when: "after" } : null);
     for (const c of changes) {
       setPath(this.state.station, c.path, c.value);
       this.addLog("note", `Station: ${c.path} → ${c.value}`);
@@ -538,6 +575,9 @@ export class Session {
         this.setBusy(false);
       } else {
         s.pending = { status: "ready", forEntry, reply, model, directives };
+        // Make the voices while the Warden reads the draft: an unedited line is
+        // then ready to play the moment it's sent.
+        this.pregenerate(reply.lines.map((l) => ({ ...l, kind: kindOf(l.voice), entity: l.voice })));
       }
     } catch (err) {
       if (myGen !== this.genCounter) return;

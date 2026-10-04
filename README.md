@@ -98,6 +98,16 @@ The agent says yes to cool ideas but **never decides whether an uncertain action
 - **Success:** under Stat + Skill. **Criticals:** doubles (00, 11 … 99). **[+] / [−]:** roll twice and keep the better or worse result. **Failure:** +1 Stress.
 - The result appears on everyone's screen and in your console. **Have the agent narrate it** turns it into story. The agent never mentions dice or stats in-world.
 
+## Screen effects from the agent
+
+Besides you, the agent can trigger the electronic effects: alarm, red alert, glitch, static, blackout, lockout, banner and corrupted text. It can time them **between lines of dialogue**:
+
+- **On a line:** an effect fires the moment that line begins, after the previous line has finished appearing and being spoken. For example, static as Salk's second sentence starts.
+- **As a beat:** an effect on its own, between lines, pauses the dialogue for its duration. A blackout always plays as a beat: the screen goes dark, then the next line comes once the lights are back.
+- **On the whole reply:** effects can also fire as soon as the reply starts.
+
+In Review mode each line in the draft shows its effects as ⚡ chips, which you can untick before sending. **Agent may trigger screen effects** turns all of this off.
+
 ## Voices & entities
 
 Every line on the players' screen belongs to a voice, and **the agent can speak as any of them**. A reply can mix voices, for example a terminal readout, then Dr. Salk on the intercom, then a station-wide announcement. Two voices are built in: **HV-CORE** (the terminal) and **System Broadcast**. Add any number of others under **Voices, personas & settings**, such as an intercom, a stranger on comms, or the thing in the vents. You can also pick one in the comms box and **Send as voice** yourself.
@@ -114,12 +124,20 @@ Each voice has:
 
 Speech is generated on the server, with no API key and no per-use cost:
 
-- **Human voices** use [Kokoro](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) (the `kokoro-js` package). Its 89 MB model downloads once and is cached in `node_modules`. It runs at roughly real time on a CPU, so a human line can take a few seconds to start. Generation begins the moment a line is sent, while the text types out, and the model loads at server start whenever a human voice exists. If the model can't load, those voices fall back to eSpeak.
+- **Human voices** use [Kokoro](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) (the `kokoro-js` package). Its model (about 330 MB at full precision) downloads once and is cached in `node_modules`. Generation begins the moment a line is sent, while the text types out, and the model loads at server start whenever a human voice exists. If the model can't load, those voices fall back to eSpeak.
 - **Synthetic voices** use eSpeak (the `mespeak` package) and are instant. The player's browser applies the effects. Speech starts once a player presses a key on the boot screen, because browsers block sound until then. The DM preview is always silent.
 
 Spoken text is revealed in step with the voice: each line appears as it starts being said, and the next waits until the voice has finished. Terminals that are muted, or have sound off, just type the text out.
 
-A **blackout** cuts off all speech instantly, including queued lines; any text still waiting on the voice appears at once. Anything said during the blackout is never spoken.
+A **blackout** cuts off the voice that's speaking instantly. Queued lines wait for the lights to come back, then carry on.
+
+**Speed:**
+
+- The human-voice model runs at full precision (`TTS_DTYPE=fp32`) on all CPU cores, which is about 4× faster on CPUs than the 8-bit model.
+- It loads and warms up when the server starts.
+- Audio is generated as soon as a line exists. In Review mode that's while you read the draft, so an unedited line plays the moment you send it.
+- Clips are cached in memory, and on disk under `data/tts-cache` (capped by `TTS_CACHE_MB`, default 200), so repeated lines are instant.
+- If RAM is tight, `TTS_DTYPE=q8` uses about 300 MB less, but is slower.
 
 Players have a **volume control** in the top-right corner: a ten-segment meter you can click, drag, scroll or use the arrow keys on. Click **VOL** to mute. It's remembered per device and controls all sound, both effects and voices.
 

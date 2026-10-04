@@ -155,6 +155,9 @@ dialog h2 { margin: 0; }
 .dline { display: grid; grid-template-columns: minmax(90px, 9em) 1fr auto; gap: 6px; align-items: start; }
 .dline select { padding: 5px 6px; }
 .dline button { padding: 4px 8px; }
+.dline .dfx { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.dline .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-family: var(--mono); background: color-mix(in srgb, var(--warn) 14%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-radius: 99px; padding: 2px 8px; }
+.dline .chip input { width: auto; }
 
 /* ---- voices ---- */
 .sendas { display: inline-flex; gap: 0; }

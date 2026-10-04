@@ -39,19 +39,20 @@ export function resolveVoice(ref, voices) {
 // right voice, keeping the order.
 export function splitVoiceTags(lines, voices) {
   const out = [];
-  for (const { voice, text } of lines) {
-    let current = { voice, text: [] };
+  for (const { voice, text, effects } of lines) {
+    // A line's effects fire as it begins, so they stay with its first piece.
+    let current = { voice, text: [], effects: normalizeEffects(effects) };
     out.push(current);
     let tagged = false;
     for (const row of String(text).split("\n")) {
       const m = row.match(/^\s*\[\s*([^\]]{1,40}?)\s*\]\s*:?\s*(.*)$/);
       const tagVoice = m && resolveVoice(m[1], voices);
       if (tagVoice) {
-        current = { voice: tagVoice, text: m[2] ? [m[2]] : [] };
+        current = { voice: tagVoice, text: m[2] ? [m[2]] : [], effects: [] };
         out.push(current);
         tagged = true;
       } else if (tagged && !row.trim()) {
-        current = { voice, text: [] }; // a blank line ends a tagged paragraph
+        current = { voice, text: [], effects: [] }; // a blank line ends a tagged paragraph
         out.push(current);
         tagged = false;
       } else {
@@ -61,8 +62,8 @@ export function splitVoiceTags(lines, voices) {
   }
   return mergeAdjacent(
     out
-      .map((l) => ({ voice: l.voice, text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim() }))
-      .filter((l) => l.text),
+      .map((l) => ({ voice: l.voice, text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim(), effects: l.effects }))
+      .filter((l) => l.text || l.effects.length), // effect-only beats are kept
   );
 }
 
@@ -70,14 +71,22 @@ export function splitVoiceTags(lines, voices) {
 // block (line breaks kept). Models sometimes chop a terminal printout into
 // sections or apply one voice's line-splitting to another; this keeps every
 // voice's turn a single entry. Human voices still speak it line by line.
+// A line that carries effects starts a new block, so its effects still fire
+// at that point in the dialogue.
 function mergeAdjacent(lines) {
   const out = [];
   for (const l of lines) {
     const last = out.at(-1);
-    if (last && last.voice === l.voice) last.text += `\n${l.text}`;
-    else out.push({ ...l });
+    if (last && last.voice === l.voice && last.text && l.text && !l.effects.length) last.text += `\n${l.text}`;
+    else out.push({ ...l, effects: [...l.effects] });
   }
   return out;
+}
+
+export function normalizeEffects(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter((e) => e && AGENT_EFFECTS.includes(e.type))
+    .map((e) => ({ type: e.type, text: String(e.text ?? "").slice(0, 200), seconds: Math.max(0, Math.min(3600, Number(e.seconds) || 0)) }));
 }
 
 // Built per request: the voice list is the Warden's to change at any time.
@@ -93,10 +102,15 @@ function buildSchema(voices) {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["voice", "text"],
+          required: ["voice", "text", "effects"],
           properties: {
             voice: { type: "string", enum: voices.map((v) => v.id) },
-            text: { type: "string", description: "Exactly what this voice says or prints, formatted by THIS voice's persona only. No voice tags or name prefixes." },
+            text: { type: "string", description: "Exactly what this voice says or prints, formatted by THIS voice's persona only. No voice tags or name prefixes. May be empty for an effect-only beat." },
+            effects: {
+              type: "array",
+              description: "Screen effects that fire the moment THIS line begins: after the previous line has finished appearing and being spoken. Use them to punctuate dialogue. Usually empty.",
+              items: effectSchema(),
+            },
           },
         },
       },
@@ -112,17 +126,8 @@ function buildSchema(voices) {
       },
       effects: {
         type: "array",
-        description: "Screen effects to trigger on the player's terminal. Usually empty.",
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["type", "text", "seconds"],
-          properties: {
-            type: { type: "string", enum: AGENT_EFFECTS },
-            text: { type: "string", description: "Caption for alarm/banner/lockout, else empty." },
-            seconds: { type: "integer", description: "Duration; 0 means until the Warden clears it." },
-          },
-        },
+        description: "Screen effects that fire immediately, as the reply starts. For timing between lines, use a line's own effects instead. Usually empty.",
+        items: effectSchema(),
       },
       outcome_check: {
         type: "object",
@@ -142,13 +147,26 @@ function buildSchema(voices) {
   };
 }
 
+function effectSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "text", "seconds"],
+    properties: {
+      type: { type: "string", enum: AGENT_EFFECTS },
+      text: { type: "string", description: "Caption for alarm/banner/lockout/blackout, else empty." },
+      seconds: { type: "integer", description: "Duration; 0 means until the Warden clears it." },
+    },
+  };
+}
+
 const NO_CHECK = { needed: false, attempt: "", suggested_check: "none", advantage: "none", why: "" };
 
 // Shown to models without enforced schemas (DeepSeek) so they copy the shape.
 const REPLY_EXAMPLE = {
   lines: [
-    { voice: "terminal", text: "ACCESS DENIED.\nCLEARANCE: CREW REQUIRED." },
-    { voice: "broadcast", text: "Attention. Deck 3 is now under quarantine." },
+    { voice: "terminal", text: "ACCESS DENIED.\nCLEARANCE: CREW REQUIRED.", effects: [] },
+    { voice: "broadcast", text: "Attention. Deck 3 is now under quarantine.", effects: [{ type: "redalert", text: "QUARANTINE", seconds: 8 }] },
   ],
   station_changes: [{ path: "quarantine", value: "DECK 3" }],
   effects: [],
@@ -190,6 +208,14 @@ OUTPUT
 - Format each line by its OWN voice's persona only (see PERSONA SCOPE). One voice's rules never change how another voice writes.
 - Most replies are a single terminal line. Bring in other voices when the story calls for it (an announcement, someone on the intercom, something speaking through the system), or when the Warden asks. A voice only says what its persona would know and say.
 - outcome_check: see RULE OF COOL. needed=false whenever nothing uncertain is left for the Warden.
+
+SCREEN EFFECTS (you can trigger these yourself)
+- You control the players' screen as well as the voices: alarms, red alert, glitches, static, blackouts, lockouts, banners and corrupted text (full list under AVAILABLE EFFECTS).
+- Timing: put an effect in a line's own "effects" and it fires the moment that line begins, after the previous line has finished appearing and being spoken. That lets you stage beats BETWEEN lines of dialogue. The reply-level "effects" fire immediately instead.
+- A BEAT is a line with empty text and only effects: the dialogue pauses for the effect's duration, then the next line comes.
+- Blackout turns the players' screen black and silences every voice while it lasts. Use it as a beat between lines, never on a line you want seen or heard. Glitch, static, corrupt and red alert can play over a line.
+- Example: [intercom] "Something's in the vents." -> BEAT: empty text, effects [blackout, 3s] -> ??? "i can hear you." with effects [static, 2s] -> the terminal comes back with effects [glitch, 2s].
+- Use effects for impact, not on every reply. A few seconds suits glitches, static and blackouts; alarms and red alert can run longer.
 - station_changes: EVERY change to the station that happens in this reply (doors, lights, access_level, systems...), as dot paths into LIVE STATION STATE. If a line says something changed, it must be listed here, or it did not happen.`;
 
 const STYLE_NOTES = {
@@ -252,7 +278,7 @@ function buildMessages(state) {
     else if (e.kind === "roll") last.inputs.push(`[ROLL RESULT] ${e.text.replace(/\n/g, " · ")}`);
     else if (e.kind === "warden") last.inputs.push(`${WARDEN_TAG} ${e.text}`);
     else {
-      last.lines.push({ voice: voiceIdOf(e), text: e.text });
+      last.lines.push({ voice: voiceIdOf(e), text: e.text, effects: e.cues || [] });
       last.changes.push(...(e.changes || []));
       last.effects.push(...(e.effects || []));
     }
@@ -324,15 +350,13 @@ export function parseReply(text, voices) {
   }
   return {
     lines: splitVoiceTags(
-      raw.filter((l) => l && typeof l === "object").map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, text: scrub(l.text) })),
+      raw.filter((l) => l && typeof l === "object").map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, text: scrub(l.text), effects: normalizeEffects(l.effects) })),
       voices,
     ),
     station_changes: (Array.isArray(r?.station_changes) ? r.station_changes : [])
       .filter((c) => c && typeof c.path === "string" && c.path.trim())
       .map((c) => ({ path: c.path.trim(), value: String(c.value ?? "") })),
-    effects: (Array.isArray(r?.effects) ? r.effects : [])
-      .filter((e) => e && AGENT_EFFECTS.includes(e.type))
-      .map((e) => ({ type: e.type, text: String(e.text ?? ""), seconds: Number(e.seconds) || 0 })),
+    effects: normalizeEffects(r?.effects),
     outcome_check: normalizeCheck(r?.outcome_check),
     dm_note: String(r?.dm_note ?? ""),
   };

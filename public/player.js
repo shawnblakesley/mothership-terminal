@@ -179,6 +179,7 @@
     // Speech is requested now (so audio starts generating right away); the text
     // waits for it in typeNext().
     entry.speech = header.tts && entry.kind !== "roll" ? speak(entry) : null;
+    cueState.set(entry.id, "queued");
     typingQueue.push(entry);
     if (!typing) typeNext();
   }
@@ -202,6 +203,45 @@
     });
   }
 
+  // ------------------------------------------------------------ effect cues
+  // The agent can time an effect to a line ("before" it starts, or "after" the
+  // last line). The effect arrives right after its line, while that line is
+  // still queued behind earlier text and voices, so it waits here until the
+  // line comes up, then runs for its own duration.
+  const cueState = new Map(); // entry id -> "queued" | "showing" | "done"
+  const heldCues = new Map(); // entry id -> { before: [], after: [] }
+
+  function runEffect(effect) {
+    FX.start(effect);
+    if (effect.atEntry && effect.seconds > 0) setTimeout(() => FX.end(effect.id), effect.seconds * 1000);
+  }
+
+  function onEffect(effect) {
+    const st = effect.atEntry ? cueState.get(effect.atEntry) : null;
+    const due = !st || st === "done" || (st === "showing" && effect.when === "before");
+    if (due) return runEffect(effect);
+    const h = heldCues.get(effect.atEntry) || { before: [], after: [] };
+    h[effect.when === "after" ? "after" : "before"].push(effect);
+    heldCues.set(effect.atEntry, h);
+  }
+
+  // Fires the held effects; returns how long a beat should pause the dialogue
+  // (effect-only beats like a blackout last for their duration, up to 10s).
+  function releaseCues(id, when) {
+    const h = heldCues.get(id);
+    if (!h) return 0;
+    let pause = 0;
+    for (const e of h[when].splice(0)) {
+      runEffect(e);
+      if (e.hold) pause = Math.max(pause, Math.min(10, e.seconds || 3));
+    }
+    return pause;
+  }
+
+  function dropCue(fxId) {
+    for (const h of heldCues.values()) for (const k of ["before", "after"]) h[k] = h[k].filter((e) => e.id !== fxId);
+  }
+
   async function typeNext() {
     const entry = typingQueue.shift();
     if (!entry) { typing = false; updateBusy(); return; }
@@ -210,19 +250,27 @@
     const div = makeLine(entry);
     div.classList.add("typing");
     linesEl.append(div);
+    cueState.set(entry.id, "showing");
+    // Effects timed to the start of this line; a beat (e.g. a blackout) pauses first.
+    const pause = releaseCues(entry.id, "before");
+    if (pause) await new Promise((r) => setTimeout(r, pause * 1000));
     if (entry.kind !== "terminal") FX.Sound.beep(entry.kind === "system" ? 520 : 380, 0.15, 0.08);
     if (entry.speech) {
       // Spoken: each piece appears as its voice starts saying it, and the next
       // piece (or line) waits until the voice has finished.
       for (const [i, piece] of entry.speech.entries()) {
         await piece.handle.started;
-        await Promise.all([typeInto(div, (i ? "\n" : "") + piece.text), piece.handle.ended]);
+        const [, played] = await Promise.all([typeInto(div, (i ? "\n" : "") + piece.text), piece.handle.ended]);
+        // The voice couldn't play (blackout, failure): still give it reading time.
+        if (!played) await new Promise((r) => setTimeout(r, Math.min(6000, 600 + piece.text.length * 45)));
       }
     } else {
       await typeInto(div, entry.text);
     }
     div.classList.remove("typing");
     div.classList.add("done");
+    cueState.set(entry.id, "done");
+    releaseCues(entry.id, "after");
     setTimeout(typeNext, 120);
   }
 
@@ -249,7 +297,9 @@
 
   function lockedOut() { return FX.has("lockout"); }
   document.addEventListener("fxchange", () => {
-    if (FX.has("blackout")) Voice.stop(); // power cut kills every voice, queued lines included
+    // Power cut: silence what is being said now. Queued lines wait for the
+    // lights to come back (Voice is blocked meanwhile), then carry on.
+    if (FX.has("blackout")) Voice.interrupt();
     form.classList.toggle("disabled", lockedOut());
     input.disabled = lockedOut();
     if (!lockedOut() && !spectate) input.focus();
@@ -429,7 +479,10 @@
           Voice.stop();
           linesEl.innerHTML = "";
           msg.log.forEach(renderInstant);
-          FX.sync(msg.effects);
+          cueState.clear();
+          heldCues.clear();
+          // Timed cues were played when they happened; don't replay them on reload.
+          FX.sync(msg.effects.filter((e) => !(e.atEntry && e.seconds > 0)));
           busy = msg.busy;
           updateBusy();
           showRoll(msg.roll || null);
@@ -441,11 +494,11 @@
           break;
         case "line": enqueue(msg.entry); break;
         case "busy": busy = msg.busy; updateBusy(); break;
-        case "effect": FX.start(msg.effect); break;
+        case "effect": onEffect(msg.effect); break;
         case "roll": showRoll(msg.roll); break;
         case "rollResult": showRollResult(msg); break;
         case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); break;
-        case "endEffect": FX.end(msg.id); break;
+        case "endEffect": dropCue(msg.id); FX.end(msg.id); break;
       }
     };
   }

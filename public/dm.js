@@ -311,11 +311,13 @@
       <div class="row"><button data-act="regen">↻ Regenerate</button></div>`;
   }
   // One editable line of a draft: who says it, and what.
+  // A line's effects fire as it begins (between lines of dialogue); untick to drop one.
   const draftLine = (l) => `
-    <div class="dline">
+    <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}">
       <select aria-label="Voice">${S.config.voices.map((v) => `<option value="${esc(v.id)}" ${v.id === l.voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
-      <textarea rows="${Math.min(12, Math.max(2, l.text.split("\n").length))}">${esc(l.text)}</textarea>
+      <textarea rows="${Math.min(12, Math.max(2, l.text.split("\n").length))}" placeholder="${l.effects?.length ? "(effect only: no text)" : ""}">${esc(l.text)}</textarea>
       <button data-act="delLine" class="ghost" title="Remove line">✕</button>
+      ${l.effects?.length ? `<div class="dfx">${l.effects.map((f, i) => `<label class="chip"><input type="checkbox" data-leff="${i}" ${S.config.agentEffects ? "checked" : ""}> ⚡ ${FX_META[f.type]?.[0] || ""} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s <span class="muted">as this line starts</span></label>`).join("")}</div>` : ""}
     </div>`;
   const steerRow = () => `<input id="steer" placeholder="Steer the rewrite: e.g. 'more evasive', 'deny the door is open', 'glitch mid-sentence'">`;
 
@@ -405,8 +407,11 @@
     const card = $("pending");
     const reply = {
       lines: [...card.querySelectorAll(".dline")]
-        .map((row) => ({ voice: row.querySelector("select").value, text: row.querySelector("textarea").value }))
-        .filter((l) => l.text.trim()),
+        .map((row) => {
+          const fx = JSON.parse(row.dataset.effects || "[]").filter((_, i) => row.querySelector(`[data-leff="${i}"]`)?.checked);
+          return { voice: row.querySelector("select").value, text: row.querySelector("textarea").value, effects: fx };
+        })
+        .filter((l) => l.text.trim() || l.effects.length), // effect-only beats count
       station_changes: r.station_changes.filter((_, i) => card.querySelector(`[data-chg="${i}"]`)?.checked),
       effects: r.effects.filter((_, i) => card.querySelector(`[data-eff="${i}"]`)?.checked),
     };

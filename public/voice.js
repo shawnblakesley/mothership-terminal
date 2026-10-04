@@ -13,6 +13,7 @@
   let impulse = null;
   let ownCtx = null;
   let blocked = () => false;
+  let cutCurrent = () => {}; // stops the clip that's playing now (see play())
 
   const ctx = () => window.FX?.Sound?.ctx || ownCtx || (ownCtx = new (window.AudioContext || window.webkitAudioContext)());
   const ready = () => (window.FX ? FX.Sound.ok() : true);
@@ -60,7 +61,7 @@
       ended: new Promise((r) => (item.onEnd = r)),
     };
     // Settle both promises (for clips that never play).
-    item.settle = () => { item.onStart(); item.onEnd(); };
+    item.settle = () => { item.onStart(); item.onEnd(false); }; // ended -> false: never played
     queue.push(item);
     if (!playing) next(gen);
     return handle;
@@ -73,7 +74,12 @@
     playing = true;
     const buffer = await item.audio;
     if (myGen !== gen) return item.settle();
-    if (blocked()) { item.settle(); return stop(); }
+    // Blocked (e.g. a blackout): wait it out, then carry on speaking. (What was
+    // playing when it started was cut off by interrupt().)
+    while (blocked()) {
+      await new Promise((r) => setTimeout(r, 150));
+      if (myGen !== gen) return item.settle();
+    }
     if (!buffer || !ready()) { item.settle(); return next(myGen); }
     await play(buffer, item, myGen);
     setTimeout(() => next(myGen), 250);
@@ -89,12 +95,14 @@
       const finish = () => {
         if (done) return;
         done = true;
-        item.onEnd();
+        item.onEnd(true);
         resolve();
         // Let reverb/echo tails ring out before stopping modulators and noise.
         setTimeout(() => sources.forEach((s) => { try { s.stop(); } catch {} }), 6000);
       };
       src.onended = finish;
+      // interrupt() cuts just this clip; the queue carries on.
+      cutCurrent = () => { try { src.stop(); } catch {} finish(); };
       // stop() can't reach this source directly, so watch for it.
       const watch = setInterval(() => {
         if (myGen !== gen) { clearInterval(watch); try { src.stop(); } catch {} finish(); }
@@ -239,6 +247,9 @@
     say,
     test,
     stop,
+    // Cut off whatever is being said right now, but keep the queue (lines later
+    // in the reply still speak, e.g. after a blackout beat ends).
+    interrupt() { cutCurrent(); },
     // e.g. Voice.setBlocked(() => FX.has("blackout")): nothing speaks while it's true.
     setBlocked(fn) { blocked = fn; },
   };
