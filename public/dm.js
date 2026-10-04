@@ -457,8 +457,8 @@
   setInterval(() => S && S.effects.length && renderEffects(), 1000);
 
   $("clearScreen").onclick = () => send({ t: "clearScreen" });
-  $("resetSession").onclick = () => confirm("Restart the story? Clears the log and effects; lore, voices and secrets are kept. Players stay connected.") &&
-    send({ t: "resetSession", keepStation: confirm("Keep the current station state? (Cancel = restore default station)") });
+  $("resetSession").onclick = () => confirm("Restart the story? Clears the log and effects; lore, voices and secrets are kept. Players stay connected and are logged back in as GUEST.") &&
+    send({ t: "resetSession", keepStation: confirm("Keep the current station state (doors, systems...)? Access level resets to GUEST either way. (Cancel = restore default station)") });
   $("resetAll").onclick = () => confirm("Factory reset EVERYTHING (lore, persona, secrets, station) to defaults?") && send({ t: "resetAll" });
 
   // ------------------------------------------------------------ voices & entities

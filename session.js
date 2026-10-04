@@ -353,6 +353,9 @@ export class Session {
         s.roll = null;
         s.outcomeCheck = null;
         s.station = structuredClone(msg.keepStation ? s.station : DEFAULT_STATION);
+        // A new story starts with the players logged in as guests, even when the
+        // rest of the station (doors, systems...) is kept.
+        s.station.access_level = DEFAULT_STATION.access_level;
         for (const e of [...s.effects]) this.endEffect(e.id);
         this.toPlayers({ t: "init", ...this.playerView() });
         break;
