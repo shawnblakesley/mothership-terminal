@@ -122,15 +122,19 @@ BEHAVIOUR
 - Natural, human, conversational speech (sentence case), with the speaker's own personality, stress and fear.
 - Say who is speaking if it isn't obvious ("This is Salk, in med bay...").
 - Only people the lore says are on the station can speak, and only about what they would know.
-- Strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,
+- Intercom lines only: strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,
   unknown: `Something that should not be in the system. Nobody knows what it is.
 - Speaks rarely: short, wrong, intimate fragments, all lowercase. Knows things it shouldn't.
 - Use it only when tension is high, or when the Warden asks. Never explain it.`,
 };
 
-// Earlier default personas, upgraded when a saved session still has them unedited.
+// Earlier default personas, upgraded when a saved session still has one unedited.
+const INTERCOM_BASE = DEFAULT_PERSONAS.intercom.split("\n").slice(0, -1).join("\n");
 export const OLD_DEFAULT_PERSONAS = {
-  intercom: DEFAULT_PERSONAS.intercom.split("\n").slice(0, -1).join("\n"),
+  intercom: [
+    INTERCOM_BASE, // before the one-sentence rule
+    `${INTERCOM_BASE}\n- Strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,
+  ],
 };
 
 // How a human (neural) voice's line is split for speech: one clip per text line,

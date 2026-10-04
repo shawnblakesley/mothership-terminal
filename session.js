@@ -68,7 +68,7 @@ function migrateGame(saved) {
   const { persona: legacyPersona, ...config } = { ...base.config, ...saved.config };
   const voices = sanitizeVoices(config.voices ?? defaultVoices()).map((v) => {
     // Unedited copies of an older default persona get the current one.
-    if (OLD_DEFAULT_PERSONAS[v.id] && v.persona === OLD_DEFAULT_PERSONAS[v.id]) v = { ...v, persona: DEFAULT_PERSONAS[v.id] };
+    if (OLD_DEFAULT_PERSONAS[v.id]?.includes(v.persona)) v = { ...v, persona: DEFAULT_PERSONAS[v.id] };
     // The original INTERCOM default was a synthetic radio voice; untouched ones get the human one.
     if (v.id !== "intercom" || v.preset !== "radio") return v;
     const human = defaultVoices().find((d) => d.id === "intercom");

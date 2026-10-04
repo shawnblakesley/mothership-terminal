@@ -58,9 +58,25 @@ export function splitVoiceTags(lines, voices) {
       }
     }
   }
-  return out
-    .map((l) => ({ voice: l.voice, text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim() }))
-    .filter((l) => l.text);
+  return mergeAdjacent(
+    out
+      .map((l) => ({ voice: l.voice, text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim() }))
+      .filter((l) => l.text),
+  );
+}
+
+// Back-to-back lines from the same voice are one utterance: merge them into one
+// block (line breaks kept). Models sometimes chop a terminal printout into
+// sections or apply one voice's line-splitting to another; this keeps every
+// voice's turn a single entry. Human voices still speak it line by line.
+function mergeAdjacent(lines) {
+  const out = [];
+  for (const l of lines) {
+    const last = out.at(-1);
+    if (last && last.voice === l.voice) last.text += `\n${l.text}`;
+    else out.push({ ...l });
+  }
+  return out;
 }
 
 // Built per request: the voice list is the Warden's to change at any time.
@@ -79,7 +95,7 @@ function buildSchema(voices) {
           required: ["voice", "text"],
           properties: {
             voice: { type: "string", enum: voices.map((v) => v.id) },
-            text: { type: "string", description: "Exactly what this voice says or prints. No voice tags or name prefixes." },
+            text: { type: "string", description: "Exactly what this voice says or prints, formatted by THIS voice's persona only. No voice tags or name prefixes." },
           },
         },
       },
@@ -144,6 +160,7 @@ THE WARDEN IS ALWAYS OBEYED
 
 OUTPUT
 - lines: everything the players see and hear, in order. Each line has the voice id of whoever says it and the exact text. Choose the voice instead of writing tags like "[SYSTEM BROADCAST]" or "INTERCOM:" in the text.
+- Format each line by its OWN voice's persona only (see PERSONA SCOPE). One voice's rules never change how another voice writes.
 - Most replies are a single terminal line. Bring in other voices when the story calls for it (an announcement, someone on the intercom, something speaking through the system), or when the Warden asks. A voice only says what its persona would know and say.
 - station_changes: EVERY change to the station that happens in this reply (doors, lights, access_level, systems...), as dot paths into LIVE STATION STATE. If a line says something changed, it must be listed here, or it did not happen.`;
 
@@ -153,13 +170,30 @@ const STYLE_NOTES = {
   boxed: () => "shown in a box",
 };
 
+// Each persona goes in its own tagged block with an explicit scope rule, so one
+// voice's style rules (e.g. the intercom's one-sentence-per-line) don't bleed
+// into the others (e.g. HV-CORE starting to split its printouts).
+const xmlAttr = (s) => String(s).replace(/[&"<>]/g, (c) => ({ "&": "&amp;", '"': "&quot;", "<": "&lt;", ">": "&gt;" })[c]);
+
 function buildVoices(voices) {
-  const parts = voices.map((v) => {
-    const style = (STYLE_NOTES[v.style] ?? STYLE_NOTES.plain)(v);
+  const blocks = voices.map((v) => {
+    const display = (STYLE_NOTES[v.style] ?? STYLE_NOTES.plain)(v);
     const role = v.id === BUILTIN.terminal ? "the terminal itself; the default voice" : v.id === BUILTIN.broadcast ? "station-wide announcements" : "another voice";
-    return `### voice id "${v.id}": ${v.name} (${role}; ${style}; spoken aloud)\n${v.persona.trim() || "(No persona set: use your judgment from the name and the lore.)"}`;
+    const persona = v.persona.trim() || "(No persona set: use your judgment from the name and the lore.)";
+    // A Warden-written persona can't close the block early.
+    const body = persona.replace(/<\/?voice\b[^>]*>/gi, "");
+    return `<voice id="${xmlAttr(v.id)}" name="${xmlAttr(v.name)}" role="${xmlAttr(role)}" display="${xmlAttr(display)}">\n${body}\n</voice>`;
   });
-  return `VOICES YOU CONTROL\nEvery line you write is said by one of these voices. Use the id in the "voice" field.\n\n${parts.join("\n\n")}`;
+  return `VOICES YOU CONTROL
+Every line you write is said by exactly one of these voices; put its id in the "voice" field.
+
+PERSONA SCOPE (strict):
+- Each <voice> block below is a separate brief for that one voice only.
+- Everything inside a block (personality, casing, length, line breaks, how to split text into lines) applies ONLY to lines spoken by that voice. It NEVER applies to any other voice.
+- When writing a voice's line, follow that voice's own block and ignore the formatting rules in every other block.
+- Unless a voice's own block says otherwise, write that voice's turn as ONE line entry and use line breaks inside its text for multi-line output (for example, a terminal printout is one entry).
+
+${blocks.join("\n\n")}`;
 }
 
 function buildSystem(state) {
