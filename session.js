@@ -1087,9 +1087,8 @@ export class Session {
     }
   }
 
-  // Roll back the agent's last response: its lines leave the players' screens
-  // and the agent's memory (the Warden's log keeps them, struck through), and its
-  // station and crew changes and effects are undone.
+  // Roll back the agent's last response: its lines (and the notes it made) are
+  // removed everywhere, and its station and crew changes and effects are undone.
   retcon() {
     const undo = this.undoStack.pop();
     if (!undo) return;
@@ -1097,7 +1096,8 @@ export class Session {
     this.genCounter++; // (and drop any reply still being written)
     s.pending = null;
     this.setBusy(false);
-    for (const e of s.log) if (undo.entries.includes(e.id)) { e.cut = true; e.retcon = true; delete e.queued; }
+    // Gone everywhere: the players' screens, the Warden's log and the agent's memory.
+    s.log = s.log.filter((e) => !undo.entries.includes(e.id));
     for (const id of undo.effects) this.endEffect(id);
     s.station = undo.station;
     // Crew: only their condition goes back (sheet edits made since are kept).

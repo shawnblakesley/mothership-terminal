@@ -112,7 +112,7 @@ Every password attempt, and anything else the players try that could go either w
 
 ## Retcon
 
-**↶ Retcon last response** (under Next response) undoes the agent's last response: its lines vanish from the players' screens and from the agent's memory (your log keeps them, struck through as retconned), its station and crew-condition changes are reverted, and its effects end. Press it again to go back further (up to five responses). The player input or roll that prompted it stays, so you can prompt the agent again or narrate it yourself.
+**↶ Retcon last response** (under Next response) undoes the agent's last response: its lines are removed from the players' screens, your log and the agent's memory, its station and crew-condition changes are reverted, and its effects end. Press it again to go back further (up to five responses). The player input or roll that prompted it stays, so you can prompt the agent again or narrate it yourself.
 
 ## Interrupting
 
