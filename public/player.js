@@ -378,7 +378,8 @@
     if (FX.has("blackout")) Voice.interrupt();
     form.classList.toggle("disabled", lockedOut());
     input.disabled = lockedOut();
-    if (!lockedOut() && !spectate) input.focus();
+    const typingElsewhere = document.activeElement && document.activeElement !== input && document.activeElement.matches("input, textarea, select");
+    if (!lockedOut() && !spectate && !typingElsewhere) input.focus();
   });
 
   form.addEventListener("submit", (e) => {
@@ -409,7 +410,11 @@
     requestAnimationFrame(placeCaret);
   });
   // Clicking anywhere on the screen focuses the prompt.
-  screenEl.addEventListener("click", () => { if (!getSelection().toString() && !document.body.classList.contains("panel-open")) input.focus(); });
+  screenEl.addEventListener("click", (e) => {
+    if (getSelection().toString() || document.body.classList.contains("panel-open")) return;
+    if (e.target.closest("input, button, select, textarea, a, label, .rollbox, .panel")) return;
+    input.focus();
+  });
 
   // ------------------------------------------------------------ volume
   // Ten-segment retro meter, top right. Click/drag a segment, scroll, or use
