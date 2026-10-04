@@ -47,7 +47,9 @@ TOML
   }
 }
 JSON
-  "$dir/bin/amazon-cloudwatch-agent-ctl" -a fetch-config -m onPremise -s -c "file:$dir/etc/mothership.json" >/dev/null
+  # (Off AWS the agent can't discover its region; the config step needs it in the environment.)
+  HOME=/root AWS_REGION=us-west-2 AWS_DEFAULT_REGION=us-west-2 \
+    "$dir/bin/amazon-cloudwatch-agent-ctl" -a fetch-config -m onPremise -s -c "file:$dir/etc/mothership.json" >/dev/null
 }
 setup_telemetry || echo "Telemetry setup failed (the app runs without it)." >&2
 
