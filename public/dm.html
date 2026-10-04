@@ -107,6 +107,44 @@
         <button id="promptNow" title="Make the agent speak now, even without new player input">Prompt agent now</button>
       </div>
 
+      <!-- An uncertain player action the agent left to the Warden (rule of cool). -->
+      <div id="outcome" class="card outcome" hidden></div>
+
+      <h2>Ability roll</h2>
+      <div class="card stack" id="rollCard">
+        <div class="rollgrid">
+          <label>Check
+            <select id="rollCheck"></select>
+          </label>
+          <label>[+] / [−]
+            <select id="rollAdv">
+              <option value="none">Normal</option>
+              <option value="advantage">[+] Advantage</option>
+              <option value="disadvantage">[−] Disadvantage</option>
+            </select>
+          </label>
+          <label>Skill
+            <input id="rollSkill" placeholder="e.g. Hacking (optional)">
+          </label>
+          <label>Skill level
+            <select id="rollSkillLevel">
+              <option value="none">None</option>
+              <option value="trained">Trained +10</option>
+              <option value="expert">Expert +15</option>
+              <option value="master">Master +20</option>
+            </select>
+          </label>
+          <label>Stat / Save value
+            <input id="rollStat" type="number" min="1" max="99" placeholder="players enter it">
+          </label>
+          <label class="wide">What for
+            <input id="rollReason" placeholder="e.g. bypass the cargo bay lock">
+          </label>
+        </div>
+        <div class="row"><button id="rollCall" class="primary">🎲 Call for roll</button><span class="grow"></span><span class="muted small">Roll under Stat + Skill on d100 · doubles crit · fail = +1 Stress</span></div>
+        <div id="rollStatus" hidden></div>
+      </div>
+
       <h2>Screen effects</h2>
       <div class="fxopts">
         <label>Caption <input id="fxText" placeholder="optional text (alarm, banner, lockout, blackout)"></label>

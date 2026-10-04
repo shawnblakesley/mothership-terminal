@@ -28,6 +28,22 @@
     <main id="screen">
       <div id="lines" aria-live="polite"></div>
       <div id="busy" hidden>PROCESSING<span class="dots"></span></div>
+      <!-- Ability roll called by the Warden (Mothership: roll d100 under Stat + Skill). -->
+      <section id="rollbox" class="rollbox" hidden aria-live="polite">
+        <div class="rb-title">■ ROLL REQUIRED ■</div>
+        <div id="rb-label"></div>
+        <div id="rb-reason" class="rb-dim"></div>
+        <form id="rb-form" autocomplete="off">
+          <label id="rb-stat-row" for="rb-stat"><span id="rb-stat-name">YOUR STAT</span>: <input id="rb-stat" inputmode="numeric" maxlength="2" size="3"></label>
+          <div class="rb-actions">
+            <button id="rb-roll" type="submit">[ ROLL D100 ]</button>
+            <span class="rb-dim">OR ENTER YOUR DICE:</span>
+            <input id="rb-dice" inputmode="numeric" size="7" aria-label="Your dice">
+            <button id="rb-enter" type="button">[ ENTER ]</button>
+          </div>
+          <div id="rb-err" role="alert"></div>
+        </form>
+      </section>
       <form id="inputrow" autocomplete="off">
         <label id="prompt" for="in">GUEST&gt;</label>
         <input id="in" spellcheck="false" autocapitalize="characters" autofocus>
@@ -36,6 +52,7 @@
     </main>
   </div>
   <div id="fx"></div>
+  <div id="rollfx" class="rollfx" hidden aria-live="assertive"><div class="rf-dice"></div><div class="rf-out"></div></div>
 
   <div id="boot">
     <pre id="boot-text"></pre>

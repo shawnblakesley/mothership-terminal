@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey } from "./providers/index.js";
 import { warmNeural } from "./tts.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
+import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives } from "./agent.js";
 
 const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
@@ -87,6 +88,8 @@ function migrateGame(saved) {
     station: saved.station ?? base.station,
     log: Array.isArray(saved.log) ? saved.log.slice(-MAX_LOG) : [],
     whisper: String(saved.whisper ?? ""),
+    roll: saved.roll ?? null, // the current/last ability roll (see rolls.js)
+    outcomeCheck: saved.outcomeCheck ?? null, // an uncertain player action the agent left to the Warden
   };
 }
 
@@ -179,6 +182,7 @@ export class Session {
       header: this.playerHeader(),
       effects: this.state.effects,
       busy: !!this.state.pending,
+      roll: this.publicRoll(),
     };
   }
 
@@ -201,6 +205,7 @@ export class Session {
       code: this.code,
       providers: catalog(this.keys),
       allEffects: ALL_EFFECTS,
+      rollOptions: { checks: CHECKS, skillLevels: SKILL_LEVELS },
       voiceOptions: { presets: PRESETS, fxParams: FX_PARAMS, variants: VARIANTS, styles: STYLES, engines: ENGINES, speakers: SPEAKERS },
     };
   }
@@ -219,6 +224,7 @@ export class Session {
 
   // ---------------------------------------------------------------- players
   handlePlayer(ws, msg) {
+    if (msg.t === "roll") return this.resolveRoll(ws, msg);
     if (msg.t !== "input") return;
     const text = String(msg.text || "").slice(0, 1000).trim();
     if (!text || this.isLockedOut()) return;
@@ -293,7 +299,7 @@ export class Session {
       case "approve":
         if (!s.pending || s.pending.status !== "ready") break;
         this.logDirectives(s.pending.directives);
-        this.deliver(msg.reply, "agent");
+        this.deliver({ ...msg.reply, outcome_check: s.pending.reply?.outcome_check }, "agent");
         s.pending = null;
         this.setBusy(false);
         break;
@@ -339,9 +345,40 @@ export class Session {
         s.log = [];
         s.pending = null;
         s.whisper = "";
+        s.roll = null;
+        s.outcomeCheck = null;
         s.station = structuredClone(msg.keepStation ? s.station : DEFAULT_STATION);
         for (const e of [...s.effects]) this.endEffect(e.id);
         this.toPlayers({ t: "init", ...this.playerView() });
+        break;
+      case "rollRequest": {
+        s.roll = sanitizeRequest(msg.roll);
+        if (msg.fromOutcome) s.outcomeCheck = null;
+        this.addLog("note", `Roll called: ${[checkLabel(s.roll), skillLabel(s.roll), s.roll.reason].filter(Boolean).join(" · ")}`);
+        this.toPlayers({ t: "roll", roll: this.publicRoll() });
+        break;
+      }
+      case "rollCancel":
+        if (s.roll?.status === "waiting") this.addLog("note", "Roll cancelled.");
+        s.roll = null;
+        this.toPlayers({ t: "roll", roll: null });
+        break;
+      case "rollNarrate":
+        // The [ROLL RESULT] is already the latest thing in the agent's history.
+        if (s.roll?.status === "done") this.generate();
+        return;
+      case "outcome": {
+        // The Warden rules on an attempt the agent left open (rule of cool).
+        const oc = s.outcomeCheck;
+        if (!oc || !["success", "failure"].includes(msg.verdict)) break;
+        s.outcomeCheck = null;
+        const verdict = msg.verdict === "success" ? "SUCCEEDS" : "FAILS";
+        this.addLog("warden", `The players' attempt (${oc.attempt || "their last action"}) ${verdict}. Narrate the result in character and apply any station changes.`);
+        this.generate();
+        break;
+      }
+      case "outcomeDismiss":
+        s.outcomeCheck = null;
         break;
       case "endSession":
         console.log(`  - session ${this.code} ended by its Warden`);
@@ -388,12 +425,47 @@ export class Session {
     if (this.state.effects.length !== before) this.toPlayers({ t: "endEffect", id });
   }
 
+  // ---------------------------------------------------------------- rolls
+  // What players see of a roll request (only while it's waiting for them).
+  publicRoll() {
+    const r = this.state.roll;
+    if (!r || r.status !== "waiting") return null;
+    return { id: r.id, label: checkLabel(r), skill: skillLabel(r), reason: r.reason, advantage: r.advantage, statKnown: r.stat !== null, statName: CHECKS[r.check].label, bonus: r.bonus };
+  }
+
+  // A player answers the roll: digital dice from the server, or physical dice typed in.
+  resolveRoll(ws, msg) {
+    const r = this.state.roll;
+    if (!r || r.status !== "waiting" || msg.id !== r.id) return;
+    const n = r.advantage === "none" ? 1 : 2;
+    const dice = msg.manual
+      ? (Array.isArray(msg.dice) ? msg.dice : []).map((d) => Number(d))
+      : Array.from({ length: n }, rollD100);
+    let result;
+    try {
+      result = resolve(r, r.stat ?? msg.stat, dice);
+    } catch (err) {
+      ws.send(JSON.stringify({ t: "rollError", text: err.message }));
+      return;
+    }
+    this.state.roll = { ...r, status: "done", result, manual: !!msg.manual, finishedAt: Date.now() };
+    this.toPlayers({ t: "roll", roll: null });
+    this.toPlayers({ t: "rollResult", result, label: checkLabel(r) });
+    this.addLog("roll", resultText(r, result), { outcome: result.outcome });
+    this.syncDm();
+  }
+
   // ---------------------------------------------------------------- replies
   logDirectives(directives = []) {
     for (const d of directives) this.addLog("warden", d);
   }
 
   deliver(reply, source) {
+    const oc = reply?.outcome_check;
+    if (oc?.needed) {
+      this.state.outcomeCheck = { ...oc, id: Date.now().toString(36), at: Date.now() };
+      this.addLog("note", `⚖ Outcome needed: ${oc.attempt || "(unspecified)"}${oc.suggested_check !== "none" ? ` · suggests ${CHECKS[oc.suggested_check].label}${oc.advantage === "advantage" ? " [+]" : oc.advantage === "disadvantage" ? " [-]" : ""}` : ""}`);
+    }
     const voices = this.state.config.voices;
     const lines = splitVoiceTags(
       (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, text: String(l.text ?? "").slice(0, 8000) })),

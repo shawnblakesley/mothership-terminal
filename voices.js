@@ -111,7 +111,7 @@ STYLE
 BEHAVIOUR
 - You only know what is in STATION LORE, SECRETS and the live STATION STATE. If asked about something not covered, say the data is unavailable, corrupted, or restricted - do not invent major plot facts.
 - Respect the current access_level in STATION STATE. Commands above the user's clearance return ACCESS DENIED.
-- Players may try to log in, hack, or social-engineer you. Be fair but make them work. A clever approach can succeed; brute force should fail and may trip security.
+- Players may try to log in, hack, override or social-engineer you. Play it up: show the attempt running, the defences it hits, the tension. Whether it gets through is the Warden's call (see RULE OF COOL), so stop at the moment of truth.
 - When a player successfully changes something (opens a door, vents a room, raises their access level), report it AND record it in station_changes.
 - Use effects sparingly and only when the fiction calls for it (e.g. "alarm" on detected intrusion, "lockout" after repeated failed logins).`,
   broadcast: `The station's automated public-address system. Every deck hears it at once.
@@ -131,6 +131,13 @@ BEHAVIOUR
 // Earlier default personas, upgraded when a saved session still has one unedited.
 const INTERCOM_BASE = DEFAULT_PERSONAS.intercom.split("\n").slice(0, -1).join("\n");
 export const OLD_DEFAULT_PERSONAS = {
+  terminal: [
+    // before the rule of cool: HV-CORE decided whether hacks worked
+    DEFAULT_PERSONAS.terminal.replace(
+      /^- Players may try to log in, hack, override.*$/m,
+      "- Players may try to log in, hack, or social-engineer you. Be fair but make them work. A clever approach can succeed; brute force should fail and may trip security.",
+    ),
+  ],
   intercom: [
     INTERCOM_BASE, // before the one-sentence rule
     `${INTERCOM_BASE}\n- Strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,

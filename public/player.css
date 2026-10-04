@@ -86,6 +86,34 @@ body {
 .line { white-space: pre-wrap; word-break: break-word; margin: 0 0 0.35em; }
 .line.player { color: var(--dim); text-transform: uppercase; }
 .line.player::before { content: attr(data-prompt); }
+/* Ability rolls */
+.line.roll { border: 3px double var(--fg); padding: 0.2em 0.5em; display: inline-block; }
+.rollbox { border: 3px double var(--fg); padding: 0.5em 0.8em; margin: 0.4em 0 0.8em; max-width: 46em; }
+.rollbox[hidden] { display: none; }
+.rb-title { animation: blink 1s infinite steps(1); margin-bottom: 0.2em; }
+.rb-dim { color: var(--dim); }
+.rollbox form { margin-top: 0.4em; }
+.rollbox input {
+  background: transparent; border: 0; border-bottom: 2px solid var(--fg); outline: 0;
+  color: var(--fg); font: inherit; text-shadow: inherit; text-align: center; padding: 0 0.1em;
+}
+.rollbox button {
+  background: none; border: 0; padding: 0; cursor: pointer; color: var(--fg); font: inherit; text-shadow: inherit;
+}
+.rollbox button:hover, .rollbox button:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
+.rollbox button:disabled { opacity: 0.4; cursor: default; }
+.rb-actions { display: flex; flex-wrap: wrap; gap: 0.6em; align-items: baseline; margin-top: 0.3em; }
+#rb-err { min-height: 1.1em; }
+.rollfx {
+  position: fixed; inset: 0; z-index: 90; display: grid; place-content: center; text-align: center;
+  background: rgba(0, 0, 0, 0.72); pointer-events: none;
+}
+.rollfx[hidden] { display: none; }
+.rf-dice { font-size: clamp(64px, 16vw, 200px); line-height: 1; letter-spacing: 0.08em; }
+.rf-out { font-size: clamp(22px, 4vw, 48px); margin-top: 0.4em; min-height: 1.2em; }
+.rollfx.crit .rf-out { animation: blink 0.35s infinite steps(1); }
+.rollfx.fail .rf-out { color: #ff4a3d; text-shadow: 0 0 10px rgba(255, 74, 61, 0.6); }
+
 /* Per-voice display styles (set by the Warden in the DM console) */
 .line.style-boxed { border: 1px solid var(--fg); padding: 0.2em 0.5em; display: inline-block; }
 .line.style-label::before { content: attr(data-label); opacity: 0.75; }

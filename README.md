@@ -83,6 +83,21 @@ The agent tells the two apart because player input is always quoted and labelled
 
 The agent puts station-wide announcements in a separate broadcast field. If it ever writes `[SYSTEM BROADCAST]` inline anyway, the server splits that out into a real broadcast.
 
+## Rule of cool, outcomes and ability rolls
+
+The agent says yes to cool ideas but **never decides whether an uncertain action works**. You do.
+
+- **The agent's side:** when players try something risky, like hacking a door, overriding a lockout, forcing a hatch or bluffing someone, the agent plays it up to the moment of truth and stops there. It never contradicts the players or flatly shuts an idea down.
+- **Your side:** an **⚖ Your call** card appears in the console with **It works**, **It fails** or **Call for a roll**. The agent suggests a Stat or Save and whether [+] or [−] fits. Choosing works or fails has the agent narrate the result and make any station changes.
+
+**Ability rolls** follow Mothership's rules:
+
+- Pick a Stat (Strength, Speed, Intellect, Combat) or Save (Sanity, Fear, Body). Optionally add a skill (Trained +10, Expert +15, Master +20) and [+] / [−].
+- If you know the character's value, enter it. Otherwise the players are asked for it.
+- The players' terminal shows a **ROLL REQUIRED** box. They roll d100 on screen, or type in their physical dice.
+- **Success:** under Stat + Skill. **Criticals:** doubles (00, 11 … 99). **[+] / [−]:** roll twice and keep the better or worse result. **Failure:** +1 Stress.
+- The result appears on everyone's screen and in your console. **Have the agent narrate it** turns it into story. The agent never mentions dice or stats in-world.
+
 ## Voices & entities
 
 Every line on the players' screen belongs to a voice, and **the agent can speak as any of them**. A reply can mix voices, for example a terminal readout, then Dr. Salk on the intercom, then a station-wide announcement. Two voices are built in: **HV-CORE** (the terminal) and **System Broadcast**. Add any number of others under **Voices, personas & settings**, such as an intercom, a stranger on comms, or the thing in the vents. You can also pick one in the comms box and **Send as voice** yourself.

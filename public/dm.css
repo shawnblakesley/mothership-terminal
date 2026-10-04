@@ -137,6 +137,19 @@ dialog h2 { margin: 0; }
 .toast.error { border-color: var(--danger); color: var(--danger); }
 #keywarn { cursor: pointer; }
 
+/* ---- rule of cool + rolls ---- */
+.card.outcome { border-color: #c58bff; box-shadow: 0 0 0 1px color-mix(in srgb, #c58bff 35%, transparent); }
+.card.outcome .attempt { font-size: 15px; font-weight: 600; }
+.rollgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.rollgrid label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.rollgrid .wide { grid-column: 1 / -1; }
+#rollStatus { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+#rollStatus .res { font-family: var(--mono); white-space: pre-wrap; font-size: 13px; }
+#rollStatus .res.ok { color: var(--accent); }
+#rollStatus .res.bad { color: var(--danger); }
+.entry.roll { border-left-color: #ffd23f; }
+.entry.roll .who { color: #ffd23f; }
+
 /* ---- draft lines ---- */
 #draftLines { display: flex; flex-direction: column; gap: 6px; }
 .dline { display: grid; grid-template-columns: minmax(90px, 9em) 1fr auto; gap: 6px; align-items: start; }

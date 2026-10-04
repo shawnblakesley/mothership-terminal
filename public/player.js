@@ -133,6 +133,7 @@
       div.dataset.prompt = `${header.accessLevel}@${header.stationName}> `;
       return div;
     }
+    if (entry.kind === "roll") { div.classList.add("roll"); return div; }
     const v = voiceOf(entry);
     div.classList.add(`style-${v?.style || (entry.kind === "system" ? "boxed" : "plain")}`);
     if (v?.style === "label") div.dataset.label = `${v.name}: `;
@@ -159,7 +160,7 @@
     }
     typingQueue.push(entry);
     if (!typing) typeNext();
-    if (header.tts) speak(entry);
+    if (header.tts && entry.kind !== "roll") speak(entry);
   }
 
   function typeNext() {
@@ -286,6 +287,80 @@
   volBtn.addEventListener("click", () => { muted = !muted; applyVolume(); input.focus(); });
   applyVolume();
 
+  // ------------------------------------------------------------ ability rolls
+  // The Warden calls for a Mothership check/save; the players enter their Stat
+  // (unless the Warden already set it) and either roll here or type their dice.
+  const rollbox = $("rollbox"), rbStat = $("rb-stat"), rbDice = $("rb-dice"), rbErr = $("rb-err");
+  let curRoll = null;
+
+  function showRoll(roll) {
+    curRoll = roll;
+    rollbox.hidden = !roll;
+    if (!roll) { if (!spectate) input.focus(); return; }
+    $("rb-label").textContent = [roll.label, roll.skill].filter(Boolean).join(" · ");
+    $("rb-reason").textContent = roll.reason ? roll.reason.toUpperCase() : "";
+    $("rb-stat-row").hidden = roll.statKnown;
+    $("rb-stat-name").textContent = `YOUR ${roll.statName.toUpperCase()}${roll.bonus ? ` (SKILL +${roll.bonus} IS ADDED)` : ""}`;
+    rbDice.placeholder = roll.advantage === "none" ? "47" : "47 82";
+    rbStat.value = "";
+    rbDice.value = "";
+    rbErr.textContent = "";
+    for (const el of rollbox.querySelectorAll("input, button")) el.disabled = spectate;
+    FX.Sound.beep(660, 0.12, 0.07);
+    setTimeout(() => FX.Sound.beep(880, 0.16, 0.07), 140);
+    scrollDown();
+    if (!spectate) (roll.statKnown ? $("rb-roll") : rbStat).focus();
+  }
+
+  function sendRoll(manual) {
+    if (!curRoll) return;
+    const stat = rbStat.value.trim();
+    if (!curRoll.statKnown && !/^\d{1,2}$/.test(stat)) {
+      rbErr.textContent = `ENTER YOUR ${curRoll.statName.toUpperCase()} FIRST.`;
+      return rbStat.focus();
+    }
+    const msg = { t: "roll", id: curRoll.id, stat: Number(stat) };
+    if (manual) {
+      const dice = rbDice.value.split(/[^0-9]+/).filter(Boolean).map(Number);
+      const need = curRoll.advantage === "none" ? 1 : 2;
+      if (dice.length !== need || dice.some((d) => d > 99)) {
+        rbErr.textContent = need === 1 ? "ENTER ONE D100 ROLL (00-99)." : "ENTER BOTH D100 ROLLS, E.G. 47 82.";
+        return rbDice.focus();
+      }
+      Object.assign(msg, { manual: true, dice });
+    }
+    rbErr.textContent = "ROLLING...";
+    ws?.readyState === 1 && ws.send(JSON.stringify(msg));
+  }
+
+  $("rb-form").addEventListener("submit", (e) => { e.preventDefault(); sendRoll(rbDice.value.trim() !== ""); });
+  $("rb-enter").addEventListener("click", () => sendRoll(true));
+  rbDice.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendRoll(true); } });
+
+  // Big dice tumble, then the verdict.
+  function showRollResult({ result, label }) {
+    const fx = $("rollfx"), diceEl = fx.querySelector(".rf-dice"), outEl = fx.querySelector(".rf-out");
+    const pad = (d) => String(d).padStart(2, "0");
+    fx.className = "rollfx";
+    fx.hidden = false;
+    outEl.textContent = label;
+    let n = 0;
+    const tumble = setInterval(() => {
+      diceEl.textContent = result.dice.map(() => pad(Math.floor(Math.random() * 100))).join(" ");
+      if (n++ % 2 === 0) FX.Sound.tick();
+    }, 60);
+    setTimeout(() => {
+      clearInterval(tumble);
+      diceEl.textContent = result.dice.length > 1 ? `${result.dice.map(pad).join(" / ")} → ${pad(result.used)}` : pad(result.used);
+      outEl.textContent = `${result.outcome.toUpperCase()} (UNDER ${result.target})${result.success ? "" : " · +1 STRESS"}`;
+      fx.classList.add(result.success ? "pass" : "fail");
+      if (result.critical) fx.classList.add("crit");
+      if (result.success) { FX.Sound.beep(880, 0.12, 0.08); setTimeout(() => FX.Sound.beep(1320, 0.2, 0.08), 120); }
+      else { FX.Sound.beep(220, 0.3, 0.1); setTimeout(() => FX.Sound.beep(160, 0.4, 0.1), 260); }
+    }, 1300);
+    setTimeout(() => { fx.hidden = true; }, 5200);
+  }
+
   // ------------------------------------------------------------ socket
   // The socket lives next to this page (works under any mount point, e.g. /mothership/).
   function socketUrl() {
@@ -322,6 +397,7 @@
           FX.sync(msg.effects);
           busy = msg.busy;
           updateBusy();
+          showRoll(msg.roll || null);
           scrollDown();
           break;
         case "header":
@@ -331,6 +407,9 @@
         case "line": enqueue(msg.entry); break;
         case "busy": busy = msg.busy; updateBusy(); break;
         case "effect": FX.start(msg.effect); break;
+        case "roll": showRoll(msg.roll); break;
+        case "rollResult": showRollResult(msg); break;
+        case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); break;
         case "endEffect": FX.end(msg.id); break;
       }
     };

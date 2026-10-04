@@ -221,6 +221,8 @@
     renderConfig();
     renderSendAs();
     renderVoices();
+    renderOutcome();
+    renderRoll();
   }
 
   function fillSelect(sel, options, value) {
@@ -247,6 +249,7 @@
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
     const who = (e) => e.kind === "player" ? "Players"
       : e.kind === "warden" ? "⚑ Warden command → agent"
+      : e.kind === "roll" ? "🎲 Roll result"
       : e.kind === "entity" ? `🔊 ${esc(voiceName(e.entity))} · ${e.source === "dm" ? "you" : "agent"}`
       : e.kind === "terminal" ? (e.source === "dm" ? "Terminal · you" : "Terminal · agent")
       : e.kind === "system" ? (e.source === "agent" ? "Broadcast · agent" : "Broadcast · you") : "Note";
@@ -301,6 +304,7 @@
         `<li><label><input type="checkbox" data-chg="${i}" checked> ${esc(c.path)} → ${esc(c.value)}</label></li>`).join("")}</ul>` : ""}
       ${r.effects.length ? `<div class="label">Effects</div><ul>${r.effects.map((f, i) =>
         `<li><label><input type="checkbox" data-eff="${i}" ${S.config.agentEffects ? "checked" : ""}> ${FX_META[f.type]?.[0] || ""} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s</label></li>`).join("")}</ul>` : ""}
+      ${r.outcome_check?.needed ? `<div class="note">⚖ Leaves the outcome to you: <b>${esc(r.outcome_check.attempt)}</b>${r.outcome_check.suggested_check !== "none" ? ` · suggests ${esc(checkName(r.outcome_check.suggested_check))}${advMark(r.outcome_check.advantage)}` : ""}. Once it is sent you get It works / It fails / Roll.</div>` : ""}
       ${r.dm_note ? `<div class="note">🧠 ${esc(r.dm_note)}</div>` : ""}
       <div class="row"><button data-act="approve" class="primary">Send to players</button><button data-act="discard" class="ghost">Discard</button></div>
       ${steerRow()}
@@ -626,6 +630,97 @@
     voicesSentAt = 0;
     send({ t: "voices", voices: voicesDraft });
   };
+
+  // ------------------------------------------------------------ rule of cool + ability rolls
+  const checkName = (id) => S?.rollOptions?.checks[id]?.label || id;
+  const advMark = (a) => (a === "advantage" ? " [+]" : a === "disadvantage" ? " [−]" : "");
+
+  // An attempt the agent left open: the Warden rules on it, or calls for a roll.
+  function renderOutcome() {
+    const card = $("outcome");
+    const oc = S.outcomeCheck;
+    card.hidden = !oc;
+    if (!oc) { card.dataset.id = ""; return; }
+    if (card.dataset.id === oc.id) return;
+    card.dataset.id = oc.id;
+    card.innerHTML = `
+      <div class="label">⚖ Your call: the players are attempting</div>
+      <div class="attempt">${esc(oc.attempt || "(something uncertain)")}</div>
+      ${oc.suggested_check !== "none" ? `<div class="muted small">Agent suggests: ${esc(checkName(oc.suggested_check))}${advMark(oc.advantage)}</div>` : ""}
+      ${oc.why ? `<div class="note">${esc(oc.why)}</div>` : ""}
+      <div class="row wrap">
+        <button data-oc="success" class="primary">✓ It works</button>
+        <button data-oc="failure" class="danger">✗ It fails</button>
+        <button data-oc="roll">🎲 Call for a roll</button>
+        <span class="grow"></span>
+        <button data-oc="dismiss" class="ghost">Dismiss</button>
+      </div>`;
+  }
+
+  $("outcome").addEventListener("click", (e) => {
+    const act = e.target.closest("[data-oc]")?.dataset.oc;
+    const oc = S?.outcomeCheck;
+    if (!act || !oc) return;
+    if (act === "success" || act === "failure") send({ t: "outcome", verdict: act });
+    else if (act === "dismiss") send({ t: "outcomeDismiss" });
+    else if (act === "roll") {
+      // Pre-fill the roll form from the agent's suggestion.
+      if (oc.suggested_check !== "none") $("rollCheck").value = oc.suggested_check;
+      $("rollAdv").value = oc.advantage || "none";
+      $("rollReason").value = oc.attempt || "";
+      rollFromOutcome = true;
+      $("rollCard").scrollIntoView({ behavior: "smooth", block: "center" });
+      $("rollStat").focus();
+    }
+  });
+
+  let rollFromOutcome = false;
+  function renderRoll() {
+    const sel = $("rollCheck");
+    if (!sel.options.length) {
+      const checks = Object.entries(S.rollOptions.checks);
+      const group = (kind) => checks.filter(([, c]) => c.kind === kind).map(([id, c]) => `<option value="${id}">${c.label}</option>`).join("");
+      sel.innerHTML = `<optgroup label="Stats">${group("Stat")}</optgroup><optgroup label="Saves">${group("Save")}</optgroup>`;
+      sel.value = "intellect";
+    }
+    const r = S.roll;
+    const box = $("rollStatus");
+    box.hidden = !r;
+    $("rollCall").disabled = r?.status === "waiting";
+    if (!r) return;
+    const label = `${checkName(r.check)}${advMark(r.advantage)}${r.bonus ? ` · ${r.skill || "skill"} +${r.bonus}` : ""}${r.reason ? ` · ${r.reason}` : ""}`;
+    if (r.status === "waiting") {
+      box.innerHTML = `<div><span class="spinner"></span>Waiting for the players to roll: <b>${esc(label)}</b>${r.stat === null ? " (they'll enter their value)" : ` vs ${r.stat + r.bonus}`}</div>
+        <div class="row"><button data-roll="cancel" class="ghost">Cancel roll</button></div>`;
+    } else {
+      const res = r.result;
+      const dice = res.dice.map((d) => String(d).padStart(2, "0")).join(" / ");
+      box.innerHTML = `<div class="res ${res.success ? "ok" : "bad"}">🎲 ${esc(label)}
+${dice}${res.dice.length > 1 ? ` → ${String(res.used).padStart(2, "0")}` : ""} vs ${res.target}${r.manual ? " (table dice)" : ""} — ${res.outcome.toUpperCase()}${res.success ? "" : " · +1 STRESS"}</div>
+        <div class="row"><button data-roll="narrate" class="primary">Have the agent narrate it</button><span class="grow"></span><button data-roll="clear" class="ghost">Clear</button></div>`;
+    }
+  }
+
+  $("rollCall").onclick = () => {
+    send({
+      t: "rollRequest",
+      fromOutcome: rollFromOutcome,
+      roll: {
+        check: $("rollCheck").value,
+        advantage: $("rollAdv").value,
+        skill: $("rollSkill").value,
+        skillLevel: $("rollSkillLevel").value,
+        stat: $("rollStat").value,
+        reason: $("rollReason").value,
+      },
+    });
+    rollFromOutcome = false;
+  };
+  $("rollStatus").addEventListener("click", (e) => {
+    const act = e.target.closest("[data-roll]")?.dataset.roll;
+    if (act === "cancel" || act === "clear") send({ t: "rollCancel" });
+    else if (act === "narrate") send({ t: "rollNarrate" });
+  });
 
   // ------------------------------------------------------------ session controls
   $("keyBtn").onclick = openKeyDialog;
