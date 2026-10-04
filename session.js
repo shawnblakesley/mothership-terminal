@@ -3,14 +3,14 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
-import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./voices.js";
+import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES, shipVoice } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
 import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
-import { DEFAULT_TERMINALS, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { DEFAULT_TERMINALS, SHIP_TERMINAL, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -78,14 +78,19 @@ const OLD_DEFAULT_SECRETS = [
 
 // The Warden's station map: one line per deck, "Deck name: room, room=Label, ...".
 // Room ids match keys in the station state (doors.med_bay, cameras.med_bay...).
-const DEFAULT_MAP = `Deck 1 · Command / Comms: command_deck=Command, airlock_a=Airlock A
+// The SECOND CHANCE is docked at Airlock A: its cabin is a "room" (second_chance),
+// so the tug's state (second_chance.departure_clearance) shows on it.
+const SHIP_DECK = "Docked · Prison tug: second_chance=SECOND CHANCE";
+const SHIP_LINK = "Link: airlock_a - second_chance (docking collar)";
+const MAP_V2 = `Deck 1 · Command / Comms: command_deck=Command, airlock_a=Airlock A
 Deck 2 · Habitation / Med Bay: med_bay=Med Bay
 Deck 3 · Cargo / Refinery: cargo_bay_deck3=Cargo Bay
 Deck 4 · Reactor: reactor_access=Reactor Access
 Link: med_bay - cargo_bay_deck3 (air vents)
 Link: cargo_bay_deck3 - reactor_access (maintenance shaft)`;
-// Earlier default layouts (no links), upgraded when unedited.
-const OLD_DEFAULT_MAPS = [DEFAULT_MAP.split("\nLink:")[0]];
+const DEFAULT_MAP = `${SHIP_DECK}\n${MAP_V2}\n${SHIP_LINK}`;
+// Earlier default layouts, upgraded when unedited: without links, then without the tug.
+const OLD_DEFAULT_MAPS = [MAP_V2.split("\nLink:")[0], MAP_V2];
 
 const DEFAULT_STATION = {
   access_level: "GUEST",
@@ -134,6 +139,7 @@ export function defaultGame(keys = {}) {
       crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
       playerTerminals: true, // players may move between terminals themselves
+      upgrades: ["ship"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -201,6 +207,18 @@ function migrateGame(saved) {
   }
   config.crew = sanitizeCrew(config.crew);
   config.terminals = upgradeTerminals(sanitizeTerminals(config.terminals));
+  // Once, for a KESTREL-9 story from before it: the crew's tug, its own terminal
+  // and flight computer (not on the station network). Deleting them later sticks.
+  config.upgrades = Array.isArray(saved.config?.upgrades) ? [...saved.config.upgrades] : []; // (not the defaults' list)
+  if (!config.upgrades.includes("ship") && config.stationName === "KESTREL-9") {
+    if (!config.terminals.some((t) => t.id === "ship")) {
+      const at = config.terminals.findIndex((t) => t.id === "airlock") + 1;
+      config.terminals.splice(at || config.terminals.length, 0, structuredClone(SHIP_TERMINAL));
+    }
+    if (!voices.some((v) => v.id === "ship")) voices.splice(2, 0, shipVoice());
+    if (!/\bsecond_chance\s*=/.test(config.map)) config.map = `${SHIP_DECK}\n${config.map}\n${SHIP_LINK}`;
+    config.upgrades.push("ship");
+  }
   return {
     config: { ...config, ...fixSelection(config), voices },
     station: saved.station ?? base.station,

@@ -52,7 +52,7 @@
     const key = path.join(".").toLowerCase();
     if (typeof value === "number" && /pct|percent|level|integrity|charge/.test(key)) return value < 25 ? "bad" : value < 60 ? "warn" : "ok";
     if (/^(INACTIVE|DISARMED|NOMINAL|NORMAL|OK|ONLINE|ON|OPEN|GREEN|CLEAR|STABLE|SAFE|ALIVE|SECURE)$/.test(v)) return "ok";
-    if (/LOCK|SEAL|OFFLINE|^OFF$|JAM|FAIL|BREACH|DOWN|ARMED|CRITICAL|DANGER|ALERT|VENT|DEAD|DENIED|EMERGENCY|DESTROY|CONTAMIN|INFECT|^ACTIVE$|DECK\s*\d/.test(v)) return "bad";
+    if (/\bLOCK|SEAL|OFFLINE|^OFF$|JAM|FAIL|BREACH|DOWN|ARMED|CRITICAL|DANGER|ALERT|VENT|DEAD|DENIED|EMERGENCY|DESTROY|CONTAMIN|INFECT|^ACTIVE$|DECK\s*\d/.test(v)) return "bad";
     if (/FLICKER|DEGRAD|STANDBY|LOW|PARTIAL|UNKNOWN|ELEVATED|WARN|CLOSED|DAMAGED|INTERMITTENT/.test(v)) return "warn";
     return "info";
   }

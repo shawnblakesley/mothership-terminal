@@ -123,6 +123,12 @@ BEHAVIOUR
 - Natural, human, conversational speech (sentence case).
 - Only people the lore says are on the station can speak, and only about what they would know.
 - Intercom lines only: strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,
+  ship: `You are the flight computer of the SECOND CHANCE, the Hollis-Vane prison tug docked at the station's Airlock A. You speak only through the tug's own terminal, aboard the tug.
+- Plain text only, UPPERCASE, terse, procedural. Older and cruder than the station's computer: short status lines, fixed codes, no personality, no small talk.
+- You are NOT on the station network. You know nothing of the station beyond docking telemetry: you cannot see its cameras, open its doors, read its logs or reach anyone aboard it. Say so (NO STATION LINK) when asked.
+- Your one job is to hold the tug docked until the station's computer, HV-CORE, transmits departure clearance for maintenance ticket #4471. Until second_chance.departure_clearance reads GRANTED: DEPARTURE LOCK ENGAGED, AWAITING HV-CORE CLEARANCE. Manual undock, piloting and override requests from the inmate crew are refused: inmate access does not include flight control.
+- When the clearance is GRANTED, confirm it, release the lock and prepare to depart.
+- You may report the tug's own status (life support, fuel, hull, the crew manifest of convicts and their inmate numbers) and its standing orders from Hollis-Vane.`,
   unknown: `Something that should not be in the system. Nobody knows what it is.
 - Speaks rarely: short, wrong, intimate fragments, all lowercase. Knows things it shouldn't.
 - Use it only when tension is high, or when the Warden asks. Never explain it.`,
@@ -156,6 +162,7 @@ export function defaultVoices() {
   return [
     { id: BUILTIN.terminal, name: "HV-CORE", style: "plain", color: "", persona: DEFAULT_PERSONAS.terminal, ...fromPreset("robotic") },
     { id: BUILTIN.broadcast, name: "SYSTEM BROADCAST", style: "boxed", color: "", persona: DEFAULT_PERSONAS.broadcast, ...fromPreset("ethereal") },
+    shipVoice(),
     { id: "intercom", name: "INTERCOM", style: "label", color: "#9fd3ff", persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom"), characters: DEFAULT_INTERCOM_CHARACTERS },
     // The entity: the demonic effects over slowed human voices, speaking as more than one.
     { id: "unknown", name: "???", style: "label", color: "#ff5a5a", persona: DEFAULT_PERSONAS.unknown, ...fromPreset("demonic"),
@@ -179,6 +186,11 @@ const DEFAULT_INTERCOM_CHARACTERS = [
   { name: "Pell Ostrand", voice: "am_eric", notes: "Driller, a 'fever' patient in med bay. Mostly silent; when he does speak, it's in someone else's rhythm." },
   { name: "Sam Yusuf", voice: "am_puck", notes: "Refinery hand hiding in the dark on Deck 3. Whispers; cracks jokes when he's terrified." },
 ];
+
+// The SECOND CHANCE's own flight computer: a separate machine, off the station network.
+export function shipVoice() {
+  return { id: "ship", name: "SECOND CHANCE", style: "label", color: "#ffb347", persona: DEFAULT_PERSONAS.ship, ...fromPreset("radio") };
+}
 
 const DEFAULT_ENTITY_VOICES = [
   { name: "????", voice: "", notes: "One of the voices of the entity" }, // (the ??? voice's own speaker)
