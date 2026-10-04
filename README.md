@@ -68,14 +68,17 @@ A rimward ice-mining platform where the drill team broke into a "pressurised voi
 
 Up to four **crew files** per session. When a player joins, their screen asks which one is theirs (number keys or click; or "just watching"). The device remembers the choice. On wide screens their character sits in a sidebar beside the terminal (stats, saves, health, wounds and stress bars, skills, loadout, trinket), updating live; **FILE** in the header hides or shows it, and **FULL FILE** opens the whole sheet with conviction and backstory. On narrow screens **FILE** opens the full sheet.
 
+- **Players track their own condition:** [-] / [+] next to Health, Wounds and Stress, for anything settled at the table. Each change is noted in the Warden's log (several clicks in a row become one note).
+- **Players roll their own Stats and Saves:** click one on the sheet, tick a relevant skill (Trained +10, Expert +15 or Master +20) and [+]/[-] if it applies, then roll d100 or type their own dice. The result shows on their screen and in the Warden's log.
 - When the Warden calls for a roll, the player's Stat or Save is filled in from their file.
 - A failed roll adds 1 Stress to that character.
+- **The agent can hurt and frighten them:** when the fiction clearly calls for it, a reply can take health, add a wound or add stress (each change is noted in your log; in Review mode you can untick them).
 - What a player types is tagged with their character (`[PLAYER · Rook]`), and the agent knows every character's background, so it can answer them personally.
 - The Warden sees and edits every sheet under **Crew** in the console, with who is playing each one.
 
 ### Different messages for different players
 
-Each player reads their own screen as their own character, so one line can say different things to each of them. The agent does this when it fits: the thing in the system tells the Android it is just a cold machine, while the humans hear that they are warm and full of blood; a voice uses one player's real name; someone hears a private warning the others don't. You can ask for it too ("Marla alone hears him say her brother's name").
+Each player reads their own screen as their own character, so one line can say different things to each of them. The agent is told to do this rarely, for special moments: the thing in the system tells the Android it is just a cold machine, while the humans hear that they are warm and full of blood; a voice uses one player's real name; someone hears a private warning the others don't. You can ask for it too ("Marla alone hears him say her brother's name").
 
 - A line has its main text plus **variants**, each for a crew member (by name), a class (Android, Marine, Scientist, Teamster) or **Humans** (everyone but androids). Each screen shows, and speaks, the version for its character; everyone else sees the main text. A line can be for certain players only.
 - Your log shows every version under the line ("↳ MARLA VOCEK"). In Review mode you can edit, add (**+ Variant for a player**) or remove variants before sending.
@@ -91,6 +94,14 @@ Each player reads their own screen as their own character, so one line can say d
 
 Keep talking to change things, then **Redraft**. **Apply to this session** replaces the station, lore, secrets, voices, map and crew, and clears the log; your provider, key, mode and sounds stay. Players stay connected and pick a new crew file. The builder uses the session's model and key; with DeepSeek a draft takes under a minute and costs a fraction of a cent.
 
+## Settings
+
+**⚙ Settings** in the console header holds the station name and screen colour, and switches for what the agent and players may do:
+
+- the agent may trigger screen effects; send different versions of a line to different players; change the crew's health, wounds and stress,
+- players may change their own health, wounds and stress; roll their own stats and saves,
+- voices speak aloud on the players' screens.
+
 ## DM console
 
 | Area | What it does |
@@ -104,7 +115,7 @@ Keep talking to change things, then **Redraft**. **Apply to this session** repla
 | **Station state** | JSON the agent reads every turn and can change, e.g. opening doors or raising `access_level`. The player header shows `access_level`. |
 | **Standing orders** | Persistent steering, e.g. "the AI is slowly being infected". |
 | **Lore & secrets** | What the computer knows. Secrets, such as passwords and company directives, are guarded by access level. |
-| **Voices, personas & settings** | Every voice with its persona, look and sound (see below), plus station name, screen colour, whether the agent may fire effects itself (such as an alarm when it catches a hack), and whether voices speak aloud. |
+| **Voices & personas** | Every voice with its persona, look and sound (see below). Station name, screen colour and feature switches are under **⚙ Settings**. |
 
 ## Notes to the agent
 

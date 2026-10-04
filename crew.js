@@ -147,6 +147,23 @@ export function resolveVariants(list, crew) {
   return (list || []).map((v) => ({ for: v.for, to: crewTargets(v.for, crew), text: v.text })).filter((v) => v.to.length);
 }
 
+// Health, wounds and stress: set one (clamped to the sheet). Returns [old, new].
+export const VITALS = ["health", "wounds", "stress"];
+export function setVital(pc, field, value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n) || !VITALS.includes(field)) return null;
+  const old = field === "stress" ? pc.stress : pc[field].current;
+  const next = field === "stress" ? Math.max(0, Math.min(20, n)) : Math.max(0, Math.min(pc[field].max, n));
+  if (field === "stress") pc.stress = next;
+  else pc[field].current = next;
+  return [old, next];
+}
+
+// Their current condition, for the agent's per-turn context.
+export function crewStatus(crew) {
+  return crew.map((c) => `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}`).join("\n");
+}
+
 // One line per character for the agent.
 export function crewBrief(crew) {
   return crew.map((c) => `- ${c.name} (${c.pronouns || "?"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.join(", ") || "none"}. Carrying: ${c.loadout}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");

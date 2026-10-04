@@ -7,7 +7,7 @@ import { speechParts, speakingVoice, castCharacter, findCharacter } from "./voic
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
-import { DEFAULT_CREW, sanitizeCrew, resolveVariants } from "./crew.js";
+import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, rollD100, resultText, checkLabel, skillLabel } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
@@ -84,7 +84,11 @@ export function defaultGame(keys = {}) {
       standingOrders: "",
       mode: "review", // auto | review | manual
       ...defaultSelection(keys), // provider, model, effort: cheapest the session has a key for
-      agentEffects: true,
+      agentEffects: true, // the agent may fire screen effects
+      agentVariants: true, // the agent may send different versions of a line to different players
+      agentCrew: true, // the agent may change the crew's health, wounds and stress
+      playerVitals: true, // players may change their own health, wounds and stress
+      playerRolls: true, // players may roll their own stats and saves
       tts: true,
       voices: defaultVoices(),
       theme: "green",
@@ -152,6 +156,7 @@ function migrateGame(saved) {
   };
 }
 
+const label = (field) => field[0].toUpperCase() + field.slice(1);
 const clampVol = (v) => Math.max(0, Math.min(1, Number(v) || 0));
 
 export const hashToken = (token) => crypto.createHash("sha256").update(String(token)).digest("hex");
@@ -264,6 +269,8 @@ export class Session {
       accessLevel: String(this.state.station.access_level ?? "GUEST"),
       theme: c.theme,
       tts: c.tts,
+      vitals: c.playerVitals, // players may edit their own health/wounds/stress
+      selfRolls: c.playerRolls, // players may roll their own stats/saves
       // What each voice looks like on screen and its effect chain (no personas or base-voice internals).
       // chunked: human voices are spoken one text line at a time (see speechParts).
       voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: v.name, style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
@@ -316,6 +323,8 @@ export class Session {
 
   handlePlayer(ws, msg) {
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
+    if (msg.t === "vitals") return this.playerVitals(ws, msg);
+    if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
     if (msg.t === "claim") {
       // A player picks their character (or none). Several screens may share one.
       ws.character = this.state.config.crew.some((c) => c.id === msg.id) ? msg.id : null;
@@ -346,7 +355,7 @@ export class Session {
     const s = this.state;
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "tts", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "playerVitals", "playerRolls", "tts", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
         // Switching provider snaps to its cheapest model; invalid efforts snap to the cheapest valid one.
@@ -778,6 +787,69 @@ export class Session {
     this.syncDm();
   }
 
+  // A player tracks their own condition (e.g. after something settled at the table).
+  playerVitals(ws, msg) {
+    const pc = this.characterOf(ws);
+    if (!pc || !this.state.config.playerVitals) return;
+    const ch = setVital(pc, msg.field, msg.value);
+    if (!ch || ch[0] === ch[1]) return;
+    // Several clicks in a row are one change in the Warden's log ("Health 16 → 13").
+    const last = this.state.log.at(-1);
+    const vital = { pc: pc.id, field: msg.field };
+    if (last?.kind === "note" && last.vital?.pc === pc.id && last.vital.field === msg.field && Date.now() - last.ts < 20_000) {
+      last.text = `${pc.name}: ${label(msg.field)} ${last.vital.from} → ${ch[1]} (set by the player).`;
+      last.ts = Date.now();
+    } else {
+      this.addLog("note", `${pc.name}: ${label(msg.field)} ${ch[0]} → ${ch[1]} (set by the player).`, { vital: { ...vital, from: ch[0] } });
+    }
+    this.crewChanged();
+  }
+
+  // A player rolls one of their own Stats or Saves (not asked for by the Warden).
+  selfRoll(ws, msg) {
+    const pc = this.characterOf(ws);
+    if (!pc || !this.state.config.playerRolls || !CHECKS[msg.check]) return;
+    const now = Date.now();
+    if (now - (ws.lastRoll || 0) < 1500) return;
+    ws.lastRoll = now;
+    const r = sanitizeRequest({ check: msg.check, skill: msg.skill, skillLevel: msg.skill ? msg.skillLevel : "none", advantage: msg.advantage, stat: pc.stats[msg.check] ?? pc.saves[msg.check] });
+    const dice = msg.manual
+      ? (Array.isArray(msg.dice) ? msg.dice : []).map(Number)
+      : Array.from({ length: r.advantage === "none" ? 1 : 2 }, rollD100);
+    let result;
+    try {
+      result = resolve(r, r.stat, dice);
+    } catch (err) {
+      ws.send(JSON.stringify({ t: "rollError", text: err.message }));
+      return;
+    }
+    ws.send(JSON.stringify({ t: "rollResult", result, label: checkLabel(r) }));
+    this.addLog("roll", `${pc.name} rolled: ${resultText(r, result)}`, { outcome: result.outcome, by: pc.name, self: true });
+    if (!result.success) {
+      const ch = setVital(pc, "stress", pc.stress + 1);
+      this.addLog("note", `${pc.name}: Stress ${ch[0]} → ${ch[1]} (failed roll).`);
+      this.crewChanged();
+    }
+    this.syncDm();
+  }
+
+  // The agent's changes to the crew's health, wounds and stress.
+  applyCrewChanges(changes) {
+    if (!this.state.config.agentCrew) return;
+    let any = false;
+    for (const c of changes || []) {
+      for (const id of crewTargets(c.for, this.state.config.crew)) {
+        const pc = this.state.config.crew.find((x) => x.id === id);
+        const cur = c.stat === "stress" ? pc.stress : pc[c.stat]?.current;
+        const ch = cur === undefined ? null : setVital(pc, c.stat, cur + c.change);
+        if (!ch || ch[0] === ch[1]) continue;
+        this.addLog("note", `${pc.name}: ${label(c.stat)} ${ch[0]} → ${ch[1]}${c.why ? ` (${c.why})` : ""}.`);
+        any = true;
+      }
+    }
+    if (any) this.crewChanged();
+  }
+
   // ---------------------------------------------------------------- replies
   logDirectives(directives = []) {
     for (const d of directives) this.addLog("warden", d);
@@ -799,15 +871,15 @@ export class Session {
     const effects = this.state.config.agentEffects ? (reply?.effects || []) : [];
     // The first entry carries the reply's changes/effects so the agent's history
     // shows that it really changed things (otherwise it learns to leave them empty).
-    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })) };
+    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [] };
     // Effects on a line fire as it begins. An effect-only beat (no text) fires
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
     let lastEntry = null;
     this.castCharacters(lines);
     for (const { voice, character, text, effects: lineFx, variants: rawVariants } of lines) {
-      // Per-player versions of this line, for the crew they name.
-      const variants = resolveVariants(rawVariants, this.state.config.crew);
+      // Per-player versions of this line, for the crew they name (if the Warden allows them).
+      const variants = source === "agent" && !this.state.config.agentVariants ? [] : resolveVariants(rawVariants, this.state.config.crew);
       // Effects from an effect-only beat are marked hold: the next line waits for them.
       const cues = useEffects ? [...waiting, ...normalizeEffects(lineFx)] : [];
       if (!text && !variants.length) { waiting = cues.map((c) => ({ ...c, hold: true })); continue; }
@@ -828,6 +900,7 @@ export class Session {
     }
     if (changes.length) this.toPlayers({ t: "header", header: this.playerHeader() });
     for (const e of effects) this.startEffect(e, "agent");
+    this.applyCrewChanges(reply?.crew_changes);
   }
 
   // Player input: one agent call at a time per session. Input that arrives while

@@ -50,6 +50,26 @@
     </form>
   </dialog>
 
+  <!-- Session settings: the look, and which features the agent and players may use. -->
+  <dialog id="settingsDialog" class="settingsdlg">
+    <div class="row"><h2 class="grow">Settings</h2><button id="settingsClose" class="ghost" aria-label="Close">✕</button></div>
+    <div class="fxopts">
+      <label>Station name <input id="stationName"></label>
+      <label>Screen colour
+        <select id="theme"><option>green</option><option>amber</option><option>cyan</option><option>white</option><option>red</option></select>
+      </label>
+    </div>
+    <h3 class="sethead">The agent may…</h3>
+    <label class="check"><input type="checkbox" id="agentEffects"> <span>trigger screen effects <em>alarms, glitches, blackouts, timed between lines</em></span></label>
+    <label class="check"><input type="checkbox" id="agentVariants"> <span>send different versions of a line to different players <em>used rarely, for personal moments</em></span></label>
+    <label class="check"><input type="checkbox" id="agentCrew"> <span>change the crew's health, wounds and stress <em>when the fiction clearly hurts or frightens them</em></span></label>
+    <h3 class="sethead">Players may…</h3>
+    <label class="check"><input type="checkbox" id="playerVitals"> <span>change their own health, wounds and stress <em>for things settled at the table</em></span></label>
+    <label class="check"><input type="checkbox" id="playerRolls"> <span>roll their own stats and saves <em>results appear in your log</em></span></label>
+    <h3 class="sethead">Sound</h3>
+    <label class="check"><input type="checkbox" id="tts"> <span>voices speak aloud on the players' screens</span></label>
+  </dialog>
+
   <!-- Story builder: talk a new scenario into shape with the agent, then apply it. -->
   <dialog id="builderDialog" class="builderdlg">
     <div class="row">
@@ -118,6 +138,7 @@
       <select id="model" aria-label="Model"></select>
       <select id="effort" aria-label="Thinking effort" title="Thinking effort (off/low = fastest & cheapest)"></select>
       <button id="keyBtn" title="Your API key for this session">🔑 Key</button>
+      <button id="settingsBtn" title="Station name, screen colour, and what the agent and players may do">⚙ Settings</button>
       <button id="builderBtn" title="Create a brand-new station, cast and crew with the agent">✎ Story builder</button>
       <span id="keywarn" class="pill bad" hidden></span>
     </div>
@@ -250,15 +271,7 @@
         <div class="row"><button id="addCrew">+ Add character</button><span class="grow"></span><span class="muted small">Up to 4</span></div>
       </details>
       <details id="voicesPanel" open>
-        <summary>Voices, personas &amp; settings</summary>
-        <div class="fxopts">
-          <label>Station name <input id="stationName"></label>
-          <label>Theme
-            <select id="theme"><option>green</option><option>amber</option><option>cyan</option><option>white</option><option>red</option></select>
-          </label>
-        </div>
-        <label class="check"><input type="checkbox" id="agentEffects"> Agent may trigger screen effects</label>
-        <label class="check"><input type="checkbox" id="tts"> Voices speak aloud on the players' screen</label>
+        <summary>Voices &amp; personas</summary>
         <p class="muted small">Every line on the players' screen is said by a voice, and the agent can speak as any of them. Each voice's <b>persona</b> tells the agent who it is and how it talks. HV-CORE (the terminal) and System Broadcast are built in; add others (an intercom, a stranger on comms, the thing in the vents). You can also send lines as any voice from the comms box.</p>
         <input id="testText" placeholder="Test line" value="Attention. This is a test of the station voice system.">
         <div id="voices"></div>

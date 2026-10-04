@@ -325,3 +325,16 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { displ
 .s-bar { letter-spacing: 0.08em; word-break: break-all; }
 .s-bar.hot { animation: blink 1.2s infinite steps(1); }
 #hdr .hdr-btn.on { text-decoration: underline; }
+
+/* Clickable stats, vitals controls, the self-roll panel. */
+.s-rolls { display: flex; flex-wrap: wrap; gap: 0.1em 0.7em; margin-top: 0.15em; }
+.s-roll .s-k, .p-btn .p-dim { color: var(--dim); }
+.s-roll:hover .s-k, .s-roll:focus-visible .s-k, .p-btn:hover .p-dim, .p-btn:focus-visible .p-dim { color: var(--bg); }
+.v-ctl { white-space: nowrap; }
+.v-ctl .p-btn { opacity: 0.75; }
+.v-ctl .p-btn:hover { opacity: 1; }
+#selfroll .p-btn { margin: 0 0.5em 0.2em 0; }
+#selfroll .p-btn.on { color: var(--fg); }
+#selfroll [hidden] { display: none; }
+#sr-dice { background: transparent; border: 0; border-bottom: 2px solid var(--fg); outline: 0; color: var(--fg); font: inherit; text-shadow: inherit; text-align: center; }
+#sr-err { color: var(--fg); animation: blink 1s infinite steps(1); }

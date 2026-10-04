@@ -375,6 +375,8 @@
       <div id="draftLines">${(r.lines.length ? r.lines : [{ voice: "terminal", text: "" }]).map(draftLine).join("")}</div>
       <div class="row"><button data-act="addLine" class="ghost">+ Line</button></div>
       ${p.directives?.length ? `<div class="note">⚑ Following your command${p.directives.length > 1 ? "s" : ""}: ${p.directives.map(esc).join(" · ")}</div>` : ""}
+      ${r.crew_changes?.length ? `<div class="label">Crew condition</div><ul>${r.crew_changes.map((c, i) =>
+        `<li><label><input type="checkbox" data-crw="${i}" ${S.config.agentCrew !== false ? "checked" : ""}> ${esc(c.for)}: ${esc(c.stat)} ${c.change > 0 ? "+" : ""}${c.change}${c.why ? ` <span class="muted">(${esc(c.why)})</span>` : ""}</label></li>`).join("")}</ul>` : ""}
       ${r.station_changes.length ? `<div class="label">Station changes</div><ul>${r.station_changes.map((c, i) =>
         `<li><label><input type="checkbox" data-chg="${i}" checked> ${esc(c.path)} → ${esc(c.value)}</label></li>`).join("")}</ul>` : ""}
       ${r.effects.length ? `<div class="label">Effects</div><ul>${r.effects.map((f, i) =>
@@ -757,14 +759,16 @@
   $("soundPlaying").addEventListener("change", (e) => e.target.blur());
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
+  // On/off features in the Settings window (config keys of the same name).
+  const SETTING_SWITCHES = ["agentEffects", "agentVariants", "agentCrew", "playerVitals", "playerRolls", "tts"];
+
   function renderConfig() {
     const c = S.config;
     for (const id of ["stationName", "lore", "secrets", "standingOrders", "theme"]) {
       const el = $(id);
       if (!dirty.has(id) && document.activeElement !== el && el.value !== c[id]) el.value = c[id];
     }
-    $("agentEffects").checked = c.agentEffects;
-    $("tts").checked = c.tts;
+    for (const id of SETTING_SWITCHES) $(id).checked = c[id] !== false;
     if (!dirty.has("whisper") && document.activeElement !== $("whisper")) $("whisper").value = S.whisper;
     if (!dirty.has("station") && document.activeElement !== $("station")) $("station").value = JSON.stringify(S.station, null, 2);
   }
@@ -784,8 +788,9 @@
     el.addEventListener("blur", () => dirty.has(id) && save());
   }
   for (const id of ["theme", "provider", "model", "effort"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.value } }));
-  $("agentEffects").addEventListener("change", (e) => send({ t: "config", patch: { agentEffects: e.target.checked } }));
-  $("tts").addEventListener("change", (e) => send({ t: "config", patch: { tts: e.target.checked } }));
+  for (const id of SETTING_SWITCHES) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.checked } }));
+  $("settingsBtn").onclick = () => $("settingsDialog").showModal();
+  $("settingsClose").onclick = () => $("settingsDialog").close();
 
   {
     const el = $("whisper");
@@ -844,6 +849,7 @@
         })
         .filter((l) => l.text.trim() || l.effects.length || l.variants.length), // effect-only beats count
       station_changes: r.station_changes.filter((_, i) => card.querySelector(`[data-chg="${i}"]`)?.checked),
+      crew_changes: (r.crew_changes || []).filter((_, i) => card.querySelector(`[data-crw="${i}"]`)?.checked),
       effects: r.effects.filter((_, i) => card.querySelector(`[data-eff="${i}"]`)?.checked),
     };
     send({ t: "approve", reply });

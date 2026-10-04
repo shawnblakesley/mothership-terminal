@@ -102,7 +102,10 @@
     $("hdr-access").textContent = h.accessLevel;
     $("hdr-os").textContent = `${h.voices?.terminal?.name || "TERMINAL"} OS v4.1`;
     promptEl.textContent = `${h.accessLevel}@${h.stationName}>`;
-    document.body.className = `theme-${h.theme || "green"}`;
+    for (const cls of [...document.body.classList]) if (cls.startsWith("theme-")) document.body.classList.remove(cls);
+    document.body.classList.add(`theme-${h.theme || "green"}`);
+    renderSide();
+    if (!$("crewfile").hidden) renderFile();
     for (const el of linesEl.querySelectorAll(".line.player")) el.dataset.prompt = el.dataset.prompt || "";
     placeCaret();
   }
@@ -416,7 +419,7 @@
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   function openPanel(id) {
-    for (const p of ["crewpick", "crewfile"]) $(p).hidden = p !== id;
+    for (const p of ["crewpick", "crewfile", "selfroll"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
     // (Not before power-on: the key that wakes the terminal would also press the button.)
     if (id === "crewpick" && bootEl.classList.contains("gone")) $("crewpick-list").querySelector("button")?.focus();
@@ -450,10 +453,34 @@
     }).join("");
   }
 
+  // A Stat/Save the player can click to roll (if the Warden allows it).
+  const statBtn = (k, v, short) => header.selfRolls && !spectate
+    ? `<button type="button" class="p-btn s-roll" data-check="${k}" title="Roll ${k}">${short ? `<span class="s-k">${k.slice(0, 3).toUpperCase()}</span> ` : `<span class="p-dim">${k.toUpperCase()}</span> `}${v}</button>`
+    : (short ? `<span class="s-k">${k.slice(0, 3).toUpperCase()}</span><span class="s-v">${v}</span>` : `<span class="p-stat"><span class="p-dim">${k.toUpperCase()}</span> ${v}</span>`);
+  // Health/wounds/stress, with -/+ when players track their own.
+  const vitalCtl = (field, shown) => header.vitals && !spectate
+    ? `<span class="v-ctl"><button type="button" class="p-btn" data-vital="${field}" data-d="-1" aria-label="${field} down">[-]</button> ${shown} <button type="button" class="p-btn" data-vital="${field}" data-d="1" aria-label="${field} up">[+]</button></span>`
+    : shown;
+  function vitalsChange(field, d) {
+    const c = mine();
+    if (!c) return;
+    const cur = field === "stress" ? c.stress : c[field].current;
+    ws?.readyState === 1 && ws.send(JSON.stringify({ t: "vitals", field, value: cur + d }));
+    FX.Sound.beep(d > 0 ? 760 : 520, 0.05, 0.05);
+  }
+  for (const el of ["side", "crewfile-body"]) {
+    $(el).addEventListener("click", (e) => {
+      const v = e.target.closest("[data-vital]");
+      if (v) return vitalsChange(v.dataset.vital, Number(v.dataset.d));
+      const s = e.target.closest("[data-check]");
+      if (s) openSelfRoll(s.dataset.check);
+    });
+  }
+
   function renderFile() {
     const c = mine();
     if (!c) { $("crewfile-body").innerHTML = '<div class="p-dim">NO CREW FILE SELECTED.</div>'; return; }
-    const row = (obj) => Object.entries(obj).map(([k, v]) => `<span class="p-stat"><span class="p-dim">${k.toUpperCase()}</span> ${v}</span>`).join("");
+    const row = (obj) => Object.entries(obj).map(([k, v]) => `<span class="p-stat">${statBtn(k, v)}</span>`).join("");
     $("crewfile-body").innerHTML = `
       <div class="p-title">■ CREW FILE: ${escH(c.name.toUpperCase())} ■</div>
       <div class="p-dim">${escH([c.pronouns, c.className, c.role].filter(Boolean).join(" · ").toUpperCase())}</div>
@@ -461,7 +488,8 @@
       <div class="p-sec p-text">${escH(c.backstory)}</div>
       <div class="p-sec"><span class="p-dim">STATS</span> ${row(c.stats)}</div>
       <div class="p-sec"><span class="p-dim">SAVES</span> ${row(c.saves)}</div>
-      <div class="p-sec"><span class="p-stat"><span class="p-dim">HEALTH</span> ${c.health.current}/${c.health.max}</span><span class="p-stat"><span class="p-dim">WOUNDS</span> ${c.wounds.current}/${c.wounds.max}</span><span class="p-stat"><span class="p-dim">STRESS</span> ${c.stress}</span></div>
+      <div class="p-sec"><span class="p-stat"><span class="p-dim">HEALTH</span> ${vitalCtl("health", `${c.health.current}/${c.health.max}`)}</span><span class="p-stat"><span class="p-dim">WOUNDS</span> ${vitalCtl("wounds", `${c.wounds.current}/${c.wounds.max}`)}</span><span class="p-stat"><span class="p-dim">STRESS</span> ${vitalCtl("stress", c.stress)}</span></div>
+      ${header.selfRolls && !spectate ? '<div class="p-dim p-sec">CLICK A STAT OR SAVE TO ROLL IT.</div>' : ""}
       <div class="p-sec"><span class="p-dim">SKILLS</span> ${escH(c.skills.join(" · ") || "NONE")}</div>
       <div class="p-sec"><span class="p-dim">LOADOUT</span> ${escH(c.loadout)}</div>
       ${c.trinket ? `<div class="p-sec"><span class="p-dim">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
@@ -480,16 +508,18 @@
     side.hidden = !c || !sideOpen || !wide() || spectate;
     $("hdr-file").classList.toggle("on", !side.hidden);
     if (side.hidden) return;
-    const grid = (obj) => `<div class="s-grid">${Object.entries(obj).map(([k, v]) => `<span class="s-k">${k.slice(0, 3).toUpperCase()}</span><span class="s-v">${v}</span>`).join("")}</div>`;
+    const grid = (obj) => header.selfRolls && !spectate
+      ? `<div class="s-rolls">${Object.entries(obj).map(([k, v]) => statBtn(k, v, true)).join("")}</div>`
+      : `<div class="s-grid">${Object.entries(obj).map(([k, v]) => statBtn(k, v, true)).join("")}</div>`;
     side.innerHTML = `
       <div class="s-name">${escH(c.name.toUpperCase())}</div>
       <div class="p-dim">${escH([c.className, c.role].filter(Boolean).join(" · ").toUpperCase())}</div>
-      <div class="s-sec"><span class="p-dim">STATS</span>${grid(c.stats)}</div>
+      <div class="s-sec"><span class="p-dim">STATS${header.selfRolls && !spectate ? " · CLICK TO ROLL" : ""}</span>${grid(c.stats)}</div>
       <div class="s-sec"><span class="p-dim">SAVES</span>${grid(c.saves)}</div>
       <div class="s-sec s-meters">
-        <div><span class="p-dim">HEALTH</span> ${c.health.current}/${c.health.max}<div class="s-bar">${blocks(c.health.current, c.health.max)}</div></div>
-        <div><span class="p-dim">WOUNDS</span> ${c.wounds.current}/${c.wounds.max}<div class="s-bar">${blocks(c.wounds.current, c.wounds.max)}</div></div>
-        <div><span class="p-dim">STRESS</span> ${c.stress}<div class="s-bar${c.stress >= 10 ? " hot" : ""}">${blocks(c.stress, Math.max(10, c.stress))}</div></div>
+        <div><span class="p-dim">HEALTH</span> ${vitalCtl("health", `${c.health.current}/${c.health.max}`)}<div class="s-bar">${blocks(c.health.current, c.health.max)}</div></div>
+        <div><span class="p-dim">WOUNDS</span> ${vitalCtl("wounds", `${c.wounds.current}/${c.wounds.max}`)}<div class="s-bar">${blocks(c.wounds.current, c.wounds.max)}</div></div>
+        <div><span class="p-dim">STRESS</span> ${vitalCtl("stress", c.stress)}<div class="s-bar${c.stress >= 10 ? " hot" : ""}">${blocks(c.stress, Math.max(10, c.stress))}</div></div>
       </div>
       <div class="s-sec"><span class="p-dim">SKILLS</span><div>${escH(c.skills.join(" · ") || "NONE")}</div></div>
       <div class="s-sec"><span class="p-dim">LOADOUT</span><div>${escH(c.loadout)}</div></div>
@@ -550,6 +580,65 @@
   addEventListener("keydown", (e) => {
     if (e.key === "Escape" && document.body.classList.contains("panel-open") && !$("crewfile").hidden) openPanel(null);
   });
+
+  // ---- rolling your own Stat/Save: pick a relevant skill (optional), then roll.
+  const LEVELS = [["trained", "TRAINED +10", 10], ["expert", "EXPERT +15", 15], ["master", "MASTER +20", 20]];
+  const ADV = [["none", "NORMAL"], ["advantage", "[+] ADVANTAGE"], ["disadvantage", "[-] DISADVANTAGE"]];
+  let sr = null; // { check, skill, level, adv }
+
+  function openSelfRoll(check) {
+    if (!mine() || !header.selfRolls) return;
+    sr = { check, skill: "", level: "trained", adv: "none" };
+    $("sr-dice").value = "";
+    $("sr-err").textContent = "";
+    renderSelfRoll();
+    openPanel("selfroll");
+    $("sr-skills").querySelector("button")?.focus();
+  }
+  function renderSelfRoll() {
+    const c = mine();
+    if (!c || !sr) return;
+    const base = c.stats[sr.check] ?? c.saves[sr.check];
+    const bonus = sr.skill ? LEVELS.find((l) => l[0] === sr.level)[2] : 0;
+    const pick = (on, attrs, label) => `<button type="button" class="p-btn${on ? " on" : ""}" ${attrs}>${on ? "[■]" : "[ ]"} ${escH(label)}</button>`;
+    $("sr-title").textContent = `■ ROLL: ${sr.check.toUpperCase()} (${base}) ■`;
+    $("sr-skills").innerHTML = [pick(!sr.skill, 'data-skill=""', "NONE"), ...c.skills.map((s) => pick(sr.skill === s, `data-skill="${escH(s)}"`, s.toUpperCase()))].join(" ");
+    $("sr-level-row").hidden = !sr.skill;
+    $("sr-levels").innerHTML = LEVELS.map(([id, label]) => pick(sr.level === id, `data-level="${id}"`, label)).join(" ");
+    $("sr-adv").innerHTML = ADV.map(([id, label]) => pick(sr.adv === id, `data-adv="${id}"`, label)).join(" ");
+    $("sr-target").textContent = `ROLL UNDER ${base + bonus} ON D100${sr.adv === "none" ? "" : " (ROLL TWICE)"}.`;
+    $("sr-dice").placeholder = sr.adv === "none" ? "47" : "47 82";
+  }
+  $("selfroll").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b || !sr) return;
+    if (b.dataset.skill !== undefined) sr.skill = b.dataset.skill;
+    else if (b.dataset.level) sr.level = b.dataset.level;
+    else if (b.dataset.adv) sr.adv = b.dataset.adv;
+    else return;
+    renderSelfRoll();
+    $("selfroll").querySelector(`[data-${b.dataset.skill !== undefined ? "skill" : b.dataset.level ? "level" : "adv"}="${CSS.escape(b.dataset.skill ?? b.dataset.level ?? b.dataset.adv)}"]`)?.focus();
+  });
+  function sendSelfRoll(manual) {
+    if (!sr) return;
+    const msg = { t: "selfRoll", check: sr.check, skill: sr.skill, skillLevel: sr.level, advantage: sr.adv };
+    if (manual) {
+      const dice = $("sr-dice").value.split(/[^0-9]+/).filter(Boolean).map(Number);
+      const need = sr.adv === "none" ? 1 : 2;
+      if (dice.length !== need || dice.some((d) => d > 99)) {
+        $("sr-err").textContent = need === 1 ? "ENTER ONE D100 ROLL (00-99)." : "ENTER BOTH D100 ROLLS, E.G. 47 82.";
+        return $("sr-dice").focus();
+      }
+      Object.assign(msg, { manual: true, dice });
+    }
+    ws?.readyState === 1 && ws.send(JSON.stringify(msg));
+    sr = null;
+    openPanel(null);
+  }
+  $("sr-form").addEventListener("submit", (e) => { e.preventDefault(); sendSelfRoll($("sr-dice").value.trim() !== ""); });
+  $("sr-enter").onclick = () => sendSelfRoll(true);
+  $("sr-cancel").onclick = () => { sr = null; openPanel(null); };
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("selfroll").hidden) { sr = null; openPanel(null); } });
 
   // ------------------------------------------------------------ ability rolls
   // The Warden calls for a Mothership check/save; the players enter their Stat
@@ -697,7 +786,7 @@
         case "roll": showRoll(msg.roll); break;
         case "crew": setCrew(msg.crew, msg.claims); break;
         case "rollResult": showRollResult(msg); break;
-        case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); break;
+        case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); $("sr-err").textContent = rbErr.textContent; break;
         case "endEffect": dropCue(msg.id); FX.end(msg.id); break;
         case "sound": Sfx.play(msg.play); break;
         case "soundStop": msg.all ? Sfx.stopAll() : Sfx.stop(msg.pid); break;
