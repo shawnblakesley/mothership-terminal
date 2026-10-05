@@ -19,14 +19,30 @@ export const MAX_TERMINALS = 64; // (each separate system needs at least one)
 // players' screens: going between systems swaps the screen to that one's log.
 export const SHIP_SYSTEM = { system: "SECOND-CHANCE", os: "TUG-CORE OS v2.7" };
 
-// The crew's own tug, docked at Airlock A: its terminal is a separate machine.
-export const SHIP_TERMINAL = { id: "ship", name: "SECOND CHANCE TERMINAL", ...SHIP_SYSTEM, room: "second_chance", look: ["grime"], theme: "amber", open: true, requires: "", notes: "Aboard the prison tug SECOND CHANCE, through the docking collar from Airlock A. NOT on the station network: answered only by the SECOND CHANCE voice (the tug's flight computer), never by HV-CORE or anyone on the station intercom. It can't see or work anything on the station. The tug sits under a departure lock, waiting for HV-CORE's clearance code." };
+// The crew's own tug, docked at Airlock A: its terminal is a separate machine,
+// and where they start (players begin at the first terminal they can reach).
+const SHIP_NOTES_V1 = "Aboard the prison tug SECOND CHANCE, through the docking collar from Airlock A. NOT on the station network: answered only by the SECOND CHANCE voice (the tug's flight computer), never by HV-CORE or anyone on the station intercom. It can't see or work anything on the station. The tug sits under a departure lock, waiting for HV-CORE's clearance code.";
+const AIRLOCK_NOTES_V1 = "Inside Airlock A, by the sealed inner door. Clean, bright, recently serviced. The crew start here; opening the inner door is their first job.";
+export const SHIP_TERMINAL = { id: "ship", name: "SECOND CHANCE TERMINAL", ...SHIP_SYSTEM, room: "second_chance", look: ["grime"], theme: "amber", open: true, requires: "", notes: "Aboard the prison tug SECOND CHANCE, through the docking collar from Airlock A. The crew start here, just docked. NOT on the station network: answered only by the SECOND CHANCE voice (the tug's flight computer), never by HV-CORE or anyone on the station intercom. It can't see or work anything on the station. The tug sits under a departure lock, waiting for HV-CORE's clearance code." };
+
+const AIRLOCK_NOTES = "Inside Airlock A, by the sealed inner door, through the docking collar from the SECOND CHANCE. Clean, bright, recently serviced. Opening the inner door is the crew's first job.";
+
+// Once, for a KESTREL-9 story from before the crew started aboard the tug: the
+// tug's terminal goes first (where players start) and both notes follow, unless edited.
+export function startAboardShip(terminals) {
+  const ship = terminals.find((t) => t.id === "ship");
+  const airlock = terminals.find((t) => t.id === "airlock");
+  if (!ship) return terminals;
+  if (ship.notes === SHIP_NOTES_V1) ship.notes = SHIP_TERMINAL.notes;
+  if (airlock?.notes === AIRLOCK_NOTES_V1) airlock.notes = AIRLOCK_NOTES;
+  return [ship, ...terminals.filter((t) => t !== ship)];
+}
 
 // requires: a station state path (a door) that makes the terminal reachable
 // once it reads OPEN or UNLOCKED, e.g. the med bay once the airlock is open.
 export const DEFAULT_TERMINALS = [
-  { id: "airlock", name: "AIRLOCK A TERMINAL", room: "airlock_a", look: [], theme: "", open: true, requires: "", notes: "Inside Airlock A, by the sealed inner door. Clean, bright, recently serviced. The crew start here; opening the inner door is their first job." },
   SHIP_TERMINAL,
+  { id: "airlock", name: "AIRLOCK A TERMINAL", room: "airlock_a", look: [], theme: "", open: true, requires: "", notes: AIRLOCK_NOTES },
   { id: "medbay", name: "MED BAY TERMINAL", room: "med_bay", look: ["grime", "flicker"], theme: "", open: false, requires: "doors.airlock_a", notes: "Salk's terminal. The keys are sticky with something; the screen flickers." },
   { id: "command", name: "COMMAND DECK TERMINAL", room: "command_deck", look: ["dim"], theme: "amber", open: false, requires: "doors.command_deck", notes: "Okonkwo's deck, sealed. Full system access if anyone gets in." },
   { id: "cargo", name: "CARGO BAY TERMINAL", room: "cargo_bay_deck3", look: ["crack", "blood"], theme: "", open: false, requires: "doors.cargo_bay_deck3", notes: "Behind the locked cargo door. The screen is cracked and smeared with blood; something happened right here." },

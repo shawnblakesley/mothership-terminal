@@ -13,7 +13,7 @@ import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
-import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -29,7 +29,7 @@ const WARDEN_ACTIONS = {
   builderApply: "builder_apply", resetSession: "story_restart",
 }; // per connection: stops spamming the agent (and the Warden's bill)
 
-const DEFAULT_LORE = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
+const LORE_V3 = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
 CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
 DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
 KEY CREW: Administrator Ruth Okonkwo (command), Dr. Imre Salk (medic), Chief Engineer Hana Marlowe (reactor), Security Officer Dmitri Voss, Comms Officer Juno Adar, drill team lead Anton Petrov, drillers Carys Webb and Pell Ostrand, refinery hand Sam Yusuf. Five more refinery and habitation crew.
@@ -37,6 +37,11 @@ RECENT EVENTS (public log): Drill team hit a "pressurised void" in the ice 19 da
 REACTOR STATUS: core efficiency 70% (rated minimum 99%). HV-CORE reports an unexplained energy drain on the Deck 3 cargo bay power trunk.
 MAINTENANCE TICKET #4471 (filed 23 days ago): reactor running below rated efficiency. Hollis-Vane dispatched a convict maintenance crew (the PLAYERS) on the prison tug SECOND CHANCE to service the Deck 4 reactor. They have just docked and are standing in Airlock A, at its terminal, with tools for a routine reactor service. The inner airlock door to the station is SEALED: getting it open is their first job, and their work order carries the maintenance override code for it (4471-MAINT). Everything in RECENT EVENTS happened while they were in transit: nobody briefed them, and they are not equipped for it.
 DEPARTURE CONDITION: the SECOND CHANCE is slaved to station control and built so it cannot undock until the station approves the job. HV-CORE must verify the reactor running at 99% efficiency or better, then transmit departure clearance. Until then the crew is not going home.`;
+// The crew start aboard their tug, at its own terminal.
+const DEFAULT_LORE = LORE_V3.replace(
+  "They have just docked and are standing in Airlock A, at its terminal, with tools for a routine reactor service. The inner airlock door to the station is SEALED:",
+  "They have just docked at Airlock A and are still aboard the tug, at its own terminal (the SECOND CHANCE's flight computer, not on the station network), with tools for a routine reactor service. Through the docking collar, Airlock A's inner door to the station is SEALED:",
+);
 // Earlier defaults, upgraded when a saved session still has one unedited.
 const LORE_V2 = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
 CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
@@ -173,7 +178,7 @@ export function defaultGame(keys = {}) {
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
       playerTerminals: true, // players may move between terminals themselves
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
-      upgrades: ["ship", "rooms", "systems"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -229,7 +234,7 @@ function migrateGame(saved) {
     if (config.secrets === SECRETS_V1) config.secrets = SECRETS_V2;
   }
   if (config.lore === LORE_V2) { // (before the reactor job and the SECOND CHANCE's departure lock)
-    config.lore = DEFAULT_LORE;
+    config.lore = LORE_V3;
     if (config.secrets === SECRETS_V2) config.secrets = DEFAULT_SECRETS;
     const marlowe = voices.find((v) => v.id === "intercom")?.characters?.find((c) => c.notes === OLD_MARLOWE_NOTES);
     if (marlowe) marlowe.notes = DEFAULT_MARLOWE_NOTES;
@@ -252,6 +257,12 @@ function migrateGame(saved) {
     if (!voices.some((v) => v.id === "ship")) voices.splice(2, 0, shipVoice());
     if (!/\bsecond_chance\s*=/.test(config.map)) config.map = `${SHIP_DOCKED}\n${config.map}`;
     config.upgrades.push("ship");
+  }
+  // Once: an unedited KESTREL-9 story starts the crew aboard the tug (its terminal first).
+  if (config.lore === LORE_V3) config.lore = DEFAULT_LORE;
+  if (!config.upgrades.includes("start-ship")) {
+    if (config.lore === DEFAULT_LORE) config.terminals = startAboardShip(config.terminals);
+    config.upgrades.push("start-ship");
   }
   // Once: the tug's terminal gets its own system (its own log, name and OS on the players' screens).
   if (!config.upgrades.includes("systems")) {
