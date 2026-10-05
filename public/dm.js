@@ -502,7 +502,8 @@
           ${txt("skills", c.skills.join(", "), "Skills (comma-separated)")}
           ${txt("crime", c.crime, "Conviction", 2)}
           ${txt("backstory", c.backstory, "Backstory", 4)}
-          ${txt("loadout", c.loadout, "Loadout", 2)}
+          ${txt("loadout", c.loadout, "Starting loadout", 2)}
+          ${txt("items", c.items.join(", "), "Items they carry now (comma-separated)")}
           ${txt("trinket", c.trinket, "Trinket")}
           ${txt("patch", c.patch, "Patch")}
           ${txt("notes", c.notes, "Warden notes (the agent reads these; players don't see them)", 2)}
@@ -528,9 +529,11 @@
         <label>Wounds <input type="number" data-c="wounds.current" value="${c.wounds.current}" min="0" max="99"> / ${c.wounds.max}</label>
         <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"></label>
       </div>
-      ${line("Skills", c.skills.join(", "))}${line("Loadout", c.loadout)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
+      ${line("Skills", c.skills.join(", "))}${itemsLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
     </div>`;
   }
+  // What they carry: changes in play, so it's editable in read-only too (✕ drops one; type to add).
+  const itemsLine = (c) => `<div class="items"><span class="k">Items:</span> ${c.items.map((x, j) => `<span class="chip">${esc(x)}<button data-item-del="${j}" title="Drop it" aria-label="Drop ${esc(x)}">✕</button></span>`).join("")}<input data-item-add placeholder="+ add" aria-label="Add an item" size="10"></div>`;
   const openCrew = new Set();
   const whereIs = (crewId) => {
     const id = S.screens?.find((s) => s.characterId === crewId)?.terminal;
@@ -569,10 +572,25 @@
     if (!card || !key) return;
     const c = crewDraft[Number(card.dataset.i)];
     const [a, b] = key.split(".");
-    const val = e.target.type === "number" ? Number(e.target.value) : key === "skills" ? e.target.value.split(",").map((x) => x.trim()).filter(Boolean) : e.target.value;
+    const val = e.target.type === "number" ? Number(e.target.value) : key === "skills" || key === "items" ? e.target.value.split(",").map((x) => x.trim()).filter(Boolean) : e.target.value;
     if (b) c[a][b] = val;
     else c[a] = val;
     saveCrew();
+  });
+  $("crew").addEventListener("click", (e) => {
+    const del = e.target.closest("[data-item-del]")?.dataset.itemDel;
+    if (del === undefined) return;
+    crewDraft[Number(e.target.closest(".pc").dataset.i)].items.splice(Number(del), 1);
+    crewSentAt = 0;
+    send({ t: "crew", crew: crewDraft });
+  });
+  $("crew").addEventListener("keydown", (e) => {
+    if (!e.target.matches("[data-item-add]") || e.key !== "Enter" || !e.target.value.trim()) return;
+    crewDraft[Number(e.target.closest(".pc").dataset.i)].items.push(e.target.value.trim());
+    e.target.value = "";
+    e.target.blur();
+    crewSentAt = 0;
+    send({ t: "crew", crew: crewDraft });
   });
   $("crew").addEventListener("click", async (e) => {
     if (e.target.closest("[data-cact]")?.dataset.cact !== "del") return;
@@ -588,7 +606,7 @@
     crewDraft.push({
       name: "New convict", pronouns: "", className: "Teamster", role: "", crime: "", backstory: "",
       stats: { strength: 30, speed: 30, intellect: 30, combat: 30 }, saves: { sanity: 25, fear: 25, body: 25 },
-      health: { current: 12, max: 12 }, wounds: { current: 0, max: 2 }, stress: 2, skills: [], loadout: "", trinket: "", patch: "", notes: "",
+      health: { current: 12, max: 12 }, wounds: { current: 0, max: 2 }, stress: 2, skills: [], loadout: "", items: [], trinket: "", patch: "", notes: "",
     });
     openCrew.add(String(crewDraft.length - 1));
     send({ t: "crew", crew: crewDraft });

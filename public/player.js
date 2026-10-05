@@ -545,7 +545,7 @@
       <div class="p-sec"><span class="p-stat"><span class="p-dim">HEALTH</span> ${vitalCtl("health", `${c.health.current}/${c.health.max}`)}</span><span class="p-stat"><span class="p-dim">WOUNDS</span> ${vitalCtl("wounds", `${c.wounds.current}/${c.wounds.max}`)}</span><span class="p-stat"><span class="p-dim">STRESS</span> ${vitalCtl("stress", c.stress)}</span></div>
       ${header.selfRolls && !spectate ? '<div class="p-dim p-sec">CLICK A STAT OR SAVE TO ROLL IT.</div>' : ""}
       <div class="p-sec"><span class="p-dim">SKILLS</span> ${escH(c.skills.join(" · ") || "NONE")}</div>
-      <div class="p-sec"><span class="p-dim">LOADOUT</span> ${escH(c.loadout)}</div>
+      <div class="p-sec"><span class="p-dim">ITEMS</span> ${escH(c.items.join(" · ") || "NOTHING")}</div>
       ${c.trinket ? `<div class="p-sec"><span class="p-dim">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
       ${c.patch ? `<div class="p-sec"><span class="p-dim">PATCH</span> ${escH(c.patch)}</div>` : ""}`;
   }
@@ -576,7 +576,7 @@
         <div><span class="p-dim">STRESS</span> ${vitalCtl("stress", c.stress)}<div class="s-bar${c.stress >= 10 ? " hot" : ""}">${blocks(c.stress, Math.max(10, c.stress))}</div></div>
       </div>
       <div class="s-sec"><span class="p-dim">SKILLS</span><div>${escH(c.skills.join(" · ") || "NONE")}</div></div>
-      <div class="s-sec"><span class="p-dim">LOADOUT</span><div>${escH(c.loadout)}</div></div>
+      <div class="s-sec"><span class="p-dim">ITEMS</span><div>${c.items.length ? c.items.map((x) => `<div>· ${escH(x)}</div>`).join("") : "NOTHING"}</div></div>
       ${c.trinket ? `<div class="s-sec"><span class="p-dim">TRINKET</span><div>${escH(c.trinket)}</div></div>` : ""}
       <div class="s-sec"><button type="button" class="p-btn" id="side-more">[ FULL FILE ]</button> <button type="button" class="p-btn" id="side-hide">[ HIDE ]</button></div>`;
   }

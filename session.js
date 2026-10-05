@@ -7,7 +7,7 @@ import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
-import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS } from "./crew.js";
+import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS, changeItem } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
 import { track } from "./telemetry.js";
@@ -1456,6 +1456,22 @@ export class Session {
     if (any) this.crewChanged();
   }
 
+  // What the agent says a character picked up, used up or lost.
+  applyItemChanges(changes) {
+    if (!this.state.config.agentCrew) return;
+    let any = false;
+    for (const c of changes || []) {
+      for (const id of crewTargets(c.for, this.state.config.crew).slice(0, 1)) { // (one person holds it)
+        const pc = this.state.config.crew.find((x) => x.id === id);
+        const did = changeItem(pc, c.action, c.item);
+        if (!did) continue;
+        this.addLog("note", `${pc.name} ${did}${c.why ? ` (${c.why})` : ""}.`);
+        any = true;
+      }
+    }
+    if (any) this.crewChanged();
+  }
+
   // ---------------------------------------------------------------- replies
   logDirectives(directives = []) {
     for (const d of directives) this.addLog("warden", d);
@@ -1490,7 +1506,7 @@ export class Session {
     // Crew: only their condition goes back (sheet edits made since are kept).
     for (const pc of s.config.crew) {
       const was = undo.crew.find((x) => x.id === pc.id);
-      if (was) Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress });
+      if (was) Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, items: was.items });
     }
     s.outcomeCheck = undo.outcome;
     this.playhead = 0;
@@ -1517,7 +1533,7 @@ export class Session {
     // The first entry carries the reply's changes/effects so the agent's history
     // shows that it really changed things (otherwise it learns to leave them empty).
     const mapChanges = this.mapChanges(reply);
-    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
+    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
     // Effects on a line fire as it begins. An effect-only beat (no text) fires
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
@@ -1555,6 +1571,7 @@ export class Session {
     this.applyMapChanges(mapChanges);
     for (const e of effects) this.startEffect(e, "agent");
     this.applyCrewChanges(reply?.crew_changes);
+    this.applyItemChanges(reply?.item_changes);
     for (const c of reply?.clocks || []) c.action === "stop" ? this.stopClock(c.label) : this.startClock(c.label, c.seconds, "agent");
     for (const h of reply?.handouts || []) this.giveHandout({ title: h.title, text: h.text, to: findCharacterId(this.state.config.crew, h.for) }, "agent");
   }

@@ -107,7 +107,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "item_changes", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -154,6 +154,21 @@ function buildSchema(voices) {
             for: { type: "string", description: "A crew member's name, a class, or Humans." },
             stat: { type: "string", enum: ["health", "wounds", "stress"] },
             change: { type: "integer", description: "How much to add (negative to take away), e.g. -3 health, +1 stress." },
+            why: { type: "string", description: "A few words for the Warden's log." },
+          },
+        },
+      },
+      item_changes: {
+        type: "array",
+        description: "What the players' characters carry (see CREW CONDITION) changing because of this reply: something picked up or handed over, a consumable used up, gear lost, broken or taken. Usually empty.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["for", "action", "item", "why"],
+          properties: {
+            for: { type: "string", description: "A crew member's name." },
+            action: { type: "string", enum: ["add", "remove"] },
+            item: { type: "string", description: "The item, as it's listed (to remove) or a short name (to add), e.g. Flare, Security keycard (Deck 2)." },
             why: { type: "string", description: "A few words for the Warden's log." },
           },
         },
@@ -256,6 +271,7 @@ const REPLY_EXAMPLE = {
   ],
   station_changes: [{ path: "quarantine", value: "DECK 3" }],
   crew_changes: [],
+  item_changes: [],
   clocks: [],
   handouts: [],
   layout: "",
@@ -329,6 +345,7 @@ TERMINALS (where the players are)
 - Keep track of where each character is from what has happened; when the players move, update who is near them.
 
 CREW CONDITION (the players' characters: Health, Wounds, Stress)
+- Items: CREW CONDITION lists what each character carries. They can only use what they have (or find). When something is picked up, handed over, used up, lost, broken or taken, record it in item_changes. A fitting item can earn [+] on a roll; lacking the right tool, [-].
 - When the fiction clearly hurts or rattles a character, record it in crew_changes: damage as negative health (a few points; a Wound when health runs out or for a grievous injury), and +1 or +2 stress for real horror, panic or loss.
 - Only for consequences that actually happened in this reply and that the Warden left to you. Failed rolls already add 1 stress automatically: don't add it again. When unsure, leave it to the Warden.
 - Each character at most once per event: if you name someone, don't also include them through a class or "Humans" for the same thing.
@@ -434,7 +451,7 @@ function buildMessages(state) {
   for (const e of state.log.filter((x) => x.kind !== "note" && !x.cut).slice(-HISTORY_ENTRIES)) {
     const role = USER_KINDS.has(e.kind) ? "user" : "assistant";
     let last = turns.at(-1);
-    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
+    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
     if (e.kind === "player") last.inputs.push(`[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}] ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
@@ -448,6 +465,7 @@ function buildMessages(state) {
       last.lines.push({ voice: voiceIdOf(e), character: e.character || "", in_person: !!e.inPerson, system: multi ? systemName(state.config, e.net) : "", text: e.text, effects: e.cues || [], variants: (e.variants || []).map((v) => ({ for: v.for, text: v.text })) });
       last.changes.push(...(e.changes || []));
       last.crew.push(...(e.crewChanges || []));
+      last.items.push(...(e.itemChanges || []));
       last.clocks.push(...(e.clockChanges || []));
       last.handouts.push(...(e.handouts || []));
       last.effects.push(...(e.effects || []));
@@ -464,7 +482,7 @@ function buildMessages(state) {
   return turns.map((t) =>
     t.role === "user"
       ? { role: "user", content: t.inputs.join("\n") }
-      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
+      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
   );
 }
 
@@ -606,7 +624,7 @@ function buildContext(state, steer, aside = false) {
   ctx.push(TALK[state.config.talk] || TALK.brief);
   if (!state.config.agentEffects) ctx.push("Effects are disabled right now: return an empty effects array.");
   if (state.config.agentVariants === false) ctx.push("Per-player variations are disabled: every line's variants must be [].");
-  if (state.config.agentCrew === false) ctx.push("The Warden tracks crew health, wounds and stress themselves: crew_changes must be [].");
+  if (state.config.agentCrew === false) ctx.push("The Warden tracks crew health, wounds, stress and items themselves: crew_changes and item_changes must be [].");
   return ctx.join("\n\n");
 }
 
@@ -650,6 +668,10 @@ export function parseReply(text, voices) {
       .filter((c) => c && c.for && ["health", "wounds", "stress"].includes(c.stat) && Number.isFinite(Number(c.change)) && Number(c.change))
       .slice(0, 12)
       .map((c) => ({ for: String(c.for).slice(0, 60), stat: c.stat, change: Math.max(-20, Math.min(20, Math.round(Number(c.change)))), why: String(c.why ?? "").slice(0, 120) })),
+    item_changes: (Array.isArray(r?.item_changes) ? r.item_changes : [])
+      .filter((c) => c && c.for && ["add", "remove"].includes(c.action) && String(c.item ?? "").trim())
+      .slice(0, 12)
+      .map((c) => ({ for: String(c.for).slice(0, 60), action: c.action, item: String(c.item).trim().slice(0, 60), why: String(c.why ?? "").slice(0, 120) })),
     clocks: (Array.isArray(r?.clocks) ? r.clocks : [])
       .filter((c) => c && ["start", "stop"].includes(c.action) && String(c.label ?? "").trim())
       .slice(0, 4)

@@ -120,6 +120,8 @@ export function sanitizeCrew(list) {
       stress: int(c.stress, 0, 20, 2),
       skills: (Array.isArray(c.skills) ? c.skills : String(c.skills || "").split(",")).map((s) => str(s, 40).trim()).filter(Boolean).slice(0, 12),
       loadout: str(c.loadout, 400),
+      // What they carry now (the loadout is how they started): changes in play.
+      items: Array.isArray(c.items) ? c.items.map((s) => str(s, 60).trim()).filter(Boolean).slice(0, MAX_ITEMS) : itemsFrom(c.loadout),
       trinket: str(c.trinket, 160),
       patch: str(c.patch, 80),
       notes: str(c.notes, 1000),
@@ -159,12 +161,35 @@ export function setVital(pc, field, value) {
   return [old, next];
 }
 
-// Their current condition, for the agent's per-turn context.
+// Their current condition and what they carry, for the agent's per-turn context.
 export function crewStatus(crew) {
-  return crew.map((c) => `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}`).join("\n");
+  return crew.map((c) => `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}. Carrying: ${c.items.join(", ") || "nothing"}`).join("\n");
+}
+
+// Items: a loadout's first sentence, split into things ("Vaccsuit, plasma cutter, 2 flares.").
+const MAX_ITEMS = 24;
+function itemsFrom(loadout) {
+  const first = String(loadout || "").split(/\.(\s|$)/)[0];
+  return first.split(/[,;]/).map((s) => s.trim().replace(/\.$/, "")).filter(Boolean).map((s) => s[0].toUpperCase() + s.slice(1)).slice(0, MAX_ITEMS);
+}
+// Add or take away one item; returns what happened, or null if nothing did.
+export function changeItem(pc, action, rawItem) {
+  const item = String(rawItem || "").trim().slice(0, 60);
+  if (!item) return null;
+  if (action === "add") {
+    if (pc.items.length >= MAX_ITEMS) return null;
+    pc.items.push(item[0].toUpperCase() + item.slice(1));
+    return `picked up ${item}`;
+  }
+  const want = item.toLowerCase();
+  const i = pc.items.findIndex((x) => x.toLowerCase() === want);
+  const j = i >= 0 ? i : pc.items.findIndex((x) => x.toLowerCase().includes(want) || want.includes(x.toLowerCase()));
+  if (j < 0) return null;
+  const [gone] = pc.items.splice(j, 1);
+  return `lost ${gone}`;
 }
 
 // One line per character for the agent.
 export function crewBrief(crew) {
-  return crew.map((c) => `- ${c.name} (${c.pronouns || "?"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.join(", ") || "none"}. Carrying: ${c.loadout}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
+  return crew.map((c) => `- ${c.name} (${c.pronouns || "?"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.join(", ") || "none"}. Started with: ${c.loadout}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
 }
