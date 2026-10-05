@@ -902,6 +902,20 @@
   $("mnav").addEventListener("click", (e) => { const v = e.target.closest("[data-mview]")?.dataset.mview; if (v) setMview(v); });
   setMview(store.get("mview") || "comms");
 
+  // ------------------------------------------------------------ story text
+  // Lore, secrets and standing orders show all their text: the boxes grow to fit
+  // (as it's set, as it's typed, and when the Story tab opens), never scroll.
+  const STORY_BOXES = ["lore", "secrets", "standingOrders"];
+  function growBox(el) {
+    if (!el.offsetParent) return; // (not on screen: measured when it is)
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }
+  function growStory() { for (const id of STORY_BOXES) growBox($(id)); }
+  for (const id of STORY_BOXES) $(id).addEventListener("input", (e) => growBox(e.target));
+  addEventListener("resize", () => requestAnimationFrame(growStory));
+  document.addEventListener("toggle", (e) => { if (e.target.open && STORY_BOXES.some((id) => e.target.contains($(id)))) growStory(); }, true); // (a section opened)
+
   // ------------------------------------------------------------ edit mode
   // Read-only (the default, remembered per device) shows what matters while
   // running the game; ✎ Edit shows the setup (dm.css .edit-only / .play-only).
@@ -945,6 +959,7 @@
       requestAnimationFrame(() => bar.classList.add("ready")); // (no slide on first draw)
       store.set(`tab:${group}`, tab);
       if (group === "side" && tab === "map" && S) renderMap(true); // (drawn for its width)
+      if (group === "side" && tab === "story") requestAnimationFrame(growStory); // (hidden, it had no height to measure)
     };
     bar.addEventListener("click", (e) => { const t = e.target.closest("[data-tab]")?.dataset.tab; if (t) show(t); });
     show(store.get(`tab:${group}`) || bar.querySelector("[data-tab]").dataset.tab);
@@ -1306,6 +1321,7 @@
       const el = $(id);
       if (!dirty.has(id) && document.activeElement !== el && el.value !== c[id]) el.value = c[id];
     }
+    growStory();
     for (const id of SETTING_SWITCHES) $(id).checked = c[id] !== false;
     if (!dirty.has("station") && document.activeElement !== $("station")) $("station").value = JSON.stringify(S.station, null, 2);
   }
