@@ -69,16 +69,10 @@ On the existing distribution:
   ```
   Every line is redacted before it's printed (`redact.js`): LLM keys never appear in them.
 - **Usage dashboard:** CloudWatch → Dashboards → **Mothership** (us-west-2), from MothershipStack. `deploy/update.sh` installs the CloudWatch agent and points it at the app's telemetry (`telemetry.js`, sent to the agent on 127.0.0.1:25888), which lands in the `/mothership/telemetry` log group (kept 3 months) and the `Mothership` metrics. The agent signs in with the credentials the Systems Manager agent keeps for the server (`/root/.aws/credentials`), and the server role may write to that log group only. Nothing else on the server is shipped. Telemetry problems never fail a deploy; check the agent with `sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a status`.
-- **Free models:** the start screen offers **Free (shared)** when the server has an OpenRouter key. The key isn't in the repo or the deploy workflow; it lives in a systemd drop-in on the server, which redeploys leave alone:
+- **Secrets:** the OpenRouter key (for **Free (shared)** on the start screen) is a SecureString in SSM Parameter Store, `/mothership/openrouter-api-key`, never in the repo or a deploy workflow. Each deploy, `update.sh` runs `deploy/secrets.mjs`, which reads it with the server's role (MothershipStack lets it read that parameter only) into the root-only `/etc/mothership/secrets.env` that the unit loads. To set or change the key, from a machine with AWS access:
   ```bash
-  sudo systemctl edit mothership
+  read -rs KEY && aws ssm put-parameter --region us-west-2 --name /mothership/openrouter-api-key --type SecureString --value "$KEY" --overwrite; unset KEY
   ```
-  ```ini
-  [Service]
-  Environment=OPENROUTER_API_KEY=sk-or-v1-...
-  ```
-  ```bash
-  sudo systemctl restart mothership
-  ```
-  Free models cost nothing, so a public server is fine. OpenRouter allows far more free requests a day on an account that has bought at least $10 of credit at some point. Each session is also capped at `FREE_CALLS_PER_DAY` (default 150), set the same way.
+  then redeploy (any push to main). Delete the parameter and redeploy to turn free models off. If the fetch fails, the deploy keeps the last key.
+  Free models cost nothing, so a public server is fine. OpenRouter allows far more free requests a day on an account that has bought at least $10 of credit at some point. Each session is also capped at `FREE_CALLS_PER_DAY` (default 150).
 - **Limits:** set in the systemd unit. `MAX_SESSIONS` defaults to 300, and idle sessions expire after `SESSION_TTL_DAYS` (default 14).

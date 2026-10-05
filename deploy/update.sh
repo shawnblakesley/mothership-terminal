@@ -53,6 +53,17 @@ JSON
 }
 setup_telemetry || echo "Telemetry setup failed (the app runs without it)." >&2
 
+# Secrets (the OpenRouter key for free models) come from SSM Parameter Store
+# into a root-only file the unit loads; nothing secret is in the repo or the
+# deploy. If they can't be fetched, the ones from the last deploy stay.
+mkdir -p /etc/systemd/system/mothership.service.d
+cat > /etc/systemd/system/mothership.service.d/secrets.conf <<'CONF'
+[Service]
+EnvironmentFile=-/etc/mothership/secrets.env
+CONF
+systemctl daemon-reload
+HOME=/root node deploy/secrets.mjs /etc/mothership/secrets.env || echo "Couldn't fetch secrets; keeping the last ones." >&2
+
 systemctl restart mothership
 
 # Wait for the app to answer before calling it deployed.
