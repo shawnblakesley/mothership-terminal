@@ -508,7 +508,39 @@ summary .muted { font-weight: 400; font-size: 12px; }
 /* The side panel's tab bar stays at the top of its column while it scrolls
    (the shadow is the page colour, so nothing shows round it), with a
    highlight that slides to the chosen tab and panels that ease in. */
-.col > .tabs[data-tabs] { position: sticky; top: 0; z-index: 5; flex-shrink: 0; box-shadow: 0 0 0 8px var(--bg), 0 -16px 0 8px var(--bg); }
+.col > .sidehead { position: sticky; top: 0; z-index: 5; flex-shrink: 0; display: flex; gap: 8px; align-items: stretch; background: var(--bg); box-shadow: 0 0 0 8px var(--bg), 0 -16px 0 8px var(--bg); }
+.sidehead .tabs { flex: 1; width: auto; min-width: 0; }
+.sidehead .tabs button { padding-left: 6px; padding-right: 6px; }
+.editmode { flex-shrink: 0; white-space: nowrap; }
+.editmode[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
+
+/* Read-only (the default) vs Edit: setup controls only while editing. */
+.col.side:not(.editing) .edit-only, .col.side.editing .play-only { display: none !important; }
+
+/* Read-only views: a character's sheet, where the terminals are, the cast. */
+.pcsheet { display: flex; flex-direction: column; gap: 6px; font-size: 13px; padding: 4px 2px 2px; }
+.pcsheet .nums { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.pcsheet .nums span { white-space: nowrap; }
+.pcsheet .nums b { color: var(--fg); }
+.pcsheet .vitals { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.pcsheet .vitals label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.pcsheet .vitals input { width: 56px; padding: 2px 6px; }
+.pcsheet .k { color: var(--muted); }
+.tplay { display: flex; flex-direction: column; gap: 4px; }
+.tplay > div { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 6px 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.tplay b { font-weight: 600; }
+.tplay .here { margin-left: auto; color: var(--accent); }
+.castv { margin: 4px 0 8px; }
+.castv b { font-size: 13px; }
+.castv ul { margin: 2px 0 0; padding-left: 18px; font-size: 13px; }
+.castv li { margin: 2px 0; }
+
+/* The Rules tab. */
+.rules h2 { margin: 6px 0 0; }
+.rules ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.rulesdl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 4px 0 0; font-size: 13px; }
+.rulesdl dt { font-weight: 600; }
+.rulesdl dd { margin: 0; color: var(--muted); }
 .tabs.seg { position: relative; }
 .tabs.seg button { position: relative; z-index: 1; transition: color .18s ease; }
 .tabs.seg.slider button.on { background: transparent; }

@@ -249,9 +249,13 @@
     </section>
 
     <!-- ================= CONTROL PANEL: actions, map, crew, story ================= -->
-    <section class="col">
-      <div class="tabs seg" data-tabs="side" role="tablist">
-        <button data-tab="actions">Actions<span id="actionsDot" class="tabdot" hidden title="Waiting on you"></span></button><button data-tab="map">Map</button><button data-tab="crew">Crew</button><button data-tab="story">Story</button>
+    <section class="col side">
+      <!-- Tabs, and Edit: read-only (the default) shows what matters while running the game; Edit shows the setup. -->
+      <div class="sidehead">
+        <div class="tabs seg" data-tabs="side" role="tablist">
+          <button data-tab="actions">Actions<span id="actionsDot" class="tabdot" hidden title="Waiting on you"></span></button><button data-tab="map">Map</button><button data-tab="crew">Crew</button><button data-tab="story">Story</button><button data-tab="rules">Rules</button>
+        </div>
+        <button id="editMode" class="ghost editmode" aria-pressed="false" title="Edit the setup: characters, terminals, connections, voices, lore. Off: just what you need to run the game.">✎ Edit</button>
       </div>
       <!-- The next response, rolls, effects and sounds. -->
       <div class="tabpanel" data-tabs="side" data-panel="actions">
@@ -346,7 +350,7 @@
         <div class="row" id="mapPanel"><span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">Drawing</button><button data-view="status">Status</button></span>
           <span class="grow"></span><button id="mapExpand" class="ghost" title="Open the full map">⤢ Expand</button></div>
         <div id="map" class="smap compact"></div>
-      <details>
+      <details class="edit-only">
         <summary>Station state <span class="muted">(the agent reads &amp; edits this)</span></summary>
         <textarea id="station" class="code" rows="14" spellcheck="false"></textarea>
         <div class="row"><span id="stationErr" class="err"></span><span class="grow"></span><button id="stationSave">Save state</button></div>
@@ -356,16 +360,21 @@
       <div class="tabpanel" data-tabs="side" data-panel="crew">
         <h2>Player characters <span class="hint" title="Each player picks one on their screen. The agent knows who they are and who typed what.">?</span></h2>
         <div id="crew"></div>
-        <div class="row"><button id="addCrew" class="ghost">+ Add character</button></div>
+        <div class="row edit-only"><button id="addCrew" class="ghost">+ Add character</button></div>
         <h2>Terminals <span class="hint" title="Where each player's screen is. A terminal's look shows on that screen and the agent answers from that place. Players switch with TERM (if allowed in Settings); move anyone from their crew card.">?</span></h2>
-        <div id="terminals"></div>
-        <div class="row"><button id="addTerminal" class="ghost">+ Add terminal</button></div>
-        <h2>Connections <span class="hint" title="Which voices can be heard on which system. A voice can only speak on a system it's connected to: the agent is told, and a line sent anywhere else is moved to one it's on. People talking in person, in the room, aren't on any system. Give a terminal a System to add one.">?</span></h2>
-        <div id="connections"></div>
+        <div id="terminals" class="edit-only"></div>
+        <div id="terminalsPlay" class="play-only"></div>
+        <div class="row edit-only"><button id="addTerminal" class="ghost">+ Add terminal</button></div>
+        <h2 class="edit-only">Connections <span class="hint" title="Which voices can be heard on which system. A voice can only speak on a system it's connected to: the agent is told, and a line sent anywhere else is moved to one it's on. People talking in person, in the room, aren't on any system. Give a terminal a System to add one.">?</span></h2>
+        <div id="connections" class="edit-only"></div>
       </div>
 
       <div class="tabpanel" data-tabs="side" data-panel="story">
-        <details id="voicesPanel" class="sec" open>
+        <details class="sec play-only" open>
+          <summary><h2>Cast <span class="hint" title="Who can speak, and the people behind each voice. Edit them with ✎ Edit.">?</span></h2></summary>
+          <div id="castPlay"></div>
+        </details>
+        <details id="voicesPanel" class="sec edit-only" open>
           <summary><h2>Voices &amp; personas <span class="hint" title="Every line is said by a voice; each persona tells the agent who it is and how it talks.">?</span></h2></summary>
           <input id="testText" placeholder="Test line" value="Attention. This is a test of the station voice system.">
           <div id="voices"></div>
@@ -382,6 +391,66 @@
         <label class="field"><span>Station lore (public)</span><textarea id="lore" rows="7"></textarea></label>
         <label class="field"><span>Secrets (computer knows, guards by access level)</span><textarea id="secrets" rows="7"></textarea></label>
       </details>
+      </div>
+
+      <!-- A quick Mothership (1e) reference, in this app's terms. -->
+      <div class="tabpanel rules" data-tabs="side" data-panel="rules">
+        <p class="muted small">Mothership 1e at a glance. The full rules are in the Player's Survival Guide and Warden's Operations Manual (Tuesday Knight Games).</p>
+
+        <h2>Checks</h2>
+        <ul>
+          <li>Roll <b>d100</b> (00–99). <b>Under</b> the target succeeds; equal or over fails.</li>
+          <li>Target = a <b>Stat</b> or <b>Save</b> + a <b>Skill</b> that fits: Trained <b>+10</b>, Expert <b>+15</b>, Master <b>+20</b>.</li>
+          <li><b>Doubles</b> (00, 11 … 99) are criticals: a critical success or a critical failure.</li>
+          <li><b>[+] Advantage / [-] Disadvantage:</b> roll twice, keep the better / worse.</li>
+          <li><b>Any failed check or save: +1 Stress.</b></li>
+          <li>Only roll when failing would be interesting and the outcome is uncertain. Otherwise it just happens (or just doesn't).</li>
+        </ul>
+        <dl class="rulesdl">
+          <dt>Strength</dt><dd>lifting, pushing, holding on, brute force</dd>
+          <dt>Speed</dt><dd>getting there first, dodging, reacting</dd>
+          <dt>Intellect</dt><dd>knowing, fixing, hacking, working it out</dd>
+          <dt>Combat</dt><dd>hitting what you aim at</dd>
+          <dt>Sanity save</dt><dd>keeping a rational grip: hallucinations, things that can't be real</dd>
+          <dt>Fear save</dt><dd>holding your nerve: terror, gore, being hunted</dd>
+          <dt>Body save</dt><dd>enduring: toxins, disease, cold, hunger, being thrown about</dd>
+        </dl>
+
+        <h2>Stress &amp; Panic</h2>
+        <ul>
+          <li>Stress starts at <b>2</b> and climbs with every failure and every horror.</li>
+          <li><b>Panic check:</b> roll <b>d20</b>. <b>Above</b> current Stress, they hold it together. <b>Equal or under</b>, they Panic: look the roll up on the Panic Table.</li>
+          <li>Call one when something truly awful happens: a crewmate dies, the thing is in the room, the lights go out for good.</li>
+          <li>Rest somewhere safe (as you allow) to shed Stress.</li>
+        </ul>
+
+        <h2>Harm</h2>
+        <ul>
+          <li>Damage comes off <b>Health</b>. Armour (AP) reduces each hit.</li>
+          <li>At <b>0 Health</b> they take a <b>Wound</b>: roll on the Wound Table for the kind of harm (blunt, bleeding, gunshot, fire, gore), then Health resets.</li>
+          <li>When Wounds reach their maximum, the character dies (or is dying, as you rule).</li>
+        </ul>
+
+        <h2>Combat</h2>
+        <ul>
+          <li>Describe the threat; everyone says what they do; resolve it in the order that makes sense.</li>
+          <li>Attacking: a <b>Combat</b> check. A hit deals the weapon's damage.</li>
+        </ul>
+
+        <h2>Running it</h2>
+        <ul>
+          <li>Warn before danger: show the blood trail before the creature.</li>
+          <li>Say the stakes before the roll: what happens if it fails.</li>
+          <li>Failure moves the story: something gets worse, costs time, or makes noise. It rarely means "nothing happens".</li>
+          <li>They are workers, not heroes. Running, hiding and bargaining are good plans.</li>
+        </ul>
+
+        <h2>In this app</h2>
+        <ul>
+          <li><b>Actions → Roll</b> calls a check, save or Panic check for one character or everyone; each rolls on their own screen against their own sheet, and failures add Stress by themselves.</li>
+          <li><b>⚖ Outcome needed</b> means the agent saw an uncertain attempt and is waiting for your call: say it works, it fails, or roll.</li>
+          <li>The agent can change Health, Wounds and Stress (Settings decides); you can always fix them on the Crew tab.</li>
+        </ul>
       </div>
     </section>
   </div>

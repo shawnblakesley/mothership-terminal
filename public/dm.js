@@ -278,7 +278,9 @@
     renderMap();
     renderCrew();
     renderTerminals();
+    renderTerminalsPlay();
     renderConnections();
+    renderCastPlay();
     renderBuilder();
     renderSynopsis();
     renderRoom();
@@ -488,7 +490,8 @@
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move their screens to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(no terminal yet)</option>') + S.config.terminals.map((t) =>
             `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></span>` : ""}</summary>
-        <div class="pcgrid">
+        ${pcSheet(c)}
+        <div class="pcgrid edit-only">
           ${txt("name", c.name, "Name")}
           <label>Pronouns<input data-c="pronouns" value="${esc(c.pronouns)}"></label>
           <label>Class<select data-c="className">${CREW_CLASSES.map((k) => `<option ${k === c.className ? "selected" : ""}>${k}</option>`).join("")}</select></label>
@@ -506,12 +509,29 @@
           ${txt("patch", c.patch, "Patch")}
           ${txt("notes", c.notes, "Warden notes (the agent reads these; players don't see them)", 2)}
         </div>
-        <div class="row"><span class="grow"></span><button data-cact="del" class="danger">Remove character</button></div>
+        <div class="row edit-only"><span class="grow"></span><button data-cact="del" class="danger">Remove character</button></div>
       </details>`;
     }).join("") || `<p class="muted small">No player characters. Add some, or build a story.</p>`;
     // Keep open whichever cards were open.
     for (const i of openCrew) panel.querySelector(`.pc[data-i="${i}"]`)?.setAttribute("open", "");
     $("addCrew").disabled = crewDraft.length >= 4;
+  }
+  // Read-only: what a character can do at a glance. Health, Wounds and Stress
+  // stay adjustable (they change in play); the rest is edited with ✎ Edit.
+  const cap = (k) => k[0].toUpperCase() + k.slice(1);
+  function pcSheet(c) {
+    const nums = (o) => Object.entries(o).map(([k, v]) => `<span>${cap(k)} <b>${v}</b></span>`).join("");
+    const line = (label, v) => (v ? `<div><span class="k">${label}:</span> ${esc(v)}</div>` : "");
+    return `<div class="pcsheet play-only">
+      <div class="nums"><span class="k">Stats</span>${nums(c.stats)}</div>
+      <div class="nums"><span class="k">Saves</span>${nums(c.saves)}</div>
+      <div class="vitals">
+        <label>Health <input type="number" data-c="health.current" value="${c.health.current}" min="0" max="99"> / ${c.health.max}</label>
+        <label>Wounds <input type="number" data-c="wounds.current" value="${c.wounds.current}" min="0" max="99"> / ${c.wounds.max}</label>
+        <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"></label>
+      </div>
+      ${line("Skills", c.skills.join(", "))}${line("Loadout", c.loadout)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
+    </div>`;
   }
   const openCrew = new Set();
   const whereIs = (crewId) => {
@@ -541,8 +561,10 @@
       crewTimer = null;
       crewSentAt = Date.now();
       send({ t: "crew", crew: crewDraft });
+      setTimeout(() => S && renderCrew(), 1600); // (the headers catch up once the edit settles)
     }, 500);
   }
+  $("crew").addEventListener("focusout", () => setTimeout(() => S && renderCrew(), 1600));
   $("crew").addEventListener("input", (e) => {
     const card = e.target.closest(".pc");
     const key = e.target.dataset.c;
@@ -722,6 +744,42 @@
       </div>`;
     }).join("");
   }
+  // Read-only terminals: where each is, whether the players can get to it, who's there.
+  function roomLabels() {
+    const decks = StationMap.parseLayout(S.config.map);
+    const out = new Map(decks.flatMap((d) => d.rooms.map((r) => [r.id, r.label])));
+    for (const r of StationMap.parseDocked(S.config.map)) out.set(r.id, `${r.label}, docked at ${out.get(r.parent) || r.parent}`);
+    return out;
+  }
+  const reachableNow = (t) => {
+    if (t.open) return true;
+    if (!t.requires) return false;
+    const v = t.requires.split(".").reduce((o, k) => o?.[k], S.station);
+    return /^(OPEN|OPENED|UNLOCKED)$/i.test(String(v ?? "").trim());
+  };
+  function renderTerminalsPlay() {
+    const panel = $("terminalsPlay");
+    const json = JSON.stringify([S.config.terminals, S.screens, S.config.map, S.station]);
+    if (panel.dataset.json === json) return;
+    panel.dataset.json = json;
+    const rooms = roomLabels();
+    panel.className = "play-only tplay";
+    panel.innerHTML = S.config.terminals.map((t) => {
+      const here = (S.screens || []).filter((s) => s.terminal === t.id).map((s) => s.character || "a screen");
+      const access = reachableNow(t) ? "" : `<span class="pill">${t.requires ? `locked: ${esc(t.requires)}` : "not reachable"}</span>`;
+      return `<div><b>${esc(t.name)}</b><span class="muted small">${esc(rooms.get(t.room) || (t.room ? t.room : "portable"))}${t.system ? ` · ${esc(t.system)}` : ""}</span>${access}${here.length ? `<span class="here small">${here.map(esc).join(", ")}</span>` : ""}</div>`;
+    }).join("") || '<p class="muted small">No terminals.</p>';
+  }
+  // Read-only cast: each voice and the people who speak through it.
+  function renderCastPlay() {
+    const panel = $("castPlay");
+    const json = JSON.stringify(S.config.voices.map((v) => [v.name, v.characters]));
+    if (panel.dataset.json === json) return;
+    panel.dataset.json = json;
+    panel.innerHTML = S.config.voices.map((v) => `<div class="castv"><b style="color: ${esc(v.color || "var(--fg)")}">${esc(v.name)}</b>${
+      v.characters?.length ? `<ul>${v.characters.map((c) => `<li><b>${esc(c.name)}</b>${c.notes ? ` <span class="muted">· ${esc(c.notes)}</span>` : ""}</li>`).join("")}</ul>` : ""}</div>`).join("");
+  }
+
   // The connection graph: which voices are heard on which system (voice.systems,
   // net keys: "" the station, "*" every system). Shown once there's more than one system.
   function renderConnections() {
@@ -792,6 +850,20 @@
     termSentAt = 0;
     renderTerminals(true);
   };
+
+  // ------------------------------------------------------------ edit mode
+  // Read-only (the default, remembered per device) shows what matters while
+  // running the game; ✎ Edit shows the setup (dm.css .edit-only / .play-only).
+  const sideCol = document.querySelector(".col.side");
+  function setEditing(on) {
+    sideCol.classList.toggle("editing", on);
+    $("editMode").setAttribute("aria-pressed", String(on));
+    $("editMode").textContent = on ? "✓ Done" : "✎ Edit";
+    for (const id of ["lore", "secrets"]) $(id).readOnly = !on;
+    if (on) store.set("editMode", "1"); else store.del("editMode");
+  }
+  $("editMode").onclick = () => setEditing(!sideCol.classList.contains("editing"));
+  setEditing(store.get("editMode") === "1");
 
   // ------------------------------------------------------------ tabs
   // Tab bars ([data-tabs]) show one panel at a time; the choice is remembered.
