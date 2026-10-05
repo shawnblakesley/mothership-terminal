@@ -1700,20 +1700,37 @@
       <div class="attempt">${esc(oc.attempt || "(something uncertain)")}</div>
       ${oc.suggested_check !== "none" ? `<div class="muted small">Agent suggests: ${esc(checkName(oc.suggested_check))}${advMark(oc.advantage)}</div>` : ""}
       ${oc.why ? `<div class="note">${esc(oc.why)}</div>` : ""}
-      ${oc.on_success || oc.on_failure ? `<div class="stakes">${oc.on_success ? `<div><b class="ok">✓ If it works:</b> ${esc(oc.on_success)}</div>` : ""}${oc.on_failure ? `<div><b class="bad">✗ If it fails:</b> ${esc(oc.on_failure)}</div>` : ""}</div>` : ""}
+      <div class="stakes">
+        <label><span class="ok" title="If it works">✓</span><input data-stake="on_success" value="${esc(oc.on_success || "")}" placeholder="If it works…" aria-label="If it works"></label>
+        <label><span class="bad" title="If it fails">✗</span><input data-stake="on_failure" value="${esc(oc.on_failure || "")}" placeholder="If it fails…" aria-label="If it fails"></label>
+      </div>
       <div class="row wrap">
-        <button data-oc="success" class="primary">✓ It works</button>
-        <button data-oc="failure" class="danger">✗ It fails</button>
-        <button data-oc="roll">🎲 Call for a roll</button>
+        <button data-oc="success" class="ocbtn ok" title="It works" aria-label="It works">✓</button>
+        <button data-oc="failure" class="ocbtn bad" title="It fails" aria-label="It fails">✗</button>
+        <button data-oc="roll" class="ocbtn" title="Call for a roll" aria-label="Call for a roll">🎲</button>
         <span class="grow"></span>
         <button data-oc="dismiss" class="ghost">Dismiss</button>
       </div>`;
   }
 
+  // The stakes are editable: what you write is what the agent narrates by.
+  let stakesTimer = null;
+  const sendStakes = () => {
+    clearTimeout(stakesTimer);
+    stakesTimer = null;
+    const val = (k) => $("outcome").querySelector(`[data-stake="${k}"]`)?.value.trim() ?? "";
+    send({ t: "outcomeStakes", on_success: val("on_success"), on_failure: val("on_failure") });
+  };
+  $("outcome").addEventListener("input", (e) => {
+    if (!e.target.dataset.stake) return;
+    clearTimeout(stakesTimer);
+    stakesTimer = setTimeout(sendStakes, 400);
+  });
   $("outcome").addEventListener("click", (e) => {
     const act = e.target.closest("[data-oc]")?.dataset.oc;
     const oc = S?.outcomeCheck;
     if (!act || !oc) return;
+    if (stakesTimer) sendStakes(); // (edits still waiting go first)
     if (act === "success" || act === "failure") send({ t: "outcome", verdict: act });
     else if (act === "dismiss") send({ t: "outcomeDismiss" });
     else if (act === "roll") {

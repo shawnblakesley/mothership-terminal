@@ -872,6 +872,15 @@ export class Session {
         this.generate();
         break;
       }
+      case "outcomeStakes": {
+        // The Warden edited the stakes: the agent narrates by these.
+        const oc = s.outcomeCheck;
+        if (!oc) break;
+        oc.on_success = String(msg.on_success ?? "").trim().slice(0, 200);
+        oc.on_failure = String(msg.on_failure ?? "").trim().slice(0, 200);
+        this.touch();
+        return; // (no redraw: the Warden is typing in the card)
+      }
       case "outcomeDismiss":
         if (s.outcomeCheck?.held) this.setBusy(false);
         s.outcomeCheck = null;

@@ -515,9 +515,18 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .editmode[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
 
 /* The stakes on the "your call" card: what happens if it works / fails. */
-.outcome .stakes { display: flex; flex-direction: column; gap: 3px; font-size: 13px; margin: 2px 0 4px; }
-.outcome .stakes .ok { color: var(--accent); }
-.outcome .stakes .bad { color: var(--danger, #ff6b6b); }
+.outcome .stakes { display: flex; flex-direction: column; gap: 4px; font-size: 13px; margin: 2px 0 4px; }
+.outcome .stakes label { display: flex; align-items: center; gap: 8px; }
+.outcome .stakes label span { width: 1.2em; text-align: center; font-weight: 700; flex-shrink: 0; }
+.outcome .stakes input { flex: 1; min-width: 0; padding: 4px 8px; }
+.outcome .ok { color: var(--accent); }
+.outcome .bad { color: var(--danger); }
+/* It works / It fails / Call for a roll: icons only (their names are the tooltips). */
+.outcome .ocbtn { width: 40px; height: 34px; padding: 0; font-size: 18px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.outcome .ocbtn.ok { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.outcome .ocbtn.ok:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.outcome .ocbtn.bad { border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
+.outcome .ocbtn.bad:hover { background: color-mix(in srgb, var(--danger) 18%, transparent); }
 
 /* Read-only (the default) vs Edit: setup controls only while editing. */
 .col.side:not(.editing) .edit-only, .col.side.editing .play-only { display: none !important; }
