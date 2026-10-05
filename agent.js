@@ -196,7 +196,7 @@ function buildSchema(voices) {
           required: ["title", "text", "for"],
           properties: {
             title: { type: "string", description: "What the document is, e.g. MEDICAL LOG: DR. SALK, DAY 19." },
-            text: { type: "string", description: "Its full text, as written in the world (line breaks kept)." },
+            text: { type: "string", description: "Its full text, as written in the world, in Markdown: # headings, **bold**, *italic*, __underlined__ (here __text__ means underline), ~~crossed out~~, - lists, > quotes, --- between entries. Used as the document itself would, not overdone." },
             for: { type: "string", description: "A crew member's name if only they get it; empty for everyone." },
           },
         },

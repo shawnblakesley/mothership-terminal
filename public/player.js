@@ -625,6 +625,38 @@
     if (c) { e.preventDefault(); claim(c.id); renderFile(); openPanel("crewfile"); $("crewfile-close").focus(); }
   });
   $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
+  // ------------------------------------------------------------ markdown
+  // Handouts are written in a little Markdown: # headings, **bold**, *italic*,
+  // __underline__ (here, not bold), ~~struck out~~, `code`, - and 1. lists,
+  // > quotes, --- dividers. Everything is escaped first, so no HTML gets through.
+  function mdInline(s) {
+    return s
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+      .replace(/__(.+?)__/g, "<u>$1</u>")
+      .replace(/~~(.+?)~~/g, "<s>$1</s>")
+      .replace(/(^|[^*\w])\*(?!\s)(.+?)\*(?!\w)/g, "$1<i>$2</i>")
+      .replace(/(^|[^_\w])_(?!\s)(.+?)_(?!\w)/g, "$1<i>$2</i>");
+  }
+  function renderMd(text) {
+    const out = [];
+    let list = null; // "ul" | "ol" while inside one
+    const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+    for (const raw of escH(text).split("\n")) {
+      const line = raw.trimEnd();
+      let m;
+      if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { close(); out.push(`<div class="md-h md-h${m[1].length}">${mdInline(m[2])}</div>`); }
+      else if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { close(); out.push('<div class="md-hr"></div>'); }
+      else if ((m = line.match(/^\s*[-*+]\s+(.*)$/))) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push(`<li>${mdInline(m[1])}</li>`); }
+      else if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; } out.push(`<li>${mdInline(m[1])}</li>`); }
+      else if ((m = line.match(/^\s*&gt;\s?(.*)$/))) { close(); out.push(`<div class="md-q">${mdInline(m[1])}</div>`); }
+      else if (!line.trim()) { close(); out.push('<div class="md-gap"></div>'); }
+      else { close(); out.push(`<div>${mdInline(line)}</div>`); }
+    }
+    close();
+    return out.join("");
+  }
+
   // ------------------------------------------------------------ documents
   // Handouts: a new one opens on arrival; DOCS lists them all.
   let docs = [];
@@ -653,7 +685,7 @@
     $("docs-title").textContent = `■ ${d.title.toUpperCase()} ■`;
     $("docs-list").hidden = true;
     $("docs-body").hidden = false;
-    $("docs-body").textContent = d.text;
+    $("docs-body").innerHTML = renderMd(d.text);
     $("docs-back").hidden = docs.length < 2;
     openPanel("docs");
   }
