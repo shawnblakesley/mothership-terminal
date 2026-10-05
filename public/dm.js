@@ -696,7 +696,11 @@
       panel.dataset.json = json;
       termDraft = structuredClone(S.config.terminals);
     }
-    const rooms = StationMap.parseLayout(S.config.map).flatMap((d) => d.rooms.map((r) => [r.id, `${r.label} (${d.label.split("·")[0].trim()})`]));
+    const decks = StationMap.parseLayout(S.config.map);
+    const deckRooms = decks.flatMap((d) => d.rooms.map((r) => [r.id, `${r.label} (${d.label.split("·")[0].trim()})`]));
+    // Docked rooms (the crew's tug) aren't on a deck: listed by what they're docked to.
+    const labelOf = (id) => decks.flatMap((d) => d.rooms).find((r) => r.id === id)?.label || id;
+    const rooms = [...deckRooms, ...StationMap.parseDocked(S.config.map).map((r) => [r.id, `${r.label} (docked at ${labelOf(r.parent)})`])];
     panel.innerHTML = termDraft.map((t, i) => {
       const here = (S.screens || []).filter((s) => s.terminal === t.id).map((s) => s.character || "a screen");
       return `<div class="tcard" data-i="${i}">
