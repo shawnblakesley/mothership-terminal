@@ -179,12 +179,13 @@ export function defaultGame(keys = {}) {
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
       playerTerminals: true, // players may move between terminals themselves
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
-      upgrades: ["ship", "rooms", "systems", "start-ship"], // one-time additions already made to this story (see migrateGame)
+      startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
     clocks: [],
-    handouts: [],
+    handouts: [structuredClone(WORK_ORDER)],
     whisper: "",
     sounds: [],
     synopsis: null, // the Warden's latest story synopsis (synopsis.js)
@@ -267,6 +268,16 @@ function migrateGame(saved) {
     if (config.lore === DEFAULT_LORE) config.terminals = startAboardShip(config.terminals);
     config.upgrades.push("start-ship");
   }
+  // Once: an original KESTREL-9 story starts the crew with their work order.
+  config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];
+  if (!config.upgrades.includes("work-order")) {
+    if (config.stationName === "KESTREL-9") {
+      config.startDocs = [WORK_ORDER];
+      saved.handouts = Array.isArray(saved.handouts) ? saved.handouts : [];
+      if (!saved.handouts.some((h) => h.id === WORK_ORDER.id)) saved.handouts.unshift(structuredClone(WORK_ORDER));
+    }
+    config.upgrades.push("work-order");
+  }
   // Once: the tug's terminal gets its own system (its own log, name and OS on the players' screens).
   if (!config.upgrades.includes("systems")) {
     const ship = config.terminals.find((t) => t.id === "ship" && !t.system);
@@ -301,6 +312,9 @@ function migrateGame(saved) {
     solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
 }
+
+// The default story's starting documents: the crew's work order, in everyone's DOCS.
+const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 4471-MAINT", text: "# HOLLIS-VANE EXTRACTION CO.\n## WORK ORDER 4471 - REACTOR SERVICE\n\n**VESSEL:** Penal tug SECOND CHANCE\n**ASSIGNED:** Convict maintenance crew (4)\n**STATION:** KESTREL-9, rimward ice platform\n**FILED:** 23 days prior - STATUS: OVERDUE\n**PRIORITY:** 2 / ROUTINE\n\n**TASK:** Service Deck 4 reactor. Core efficiency 70%. Rated minimum **99%**. Find the bleed, restore rated output.\n\n**TOOLS:** As issued at tender. Nothing is to be drawn from station stores.\n\n**ACCESS**\n- Airlock A inner door (Deck 1): **OVERRIDE CODE 4471-MAINT**. Entry logs to Administrator's console.\n- Reactor access, Deck 4: standard crew hatch.\n\n**DEPARTURE**\nSECOND CHANCE is slaved to station control. She will not undock until HV-CORE verifies the reactor at **99% or better** and transmits departure clearance. No exceptions, no overrides.\n\n~~Hazard pay authorised for duration of job.~~\n\n**DO NOT** interfere with station operations. Do not alter Deck 3 cargo configuration.\n\nHV-CORE // verified // 4471-MAINT", to: "", at: 0 };
 
 // The built-in story, always on offer in a game without a Warden (no build needed).
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
@@ -836,7 +850,7 @@ export class Session {
         this.playhead = 0;
         this.undoStack = [];
         s.log = [];
-        s.handouts = [];
+        s.handouts = structuredClone(s.config.startDocs || []);
         s.pending = null;
         s.whisper = "";
         s.roll = null;
@@ -1272,7 +1286,7 @@ export class Session {
     const { config, station } = applyDraft(draft);
     this.genCounter++;
     this.playhead = 0;
-    Object.assign(s.config, config, { rooms: {} }); // (new rooms: plans are drawn when first opened)
+    Object.assign(s.config, config, { rooms: {}, startDocs: [] }); // (new rooms: plans are drawn when first opened)
     Object.assign(s, { station, log: [], handouts: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopsis: null });
     for (const e of [...s.effects]) this.endEffect(e.id);
     this.stopSounds();
