@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { synthesize, setCacheDir, warmNeural } from "./tts.js";
 import { sanitizeVoices, speakingVoice, speechParts } from "./voices.js";
-import { getProvider, looksLikeKey, catalog, offered, fixSelection } from "./providers/index.js";
+import { getProvider, looksLikeKey, catalog, offered, fixSelection, LOCAL_KEYS } from "./providers/index.js";
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
 import { setSoundsDir, saveSound, soundPath, deleteSoundFile, deleteSessionSounds, MAX_SOUND_BYTES } from "./sounds.js";
 import { track, gauge } from "./telemetry.js";
@@ -174,8 +174,23 @@ router.get("/healthz", (req, res) => res.json({ ok: true, sessions: sessions.siz
 // Revalidate on every load (cheap with ETags) so players never run stale code after a deploy.
 router.use(express.static(pub, { index: false, maxAge: 0 }));
 
-// Providers and models for the "start a session" form (no keys involved).
-router.get("/api/providers", (_req, res) => res.json(catalog().map(({ configured, ...p }) => p)));
+// This computer, not the internet: a development run (the live server's service
+// sets NODE_ENV=production) reached straight from this machine on localhost, with
+// no proxy in between (the live site always comes through one). Only then can a
+// session use the keys in this computer's .env without pasting one.
+function isLocalRequest(req) {
+  if (process.env.NODE_ENV === "production" || req.headers["x-forwarded-for"] || req.headers["x-origin-secret"]) return false;
+  const ip = String(req.socket.remoteAddress || "");
+  const host = String(req.headers.host || "").replace(/:\d+$/, "").toLowerCase();
+  return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(ip) && ["localhost", "127.0.0.1", "[::1]"].includes(host);
+}
+
+// Providers and models for the "start a session" form (no keys involved). On this
+// computer, providers with a key in .env say so (localKey), so no key is asked for.
+router.get("/api/providers", (req, res) => {
+  const local = isLocalRequest(req);
+  res.json(catalog(local ? { [LOCAL_KEYS]: true } : {}).map(({ configured, ...p }) => ({ ...p, ...(local && configured && !p.free ? { localKey: true } : {}) })));
+});
 
 // Start a session: the Warden brings their own API key (kept in memory only),
 // or picks the free provider, which uses the server's key.
@@ -186,13 +201,18 @@ router.post("/api/sessions", express.json({ limit: "4kb" }), (req, res) => {
   const key = String(req.body?.apiKey || "").trim();
   rememberSecret(key);
   if (!provider || !offered(provider)) return res.status(400).json({ error: "Pick a provider." });
-  if (!provider.serverKeyOnly && !looksLikeKey(provider.id, key)) return res.status(400).json({ error: `That doesn't look like a ${provider.label} API key (expected ${provider.keyHint}).` });
+  // On this computer, with no key pasted: this computer's own key (.env), if it has one.
+  const localKey = !key && !provider.serverKeyOnly && isLocalRequest(req) && !!process.env[provider.envKey];
+  if (!provider.serverKeyOnly && !localKey && !looksLikeKey(provider.id, key)) return res.status(400).json({ error: `That doesn't look like a ${provider.label} API key (expected ${provider.keyHint}).` });
   sweep();
   if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: "The server is full right now. Try again later." });
-  const { session, token } = provider.serverKeyOnly ? createSession({}, provider.id) : createSession({ [provider.id]: key });
+  const { session, token } = provider.serverKeyOnly ? createSession({}, provider.id)
+    : localKey ? createSession({ [LOCAL_KEYS]: true }, provider.id)
+    : createSession({ [provider.id]: key });
+  if (localKey) session.useLocalKeys();
   // A game without a Warden: the player who made it is its pilot (they keep the token).
   if (req.body?.solo === true) session.startSolo();
-  console.log(`  + session ${session.code} created (${provider.id}${req.body?.solo === true ? ", no Warden" : ""})`);
+  console.log(`  + session ${session.code} created (${provider.id}${localKey ? ", this computer's key" : ""}${req.body?.solo === true ? ", no Warden" : ""})`);
   res.json({ code: session.code, token });
 });
 

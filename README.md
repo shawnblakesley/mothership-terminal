@@ -52,6 +52,8 @@ The free model works but is slow (a reply can take a minute) and writes thinner 
 
 Optional settings go in `.env` (see `.env.example`): `BASE_PATH` to serve under a sub-path, `DATA_DIR`, session limits.
 
+**On your own computer**, any key in `.env` (`DEEPSEEK_API_KEY`, `ANTHROPIC_API_KEY`) is used automatically: the start screens (Warden and no-Warden) offer that provider as "this computer's key" with nothing to paste, and the session keeps using it after a restart. That only happens when the server isn't in production (the live server runs with `NODE_ENV=production`) and the page is opened on this computer at `localhost`, not through a proxy; anyone else still brings their own key.
+
 For a private LAN game you can set `ALLOW_SERVER_KEYS=1` plus `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY`, so sessions use the server's keys. Never do that on a public server.
 
 If a session has no key, the agent stays quiet and you reply yourself with **Speak**.

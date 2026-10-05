@@ -150,20 +150,27 @@
     return out;
   }
 
+  let FREE_NOTE = "";
   async function showStart(error = "") {
+    FREE_NOTE ||= $("newFreeNote").textContent;
     document.body.classList.add("starting");
     $("start").hidden = false;
     $("startErr").textContent = error;
     const provs = await loadProviders();
     const sel = $("newProvider");
-    sel.innerHTML = provs.map((p) => `<option value="${esc(p.id)}">${esc(p.label)} · ${p.free ? "no key needed, rate-limited" : `cheapest: ${esc(p.models[0].label)}`}</option>`).join("");
+    sel.innerHTML = provs.map((p) => `<option value="${esc(p.id)}">${esc(p.label)} · ${p.free ? "no key needed, rate-limited" : p.localKey ? "this computer's key" : `cheapest: ${esc(p.models[0].label)}`}</option>`).join("");
+    // On this computer with a key in .env: that provider first, nothing to paste.
+    const local = provs.find((p) => p.localKey);
+    if (local) sel.value = local.id;
     const syncProv = () => {
       const p = provs.find((x) => x.id === sel.value);
-      // The free provider runs on the server's key: no key field.
-      const free = !!p?.free;
+      // The free provider runs on the server's key, and on this computer a provider
+      // with a key in .env uses that: no key field either way.
+      const free = !!p?.free || !!p?.localKey;
       $("newKeyFields").hidden = free;
       $("newKey").required = !free;
       $("newFreeNote").hidden = !free;
+      $("newFreeNote").textContent = p?.localKey ? `Running on this computer: this game uses the ${p.label} key in your .env file, so there's nothing to paste.` : FREE_NOTE;
       $("newKeyNote").hidden = free;
       $("newKey").placeholder = p?.keyHint || "";
       $("keyLink").href = p?.keyUrl || "#";
@@ -196,7 +203,8 @@
   $("createForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const provider = $("newProvider").value;
-    const free = !!providerCatalog.find((p) => p.id === provider)?.free;
+    const chosen = providerCatalog.find((p) => p.id === provider);
+    const free = !!chosen?.free || !!chosen?.localKey;
     const apiKey = free ? "" : $("newKey").value.trim();
     $("createBtn").disabled = true;
     $("startErr").textContent = "";

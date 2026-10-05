@@ -1,7 +1,7 @@
 // One game session: its station, log, voices, effects, connected players and
 // Warden consoles, and the agent loop. The server keeps many of these at once.
 import crypto from "crypto";
-import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey } from "./providers/index.js";
+import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
 import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES, shipVoice } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
@@ -313,6 +313,7 @@ function migrateGame(saved) {
     // A game without a Warden (see "no Warden" below): { phase, pitches, opened, error }.
     // (A build cut off by a restart goes back to choosing.)
     handouts: Array.isArray(saved.handouts) ? saved.handouts : [], // documents given to the players (see "handouts")
+    localKeys: !!saved.localKeys, // started on the server's own computer: may use its .env keys (providers/index.js)
     clocks: Array.isArray(saved.clocks) ? saved.clocks : [], // countdowns on the players' screens (see "clocks")
     solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
@@ -366,6 +367,7 @@ export class Session {
     this.handoutBusy = false; // the agent is writing a handout from the Warden's brief
     this.roomBusy = ""; // the map room whose floor plan the agent is drawing
     this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
+    if (this.state.localKeys) this.keys[LOCAL_KEYS] = true; // (started on this computer: its .env keys; see providers)
     this.freeCalls = { day: "", count: 0 }; // calls on the server's free key today (see callModel)
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
@@ -392,6 +394,13 @@ export class Session {
   toJSON() {
     const { pending, effects, playing, ...game } = this.state;
     return { code: this.code, tokenHash: this.tokenHash, createdAt: this.createdAt, lastActive: this.lastActive, game };
+  }
+
+  // Started on this computer (server.js): the keys in its .env, now and after a restart.
+  useLocalKeys() {
+    this.state.localKeys = true;
+    this.keys[LOCAL_KEYS] = true;
+    this.touch();
   }
 
   checkToken(token) {
@@ -1076,7 +1085,7 @@ export class Session {
         this.stopSounds();
         // The sound library is kept (its files are the Warden's uploads).
         this.clearClocks();
-        this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [] };
+        this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], localKeys: s.localKeys };
         this.initPlayers();
         break;
       default:
@@ -1775,7 +1784,7 @@ export class Session {
       for (const e of [...s.effects]) this.endEffect(e.id);
       this.stopSounds();
       this.clearClocks();
-      this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], solo: x };
+      this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], solo: x, localKeys: s.localKeys };
       Object.assign(this.state.config, keep, { mode: "auto", checkFirst: true });
       for (const ws of this.sockets) if (ws.role === "player") ws.character = null;
       x.phase = "play";

@@ -26,10 +26,17 @@ export function getProvider(id) {
 }
 
 // The key a session should use for a provider: its own, or (opt-in) the server's.
+// A session started on this computer (server.js isLocalRequest) carries
+// LOCAL_KEYS: it may use the server's own keys from .env, like a pasted one.
+// Never on a production server, whatever a saved session says.
+export const LOCAL_KEYS = Symbol.for("mothership.localKeys");
+const DEV_SERVER = process.env.NODE_ENV !== "production";
+
 export function keyFor(providerId, sessionKeys = {}) {
   const p = getProvider(providerId);
   if (p?.serverKeyOnly) return process.env[p.envKey] || "";
-  return sessionKeys[providerId] || (ALLOW_SERVER_KEYS && p ? process.env[p.envKey] : "") || "";
+  const serverKeys = ALLOW_SERVER_KEYS || (DEV_SERVER && !!sessionKeys[LOCAL_KEYS]);
+  return sessionKeys[providerId] || (serverKeys && p ? process.env[p.envKey] : "") || "";
 }
 
 // Is this provider offered at all? (The free one only with the server's key.)

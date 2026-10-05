@@ -746,20 +746,23 @@
     $("soloStart").showModal();
     const list = await providerList();
     // The free model first when the server offers one: nothing to set up.
-    const order = [...list.filter((p) => p.free), ...list.filter((p) => !p.free)];
-    $("ss-provider").innerHTML = order.map((p) => `<option value="${escH(p.id)}">${escH(p.label)}${p.free ? " · no key needed, slow" : ` · ${escH(p.models[0].label)}`}</option>`).join("");
+    // This computer's own key first (a local run), then the free model, then the rest.
+    const order = [...list.filter((p) => p.localKey), ...list.filter((p) => p.free), ...list.filter((p) => !p.free && !p.localKey)];
+    $("ss-provider").innerHTML = order.map((p) => `<option value="${escH(p.id)}">${escH(p.label)}${p.free ? " · no key needed, slow" : p.localKey ? " · this computer's key" : ` · ${escH(p.models[0].label)}`}</option>`).join("");
     syncSoloStart();
   }
   function syncSoloStart() {
     const p = providers.find((x) => x.id === $("ss-provider").value);
-    const free = !!p?.free;
+    const free = !!p?.free || !!p?.localKey;
     $("ss-keyrow").hidden = $("ss-rememberrow").hidden = free;
     $("ss-keylink").href = p?.keyUrl || "#";
     $("ss-key").placeholder = p?.keyHint || "";
     const remembered = p && ls.get(`wardenKey:${p.id}`);
     $("ss-key").value = remembered || "";
     $("ss-remember").checked = !!remembered;
-    $("ss-note").innerHTML = free
+    $("ss-note").innerHTML = p?.localKey
+      ? `Running on this computer: the game uses the ${escH(p.label)} key in your .env file, so there's nothing to paste.`
+      : free
       ? "<b>Heads up:</b> the free model is shared, slow (a reply can take a minute or more) and writes thinner stories, and if its limit runs out the game stops answering. For a much better game, use DeepSeek: a fraction of a cent per reply. You can switch any time under PILOT."
       : "Your key stays in the server's memory for this game only; it is never saved or shown to anyone. You pay your provider for what the AI uses (a fraction of a cent per reply on the cheap models).";
   }
@@ -768,7 +771,8 @@
   $("soloStartForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const provider = $("ss-provider").value;
-    const free = !!providers.find((p) => p.id === provider)?.free;
+    const chosen = providers.find((p) => p.id === provider);
+    const free = !!chosen?.free || !!chosen?.localKey;
     const apiKey = free ? "" : $("ss-key").value.trim();
     $("ss-go").disabled = true;
     $("ss-err").textContent = "";
