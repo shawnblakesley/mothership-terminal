@@ -32,6 +32,10 @@ A group can play with no Warden at all: the AI builds a story and runs it.
 3. **The AI builds it** (a minute or two, longer on the free model; the same builder as **Story Builder**): station, lore, secrets, cast, map, terminals and four characters. Everyone picks a crew file, and the AI opens the scene.
 4. **Then it plays like a normal game.** The AI is the Warden too: uncertain attempts become rolls for whoever tried them, with the stakes on the roll prompt (**IF IT WORKS / IF IT FAILS**); when no roll fits, it rules fairly itself. It calls Panic checks when something truly horrifying happens, applies harm and Stress, and characters nobody is playing roll by themselves.
 
+5. **It ends.** When the story reaches its end (an escape, everyone dead, a terrible truth), the AI plays the final scene and every screen shows **THE END**: how it ended, and a recap it writes (what happened, the truth now that it's over, each character's fate). The pilot can also **Wrap up the story** any time, or **Play another story**.
+
+The free model works but is slow (a reply can take a minute) and writes thinner stories; the setup says so and suggests DeepSeek. Players see how long the AI has been thinking (**PROCESSING · 23S**).
+
 **PILOT** (only on the pilot's screen; the session token is kept on that device) has the invite code and link, the AI provider, model, thinking and key, **Choose a new story** and **End the game**. The pilot never sees the Warden's console, so there are no spoilers for them either. If the AI fails to answer, every screen gets a short notice and the players can just type again.
 
 ## Run it yourself
@@ -161,11 +165,18 @@ If a player types while lines are still playing, the comms cut off on every scre
 - players may change their own health, wounds and stress; roll their own stats and saves; move between terminals,
 - voices speak aloud on the players' screens.
 
+## Clocks, handouts and items
+
+- **Clocks** (Actions tab): countdowns on every player's screen, under the header (a hull breach, oxygen, a self-destruct); the last half minute flashes red. Name it, set the minutes, start it; ✕ stops it. The agent starts and stops them too. When one runs out, the agent is told to make it happen (with real consequences), and the log notes it.
+- **Handouts** (Actions tab): documents in the players' hands: a medical log, a work order, a diary page. Give one to everyone or one character; it pops up on their screens and stays under **DOCS** in their header. ↻ shows it again, ✕ takes it back. The agent can hand them out too, for things the players find or download.
+- **Items**: each character carries a list of items (it starts from their loadout). Players see **ITEMS** on their sheet. On the Crew tab, ✕ drops one and **+ add** adds one, even in read-only. The agent tracks what's picked up, used up, lost or taken, and gives [+] when a fitting item helps a roll ([-] without the right tool). Retcon puts items back too.
+
 ## DM console
 
 | Area | What it does |
 |---|---|
 | **Layout** | Left: the comms log, then whatever needs you right now (a **⚖ Your call** ruling, the agent's draft reply, a roll in progress or its results; hidden when nothing does), then the compose box. Right: the control panel, with tabs for **Actions** (**Roll** for rolls you call yourself, **Effects** and **Sounds**), **Map** (drawing or status board, plus the raw station state), **Crew** (player characters and terminals) and **Story** (voices & personas, standing orders, lore & secrets). |
+| **On a phone** | One view at a time, picked from the bar at the bottom: **Comms** (the log fills the screen, the compose box at the bottom), **Actions**, **Map**, **Crew**, **Story**, **Rules**. A dot on Comms means a ruling, a draft or a roll is waiting. The header fits on one line. |
 | **Read-only / ✎ Edit** | Beside the side tabs. Read-only (the default, remembered per device) shows what you need while running the game: compact character sheets (Health, Wounds and Stress still adjustable), where each terminal is, whether it's reachable and who's at it, the cast, standing orders, and lore and secrets to read. **✎ Edit** shows the setup: full character sheets, terminal settings, the Connections grid, voice editors, the raw station state, and editable lore. |
 | **Rules** tab | A quick Mothership 1e reference: checks and saves, criticals, advantage, Stress and Panic, Health and Wounds, combat, tips for running it, and how rolls work in this app. |
 | **Mode** (top right) | **Auto** (the default): agent replies go straight to players. **Review**: every reply arrives as an editable draft that you send, regenerate with steering, or discard. |

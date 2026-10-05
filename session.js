@@ -9,7 +9,7 @@ import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS, changeItem } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
-import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
+import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap } from "./synopsis.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
@@ -1572,6 +1572,8 @@ export class Session {
     for (const e of effects) this.startEffect(e, "agent");
     this.applyCrewChanges(reply?.crew_changes);
     this.applyItemChanges(reply?.item_changes);
+    // The story's over (in a game without a Warden; with one, the Warden decides).
+    if (reply?.story_end?.ended && this.state.solo?.phase === "play") setTimeout(() => this.soloEnd(reply.story_end.how), 0);
     for (const c of reply?.clocks || []) c.action === "stop" ? this.stopClock(c.label) : this.startClock(c.label, c.seconds, "agent");
     for (const h of reply?.handouts || []) this.giveHandout({ title: h.title, text: h.text, to: findCharacterId(this.state.config.crew, h.for) }, "agent");
   }
@@ -1701,7 +1703,7 @@ export class Session {
 
   soloView() {
     const x = this.state.solo;
-    return x ? { phase: x.phase, pitches: x.pitches, busy: x.busy || "", error: x.error || "", title: x.title || "" } : null;
+    return x ? { phase: x.phase, pitches: x.pitches, busy: x.busy || "", error: x.error || "", title: x.title || "", ending: x.ending || "", recap: x.recap || null } : null;
   }
   soloChanged() {
     this.toPlayers({ t: "solo", solo: this.soloView() });
@@ -1755,15 +1757,20 @@ export class Session {
     Object.assign(x, { phase: "building", busy: "build" });
     this.soloChanged();
     try {
-      let raw;
+      // A draft that comes back cut off, malformed or missing its essentials gets one more try.
+      const build = async () => {
+        const d = normalizeDraft(await this.ask(draftRequest(pitchBuilder(p)), "builder"));
+        if (!d.crew?.length || !d.stationName || !d.map) throw Object.assign(new Error("the story came back incomplete"), { incomplete: true });
+        return d;
+      };
+      let draft;
       try {
-        raw = await this.ask(draftRequest(pitchBuilder(p)), "builder");
+        draft = await build();
       } catch (err) {
-        if (!/cut off|valid JSON|empty/i.test(err?.message || "")) throw err;
+        if (!err.incomplete && !/cut off|valid JSON|empty/i.test(err?.message || "")) throw err;
         console.warn(`[${this.code}] story build retry: ${err.message}`);
-        raw = await this.ask(draftRequest(pitchBuilder(p)), "builder");
+        draft = await build();
       }
-      const draft = normalizeDraft(raw);
       if (x.phase !== "building") return; // (the pilot started over meanwhile)
       x.phase = "play";
       this.applyStory(draft);
@@ -1775,6 +1782,28 @@ export class Session {
     x.busy = "";
     this.soloChanged();
     this.syncDm();
+  }
+
+  // The end: the story's final scene has played (or the pilot wrapped it up).
+  // Every screen shows THE END, with a recap the agent writes now that it's over.
+  async soloEnd(how) {
+    const x = this.state.solo;
+    if (!x || x.phase !== "play") return;
+    Object.assign(x, { phase: "ended", ending: String(how || "").slice(0, 300), recap: null, busy: "recap", error: "" });
+    this.genCounter++; // (nothing more from the agent)
+    this.state.pending = null;
+    this.setBusy(false);
+    for (const c of [...this.state.clocks]) this.stopClock(c.id, true);
+    this.clocksChanged();
+    this.addLog("note", `The story ended${x.ending ? `: ${x.ending}` : "."}`);
+    this.soloChanged();
+    try {
+      x.recap = normalizeRecap(await this.ask(recapRequest(this.state, x.ending), "synopsis"));
+    } catch (err) {
+      x.error = `Couldn't write the recap (${err?.message || err}).`;
+    }
+    x.busy = "";
+    this.soloChanged();
   }
 
   // The story's first scene, once someone has a crew file.
@@ -1838,9 +1867,12 @@ export class Session {
       case "pilotBuild":
         this.soloBuild(Number(msg.i));
         break;
+      case "pilotWrapUp": // end the story now (the recap follows)
+        this.soloEnd(String(msg.how || "The crew called it a night."));
+        break;
       case "pilotNewStory": // back to choosing (the current story is dropped)
         this.genCounter++;
-        Object.assign(x, { phase: "pick", busy: "", error: "", opened: false });
+        Object.assign(x, { phase: "pick", busy: "", error: "", opened: false, ending: "", recap: null });
         this.state.pending = null;
         this.setBusy(false);
         this.soloChanged();

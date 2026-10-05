@@ -101,6 +101,55 @@ export function synopsisRequest(state, screens = []) {
   };
 }
 
+// ---------------------------------------------------------------- the end
+// When a game without a Warden ends: the recap the players see on the END
+// screen. Now that it's over, the secrets can come out.
+const RECAP = `A Mothership (sci-fi horror TTRPG) story the players were playing has just ENDED. Write them a short recap to read on the END screen: it's over, so spoilers are fine now and the truth can come out.
+
+- verdict: one line naming how it ended, like a closing title (e.g. "Three made it off KESTREL-9. One didn't.").
+- sections, in this order, each short bullet lines ("- ...", each under ~20 words):
+  1. "What happened": 4-8 bullets, the story as it played out, from the COMMS LOG.
+  2. "The truth": 2-5 bullets of what was really going on (from SECRETS), including what they never found out.
+  3. "The crew": one bullet per character: their fate (made it out, died, lost their mind, left behind...) and one moment that defined them.
+Plain text, no markdown.`;
+
+export const RECAP_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["verdict", "sections"],
+  properties: {
+    verdict: str,
+    sections: { type: "array", items: { type: "object", additionalProperties: false, required: ["heading", "text"], properties: { heading: str, text: str } } },
+  },
+};
+
+export function recapRequest(state, how) {
+  const c = state.config;
+  const log = state.log.filter((e) => !e.cut && (e.text || e.variants?.length));
+  const context = [
+    `STATION NAME: ${c.stationName}`,
+    `STATION LORE:\n${c.lore || "(none)"}`,
+    `SECRETS:\n${c.secrets || "(none)"}`,
+    c.crew?.length ? `THE PLAYERS' CHARACTERS:\n${crewBrief(c.crew)}\n\nCONDITION AT THE END:\n${crewStatus(c.crew)}` : "",
+  ].filter(Boolean).join("\n\n");
+  return {
+    system: RECAP,
+    context,
+    messages: [{ role: "user", content: `COMMS LOG (oldest first):\n${log.slice(-LOG_ENTRIES).map((e) => logLine(e, c.voices)).join("\n")}\n\nHOW IT ENDED: ${how || "(the players called it a night)"}\n\nWrite the recap.` }],
+    schema: RECAP_SCHEMA,
+    example: { verdict: "...", sections: [{ heading: "What happened", text: "- ..." }, { heading: "The truth", text: "- ..." }, { heading: "The crew", text: "- ..." }] },
+  };
+}
+
+export function normalizeRecap(raw) {
+  const sections = (Array.isArray(raw?.sections) ? raw.sections : [])
+    .filter((x) => x && String(x.text ?? "").trim())
+    .slice(0, 6)
+    .map((x) => ({ heading: String(x.heading ?? "").slice(0, 80), text: String(x.text).trim().slice(0, 4000) }));
+  if (!sections.length) throw new Error("the recap came back empty");
+  return { verdict: String(raw?.verdict ?? "").trim().slice(0, 200), sections };
+}
+
 export function normalizeSynopsis(raw) {
   const sections = (Array.isArray(raw?.sections) ? raw.sections : [])
     .filter((x) => x && String(x.text ?? "").trim())

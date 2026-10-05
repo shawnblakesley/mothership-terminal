@@ -217,8 +217,8 @@
     <button id="sessionCode" class="code" title="Session code: click to copy the player link">------</button>
     <span class="grow"></span>
     <span id="keywarn" class="pill bad" hidden></span>
-    <button id="synopsisBtn" class="ghost" title="A briefing to share with the players (who they are, where, what they know, what they're here to do), with notes for you on the story beats and next steps">Synopsis</button>
-    <button id="builderBtn" class="ghost" title="Create a brand-new station, cast and crew with the agent">Story Builder</button>
+    <button id="synopsisBtn" class="ghost" data-short="Brief" title="A briefing to share with the players (who they are, where, what they know, what they're here to do), with notes for you on the story beats and next steps">Synopsis</button>
+    <button id="builderBtn" class="ghost" data-short="Build" title="Create a brand-new station, cast and crew with the agent">Story Builder</button>
     <button id="settingsBtn" class="ghost" aria-label="Settings" title="Settings: AI model and key, joining, what the agent and players may do, and the session">⚙</button>
     <div class="seg" id="mode" role="radiogroup" aria-label="Response mode">
       <button data-mode="auto" title="Agent replies go straight to players">Auto</button>
@@ -472,6 +472,12 @@
       </div>
     </section>
   </div>
+
+  <!-- Phones: one view at a time, picked here (the side panel's tabs, plus the comms). -->
+  <nav id="mnav" class="mnav" aria-label="Views">
+    <button data-mview="comms">Comms<span id="mnavDot" class="tabdot" hidden title="Waiting on you"></span></button>
+    <button data-mview="actions">Actions</button><button data-mview="map">Map</button><button data-mview="crew">Crew</button><button data-mview="story">Story</button><button data-mview="rules">Rules</button>
+  </nav>
 
   <script src="voice.js"></script>
   <script src="stationmap.js"></script>

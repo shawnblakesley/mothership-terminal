@@ -564,6 +564,36 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .castv ul { margin: 2px 0 0; padding-left: 18px; font-size: 13px; }
 .castv li { margin: 2px 0; }
 
+/* ---- phones: one view at a time (comms, or one side tab), picked from the
+   bottom bar; the header on one line. ---- */
+.mnav { display: none; }
+@media (max-width: 760px) {
+  html, body { height: 100%; }
+  body { height: 100dvh; }
+  header.top { flex-wrap: nowrap; gap: 4px; padding: 6px 8px; overflow-x: auto; }
+  header.top h1 { display: none; }
+  header.top #conn { font-size: 0; width: 10px; height: 10px; padding: 0; flex-shrink: 0; background: currentColor; }
+  header.top .code { letter-spacing: 0.12em; padding: 4px 8px; }
+  header.top > * { flex-shrink: 0; }
+  header.top .grow { flex: 1 1 0; min-width: 0; }
+  header.top button[data-short] { font-size: 0; padding: 5px 8px; }
+  header.top button[data-short]::after { content: attr(data-short); font-size: 13px; }
+  header.top #mode button { padding: 5px 7px; }
+  header.top #settingsBtn { padding: 5px 7px; }
+  .grid { display: block; flex: 1; min-height: 0; overflow: hidden; }
+  .grid > .col { height: 100%; overflow-y: auto; border: 0; padding: 10px 12px; }
+  body[data-mview="comms"] .grid > .col.side, body:not([data-mview="comms"]) .grid > .col:not(.side) { display: none; }
+  .grid > .col:not(.side) > h2:first-child { display: none; }
+  .log { max-height: none; min-height: 0; flex: 1; }
+  .sidehead .tabs { display: none; } /* (the bottom bar picks the tab) */
+  .sidehead { justify-content: flex-end; }
+  .mnav { display: flex; flex-shrink: 0; border-top: 1px solid var(--line); background: var(--panel); padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); gap: 2px; }
+  .mnav button { flex: 1; min-width: 0; border: 0; background: none; color: var(--muted); padding: 9px 2px; font-size: 13px; border-radius: 8px; position: relative; }
+  .mnav button.on { color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
+  .mnav .tabdot { position: absolute; top: 5px; right: 8px; }
+  .tray { max-height: 45vh; }
+}
+
 /* Clocks */
 .clockform input#clockLabel { flex: 1; min-width: 140px; }
 .clockform input#clockMins { width: 64px; }

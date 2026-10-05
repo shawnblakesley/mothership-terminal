@@ -473,7 +473,7 @@
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   function openPanel(id) {
-    for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "solopick", "docs"]) $(p).hidden = p !== id;
+    for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "solopick", "docs", "ending"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
     // (Not before power-on: the key that wakes the terminal would also press the button.)
     if (id === "crewpick" && bootEl.classList.contains("gone")) $("crewpick-list").querySelector("button")?.focus();
@@ -748,6 +748,8 @@
   let solo = null, isPilot = false, pilot = null, pilotKeySent = false;
   function applySolo(x) {
     solo = x || null;
+    if (solo?.phase === "ended") return showEnding();
+    if (!$("ending").hidden) openPanel(null);
     if (!solo || solo.phase === "play") {
       if (!$("solopick").hidden) openPanel(null);
       return;
@@ -772,6 +774,22 @@
     $("solopick-more").hidden = !isPilot || building;
     $("solopick-more").disabled = !!solo.busy;
   }
+  // THE END: once the final scene has played out on this screen.
+  let endingTimer = null;
+  function showEnding() {
+    clearTimeout(endingTimer);
+    if (plays.size) { endingTimer = setTimeout(showEnding, 700); return; }
+    const x = solo;
+    $("ending-verdict").textContent = (x.recap?.verdict || "").toUpperCase();
+    $("ending-how").textContent = x.ending ? x.ending.toUpperCase() : "";
+    $("ending-recap").innerHTML = (x.recap?.sections || []).map((s) => `<div class="rc-h">${escH(s.heading.toUpperCase())}</div><div class="rc-t">${escH(s.text)}</div>`).join("");
+    $("ending-status").innerHTML = x.busy === "recap" ? 'WRITING THE RECAP<span class="dots"></span>' : escH((x.error || "").toUpperCase());
+    $("ending-again").hidden = !isPilot;
+    if (!isPilot && x.busy !== "recap") $("ending-status").textContent = (x.error ? `${x.error} ` : "").toUpperCase() + "THE PILOT CAN START ANOTHER STORY.";
+    openPanel("ending");
+  }
+  $("ending-again").onclick = () => ws?.send(JSON.stringify({ t: "pilotNewStory" }));
+
   const pickStory = (i) => solo?.phase === "pick" && !solo.busy && ws?.send(JSON.stringify({ t: "pilotBuild", i }));
   $("solopick-list").addEventListener("click", (e) => { const i = e.target.closest("[data-pick]")?.dataset.pick; if (i !== undefined) pickStory(Number(i)); });
   $("solopick-more").onclick = () => ws?.send(JSON.stringify({ t: "pilotPitches" }));
@@ -825,6 +843,11 @@
     const link = `${location.origin}${location.pathname}?s=${code}`;
     try { await navigator.clipboard.writeText(link); $("pl-copy").textContent = "Copied"; } catch { prompt("Copy this link:", link); }
     setTimeout(() => { $("pl-copy").textContent = "Copy link"; }, 1500);
+  };
+  $("pl-wrapup").onclick = () => {
+    if (!confirm("Wrap up the story here? Everyone gets THE END and a recap.")) return;
+    pilotSend({ t: "pilotWrapUp" });
+    $("pilotDlg").close();
   };
   $("pl-newstory").onclick = () => {
     if (!confirm("Choose a new story? The current one ends for everyone.")) return;

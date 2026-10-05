@@ -157,6 +157,12 @@ body {
 #inputrow.disabled #caret, #inputrow:not(:focus-within) #caret { display: none; }
 @keyframes blink { 50% { opacity: 0; } }
 
+/* THE END */
+.ending-verdict { margin: 0.5em 0 0.3em; letter-spacing: 0.06em; }
+#ending-recap .rc-h { margin-top: 0.8em; color: var(--fg); }
+#ending-recap .rc-t { white-space: pre-wrap; color: var(--dim); }
+#ending { max-height: 80vh; overflow-y: auto; }
+
 /* Documents (handouts): read as printed text. */
 .docbody { margin: 0.6em 0; white-space: pre-wrap; font: inherit; max-height: 60vh; overflow-y: auto; }
 #docs-list li .p-dim { margin-left: 0.6em; }

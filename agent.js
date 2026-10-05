@@ -107,7 +107,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "item_changes", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "item_changes", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -242,6 +242,16 @@ function buildSchema(voices) {
           on_failure: { type: "string", description: "The stakes, if it fails: what goes wrong or gets worse (not just 'nothing happens'), in one short sentence (empty if not needed)." },
         },
       },
+      story_end: {
+        type: "object",
+        description: "Only in a game with NO WARDEN (see NO WARDEN): ended=true when this reply is the story's final scene. Otherwise ended=false and how=\"\".",
+        additionalProperties: false,
+        required: ["ended", "how"],
+        properties: {
+          ended: { type: "boolean" },
+          how: { type: "string", description: "If it ended: one line, e.g. \"They escaped on the tug; Rook stayed behind.\"" },
+        },
+      },
       dm_note: { type: "string", description: "Private note to the Warden: reasoning, what the players may be trying, suggestions, answers to Warden questions. Never shown to players." },
     },
   };
@@ -278,6 +288,7 @@ const REPLY_EXAMPLE = {
   room_plans: [],
   effects: [],
   outcome_check: NO_CHECK,
+  story_end: { ended: false, how: "" },
   dm_note: "The players asked Salk about the cargo door; he begged them not to, then quarantine kicked in.",
 };
 
@@ -574,7 +585,7 @@ const SOLO = `NO WARDEN: nobody is running this game but you. The players chose 
 - Panic: when something truly horrifying happens to them (a crewmate dies, the thing is in the room, there is no way out), set outcome_check.needed=true with suggested_check=panic. On a Panic, give the character a fitting, concrete panic response yourself.
 - Apply harm and Stress through crew_changes as a Warden would.
 - Keep the secrets discoverable: they should be able to find things out by asking, searching and hacking, at the right access level.
-- The story can end: escape, death, a terrible truth. When it does, say so in-world, plainly.
+- The story can end: escape, everyone dead, a terrible truth with nothing left to do. When it does, write the final scene, and set story_end.ended=true with a one-line how. Don't end it early: only when it's truly over.
 - Nobody reads dm_note.`;
 
 function buildContext(state, steer, aside = false) {
@@ -685,6 +696,7 @@ export function parseReply(text, voices) {
       .map((c) => ({ path: c.path.trim(), value: String(c.value ?? "") })),
     effects: normalizeEffects(r?.effects),
     outcome_check: normalizeCheck(r?.outcome_check),
+    story_end: { ended: r?.story_end?.ended === true, how: String(r?.story_end?.how ?? "").trim().slice(0, 300) },
     layout: String(r?.layout ?? "").trim().slice(0, 4000),
     room_plans: (Array.isArray(r?.room_plans) ? r.room_plans : []).filter((p) => p && p.room && Array.isArray(p.rows)).slice(0, 8)
       .map((p) => ({ room: String(p.room).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 60), rows: p.rows.map(String) })),

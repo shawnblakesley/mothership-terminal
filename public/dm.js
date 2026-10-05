@@ -286,6 +286,7 @@
     renderBuilder();
     renderSynopsis();
     renderRoom();
+    renderMnavDot();
     $("retcon").disabled = !S.canRetcon;
     $("retcon").textContent = S.canRetcon > 1 ? `↶ Retcon last response (${S.canRetcon})` : "↶ Retcon last response";
   }
@@ -866,6 +867,24 @@
     termSentAt = 0;
     renderTerminals(true);
   };
+
+  // ------------------------------------------------------------ phones
+  // One view at a time, from the bottom bar: the comms, or a side tab (which
+  // also flips the side panel's own tabs, so the two stay in step).
+  function setMview(v) {
+    document.body.dataset.mview = v;
+    for (const b of $("mnav").querySelectorAll("[data-mview]")) b.classList.toggle("on", b.dataset.mview === v);
+    if (v !== "comms") document.querySelector(`.tabs[data-tabs="side"] [data-tab="${v}"]`)?.click();
+    store.set("mview", v);
+    renderMnavDot();
+  }
+  // Something waits on the Warden beside the log (a ruling, a draft, a roll) while they're elsewhere.
+  function renderMnavDot() {
+    const waiting = [...$("tray").children].some((c) => !c.hidden);
+    $("mnavDot").hidden = !waiting || document.body.dataset.mview === "comms";
+  }
+  $("mnav").addEventListener("click", (e) => { const v = e.target.closest("[data-mview]")?.dataset.mview; if (v) setMview(v); });
+  setMview(store.get("mview") || "comms");
 
   // ------------------------------------------------------------ edit mode
   // Read-only (the default, remembered per device) shows what matters while
