@@ -346,6 +346,28 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { displ
 .s-bar.hot { animation: blink 1.2s infinite steps(1); }
 #hdr .hdr-btn.on { text-decoration: underline; }
 
+/* The rules: a plain, readable sheet over the terminal (no glow, no terminal font). */
+.rulesdlg { width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid #3a3f44; border-radius: 12px;
+  background: #15181b; color: #e9ecef; font: 16px/1.55 system-ui, "Segoe UI", sans-serif; text-shadow: none; letter-spacing: normal; text-transform: none;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; }
+.rulesdlg:not([open]) { display: none; }
+.rulesdlg::backdrop { background: rgba(0, 0, 0, 0.72); }
+.rules-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #2c3135; }
+.rules-head h1 { flex: 1; margin: 0; font-size: 20px; font-weight: 650; color: #fff; }
+.rules-head button { background: none; border: 1px solid #3a3f44; border-radius: 8px; color: #e9ecef; font-size: 16px; width: 34px; height: 34px; cursor: pointer; }
+.rules-head button:hover, .rules-head button:focus-visible { background: #262b2f; outline: none; }
+.rules-body { overflow-y: auto; padding: 4px 22px 18px; }
+.rules-body h2 { margin: 18px 0 6px; font-size: 15px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg); }
+.rules-body ul { margin: 0; padding-left: 20px; }
+.rules-body li { margin: 4px 0; }
+.rules-body b { color: #fff; }
+.rules-body .lead { font-size: 17px; color: #fff; margin: 14px 0 4px; }
+.rules-body dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
+.rules-body dt { font-weight: 600; color: #fff; }
+.rules-body dd { margin: 0; color: #b9c0c6; }
+.rules-body .fine { margin: 18px 0 0; font-size: 13px; color: #8a939a; }
+@media (max-width: 520px) { .rules-body dl { grid-template-columns: 1fr; } .rules-body dd { margin-bottom: 6px; } }
+
 /* Clickable stats, vitals controls, the self-roll panel. */
 .s-rolls { display: flex; flex-wrap: wrap; gap: 0.1em 0.7em; margin-top: 0.15em; }
 .s-roll .s-k, .p-btn .p-dim { color: var(--dim); }

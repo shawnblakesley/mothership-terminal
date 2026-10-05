@@ -614,6 +614,14 @@
     if (c) { e.preventDefault(); claim(c.id); renderFile(); openPanel("crewfile"); $("crewfile-close").focus(); }
   });
   $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
+  // The rules: a readable modal over the terminal (Esc or ✕ closes it).
+  $("hdr-rules").onclick = () => $("rules").showModal();
+  $("rules-close").onclick = () => $("rules").close();
+  $("rules").addEventListener("click", (e) => { if (e.target === $("rules")) $("rules").close(); }); // (outside the sheet)
+  // While it's open the terminal's own shortcuts (number keys, typing, Esc) stand down;
+  // the dialog's own keys (Esc, Tab, Enter) still work.
+  addEventListener("keydown", (e) => { if ($("rules").open) e.stopImmediatePropagation(); }, true);
+
   $("hdr-file").onclick = () => {
     if (mine() && wide() && $("crewfile").hidden && $("crewpick").hidden) return setSide(!sideOpen);
     renderFile();

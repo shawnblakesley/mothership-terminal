@@ -25,6 +25,8 @@
       <span class="sep" id="hdr-term-sep" hidden>//</span>
       <button id="hdr-file" class="hdr-btn" type="button" title="Your crew file" hidden>FILE</button>
       <span class="sep" id="hdr-file-sep" hidden>//</span>
+      <button id="hdr-rules" class="hdr-btn" type="button" title="How to play: the rules, in plain text">RULES</button>
+      <span class="sep">//</span>
       <span class="vol">
         <button id="vol-mute" type="button" title="Mute / unmute">VOL</button>
         <span id="vol-bars" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="10"></span>
@@ -122,6 +124,60 @@
     <div class="grain"></div>
     <div class="bezel"></div>
   </div>
+
+  <!-- The rules, for players: a plain, readable sheet over the terminal (not terminal text). -->
+  <dialog id="rules" class="rulesdlg" aria-labelledby="rules-title">
+    <div class="rules-head">
+      <h1 id="rules-title">How to play</h1>
+      <button type="button" id="rules-close" aria-label="Close">✕</button>
+    </div>
+    <div class="rules-body">
+      <p class="lead">Mothership is survival horror. You are workers, not heroes: stay alive, find out what happened, and get out. Running, hiding and bargaining are good plans.</p>
+
+      <h2>Rolling</h2>
+      <ul>
+        <li>When the Warden needs a roll, a <b>ROLL REQUIRED</b> box appears. Roll on screen, or roll real dice and type the number in.</li>
+        <li>Roll <b>d100</b> (00–99). <b>Under</b> your number succeeds; equal or over fails.</li>
+        <li>Your number is a <b>Stat</b> or <b>Save</b> from your crew file, <b>+ a Skill</b> if one fits: Trained +10, Expert +15, Master +20.</li>
+        <li><b>Doubles</b> (00, 11 … 99) are critical: a critical success, or a critical failure.</li>
+        <li><b>[+] Advantage:</b> roll twice, keep the better. <b>[-] Disadvantage:</b> keep the worse.</li>
+        <li><b>Every failed roll adds 1 Stress.</b></li>
+      </ul>
+
+      <h2>Stats and saves</h2>
+      <dl>
+        <dt>Strength</dt><dd>lifting, pushing, holding on, brute force</dd>
+        <dt>Speed</dt><dd>getting there first, dodging, reacting</dd>
+        <dt>Intellect</dt><dd>knowing, fixing, hacking, working it out</dd>
+        <dt>Combat</dt><dd>hitting what you aim at</dd>
+        <dt>Sanity save</dt><dd>keeping your grip when things can't be real</dd>
+        <dt>Fear save</dt><dd>holding your nerve: terror, gore, being hunted</dd>
+        <dt>Body save</dt><dd>enduring toxins, disease, cold, hunger, being thrown about</dd>
+      </dl>
+
+      <h2>Stress and Panic</h2>
+      <ul>
+        <li>Stress starts at 2 and climbs with every failure and every horror.</li>
+        <li>When something truly awful happens, the Warden may call a <b>Panic check</b>: roll <b>d20</b>. <b>Above</b> your Stress, you hold it together. <b>Equal or under</b>, you panic, and the Warden tells you what that means.</li>
+        <li>Rest somewhere safe to shed Stress.</li>
+      </ul>
+
+      <h2>Getting hurt</h2>
+      <ul>
+        <li>Damage comes off your <b>Health</b>. Armour reduces each hit.</li>
+        <li>At <b>0 Health</b> you take a <b>Wound</b>, then your Health resets. Run out of Wounds and you die.</li>
+      </ul>
+
+      <h2>Staying alive</h2>
+      <ul>
+        <li>Ask the terminal things. Information keeps you alive.</li>
+        <li>Say exactly what you do. A good plan may not need a roll at all.</li>
+        <li>Use your gear, your skills and each other.</li>
+        <li>If something feels wrong, it is.</li>
+      </ul>
+      <p class="fine">Mothership 1e by Tuesday Knight Games. Your Warden has the final word.</p>
+    </div>
+  </dialog>
 
   <script src="effects.js"></script>
   <script src="voice.js"></script>
