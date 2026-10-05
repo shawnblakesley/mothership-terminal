@@ -46,6 +46,8 @@ FIELDS
 - terminals: 3-6 physical terminals the players can use, in map rooms (room = a room id from the map), each with a look (any of: ${LOOKS.filter((l) => l !== "portable").join(", ")}; [] for clean), open (can the players reach it at the start?), system and os, and notes (what's there, what happened at it). system is "" for the station's own network; a separate machine that isn't on it (the players' ship, a shuttle, a derelict) gets its own system name, and os the name of its operating system (e.g. "TUG-CORE OS v2.7"), and its screens show only what's said on it. Most terminals are on the station ("" and ""). Make the looks tell the story: clean where they arrive, bloody and cracked where it went wrong. A portable handheld terminal is added automatically.
 - crew: the players' characters (1-4, normally 4), Mothership 1e. className one of ${CLASSES.join(", ")}. Stats ${STATS.join("/")} roughly 20-50 (class strengths higher); Saves ${SAVES.join("/")} roughly 15-40 (Android: Fear 60ish, Sanity lower). Health max 10-20, Wounds max 2 (Android 3), Stress 2. 3-5 skills (e.g. Zero-G, Mechanical Repair, Computers, Chemistry, Firearms, Military Training, Hacking, Piloting, Athletics, Medicine). Give each a role, pronouns, crime or reason they're here (field "crime"; for non-convicts, why they took the job), a 3-5 sentence backstory with a hook, loadout (realistic for why they came), trinket and patch. notes: anything only the Warden should know about them, or "".
 
+- documents: 0-3 starting documents the players begin with, in their DOCS on every screen, if the story has some that fit: what they were handed or carry in (a work order, a mission briefing, a dossier on the target, a ship's manifest, a letter). Each has a title (caps-friendly, e.g. WORK ORDER 4471) and text in Markdown (# headings, **bold**, *italic*, __underline__, ~~crossed out~~, - lists, > quotes, --- dividers), under 200 words, in the voice of whoever wrote it, giving the players clear hooks: what they're here to do, codes and names they'll need, what to look out for. Never the secrets. [] when none fits.
+
 LENGTH (it must fit in one reply): lore and secrets under ~200 words each; each persona under ~150 words; each character note under ~40 words; backstories 3-4 sentences; 15-35 station values; at most ~10 named characters.`;
 
 const str = { type: "string" };
@@ -85,6 +87,7 @@ export const DRAFT_SCHEMA = obj({
       },
     }),
   },
+  documents: { type: "array", items: obj({ title: str, text: str }) },
   terminals: {
     type: "array",
     items: obj({ name: str, room: str, look: { type: "array", items: { type: "string", enum: LOOKS.filter((l) => l !== "portable") } }, open: { type: "boolean" }, system: str, os: str, notes: str }),
@@ -159,6 +162,7 @@ export function normalizeDraft(raw) {
     })).filter((v) => v.name),
     crew: (Array.isArray(d.crew) ? d.crew : []).slice(0, 4),
     terminals: (Array.isArray(d.terminals) ? d.terminals : []).slice(0, 10),
+    documents: (Array.isArray(d.documents) ? d.documents : []).slice(0, 3).map((x) => ({ title: s(x?.title, 120).trim(), text: s(x?.text, 4000).trim() })).filter((x) => x.title && x.text),
   };
 }
 
@@ -212,6 +216,8 @@ export function applyDraft(d) {
       crew,
       // The story's terminals (the players start at the first open one), plus a portable unit.
       terminals: sanitizeTerminals([...d.terminals, DEFAULT_TERMINALS.find((t) => t.portable || t.id === "portable")]),
+      // Documents the players start with (in everyone's DOCS; a story restart hands them out again).
+      startDocs: (d.documents || []).map((x, i) => ({ id: `doc-start-${i + 1}`, title: x.title, text: x.text, to: "", at: 0 })),
     },
     station,
   };

@@ -660,7 +660,8 @@
       <details><summary>Computer: ${esc(d.computer.name)}</summary><pre class="bpre">${esc(d.computer.persona)}</pre>${d.standingOrders ? `<div class="small"><b>Standing orders:</b> ${esc(d.standingOrders)}</div>` : ""}</details>
       <details open><summary>Cast <span class="muted">(voices and characters)</span></summary>${cast || '<p class="muted">None.</p>'}</details>
       <details><summary>Terminals</summary><ul class="small">${(d.terminals || []).map((t) => `<li><b>${esc(t.name)}</b> <span class="muted">${esc(t.room)}${t.look?.length ? ` · ${esc(t.look.join(", "))}` : " · clean"}${t.open ? "" : " · not reachable at first"}</span> · ${esc(t.notes)}</li>`).join("")}<li class="muted">+ a portable handheld terminal</li></ul></details>
-      <details open><summary>Player characters</summary>${crew || '<p class="muted">None.</p>'}</details>`;
+      <details open><summary>Player characters</summary>${crew || '<p class="muted">None.</p>'}</details>
+      <details><summary>Starting documents <span class="muted">(in every player's DOCS)</span></summary>${(d.documents || []).map((x) => `<div class="small"><b>${esc(x.title)}</b></div><pre class="bpre">${esc(x.text)}</pre>`).join("") || '<p class="muted">None.</p>'}</details>`;
     // Preview the map from the draft's own state and layout.
     const st = {};
     for (const { path, value } of d.station) {

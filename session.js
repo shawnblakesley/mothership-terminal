@@ -1286,8 +1286,8 @@ export class Session {
     const { config, station } = applyDraft(draft);
     this.genCounter++;
     this.playhead = 0;
-    Object.assign(s.config, config, { rooms: {}, startDocs: [] }); // (new rooms: plans are drawn when first opened)
-    Object.assign(s, { station, log: [], handouts: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopsis: null });
+    Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] }); // (new rooms: plans are drawn when first opened)
+    Object.assign(s, { station, log: [], handouts: structuredClone(s.config.startDocs), pending: null, whisper: "", roll: null, outcomeCheck: null, synopsis: null });
     for (const e of [...s.effects]) this.endEffect(e.id);
     this.stopSounds();
     for (const ws of this.sockets) if (ws.role === "player") ws.character = null; // everyone picks a new crew file
