@@ -129,6 +129,7 @@ export function draftRequest(b) {
     messages: [{ role: "user", content: `THE CONVERSATION:\n\n${convo}\n\nWrite the complete scenario now.` }],
     schema: DRAFT_SCHEMA,
     example: null,
+    maxTokens: 16000, // (a whole scenario is long; providers cap it at what they allow)
   };
 }
 

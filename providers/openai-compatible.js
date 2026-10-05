@@ -3,7 +3,8 @@
 // These APIs don't enforce a JSON schema, so the schema goes into the prompt
 // and the server validates whatever comes back.
 
-export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPattern, baseURL, models, rateLimitText = "rate limited — wait a moment and regenerate.", authText = "authentication failed. Check the API key in the Warden console.", buildExtras = () => ({}) }) {
+// maxOutput: the most a reply may be (a request can ask for less or more, up to it).
+export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPattern, baseURL, models, maxOutput = 8000, rateLimitText = "rate limited — wait a moment and regenerate.", authText = "authentication failed. Check the API key in the Warden console.", buildExtras = () => ({}) }) {
   return {
     id,
     label,
@@ -13,13 +14,13 @@ export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPatter
     keyPattern,
     models,
 
-    async generate({ apiKey, model, effort, system, context, messages, schema, example }) {
+    async generate({ apiKey, model, effort, system, context, messages, schema, example, maxTokens = 8000 }) {
       if (!apiKey) throw new Error("No LLM API key. Add one under ⚙ Settings → LLM.");
       const spec = models.find((m) => m.id === model) ?? models[0];
 
       const body = {
         model: spec.id,
-        max_tokens: 8000,
+        max_tokens: Math.min(maxTokens, maxOutput),
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: `${system}\n\n${context}\n\n${jsonInstructions(schema, example)}` },

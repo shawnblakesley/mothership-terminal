@@ -14,6 +14,7 @@ export default {
     envKey: "OPENROUTER_API_KEY",
     keyHint: "no key needed",
     keyUrl: "https://openrouter.ai/models?q=free",
+    maxOutput: 16000, // (a whole story draft can need more than a reply)
     baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1", // (override: development only, e.g. a mock)
     rateLimitText: "the free model's shared limit is used up for now. Try again later, or add your own DeepSeek or Claude key under 🔑 Key.",
     authText: "the server's OpenRouter key was refused. Tell whoever runs this server, or add your own key under 🔑 Key.",

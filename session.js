@@ -1697,7 +1697,15 @@ export class Session {
     Object.assign(x, { phase: "building", busy: "build" });
     this.soloChanged();
     try {
-      const draft = normalizeDraft(await this.ask(draftRequest(pitchBuilder(p)), "builder"));
+      let raw;
+      try {
+        raw = await this.ask(draftRequest(pitchBuilder(p)), "builder");
+      } catch (err) {
+        if (!/cut off|valid JSON|empty/i.test(err?.message || "")) throw err;
+        console.warn(`[${this.code}] story build retry: ${err.message}`);
+        raw = await this.ask(draftRequest(pitchBuilder(p)), "builder");
+      }
+      const draft = normalizeDraft(raw);
       if (x.phase !== "building") return; // (the pilot started over meanwhile)
       x.phase = "play";
       this.applyStory(draft);
