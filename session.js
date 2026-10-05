@@ -1428,9 +1428,9 @@ export class Session {
     const had = ws.terminal;
     const wasNet = this.netOfSocket(ws);
     ws.terminal = id;
-    if (by === "warden") ws.send(JSON.stringify({ t: "terminalSet", id }));
+    if (by !== "player") ws.send(JSON.stringify({ t: "terminalSet", id })); // (the Warden or the agent moved them)
     // The Warden put someone there: it's reachable from now on.
-    if (by === "warden" && !canReach) {
+    if (by !== "player" && !canReach) {
       Object.assign(t, { open: true, openedInPlay: true });
       this.addLog("note", `${t.name} is now reachable.`);
       this.toPlayers({ t: "header", header: this.playerHeader() });
@@ -1439,7 +1439,7 @@ export class Session {
     if (netOf(t) !== wasNet) ws.send(JSON.stringify({ t: "init", ...this.playerView(ws) }));
     if (had) this.lastNet = netOf(t);
     const pc = this.characterOf(ws);
-    if (had && pc) this.addLog("note", `${pc.name} ${by === "warden" ? "was moved" : "moved"} to the ${t.name}.`);
+    if (had && pc) this.addLog("note", `${pc.name} ${by === "player" ? "moved" : "was moved"} to the ${t.name}.`);
     this.syncDm();
   }
 
@@ -1509,6 +1509,26 @@ export class Session {
       }
     }
     if (any) this.crewChanged();
+  }
+
+  // The agent moves screens when the fiction moves the players (for: a name or "all";
+  // terminal: a name or id). Like the Warden's moves, a terminal it couldn't reach opens.
+  // Somewhere with no terminal of its own (a corridor, outside): the portable one.
+  applyMoves(moves) {
+    const terms = this.state.config.terminals;
+    const norm = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\bterminal\b/g, "").trim();
+    for (const m of moves || []) {
+      const want = norm(m.terminal);
+      const t = terms.find((x) => x.id === m.terminal || norm(x.name) === want) || terms.find((x) => want && (norm(x.name).includes(want) || want.includes(norm(x.name))))
+        || terms.find((x) => x.look.includes("portable")) || terms.find((x) => x.id === "portable");
+      if (!t) continue;
+      const everyone = /^(all|everyone|everybody|the crew|crew)$/i.test(String(m.for).trim());
+      const ids = everyone ? null : new Set(crewTargets(m.for, this.state.config.crew));
+      for (const ws of this.sockets) {
+        if (ws.role !== "player" || !ws.terminal || ws.terminal === t.id) continue;
+        if (everyone || ids.has(ws.character)) this.playerTerminal(ws, t.id, "agent");
+      }
+    }
   }
 
   // What the agent says a character picked up, used up or lost.
@@ -1581,14 +1601,19 @@ export class Session {
       (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), inPerson: !!(l.inPerson ?? l.in_person), system: String(l.system ?? ""), text: String(l.text ?? "").slice(0, 8000), effects: l.effects, variants: l.variants })),
       voices,
     );
+    // The fiction moved them: screens go to their new terminals first, so this reply plays there.
+    if (source === "agent") this.applyMoves(reply?.moves);
     const here = this.defaultNet(); // (lines with no system, or one that doesn't exist, go where the players are)
+    // A line's own system only matters while the players are split across systems:
+    // all on one (after any moves), every line goes there (or to all, if it says so).
+    const split = new Set([...this.sockets].filter((c) => c.role === "player" && c.terminal).map((c) => this.netOfSocket(c))).size > 1;
     const useEffects = this.state.config.agentEffects;
     const changes = (reply?.station_changes || []).filter((c) => c && typeof c.path === "string" && c.path);
     const effects = this.state.config.agentEffects ? (reply?.effects || []) : [];
     // The first entry carries the reply's changes/effects so the agent's history
     // shows that it really changed things (otherwise it learns to leave them empty).
     const mapChanges = this.mapChanges(reply);
-    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
+    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], moves: reply?.moves || [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
     // Effects on a line fire as it begins. An effect-only beat (no text) fires
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
@@ -1609,7 +1634,8 @@ export class Session {
       for (const c of cues) if (c.type === "blackout") c.hold = true;
       waiting = [];
       const kind = kindOf(voice);
-      const asked = netNamed(this.state.config, system) ?? here;
+      const named = netNamed(this.state.config, system);
+      const asked = named === ALL_NET || (split && named !== null) ? named : here;
       const person = inPerson && !!character && !!cast.get(voice)?.has(character.toLowerCase());
       const net = this.routeLine(voice, asked, person);
       if (net !== asked) this.addLog("note", `${voices.find((v) => v.id === voice)?.name || voice} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(this.state.config, asked)}`}: its line went to ${systemName(this.state.config, net)}.`);

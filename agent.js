@@ -107,7 +107,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "item_changes", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "item_changes", "moves", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -170,6 +170,19 @@ function buildSchema(voices) {
             action: { type: "string", enum: ["add", "remove"] },
             item: { type: "string", description: "The item, as it's listed (to remove) or a short name (to add), e.g. Flare, Security keycard (Deck 2)." },
             why: { type: "string", description: "A few words for the Warden's log." },
+          },
+        },
+      },
+      moves: {
+        type: "array",
+        description: "When the fiction takes the players' characters somewhere with a terminal (they step into the airlock, climb back aboard the tug, reach the med bay), move their screens to that terminal, so they answer from there. Applied before this reply's lines, so the lines play at the new place. Only where they can physically get to now. Usually empty.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["for", "terminal"],
+          properties: {
+            for: { type: "string", description: "A crew member's name, or \"all\" for everyone." },
+            terminal: { type: "string", description: "The terminal's name, from TERMINALS ON THE STATION. Somewhere with no terminal (a corridor, a crawlspace, outside the hull): the portable terminal." },
           },
         },
       },
@@ -282,6 +295,7 @@ const REPLY_EXAMPLE = {
   station_changes: [{ path: "quarantine", value: "DECK 3" }],
   crew_changes: [],
   item_changes: [],
+  moves: [],
   clocks: [],
   handouts: [],
   layout: "",
@@ -354,6 +368,7 @@ TERMINALS (where the players are)
 - Every [PLAYER] line says which terminal it was typed at. Check it before anyone answers.
 - People in the SAME room as the players' terminal are physically there with them: the players can see them, and they talk face to face, not "over the intercom" or "from the med bay". Set in_person=true on their lines (still using their voice and character), so they're shown and heard as plain speech, not over the speaker. People elsewhere talk over the intercom/comms. If a character's usual place (per their notes) is where the players now are, decide whether they're still there and be consistent: either they're right there in the room, or they've gone somewhere (and say where, if it matters).
 - Keep track of where each character is from what has happened; when the players move, update who is near them.
+- When the players go somewhere else (into the airlock, back aboard the tug, into the med bay), move them there with moves, in the same reply that describes it, so their screens and everything after answer from the new place. If where they go has no terminal (a corridor, a crawlspace, a lift shaft, outside the hull), move them to the portable terminal: they're on their handheld now. A player who stays behind isn't moved.
 
 CREW CONDITION (the players' characters: Health, Wounds, Stress)
 - Items: CREW CONDITION lists what each character carries. They can only use what they have (or find). When something is picked up, handed over, used up, lost, broken or taken, record it in item_changes. A fitting item can earn [+] on a roll; lacking the right tool, [-].
@@ -466,7 +481,7 @@ function buildMessages(state) {
   for (const e of state.log.filter((x) => x.kind !== "note" && !x.cut).slice(-HISTORY_ENTRIES)) {
     const role = USER_KINDS.has(e.kind) ? "user" : "assistant";
     let last = turns.at(-1);
-    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
+    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], moves: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
     if (e.kind === "player") last.inputs.push(`[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}] ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
@@ -481,6 +496,7 @@ function buildMessages(state) {
       last.changes.push(...(e.changes || []));
       last.crew.push(...(e.crewChanges || []));
       last.items.push(...(e.itemChanges || []));
+      last.moves.push(...(e.moves || []));
       last.clocks.push(...(e.clockChanges || []));
       last.handouts.push(...(e.handouts || []));
       last.effects.push(...(e.effects || []));
@@ -497,7 +513,7 @@ function buildMessages(state) {
   return turns.map((t) =>
     t.role === "user"
       ? { role: "user", content: t.inputs.join("\n") }
-      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
+      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, moves: t.moves, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
   );
 }
 
@@ -690,6 +706,10 @@ export function parseReply(text, voices) {
       .filter((c) => c && c.for && ["add", "remove"].includes(c.action) && String(c.item ?? "").trim())
       .slice(0, 12)
       .map((c) => ({ for: String(c.for).slice(0, 60), action: c.action, item: String(c.item).trim().slice(0, 60), why: String(c.why ?? "").slice(0, 120) })),
+    moves: (Array.isArray(r?.moves) ? r.moves : [])
+      .filter((m) => m && String(m.for ?? "").trim() && String(m.terminal ?? "").trim())
+      .slice(0, 8)
+      .map((m) => ({ for: String(m.for).trim().slice(0, 60), terminal: String(m.terminal).trim().slice(0, 60) })),
     clocks: (Array.isArray(r?.clocks) ? r.clocks : [])
       .filter((c) => c && ["start", "stop"].includes(c.action) && String(c.label ?? "").trim())
       .slice(0, 4)
