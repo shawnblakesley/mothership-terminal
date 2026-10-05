@@ -142,7 +142,12 @@
       div.dataset.prompt = `${promptText()} `;
       return div;
     }
-    if (entry.kind === "roll") { div.classList.add("roll"); return div; }
+    if (entry.kind === "roll") {
+      div.classList.add("roll");
+      // Someone else's roll: filled white, so it stands out from your own.
+      if (entry.by && entry.by !== mine()?.name) div.classList.add("others");
+      return div;
+    }
     const v = voiceOf(entry);
     div.classList.add(`style-${v?.style || (entry.kind === "system" ? "boxed" : "plain")}`);
     // A shared voice (the intercom) also shows who is speaking: "INTERCOM · SALK: ".

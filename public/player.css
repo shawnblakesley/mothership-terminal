@@ -88,6 +88,8 @@ body {
 .line.player::before { content: attr(data-prompt); }
 /* Ability rolls */
 .line.roll { border: 3px double var(--fg); padding: 0.2em 0.5em; display: inline-block; }
+/* Another character's roll: text on a filled white background. */
+.line.roll.others { background: #ecece6; color: #0a0a0a; border-color: #ecece6; text-shadow: none; }
 .rollbox { border: 3px double var(--fg); padding: 0.5em 0.8em; margin: 0.4em 0 0.8em; max-width: 46em; }
 .rollbox[hidden] { display: none; }
 .rb-title { animation: blink 1s infinite steps(1); margin-bottom: 0.2em; }
