@@ -181,7 +181,7 @@ export function defaultGame(keys = {}) {
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "stress-2"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "stress-2", "airlock-closed"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -268,6 +268,13 @@ function migrateGame(saved) {
   if (!config.upgrades.includes("start-ship")) {
     if (config.lore === DEFAULT_LORE) config.terminals = startAboardShip(config.terminals);
     config.upgrades.push("start-ship");
+  }
+  // Once: KESTREL-9 starts with only the tug's and the portable terminals reachable
+  // (Airlock A opens when the Warden moves someone there).
+  if (!config.upgrades.includes("airlock-closed")) {
+    const airlock = config.terminals.find((t) => t.id === "airlock");
+    if (config.stationName === "KESTREL-9" && airlock?.open && !airlock.requires) airlock.open = false;
+    config.upgrades.push("airlock-closed");
   }
   // Once: by the rules every character starts at Stress 2 (Tick and MOLL-7 had 4 and 1).
   if (!config.upgrades.includes("stress-2")) {
@@ -869,6 +876,8 @@ export class Session {
         break;
       case "resetSession":
         this.clearClocks();
+        // Terminals opened during play by moving someone there are closed again.
+        for (const t of s.config.terminals) if (t.openedInPlay) Object.assign(t, { open: false, openedInPlay: false });
         // Everyone fresh for the story: full Health, no Wounds, starting Stress and items.
         for (const pc of s.config.crew) freshen(pc);
         this.crewChanged();
@@ -1431,6 +1440,12 @@ export class Session {
     const wasNet = this.netOfSocket(ws);
     ws.terminal = id;
     if (by === "warden") ws.send(JSON.stringify({ t: "terminalSet", id }));
+    // The Warden put someone there: it's reachable from now on.
+    if (by === "warden" && !canReach) {
+      Object.assign(t, { open: true, openedInPlay: true });
+      this.addLog("note", `${t.name} is now reachable.`);
+      this.toPlayers({ t: "header", header: this.playerHeader() });
+    }
     // Onto another system: the screen shows that system's log (each keeps its own).
     if (netOf(t) !== wasNet) ws.send(JSON.stringify({ t: "init", ...this.playerView(ws) }));
     if (had) this.lastNet = netOf(t);

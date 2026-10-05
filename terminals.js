@@ -42,7 +42,8 @@ export function startAboardShip(terminals) {
 // once it reads OPEN or UNLOCKED, e.g. the med bay once the airlock is open.
 export const DEFAULT_TERMINALS = [
   SHIP_TERMINAL,
-  { id: "airlock", name: "AIRLOCK A TERMINAL", room: "airlock_a", look: [], theme: "", open: true, requires: "", notes: AIRLOCK_NOTES },
+  // (Not reachable at first: the Warden opens it by moving someone there.)
+  { id: "airlock", name: "AIRLOCK A TERMINAL", room: "airlock_a", look: [], theme: "", open: false, requires: "", notes: AIRLOCK_NOTES },
   { id: "medbay", name: "MED BAY TERMINAL", room: "med_bay", look: ["grime", "flicker"], theme: "", open: false, requires: "doors.airlock_a", notes: "Salk's terminal. The keys are sticky with something; the screen flickers." },
   { id: "command", name: "COMMAND DECK TERMINAL", room: "command_deck", look: ["dim"], theme: "amber", open: false, requires: "doors.command_deck", notes: "Okonkwo's deck, sealed. Full system access if anyone gets in." },
   { id: "cargo", name: "CARGO BAY TERMINAL", room: "cargo_bay_deck3", look: ["crack", "blood"], theme: "", open: false, requires: "doors.cargo_bay_deck3", notes: "Behind the locked cargo door. The screen is cracked and smeared with blood; something happened right here." },
@@ -68,6 +69,7 @@ export function sanitizeTerminals(list) {
       look: [...new Set((Array.isArray(t.look) ? t.look : []).filter((l) => LOOKS.includes(l)))],
       theme: THEMES.includes(t.theme) ? t.theme : "",
       open: t.open !== false,
+      openedInPlay: t.open !== false && !!t.openedInPlay, // reachable because the Warden moved someone there (a restart closes it again)
       requires: String(t.requires || "").replace(/[^A-Za-z0-9_.]/g, "").slice(0, 80),
       system: String(t.system || "").replace(/\s+/g, " ").trim().slice(0, 40),
       os: String(t.os || "").replace(/\s+/g, " ").trim().slice(0, 40),
