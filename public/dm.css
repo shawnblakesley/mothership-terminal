@@ -561,6 +561,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
 
 /* The Rules tab. */
 .rules h2 { margin: 6px 0 0; }
+.rules a { color: var(--accent); }
 .rules ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
 .rulesdl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 4px 0 0; font-size: 13px; }
 .rulesdl dt { font-weight: 600; }

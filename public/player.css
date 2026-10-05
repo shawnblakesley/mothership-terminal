@@ -365,6 +365,8 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { displ
 .rules-body dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
 .rules-body dt { font-weight: 600; color: #fff; }
 .rules-body dd { margin: 0; color: #b9c0c6; }
+.rules-body .home { margin: 14px 0 0; font-size: 14px; }
+.rules-body a { color: var(--fg); }
 .rules-body .fine { margin: 18px 0 0; font-size: 13px; color: #8a939a; }
 @media (max-width: 520px) { .rules-body dl { grid-template-columns: 1fr; } .rules-body dd { margin-bottom: 6px; } }
 
