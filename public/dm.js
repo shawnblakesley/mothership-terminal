@@ -335,7 +335,7 @@
 
   // A log entry's system (its net key, as in terminals.js netOf) by the name its terminals give it.
   const netKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const systemName = (net) => S.config.terminals.find((t) => t.system && netKey(t.system) === net)?.system || net;
+  const systemName = (net) => (net === "*" ? "All" : S.config.terminals.find((t) => t.system && netKey(t.system) === net)?.system || net);
 
   function renderLog() {
     const log = $("log");
@@ -354,7 +354,7 @@
       }
       return `
       <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? `title="${e.retcon ? "Retconned: gone from the players' screens and the agent's memory." : "Cut off by a player before it was said: the players never saw it and the agent doesn't remember it."}"` : ""}>
-        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.net ? `<span class="by" title="Said on a separate system: only screens there show it">on ${esc(systemName(e.net))}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? `<span class="by">${e.retcon ? "retconned" : "never said (cut off)"}</span>` : ""}${when}</div>
+        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.net ? `<span class="by" title="${e.net === "*" ? "Sent to every system's screens" : "Said on a separate system: only screens there show it"}">${e.net === "*" ? "to All" : `on ${esc(systemName(e.net))}`}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? `<span class="by">${e.retcon ? "retconned" : "never said (cut off)"}</span>` : ""}${when}</div>
         <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
       </div>`;
     }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew to type something…</div>`;
@@ -1317,16 +1317,18 @@
     renderComposeMode(); // (names may have changed)
   }
 
-  // When the players are on different systems (e.g. some aboard a ship), which
-  // one's screens Speak goes to. Hidden otherwise: it goes where they are.
+  // Which system's screens Speak goes to, when the story has more than one
+  // (e.g. a ship): where the players are (each system, if they're split), or
+  // "to All" for every screen (a broadcast, something creepy in every machine).
   function renderSendOn() {
     const sel = $("sendOn");
     const nameOf = (id) => { const t = S.config.terminals.find((x) => x.id === id); return t?.system || S.config.stationName; };
-    const here = [...new Set((S.screens || []).filter((x) => x.terminal).map((x) => nameOf(x.terminal)))];
-    sel.hidden = here.length < 2;
+    sel.hidden = !S.config.terminals.some((t) => t.system);
     if (sel.hidden) return;
-    const prev = here.includes(sel.value) ? sel.value : here[0];
-    fillSelect(sel, here.map((n) => [n, `on ${n}`]), prev);
+    const here = [...new Set((S.screens || []).filter((x) => x.terminal).map((x) => nameOf(x.terminal)))];
+    const opts = [...(here.length > 1 ? here.map((n) => [n, `on ${n}`]) : [["", here.length ? `on ${here[0]}` : "where the players are"]]), ["ALL", "to All"]];
+    const prev = opts.some(([v]) => v === sel.value) ? sel.value : opts[0][0];
+    fillSelect(sel, opts, prev);
   }
 
   function saveVoices() {

@@ -118,7 +118,7 @@ function buildSchema(voices) {
           required: ["voice", "character", "in_person", "system", "text", "effects", "variants"],
           properties: {
             voice: { type: "string", enum: voices.map((v) => v.id) },
-            system: { type: "string", description: "Which computer system's screens show this line, by its name from SYSTEMS. Empty: wherever the players are. Only needed when they're on different systems." },
+            system: { type: "string", description: "Which computer system's screens show this line, by its name from SYSTEMS, or \"ALL\" for every system's screens at once (rare: something reaching every machine, like the entity or a signal on every network). Empty: wherever the players are." },
             in_person: { type: "boolean", description: "True when the speaker is physically in the same room as the players' terminal and says it aloud (not over the intercom or comms). Their line is then shown and voiced as plain speech." },
             character: { type: "string", description: "For a voice several people speak through (e.g. the intercom): who is speaking this line, by name, from that voice's CHARACTERS. Someone new: their name plus (f) or (m), e.g. \"Marlowe (f)\". Empty for other voices." },
             text: { type: "string", description: "Exactly what this voice says or prints, formatted by THIS voice's persona only. No voice tags or name prefixes. May be empty for an effect-only beat." },
@@ -547,7 +547,7 @@ function buildContext(state, steer, aside = false) {
       const routing = occupied.length > 1
         ? `The players are on DIFFERENT systems. Set each line's "system" to the name of the system whose screens should show it; players on other systems won't see or hear it. Give each group what happens where they are, with the voices on their system. A line with an empty system goes to ${systemName(state.config, state.defaultNet)}.`
         : `The players are all on ${occupied[0]?.name || systemName(state.config, state.defaultNet)}: every line goes there. Leave "system" empty.`;
-      ctx.push(`SYSTEMS (separate computer networks: each one's screens show only the lines sent on it, and a system can't see or work anything on another):\n${rows.join("\n")}\n\n${routing}`);
+      ctx.push(`SYSTEMS (separate computer networks: each one's screens show only the lines sent on it, and a system can't see or work anything on another):\n${rows.join("\n")}\n\n${routing} A line's system can also be "ALL": it shows on every system's screens at once. Keep that for something that truly reaches every machine (the entity, a signal on every band), never ordinary dialogue.`);
     }
   }
   ctx.push(TALK[state.config.talk] || TALK.brief);

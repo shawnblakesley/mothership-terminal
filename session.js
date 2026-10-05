@@ -13,7 +13,7 @@ import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
-import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, netOf, netNamed, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, netOf, netNamed, shownOn, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -322,7 +322,7 @@ export class Session {
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
     // The system the players last acted on ("" = the station's network; terminals.js):
     // where things go when the players are on more than one (see defaultNet).
-    this.lastNet = this.state.log.at(-1)?.net || "";
+    this.lastNet = this.state.log.findLast((e) => e.net !== "*")?.net || "";
     this.genCounter = 0;
     // Lines reach the players on one shared timeline (see scheduleLine), in order.
     this.playhead = 0;
@@ -399,7 +399,7 @@ export class Session {
   // Only the player screens on one system (log lines belong to the system they were said on).
   toNet(net, p) {
     const data = JSON.stringify(p);
-    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && this.netOfSocket(c) === net) c.send(data);
+    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && shownOn(net, this.netOfSocket(c))) c.send(data);
   }
   // Every player screen redrawn, each with its own system's log.
   initPlayers() {
@@ -412,9 +412,9 @@ export class Session {
     const net = ws ? this.netOfSocket(ws) : "";
     return {
       version: APP_VERSION,
-      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (e.net || "") === net),
+      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && shownOn(e.net, net)),
       header: this.playerHeader(),
-      effects: this.state.effects.filter((e) => e.net === undefined || e.net === net),
+      effects: this.state.effects.filter((e) => e.net === undefined || shownOn(e.net, net)),
       playing: this.state.playing.filter((p) => p.loop),
       crew: this.state.config.crew,
       claims: this.claims(),
@@ -507,7 +507,7 @@ export class Session {
     const c = this.state.config;
     for (const e of this.state.log) {
       if (PRIVATE_KINDS.has(e.kind) || e.kind === "player" || e.cut || e.interrupted) continue;
-      if ((e.net || "") !== net) { if (e.timing?.end > elsewhere) elsewhere = e.timing.end; continue; }
+      if (!shownOn(e.net, net)) { if (e.timing?.end > elsewhere) elsewhere = e.timing.end; continue; }
       const t = e.timing;
       if (e.queued || (t && t.speakAt > now)) { e.cut = true; cut.push(e.id); continue; }
       if (!t || (t.end ?? Infinity) <= now) continue;
@@ -527,7 +527,7 @@ export class Session {
     if (!cut.length && !trimmed.length) return;
     for (const fx of [...this.state.effects]) if (fx.atEntry && cut.includes(fx.atEntry)) this.endEffect(fx.id); // never fires
     this.playhead = Math.max(now, elsewhere);
-    this.toNet(net, { t: "interrupt", at: now, cut, trimmed });
+    this.toPlayers({ t: "interrupt", at: now, cut, trimmed }); // (other systems' screens don't have these lines)
     this.addLog("note", `Comms cut off by a player${cut.length ? `: ${cut.length} line${cut.length > 1 ? "s" : ""} never said` : ""}.`);
   }
 

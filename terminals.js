@@ -72,13 +72,18 @@ export function systemsOf(config) {
   for (const t of config.terminals) if (t.system && !out.some((s) => s.net === netOf(t))) out.push({ net: netOf(t), name: t.system });
   return out;
 }
-export const systemName = (config, net) => systemsOf(config).find((s) => s.net === (net || ""))?.name || config.stationName;
+// ALL_NET: a line for every system's screens (a broadcast, the entity in every machine).
+export const ALL_NET = "*";
+export const systemName = (config, net) => (net === ALL_NET ? "ALL" : systemsOf(config).find((s) => s.net === (net || ""))?.name || config.stationName);
+// Does a line (or effect) on `net` show on screens on `screenNet`?
+export const shownOn = (net, screenNet) => net === ALL_NET || (net || "") === screenNet;
 
 // A system named by the agent or the Warden, as its net key; null if it isn't one
 // (an empty or unknown name means "wherever the players are").
 export function netNamed(config, name) {
   const key = netKey(name);
   if (!key) return null;
+  if (key === "all") return ALL_NET;
   if (key === netKey(config.stationName) || key === "station") return "";
   return systemsOf(config).find((s) => s.net && s.net === key)?.net ?? null;
 }
