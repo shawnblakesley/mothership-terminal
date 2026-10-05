@@ -1447,6 +1447,9 @@ export class Session {
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
     let lastEntry = null;
+    // Who was already in each voice's cast: only they can be in the room in person
+    // (a computer like the tug's can't, even if the agent gives it a speaker).
+    const cast = new Map(voices.map((v) => [v.id, new Set((v.characters || []).map((c) => c.name.toLowerCase()))]));
     this.castCharacters(lines);
     for (const { voice, character, inPerson, system, text, effects: lineFx, variants: rawVariants } of lines) {
       // Per-player versions of this line, for the crew they name (if the Warden allows them).
@@ -1460,7 +1463,8 @@ export class Session {
       waiting = [];
       const kind = kindOf(voice);
       const asked = netNamed(this.state.config, system) ?? here;
-      const net = this.routeLine(voice, asked, inPerson && !!character);
+      const person = inPerson && !!character && !!cast.get(voice)?.has(character.toLowerCase());
+      const net = this.routeLine(voice, asked, person);
       if (net !== asked) this.addLog("note", `${voices.find((v) => v.id === voice)?.name || voice} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(this.state.config, asked)}`}: its line went to ${systemName(this.state.config, net)}.`);
       const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson && character ? { inPerson: true } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
