@@ -521,7 +521,8 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .tray > .card { margin: 0; }
 .ocroll:not(:empty) { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
 .keyrow { align-items: center; }
-.keyrow #retcon { padding: 2px 8px; font-size: 12px; }
+.keyrow #retcon { padding: 2px 8px; font-size: 12px; color: #c96a63; border-color: color-mix(in srgb, #c96a63 35%, var(--line)); }
+.keyrow #retcon:hover:not(:disabled) { color: #e07a72; background: color-mix(in srgb, #c96a63 12%, transparent); }
 
 /* The stakes on the "your call" card: what happens if it works / fails. */
 .outcome .stakes { display: flex; flex-direction: column; gap: 4px; font-size: 13px; margin: 2px 0 4px; }

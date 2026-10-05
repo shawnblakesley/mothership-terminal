@@ -1390,7 +1390,6 @@
       else approve();
     }
   });
-  $("promptNow").onclick = () => send({ t: "generate" });
   $("retcon").onclick = () => send({ t: "retcon" });
 
   // Effect buttons
