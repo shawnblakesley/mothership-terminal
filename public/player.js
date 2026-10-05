@@ -144,8 +144,13 @@
     }
     if (entry.kind === "roll") {
       div.classList.add("roll");
-      // Someone else's roll: filled white, so it stands out from your own.
-      if (entry.by && entry.by !== mine()?.name) div.classList.add("others");
+      // Someone else's roll: a filled panel, green for a success and red for a failure,
+      // so it stands out from your own.
+      if (entry.by && entry.by !== mine()?.name) {
+        div.classList.add("others");
+        const o = String(entry.outcome || "");
+        if (o) div.classList.add(/success|cool/.test(o) ? "ok" : "bad");
+      }
       return div;
     }
     const v = voiceOf(entry);
