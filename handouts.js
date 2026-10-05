@@ -1,0 +1,52 @@
+// Handouts the agent writes for the Warden: a short brief ("Salk's medical
+// journal, hinting he's infected") becomes an in-world document, written in its
+// author's voice from the story so far, with the clues the brief asks for. The
+// Warden reads and edits it before handing it out (session.js "handouts").
+import { crewBrief } from "./crew.js";
+import { logLine } from "./synopsis.js";
+
+const RECENT = 40; // log entries it reads, for what has happened so far
+
+const SYSTEM = `You write in-world documents ("handouts") for the Warden (game master) of a Mothership (sci-fi horror TTRPG) session. The players will read them on their terminals as things their characters found or pulled from the system: a medical journal, a work order, a security log, a memo, a diary, a manifest, a chat transcript.
+
+Write the document the Warden's BRIEF describes, as it exists in the world:
+- In its author's voice and the form that kind of document takes: dated or time-stamped entries for a log or journal, headers for a memo or report, terse fields for a manifest. Plain text with line breaks; no markdown.
+- Moderately detailed: about 150-350 words, unless the brief asks otherwise. Concrete names, times, places, numbers and small human details from the story.
+- Plant the clues the brief asks for the way a real document would carry them: in passing remarks, gaps, changes in tone or handwriting, things the author notices without understanding, details that only add up later. Don't state the secret outright, explain it, or wink at the reader, unless the brief says to.
+- Stay true to the story: the lore, the SECRETS (what's really going on), the cast and what has happened so far. Never contradict them, and don't reveal more of the secrets than the brief wants.
+- title: what the document is called on screen, caps-friendly (e.g. MEDICAL LOG: DR. I. SALK).`;
+
+const SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "text"],
+  properties: { title: { type: "string" }, text: { type: "string" } },
+};
+
+export function handoutRequest(state, brief, title = "") {
+  const c = state.config;
+  const cast = c.voices.flatMap((v) => (v.characters || []).map((ch) => `- ${ch.name} (via ${v.name})${ch.notes ? `: ${ch.notes}` : ""}`));
+  const log = state.log.filter((e) => !e.cut && e.text && !["note"].includes(e.kind)).slice(-RECENT);
+  const context = [
+    `STATION NAME: ${c.stationName}`,
+    `LORE (public):\n${c.lore || "(none)"}`,
+    `SECRETS (what's really going on):\n${c.secrets || "(none)"}`,
+    cast.length ? `CAST:\n${cast.join("\n")}` : "",
+    c.crew?.length ? `THE PLAYERS' CHARACTERS:\n${crewBrief(c.crew)}` : "",
+    log.length ? `WHAT HAS HAPPENED LATELY (the comms log, oldest first):\n${log.map((e) => logLine(e, c.voices)).join("\n")}` : "The story hasn't started yet.",
+  ].filter(Boolean).join("\n\n");
+  return {
+    system: SYSTEM,
+    context,
+    messages: [{ role: "user", content: `BRIEF: ${brief}${title ? `\nTITLE (keep it, or refine it): ${title}` : ""}\n\nWrite the document.` }],
+    schema: SCHEMA,
+    example: { title: "MEDICAL LOG: DR. I. SALK", text: "DAY 14 / 06:10\n..." },
+  };
+}
+
+export function normalizeHandout(r) {
+  const title = String(r?.title ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+  const text = String(r?.text ?? "").replace(/\r/g, "").trim().slice(0, 6000);
+  if (!title || !text) throw new Error("the document came back empty");
+  return { title, text };
+}

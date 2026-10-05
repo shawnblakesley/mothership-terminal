@@ -68,6 +68,13 @@
           send({ t: "apiKey", provider: p.id, key: remembered });
         }
       } else if (msg.t === "toast") toast(msg.text, msg.level);
+      else if (msg.t === "handoutWriting") handoutWriting(msg.busy);
+      else if (msg.t === "handoutDraft") {
+        $("docTitle").value = msg.title;
+        $("docText").value = msg.text;
+        $("docText").rows = Math.min(14, Math.max(4, msg.text.split("\n").length + 1));
+        toast("Handout written: read it over, then hand it out.");
+      }
     };
   }
 
@@ -1907,6 +1914,16 @@
     const nameOf = (id) => S.config.crew.find((c) => c.id === id)?.name || "everyone";
     $("docList").innerHTML = list.length ? list.map((h) => `<li title="${esc(h.text.slice(0, 300))}"><span class="grow">${esc(h.title)} <span class="muted">· ${esc(h.to ? nameOf(h.to) : "everyone")}</span></span><button data-doc-again="${esc(h.id)}" class="ghost" title="Show it on their screens again">↻</button><button data-doc-del="${esc(h.id)}" class="ghost" title="Take it back">✕</button></li>`).join("") : '<li class="muted small">None given yet.</li>';
   }
+  // The agent writes it from the description in the text box (and the title, if any).
+  function handoutWriting(busy) {
+    $("docWrite").disabled = busy;
+    $("docWrite").textContent = busy ? "Writing…" : "Write it";
+  }
+  $("docWrite").onclick = () => {
+    const title = $("docTitle").value.trim(), brief = $("docText").value.trim();
+    if (!brief && !title) return toast("Describe the document first, e.g. Salk's medical journal, hinting that he's infected.", "error");
+    send({ t: "handoutWrite", brief, title });
+  };
   $("docSend").onclick = () => {
     const title = $("docTitle").value.trim(), text = $("docText").value.trim();
     if (!title || !text) return toast("A handout needs a title and some text.", "error");

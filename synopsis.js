@@ -54,7 +54,7 @@ export const SYNOPSIS_SCHEMA = {
 const clip = (s) => { const t = String(s ?? ""); return t.length > ENTRY_CHARS ? `${t.slice(0, ENTRY_CHARS)}…` : t; };
 
 // The log as the Warden saw it: who said what, the Warden's commands and notes.
-function logLine(e, voices) {
+export function logLine(e, voices) {
   const vars = (e.variants || []).map((v) => `\n    (only ${v.for} sees: ${clip(v.text)})`).join("");
   switch (e.kind) {
     case "player": return `[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}] ${clip(e.text)}`;

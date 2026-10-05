@@ -10,6 +10,7 @@ import { cleanName } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS, changeItem } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap } from "./synopsis.js";
+import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
@@ -343,6 +344,7 @@ export class Session {
     this.state = { ...migrateGame(saved.game ?? {}), pending: null, effects: [], playing: [] };
     this.builderBusy = ""; // "", "chat" or "draft" while the story builder waits on the agent
     this.synopsisBusy = false; // the agent is writing the Warden's synopsis
+    this.handoutBusy = false; // the agent is writing a handout from the Warden's brief
     this.roomBusy = ""; // the map room whose floor plan the agent is drawing
     this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
     this.freeCalls = { day: "", count: 0 }; // calls on the server's free key today (see callModel)
@@ -918,6 +920,9 @@ export class Session {
       case "handout": // the Warden gives the players a document (everyone, or one character)
         this.giveHandout({ title: msg.title, text: msg.text, to: msg.to }, "dm");
         break;
+      case "handoutWrite": // the agent drafts one from the Warden's brief (back to the Warden to edit, not to the players)
+        if (!this.handoutBusy) this.writeHandout(String(msg.brief || "").slice(0, 2000), String(msg.title || "").slice(0, 120));
+        return;
       case "handoutAgain": { // show it again (it pops up on their screens)
         const h = s.handouts.find((x) => x.id === msg.id);
         if (h) this.showHandout(h);
@@ -1907,6 +1912,20 @@ export class Session {
     this.addLog("note", `📄 Handout${source === "agent" ? " from the agent" : ""} to ${who}: ${h.title}`);
     this.showHandout(h);
     this.touch();
+  }
+  async writeHandout(brief, title) {
+    if (!brief.trim() && !title.trim()) return;
+    this.handoutBusy = true;
+    this.send("dm", { t: "handoutWriting", busy: true });
+    try {
+      const h = normalizeHandout(await this.ask(handoutRequest(this.state, brief || title, title), "handout"));
+      this.send("dm", { t: "handoutDraft", ...h });
+    } catch (err) {
+      console.error(`[${this.code}] handout failed:`, err?.message || err);
+      this.send("dm", { t: "toast", level: "error", text: `Couldn't write the handout: ${err?.message || err}` });
+    }
+    this.handoutBusy = false;
+    this.send("dm", { t: "handoutWriting", busy: false });
   }
   showHandout(h) {
     const data = JSON.stringify({ t: "handout", handout: h });

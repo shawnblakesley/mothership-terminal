@@ -314,8 +314,10 @@
         <h2>Handouts <span class="hint" title="Documents in the players' hands: a log, a memo, a manifest, a diary page. It pops up on their screens and stays under DOCS. The agent can hand them out too.">?</span></h2>
         <div class="card stack">
           <input id="docTitle" placeholder="Title, e.g. MEDICAL LOG: DR. SALK, DAY 19" maxlength="120">
-          <textarea id="docText" rows="4" placeholder="The document's text"></textarea>
-          <div class="row"><label class="small muted">To <select id="docTo"></select></label><span class="grow"></span><button id="docSend">📄 Hand it out</button></div>
+          <textarea id="docText" rows="4" placeholder="The document's text, or describe it and press Write it (e.g. Salk's medical journal, hinting that he's infected)"></textarea>
+          <div class="row wrap"><label class="small muted">To <select id="docTo"></select></label><span class="grow"></span>
+            <button id="docWrite" title="The agent writes the document from your description (and the title, if you gave one), from the story so far. You can edit it before handing it out.">Write it</button>
+            <button id="docSend">📄 Hand it out</button></div>
           <ul id="docList" class="fxlist"></ul>
         </div>
 
