@@ -167,7 +167,7 @@ If a player types while lines are still playing, the comms cut off on every scre
 
 ## Clocks, handouts and items
 
-- **Clocks** (Actions tab): countdowns on every player's screen, under the header (a hull breach, oxygen, a self-destruct); the last half minute flashes red. Name it, set the minutes, start it; ✕ stops it. The agent starts and stops them too. When one runs out, the agent is told to make it happen (with real consequences), and the log notes it.
+- **Clocks** (Actions tab): countdowns on every player's screen, under the header (a hull breach, oxygen, a self-destruct); the last half minute flashes red. Name it, set the minutes, start it. Each one can be paused (⏸, frozen as HOLD on every screen) and resumed (▶), advanced (−1m: the danger comes sooner; if it hits zero it goes off) or given more time (+1m), or cancelled (✕: nothing happens). The agent starts and stops them too. When one runs out, the agent is told to make it happen (with real consequences), and the log notes it.
 - **Handouts** (Actions tab): documents in the players' hands: a medical log, a work order, a diary page. Give one to everyone or one character; it pops up on their screens and stays under **DOCS** in their header. ↻ shows it again, ✕ takes it back. The agent can hand them out too, for things the players find or download.
 - **Items**: each character carries a list of items (it starts from their loadout). Players see **ITEMS** on their sheet. On the Crew tab, ✕ drops one and **+ add** adds one, even in read-only. The agent tracks what's picked up, used up, lost or taken, and gives [+] when a fitting item helps a roll ([-] without the right tool). Retcon puts items back too.
 

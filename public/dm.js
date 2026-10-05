@@ -1923,11 +1923,16 @@
   function renderClocks() {
     const list = S?.clocks || [];
     $("clockList").innerHTML = list.length ? list.map((c) => {
-      const s = Math.max(0, Math.ceil((c.ends - Date.now()) / 1000));
-      return `<li><span class="grow">${esc(c.label)}</span><span class="ctime${s <= 30 ? " low" : ""}">${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</span><button data-clock="${esc(c.id)}" class="ghost" title="Stop it">✕</button></li>`;
+      const s = c.paused ? c.left : Math.max(0, Math.ceil((c.ends - Date.now()) / 1000));
+      const id = esc(c.id);
+      return `<li class="${c.paused ? "paused" : ""}"><span class="grow">${esc(c.label)}${c.paused ? ' <span class="muted">· paused</span>' : ""}</span><span class="ctime${s <= 30 && !c.paused ? " low" : ""}">${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</span>
+        <button data-clock-pause="${id}" data-pause="${c.paused ? "" : "1"}" class="ghost" title="${c.paused ? "Resume" : "Pause (frozen on every screen)"}">${c.paused ? "▶" : "⏸"}</button>
+        <button data-clock-shift="${id}" data-seconds="-60" class="ghost" title="Advance it: a minute less left">−1m</button>
+        <button data-clock-shift="${id}" data-seconds="60" class="ghost" title="A minute more">+1m</button>
+        <button data-clock="${id}" class="ghost danger" title="Cancel it (nothing happens)">✕</button></li>`;
     }).join("") : '<li class="muted small">None running.</li>';
   }
-  setInterval(() => S?.clocks?.length && renderClocks(), 1000);
+  setInterval(() => S?.clocks?.some((c) => !c.paused) && renderClocks(), 1000);
   $("clockStart").onclick = () => {
     const label = $("clockLabel").value.trim();
     const mins = Number($("clockMins").value);
@@ -1936,7 +1941,13 @@
     $("clockLabel").value = "";
   };
   $("clockLabel").addEventListener("keydown", (e) => { if (e.key === "Enter") $("clockStart").click(); });
-  $("clockList").addEventListener("click", (e) => { const id = e.target.closest("[data-clock]")?.dataset.clock; if (id) send({ t: "clockStop", id }); });
+  $("clockList").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.clock) send({ t: "clockStop", id: b.dataset.clock });
+    else if (b.dataset.clockPause) send({ t: "clockPause", id: b.dataset.clockPause, pause: !!b.dataset.pause });
+    else if (b.dataset.clockShift) send({ t: "clockShift", id: b.dataset.clockShift, seconds: Number(b.dataset.seconds) });
+  });
 
   // ------------------------------------------------------------ session controls
   $("keyBtn").onclick = openKeyDialog;

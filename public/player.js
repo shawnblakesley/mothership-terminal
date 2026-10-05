@@ -678,11 +678,11 @@
     const el = $("clocks");
     el.hidden = !clocks.length;
     el.innerHTML = clocks.map((c) => {
-      const s = Math.max(0, Math.ceil((c.ends - serverNow()) / 1000));
-      return `<span class="clock${s <= 30 ? " low" : ""}">■ ${escH(c.label)} <b>${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}</b></span>`;
+      const s = c.paused ? c.left : Math.max(0, Math.ceil((c.ends - serverNow()) / 1000));
+      return `<span class="clock${s <= 30 && !c.paused ? " low" : ""}${c.paused ? " paused" : ""}">■ ${escH(c.label)} <b>${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}</b>${c.paused ? " HOLD" : ""}</span>`;
     }).join("");
   }
-  setInterval(() => clocks.length && renderClocks(), 250);
+  setInterval(() => clocks.some((c) => !c.paused) && renderClocks(), 250);
 
   // ------------------------------------------------------------ no Warden
   // A game without a Warden. Whoever starts it is its pilot: the AI runs on

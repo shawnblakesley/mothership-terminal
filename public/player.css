@@ -173,6 +173,8 @@ body {
 .clock b { font-weight: normal; background: var(--fg); color: var(--bg); padding: 0 0.3em; text-shadow: none; }
 .clock.low { color: #ff4a3d; animation: blink 1s infinite steps(1); }
 .clock.low b { background: #ff4a3d; }
+.clock.paused { color: var(--dim); }
+.clock.paused b { background: var(--dim); }
 
 /* ----- CRT overlays ----- */
 /* The glass sits above everything (boot screen and effects included) and never takes clicks. */

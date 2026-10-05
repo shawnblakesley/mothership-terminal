@@ -933,6 +933,12 @@ export class Session {
       case "clockStop":
         this.stopClock(msg.id);
         break;
+      case "clockPause":
+        this.pauseClock(msg.id, !!msg.pause);
+        break;
+      case "clockShift":
+        this.shiftClock(msg.id, msg.seconds);
+        break;
       case "outcomeDismiss":
         if (s.outcomeCheck?.held) this.setBusy(false);
         s.outcomeCheck = null;
@@ -1914,8 +1920,12 @@ export class Session {
   // Countdowns on every player's screen (a breach, oxygen, a self-destruct).
   // The Warden or the agent starts and stops them; when one runs out, the agent
   // is told to make it happen (with no key, the Warden sees it in the log).
+  // A paused clock has no end time, just the seconds it had left (left).
   publicClocks() {
-    return this.state.clocks.map(({ id, label, ends }) => ({ id, label, ends }));
+    return this.state.clocks.map(({ id, label, ends, paused, left }) => ({ id, label, ends, paused: !!paused, left: left ?? null }));
+  }
+  clockLeft(c) {
+    return c.paused ? c.left : Math.max(0, Math.round((c.ends - Date.now()) / 1000));
   }
   // A new story (or a restart): no clocks left running.
   clearClocks() {
@@ -1941,6 +1951,7 @@ export class Session {
   }
   scheduleClock(c) {
     clearTimeout(this.clockTimers.get(c.id));
+    if (c.paused) return;
     this.clockTimers.set(c.id, setTimeout(() => this.clockRanOut(c.id), Math.max(0, c.ends - Date.now())));
   }
   stopClock(ref, quiet = false) {
@@ -1952,6 +1963,32 @@ export class Session {
     this.state.clocks = this.state.clocks.filter((x) => x !== c);
     if (quiet) return;
     this.addLog("note", `⏱ Clock stopped: ${c.label}`);
+    this.clocksChanged();
+  }
+  // The Warden pauses or resumes a clock (frozen on every screen meanwhile).
+  pauseClock(id, pause) {
+    const c = this.state.clocks.find((x) => x.id === id);
+    if (!c || !!c.paused === !!pause) return;
+    if (pause) {
+      Object.assign(c, { paused: true, left: this.clockLeft(c), ends: null });
+      clearTimeout(this.clockTimers.get(c.id));
+    } else {
+      Object.assign(c, { paused: false, ends: Date.now() + c.left * 1000, left: null });
+      this.scheduleClock(c);
+    }
+    this.addLog("note", `⏱ ${c.label} ${pause ? "paused" : "running again"} (${clockText(this.clockLeft(c))} left)`);
+    this.clocksChanged();
+  }
+  // Move a clock on (negative: less time left; it can run out now) or give it more time.
+  shiftClock(id, seconds) {
+    const c = this.state.clocks.find((x) => x.id === id);
+    const delta = Math.round(Number(seconds) || 0);
+    if (!c || !delta) return;
+    const left = Math.max(0, Math.min(7200, this.clockLeft(c) + delta));
+    if (c.paused) c.left = left;
+    else { c.ends = Date.now() + left * 1000; this.scheduleClock(c); }
+    this.addLog("note", `⏱ ${c.label} ${delta < 0 ? "advanced" : "given more time"}: ${clockText(left)} left`);
+    if (!left && !c.paused) return this.clockRanOut(c.id);
     this.clocksChanged();
   }
   clockRanOut(id) {

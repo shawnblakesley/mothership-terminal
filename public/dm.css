@@ -599,6 +599,10 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .clockform input#clockMins { width: 64px; }
 #clockList .ctime { font-family: var(--mono); color: var(--accent); }
 #clockList .ctime.low { color: var(--danger); }
+#clockList li { gap: 4px; }
+#clockList li.paused .ctime { color: var(--muted); }
+#clockList button { padding: 2px 7px; font-size: 12px; }
+#clockList button.danger { color: var(--danger); }
 
 /* The Rules tab. */
 .rules h2 { margin: 6px 0 0; }

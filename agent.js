@@ -610,7 +610,7 @@ function buildContext(state, steer, aside = false) {
   const plans = Object.entries(state.config.rooms || {});
   if (plans.length) ctx.push(`ROOM FLOOR PLANS (now):\n${plans.map(([id, p]) => `${id}:\n${p.rows.join("\n")}`).join("\n\n")}`);
   if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
-  if (state.clocks?.length) ctx.push(`CLOCKS (countdowns on the players' screens, running now):\n${state.clocks.map((c) => `- ${c.label}: ${Math.max(0, Math.round((c.ends - Date.now()) / 1000))}s left`).join("\n")}`);
+  if (state.clocks?.length) ctx.push(`CLOCKS (countdowns on the players' screens, running now):\n${state.clocks.map((c) => `- ${c.label}: ${c.paused ? `${c.left}s left, paused by the Warden` : `${Math.max(0, Math.round((c.ends - Date.now()) / 1000))}s left`}`).join("\n")}`);
   if (state.config.terminals?.length) {
     const at = (state.screens || []).map((s) => `- ${s.character || "a screen with no crew file"}: ${state.config.terminals.find((t) => t.id === s.terminal)?.name || s.terminal}`);
     // The rooms they're standing in: whoever is there talks to them in person.
