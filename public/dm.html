@@ -311,6 +311,16 @@
         </div>
         </div>
 
+        <h2>Clocks <span class="hint" title="Countdowns on every player's screen: a breach, oxygen running out, a self-destruct. The agent can start and stop them too. When one runs out, the agent makes it happen.">?</span></h2>
+        <div class="card stack">
+          <div class="row wrap clockform">
+            <input id="clockLabel" placeholder="e.g. REACTOR BREACH" aria-label="Clock name" maxlength="40">
+            <label class="small muted"><input id="clockMins" type="number" min="0.5" max="120" step="0.5" value="5" aria-label="Minutes"> min</label>
+            <button id="clockStart">⏱ Start</button>
+          </div>
+          <ul id="clockList" class="fxlist"></ul>
+        </div>
+
         <h2>Effects <span class="hint" title="Screen effects on every player's screen.">?</span></h2>
         <div class="stack">
         <div class="fxopts">

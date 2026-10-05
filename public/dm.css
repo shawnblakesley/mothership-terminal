@@ -559,6 +559,12 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .castv ul { margin: 2px 0 0; padding-left: 18px; font-size: 13px; }
 .castv li { margin: 2px 0; }
 
+/* Clocks */
+.clockform input#clockLabel { flex: 1; min-width: 140px; }
+.clockform input#clockMins { width: 64px; }
+#clockList .ctime { font-family: var(--mono); color: var(--accent); }
+#clockList .ctime.low { color: var(--danger); }
+
 /* The Rules tab. */
 .rules h2 { margin: 6px 0 0; }
 .rules a { color: var(--accent); }

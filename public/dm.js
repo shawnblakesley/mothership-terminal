@@ -274,6 +274,7 @@
     renderOutcome();
     renderRoll();
     renderSounds();
+    renderClocks();
     renderCastLists();
     renderMap();
     renderCrew();
@@ -1857,6 +1858,25 @@
     if (act === "cancel" || act === "clear") send({ t: "rollCancel" });
     else if (act === "for") send({ t: "rollFor", pc: b.dataset.pc });
   });
+
+  // ------------------------------------------------------------ clocks
+  function renderClocks() {
+    const list = S?.clocks || [];
+    $("clockList").innerHTML = list.length ? list.map((c) => {
+      const s = Math.max(0, Math.ceil((c.ends - Date.now()) / 1000));
+      return `<li><span class="grow">${esc(c.label)}</span><span class="ctime${s <= 30 ? " low" : ""}">${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</span><button data-clock="${esc(c.id)}" class="ghost" title="Stop it">✕</button></li>`;
+    }).join("") : '<li class="muted small">None running.</li>';
+  }
+  setInterval(() => S?.clocks?.length && renderClocks(), 1000);
+  $("clockStart").onclick = () => {
+    const label = $("clockLabel").value.trim();
+    const mins = Number($("clockMins").value);
+    if (!label || !(mins > 0)) return toast("Give the clock a name and a time.", "error");
+    send({ t: "clockStart", label, seconds: Math.round(mins * 60) });
+    $("clockLabel").value = "";
+  };
+  $("clockLabel").addEventListener("keydown", (e) => { if (e.key === "Enter") $("clockStart").click(); });
+  $("clockList").addEventListener("click", (e) => { const id = e.target.closest("[data-clock]")?.dataset.clock; if (id) send({ t: "clockStop", id }); });
 
   // ------------------------------------------------------------ session controls
   $("keyBtn").onclick = openKeyDialog;

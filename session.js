@@ -182,6 +182,7 @@ export function defaultGame(keys = {}) {
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
+    clocks: [],
     whisper: "",
     sounds: [],
     synopsis: null, // the Warden's latest story synopsis (synopsis.js)
@@ -293,6 +294,7 @@ function migrateGame(saved) {
     synopsis: saved.synopsis ?? null, // { sections, started, at, logId } (synopsis.js)
     // A game without a Warden (see "no Warden" below): { phase, pitches, opened, error }.
     // (A build cut off by a restart goes back to choosing.)
+    clocks: Array.isArray(saved.clocks) ? saved.clocks : [], // countdowns on the players' screens (see "clocks")
     solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
 }
@@ -301,6 +303,7 @@ function migrateGame(saved) {
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
+const clockText = (secs) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
 const clampVol = (v) => Math.max(0, Math.min(1, Number(v) || 0));
 
 export const hashToken = (token) => crypto.createHash("sha256").update(String(token)).digest("hex");
@@ -341,6 +344,8 @@ export class Session {
     // The system the players last acted on ("" = the station's network; terminals.js):
     // where things go when the players are on more than one (see defaultNet).
     this.lastNet = this.state.log.findLast((e) => e.net !== "*")?.net || "";
+    this.clockTimers = new Map();
+    for (const c of this.state.clocks) this.scheduleClock(c); // (running across a restart)
     this.genCounter = 0;
     // Lines reach the players on one shared timeline (see scheduleLine), in order.
     this.playhead = 0;
@@ -453,6 +458,7 @@ export class Session {
       effects: this.state.effects.filter((e) => e.net === undefined || shownOn(e.net, net)),
       playing: this.state.playing.filter((p) => p.loop),
       crew: this.state.config.crew,
+      clocks: this.publicClocks(),
       solo: this.soloView(), // a game without a Warden: choosing a story, building it, or playing
       claims: this.claims(),
       busy: !!this.state.pending,
@@ -814,6 +820,7 @@ export class Session {
         this.initPlayers();
         break;
       case "resetSession":
+        this.clearClocks();
         this.genCounter++;
         this.playhead = 0;
         this.undoStack = [];
@@ -898,6 +905,12 @@ export class Session {
         this.touch();
         return; // (no redraw: the Warden is typing in the card)
       }
+      case "clockStart":
+        this.startClock(msg.label, msg.seconds, "dm");
+        break;
+      case "clockStop":
+        this.stopClock(msg.id);
+        break;
       case "outcomeDismiss":
         if (s.outcomeCheck?.held) this.setBusy(false);
         s.outcomeCheck = null;
@@ -1010,6 +1023,7 @@ export class Session {
         for (const e of [...s.effects]) this.endEffect(e.id);
         this.stopSounds();
         // The sound library is kept (its files are the Warden's uploads).
+        this.clearClocks();
         this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [] };
         this.initPlayers();
         break;
@@ -1220,6 +1234,7 @@ export class Session {
   // Replace the story with a builder draft: new station, lore, secrets, voices,
   // map and crew; a fresh log. Provider, mode and the sound library stay.
   applyStory(draft) {
+    this.clearClocks();
     const s = this.state;
     const { config, station } = applyDraft(draft);
     this.genCounter++;
@@ -1480,7 +1495,7 @@ export class Session {
     // The first entry carries the reply's changes/effects so the agent's history
     // shows that it really changed things (otherwise it learns to leave them empty).
     const mapChanges = this.mapChanges(reply);
-    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], ...mapChanges };
+    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], clockChanges: reply?.clocks || [], ...mapChanges };
     // Effects on a line fire as it begins. An effect-only beat (no text) fires
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
@@ -1518,6 +1533,7 @@ export class Session {
     this.applyMapChanges(mapChanges);
     for (const e of effects) this.startEffect(e, "agent");
     this.applyCrewChanges(reply?.crew_changes);
+    for (const c of reply?.clocks || []) c.action === "stop" ? this.stopClock(c.label) : this.startClock(c.label, c.seconds, "agent");
   }
 
   // The map changes in an agent reply that really change something: a new
@@ -1686,6 +1702,7 @@ export class Session {
       this.playhead = 0;
       for (const e of [...s.effects]) this.endEffect(e.id);
       this.stopSounds();
+      this.clearClocks();
       this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], solo: x };
       Object.assign(this.state.config, keep, { mode: "auto", checkFirst: true });
       for (const ws of this.sockets) if (ws.role === "player") ws.character = null;
@@ -1799,7 +1816,63 @@ export class Session {
     for (const c of this.sockets) if (c.pilot && c.readyState === 1) this.sendPilot(c);
   }
 
+  // ---------------------------------------------------------------- clocks
+  // Countdowns on every player's screen (a breach, oxygen, a self-destruct).
+  // The Warden or the agent starts and stops them; when one runs out, the agent
+  // is told to make it happen (with no key, the Warden sees it in the log).
+  publicClocks() {
+    return this.state.clocks.map(({ id, label, ends }) => ({ id, label, ends }));
+  }
+  // A new story (or a restart): no clocks left running.
+  clearClocks() {
+    for (const t of this.clockTimers.values()) clearTimeout(t);
+    this.clockTimers.clear();
+    this.state.clocks = [];
+    this.clocksChanged();
+  }
+  clocksChanged() {
+    this.toPlayers({ t: "clocks", clocks: this.publicClocks() });
+    this.touch();
+  }
+  startClock(rawLabel, seconds, source) {
+    const label = String(rawLabel || "").replace(/\s+/g, " ").trim().toUpperCase().slice(0, 40);
+    const secs = Math.max(10, Math.min(7200, Math.round(Number(seconds) || 0)));
+    if (!label || !Number(seconds)) return;
+    this.stopClock(label, true); // (the same name again: it restarts)
+    const clock = { id: `clk${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, label, ends: Date.now() + secs * 1000, seconds: secs };
+    this.state.clocks.push(clock);
+    this.scheduleClock(clock);
+    this.addLog("note", `⏱ Clock started${source === "agent" ? " by the agent" : ""}: ${label} (${clockText(secs)})`);
+    this.clocksChanged();
+  }
+  scheduleClock(c) {
+    clearTimeout(this.clockTimers.get(c.id));
+    this.clockTimers.set(c.id, setTimeout(() => this.clockRanOut(c.id), Math.max(0, c.ends - Date.now())));
+  }
+  stopClock(ref, quiet = false) {
+    const key = String(ref || "").trim();
+    const c = this.state.clocks.find((x) => x.id === key || x.label === key.toUpperCase());
+    if (!c) return;
+    clearTimeout(this.clockTimers.get(c.id));
+    this.clockTimers.delete(c.id);
+    this.state.clocks = this.state.clocks.filter((x) => x !== c);
+    if (quiet) return;
+    this.addLog("note", `⏱ Clock stopped: ${c.label}`);
+    this.clocksChanged();
+  }
+  clockRanOut(id) {
+    const c = this.state.clocks.find((x) => x.id === id);
+    if (!c) return;
+    this.clockTimers.delete(id);
+    this.state.clocks = this.state.clocks.filter((x) => x !== c);
+    this.clocksChanged();
+    this.addLog("warden", `CLOCK RAN OUT: ${c.label}. Make it happen now, in the fiction, with real consequences.`);
+    this.syncDm();
+    this.requestReply();
+  }
+
   close() {
+    for (const t of this.clockTimers.values()) clearTimeout(t);
     for (const t of this.effectTimers.values()) clearTimeout(t);
     for (const ws of this.sockets) ws.close(4004, "session ended");
   }

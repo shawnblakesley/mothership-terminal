@@ -107,7 +107,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "layout", "room_plans", "effects", "outcome_check", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "clocks", "layout", "room_plans", "effects", "outcome_check", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -155,6 +155,20 @@ function buildSchema(voices) {
             stat: { type: "string", enum: ["health", "wounds", "stress"] },
             change: { type: "integer", description: "How much to add (negative to take away), e.g. -3 health, +1 stress." },
             why: { type: "string", description: "A few words for the Warden's log." },
+          },
+        },
+      },
+      clocks: {
+        type: "array",
+        description: "Countdowns on every player's screen (see CLOCKS): start one when time pressure is real and they should feel it (a hull breach, oxygen running out, a self-destruct, something on its way); stop one when they deal with it. When a clock runs out you'll be told, and must make it happen. Usually empty.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["action", "label", "seconds"],
+          properties: {
+            action: { type: "string", enum: ["start", "stop"] },
+            label: { type: "string", description: "Short and caps-friendly, e.g. REACTOR BREACH. To stop one, its label." },
+            seconds: { type: "integer", description: "To start: how long it runs, real time (60-1800 is typical). To stop: 0." },
           },
         },
       },
@@ -228,6 +242,7 @@ const REPLY_EXAMPLE = {
   ],
   station_changes: [{ path: "quarantine", value: "DECK 3" }],
   crew_changes: [],
+  clocks: [],
   layout: "",
   room_plans: [],
   effects: [],
@@ -404,7 +419,7 @@ function buildMessages(state) {
   for (const e of state.log.filter((x) => x.kind !== "note" && !x.cut).slice(-HISTORY_ENTRIES)) {
     const role = USER_KINDS.has(e.kind) ? "user" : "assistant";
     let last = turns.at(-1);
-    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], effects: [], notes: [], layout: "", plans: [] }));
+    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], clocks: [], effects: [], notes: [], layout: "", plans: [] }));
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
     if (e.kind === "player") last.inputs.push(`[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}] ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
@@ -418,6 +433,7 @@ function buildMessages(state) {
       last.lines.push({ voice: voiceIdOf(e), character: e.character || "", in_person: !!e.inPerson, system: multi ? systemName(state.config, e.net) : "", text: e.text, effects: e.cues || [], variants: (e.variants || []).map((v) => ({ for: v.for, text: v.text })) });
       last.changes.push(...(e.changes || []));
       last.crew.push(...(e.crewChanges || []));
+      last.clocks.push(...(e.clockChanges || []));
       last.effects.push(...(e.effects || []));
     }
   }
@@ -432,7 +448,7 @@ function buildMessages(state) {
   return turns.map((t) =>
     t.role === "user"
       ? { role: "user", content: t.inputs.join("\n") }
-      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
+      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, clocks: t.clocks, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
   );
 }
 
@@ -549,6 +565,7 @@ function buildContext(state, steer, aside = false) {
   const plans = Object.entries(state.config.rooms || {});
   if (plans.length) ctx.push(`ROOM FLOOR PLANS (now):\n${plans.map(([id, p]) => `${id}:\n${p.rows.join("\n")}`).join("\n\n")}`);
   if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
+  if (state.clocks?.length) ctx.push(`CLOCKS (countdowns on the players' screens, running now):\n${state.clocks.map((c) => `- ${c.label}: ${Math.max(0, Math.round((c.ends - Date.now()) / 1000))}s left`).join("\n")}`);
   if (state.config.terminals?.length) {
     const at = (state.screens || []).map((s) => `- ${s.character || "a screen with no crew file"}: ${state.config.terminals.find((t) => t.id === s.terminal)?.name || s.terminal}`);
     // The rooms they're standing in: whoever is there talks to them in person.
@@ -617,6 +634,10 @@ export function parseReply(text, voices) {
       .filter((c) => c && c.for && ["health", "wounds", "stress"].includes(c.stat) && Number.isFinite(Number(c.change)) && Number(c.change))
       .slice(0, 12)
       .map((c) => ({ for: String(c.for).slice(0, 60), stat: c.stat, change: Math.max(-20, Math.min(20, Math.round(Number(c.change)))), why: String(c.why ?? "").slice(0, 120) })),
+    clocks: (Array.isArray(r?.clocks) ? r.clocks : [])
+      .filter((c) => c && ["start", "stop"].includes(c.action) && String(c.label ?? "").trim())
+      .slice(0, 4)
+      .map((c) => ({ action: c.action, label: String(c.label).replace(/\s+/g, " ").trim().toUpperCase().slice(0, 40), seconds: Math.max(0, Math.min(7200, Math.round(Number(c.seconds) || 0))) })),
     station_changes: (Array.isArray(r?.station_changes) ? r.station_changes : [])
       .filter((c) => c && typeof c.path === "string" && c.path.trim())
       .map((c) => ({ path: c.path.trim(), value: String(c.value ?? "") })),

@@ -625,6 +625,23 @@
     if (c) { e.preventDefault(); claim(c.id); renderFile(); openPanel("crewfile"); $("crewfile-close").focus(); }
   });
   $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
+  // ------------------------------------------------------------ clocks
+  // Countdowns on the shared timeline (server time), under the header.
+  let clocks = [];
+  function setClocks(list) {
+    clocks = list || [];
+    renderClocks();
+  }
+  function renderClocks() {
+    const el = $("clocks");
+    el.hidden = !clocks.length;
+    el.innerHTML = clocks.map((c) => {
+      const s = Math.max(0, Math.ceil((c.ends - serverNow()) / 1000));
+      return `<span class="clock${s <= 30 ? " low" : ""}">■ ${escH(c.label)} <b>${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}</b></span>`;
+    }).join("");
+  }
+  setInterval(() => clocks.length && renderClocks(), 250);
+
   // ------------------------------------------------------------ no Warden
   // A game without a Warden. Whoever starts it is its pilot: the AI runs on
   // their key, and this screen keeps the session's token to prove it (PILOT:
@@ -1155,6 +1172,7 @@
           busy = msg.busy;
           updateBusy();
           showRoll(msg.roll || null);
+          setClocks(msg.clocks);
           // A game without a Warden: the stories on offer until one is playing.
           applySolo(msg.solo);
           // First visit, or a new story replaced the crew: reclaim a remembered file or pick one.
@@ -1163,6 +1181,7 @@
           scrollDown();
           break;
         case "solo": applySolo(msg.solo); break;
+        case "clocks": setClocks(msg.clocks); break;
         case "pilotInfo": setPilot(msg); break;
         case "notice": notice(msg.text); break;
         case "header":

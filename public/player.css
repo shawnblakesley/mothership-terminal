@@ -157,6 +157,13 @@ body {
 #inputrow.disabled #caret, #inputrow:not(:focus-within) #caret { display: none; }
 @keyframes blink { 50% { opacity: 0; } }
 
+/* Countdowns under the header. The last half minute flashes red. */
+.clocks { display: flex; flex-wrap: wrap; gap: 0.4em 1.6em; padding: 0.15em 0 0.35em; letter-spacing: 0.08em; }
+.clocks[hidden] { display: none; }
+.clock b { font-weight: normal; background: var(--fg); color: var(--bg); padding: 0 0.3em; text-shadow: none; }
+.clock.low { color: #ff4a3d; animation: blink 1s infinite steps(1); }
+.clock.low b { background: #ff4a3d; }
+
 /* ----- CRT overlays ----- */
 /* The glass sits above everything (boot screen and effects included) and never takes clicks. */
 .crt-glass { position: fixed; inset: 0; pointer-events: none; z-index: 200; overflow: hidden; }
