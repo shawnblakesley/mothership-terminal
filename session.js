@@ -183,6 +183,7 @@ export function defaultGame(keys = {}) {
     station: structuredClone(DEFAULT_STATION),
     log: [],
     clocks: [],
+    handouts: [],
     whisper: "",
     sounds: [],
     synopsis: null, // the Warden's latest story synopsis (synopsis.js)
@@ -294,6 +295,7 @@ function migrateGame(saved) {
     synopsis: saved.synopsis ?? null, // { sections, started, at, logId } (synopsis.js)
     // A game without a Warden (see "no Warden" below): { phase, pitches, opened, error }.
     // (A build cut off by a restart goes back to choosing.)
+    handouts: Array.isArray(saved.handouts) ? saved.handouts : [], // documents given to the players (see "handouts")
     clocks: Array.isArray(saved.clocks) ? saved.clocks : [], // countdowns on the players' screens (see "clocks")
     solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
@@ -303,6 +305,11 @@ function migrateGame(saved) {
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
+// A crew member named by the agent ("" for none, or no match).
+const findCharacterId = (crew, name) => {
+  const n = String(name || "").trim().toLowerCase();
+  return n ? crew.find((c) => c.name.toLowerCase() === n || c.name.toLowerCase().includes(n))?.id || "" : "";
+};
 const clockText = (secs) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
 const clampVol = (v) => Math.max(0, Math.min(1, Number(v) || 0));
 
@@ -459,6 +466,7 @@ export class Session {
       playing: this.state.playing.filter((p) => p.loop),
       crew: this.state.config.crew,
       clocks: this.publicClocks(),
+      handouts: this.handoutsFor(ws),
       solo: this.soloView(), // a game without a Warden: choosing a story, building it, or playing
       claims: this.claims(),
       busy: !!this.state.pending,
@@ -674,6 +682,7 @@ export class Session {
     if (msg.t === "claim") {
       // A player picks their character (or none). Several screens may share one.
       ws.character = this.state.config.crew.some((c) => c.id === msg.id) ? msg.id : null;
+      ws.send(JSON.stringify({ t: "handouts", handouts: this.handoutsFor(ws) })); // (theirs depend on who they are)
       return this.crewChanged();
     }
     if (msg.t !== "input") return;
@@ -825,6 +834,7 @@ export class Session {
         this.playhead = 0;
         this.undoStack = [];
         s.log = [];
+        s.handouts = [];
         s.pending = null;
         s.whisper = "";
         s.roll = null;
@@ -905,6 +915,18 @@ export class Session {
         this.touch();
         return; // (no redraw: the Warden is typing in the card)
       }
+      case "handout": // the Warden gives the players a document (everyone, or one character)
+        this.giveHandout({ title: msg.title, text: msg.text, to: msg.to }, "dm");
+        break;
+      case "handoutAgain": { // show it again (it pops up on their screens)
+        const h = s.handouts.find((x) => x.id === msg.id);
+        if (h) this.showHandout(h);
+        return;
+      }
+      case "handoutDelete":
+        s.handouts = s.handouts.filter((x) => x.id !== msg.id);
+        this.toPlayers({ t: "handoutGone", id: msg.id });
+        break;
       case "clockStart":
         this.startClock(msg.label, msg.seconds, "dm");
         break;
@@ -1240,7 +1262,7 @@ export class Session {
     this.genCounter++;
     this.playhead = 0;
     Object.assign(s.config, config, { rooms: {} }); // (new rooms: plans are drawn when first opened)
-    Object.assign(s, { station, log: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopsis: null });
+    Object.assign(s, { station, log: [], handouts: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopsis: null });
     for (const e of [...s.effects]) this.endEffect(e.id);
     this.stopSounds();
     for (const ws of this.sockets) if (ws.role === "player") ws.character = null; // everyone picks a new crew file
@@ -1495,7 +1517,7 @@ export class Session {
     // The first entry carries the reply's changes/effects so the agent's history
     // shows that it really changed things (otherwise it learns to leave them empty).
     const mapChanges = this.mapChanges(reply);
-    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], clockChanges: reply?.clocks || [], ...mapChanges };
+    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
     // Effects on a line fire as it begins. An effect-only beat (no text) fires
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
@@ -1534,6 +1556,7 @@ export class Session {
     for (const e of effects) this.startEffect(e, "agent");
     this.applyCrewChanges(reply?.crew_changes);
     for (const c of reply?.clocks || []) c.action === "stop" ? this.stopClock(c.label) : this.startClock(c.label, c.seconds, "agent");
+    for (const h of reply?.handouts || []) this.giveHandout({ title: h.title, text: h.text, to: findCharacterId(this.state.config.crew, h.for) }, "agent");
   }
 
   // The map changes in an agent reply that really change something: a new
@@ -1814,6 +1837,28 @@ export class Session {
         return;
     }
     for (const c of this.sockets) if (c.pilot && c.readyState === 1) this.sendPilot(c);
+  }
+
+  // ---------------------------------------------------------------- handouts
+  // Documents in the players' hands (a log, a memo, a manifest): they pop up on
+  // the screens they're for, and stay under DOCS. to: a crew id, or "" for all.
+  giveHandout({ title, text, to = "" }, source) {
+    const clean = (v, n) => String(v ?? "").replace(/\r/g, "").trim().slice(0, n);
+    const h = { id: `doc${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, title: clean(title, 120), text: clean(text, 6000), to: this.state.config.crew.some((c) => c.id === to) ? to : "", at: Date.now() };
+    if (!h.title || !h.text) return;
+    this.state.handouts.push(h);
+    if (this.state.handouts.length > 60) this.state.handouts.shift();
+    const who = h.to ? this.state.config.crew.find((c) => c.id === h.to)?.name : "everyone";
+    this.addLog("note", `📄 Handout${source === "agent" ? " from the agent" : ""} to ${who}: ${h.title}`);
+    this.showHandout(h);
+    this.touch();
+  }
+  showHandout(h) {
+    const data = JSON.stringify({ t: "handout", handout: h });
+    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && (!h.to || c.character === h.to)) c.send(data);
+  }
+  handoutsFor(ws) {
+    return (this.state.handouts || []).filter((h) => !h.to || h.to === ws?.character);
   }
 
   // ---------------------------------------------------------------- clocks

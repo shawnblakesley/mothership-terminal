@@ -157,6 +157,10 @@ body {
 #inputrow.disabled #caret, #inputrow:not(:focus-within) #caret { display: none; }
 @keyframes blink { 50% { opacity: 0; } }
 
+/* Documents (handouts): read as printed text. */
+.docbody { margin: 0.6em 0; white-space: pre-wrap; font: inherit; max-height: 60vh; overflow-y: auto; }
+#docs-list li .p-dim { margin-left: 0.6em; }
+
 /* Countdowns under the header. The last half minute flashes red. */
 .clocks { display: flex; flex-wrap: wrap; gap: 0.4em 1.6em; padding: 0.15em 0 0.35em; letter-spacing: 0.08em; }
 .clocks[hidden] { display: none; }

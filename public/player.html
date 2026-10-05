@@ -25,6 +25,8 @@
       <span class="sep" id="hdr-term-sep" hidden>//</span>
       <button id="hdr-file" class="hdr-btn" type="button" title="Your crew file" hidden>FILE</button>
       <span class="sep" id="hdr-file-sep" hidden>//</span>
+      <button id="hdr-docs" class="hdr-btn" type="button" title="Documents you've been given" hidden>DOCS</button>
+      <span class="sep" id="hdr-docs-sep" hidden>//</span>
       <button id="hdr-pilot" class="hdr-btn" type="button" title="You're the pilot: the AI, the story, inviting others" hidden>PILOT</button>
       <span class="sep" id="hdr-pilot-sep" hidden>//</span>
       <button id="hdr-rules" class="hdr-btn" type="button" title="How to play: the rules, in plain text">RULES</button>
@@ -75,6 +77,16 @@
           <button type="button" class="p-btn" id="sr-cancel">[ CANCEL ]</button>
         </form>
         <div id="sr-err" role="alert"></div>
+      </section>
+      <!-- Documents the Warden or the agent gave the players: the list, or one to read. -->
+      <section id="docs" class="panel" hidden>
+        <div class="p-title" id="docs-title">■ DOCUMENTS ■</div>
+        <ol id="docs-list"></ol>
+        <pre id="docs-body" class="docbody" hidden></pre>
+        <div class="p-actions">
+          <button type="button" id="docs-close" class="p-btn">[ CLOSE ]</button>
+          <button type="button" id="docs-back" class="p-btn" hidden>[ ALL DOCUMENTS ]</button>
+        </div>
       </section>
       <section id="crewfile" class="panel" hidden>
         <div id="crewfile-body"></div>

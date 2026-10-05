@@ -473,7 +473,7 @@
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   function openPanel(id) {
-    for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "solopick"]) $(p).hidden = p !== id;
+    for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "solopick", "docs"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
     // (Not before power-on: the key that wakes the terminal would also press the button.)
     if (id === "crewpick" && bootEl.classList.contains("gone")) $("crewpick-list").querySelector("button")?.focus();
@@ -625,6 +625,48 @@
     if (c) { e.preventDefault(); claim(c.id); renderFile(); openPanel("crewfile"); $("crewfile-close").focus(); }
   });
   $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
+  // ------------------------------------------------------------ documents
+  // Handouts: a new one opens on arrival; DOCS lists them all.
+  let docs = [];
+  function setDocs(list) {
+    docs = list || [];
+    $("hdr-docs").hidden = $("hdr-docs-sep").hidden = !docs.length || spectate;
+    $("hdr-docs").textContent = docs.length ? `DOCS (${docs.length})` : "DOCS";
+    if (!$("docs").hidden && $("docs-body").hidden) showDocList();
+  }
+  function gotDoc(h) {
+    setDocs([...docs.filter((d) => d.id !== h.id), h]);
+    if (spectate) return;
+    FX.Sound.beep(880, 0.08);
+    showDoc(h.id);
+  }
+  function showDocList() {
+    $("docs-title").textContent = "■ DOCUMENTS ■";
+    $("docs-list").hidden = false;
+    $("docs-body").hidden = $("docs-back").hidden = true;
+    $("docs-list").innerHTML = docs.map((d, i) => `<li><button type="button" class="p-btn" data-doc="${escH(d.id)}">[${i + 1}] ${escH(d.title.toUpperCase())}</button></li>`).join("") || '<li class="p-dim">NONE YET.</li>';
+    openPanel("docs");
+  }
+  function showDoc(id) {
+    const d = docs.find((x) => x.id === id);
+    if (!d) return showDocList();
+    $("docs-title").textContent = `■ ${d.title.toUpperCase()} ■`;
+    $("docs-list").hidden = true;
+    $("docs-body").hidden = false;
+    $("docs-body").textContent = d.text;
+    $("docs-back").hidden = docs.length < 2;
+    openPanel("docs");
+  }
+  $("hdr-docs").onclick = () => ($("docs").hidden ? showDocList() : openPanel(null));
+  $("docs-list").addEventListener("click", (e) => { const id = e.target.closest("[data-doc]")?.dataset.doc; if (id) showDoc(id); });
+  $("docs-close").onclick = () => openPanel(null);
+  $("docs-back").onclick = showDocList;
+  addEventListener("keydown", (e) => {
+    if ($("docs").hidden) return;
+    if (e.key === "Escape") return openPanel(null);
+    if (!$("docs-list").hidden && /^[1-9]$/.test(e.key) && docs[Number(e.key) - 1]) { e.preventDefault(); showDoc(docs[Number(e.key) - 1].id); }
+  });
+
   // ------------------------------------------------------------ clocks
   // Countdowns on the shared timeline (server time), under the header.
   let clocks = [];
@@ -1173,6 +1215,7 @@
           updateBusy();
           showRoll(msg.roll || null);
           setClocks(msg.clocks);
+          setDocs(msg.handouts);
           // A game without a Warden: the stories on offer until one is playing.
           applySolo(msg.solo);
           // First visit, or a new story replaced the crew: reclaim a remembered file or pick one.
@@ -1182,6 +1225,9 @@
           break;
         case "solo": applySolo(msg.solo); break;
         case "clocks": setClocks(msg.clocks); break;
+        case "handout": gotDoc(msg.handout); break;
+        case "handouts": setDocs(msg.handouts); break;
+        case "handoutGone": setDocs(docs.filter((d) => d.id !== msg.id)); break;
         case "pilotInfo": setPilot(msg); break;
         case "notice": notice(msg.text); break;
         case "header":

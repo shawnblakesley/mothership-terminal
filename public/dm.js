@@ -275,6 +275,7 @@
     renderRoll();
     renderSounds();
     renderClocks();
+    renderHandouts();
     renderCastLists();
     renderMap();
     renderCrew();
@@ -1857,6 +1858,28 @@
     const act = b?.dataset.roll;
     if (act === "cancel" || act === "clear") send({ t: "rollCancel" });
     else if (act === "for") send({ t: "rollFor", pc: b.dataset.pc });
+  });
+
+  // ------------------------------------------------------------ handouts
+  function renderHandouts() {
+    const to = $("docTo");
+    const opts = [["", "Everyone"], ...S.config.crew.map((c) => [c.id, c.name])];
+    const key = JSON.stringify(opts);
+    if (to.dataset.key !== key) { to.dataset.key = key; const was = to.value; to.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(""); to.value = opts.some(([v]) => v === was) ? was : ""; }
+    const list = (S.handouts || []).slice().reverse();
+    const nameOf = (id) => S.config.crew.find((c) => c.id === id)?.name || "everyone";
+    $("docList").innerHTML = list.length ? list.map((h) => `<li title="${esc(h.text.slice(0, 300))}"><span class="grow">${esc(h.title)} <span class="muted">· ${esc(h.to ? nameOf(h.to) : "everyone")}</span></span><button data-doc-again="${esc(h.id)}" class="ghost" title="Show it on their screens again">↻</button><button data-doc-del="${esc(h.id)}" class="ghost" title="Take it back">✕</button></li>`).join("") : '<li class="muted small">None given yet.</li>';
+  }
+  $("docSend").onclick = () => {
+    const title = $("docTitle").value.trim(), text = $("docText").value.trim();
+    if (!title || !text) return toast("A handout needs a title and some text.", "error");
+    send({ t: "handout", title, text, to: $("docTo").value });
+    $("docTitle").value = $("docText").value = "";
+  };
+  $("docList").addEventListener("click", (e) => {
+    const again = e.target.closest("[data-doc-again]")?.dataset.docAgain, del = e.target.closest("[data-doc-del]")?.dataset.docDel;
+    if (again) send({ t: "handoutAgain", id: again });
+    if (del) send({ t: "handoutDelete", id: del });
   });
 
   // ------------------------------------------------------------ clocks

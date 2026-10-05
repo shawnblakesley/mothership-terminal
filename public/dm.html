@@ -311,6 +311,14 @@
         </div>
         </div>
 
+        <h2>Handouts <span class="hint" title="Documents in the players' hands: a log, a memo, a manifest, a diary page. It pops up on their screens and stays under DOCS. The agent can hand them out too.">?</span></h2>
+        <div class="card stack">
+          <input id="docTitle" placeholder="Title, e.g. MEDICAL LOG: DR. SALK, DAY 19" maxlength="120">
+          <textarea id="docText" rows="4" placeholder="The document's text"></textarea>
+          <div class="row"><label class="small muted">To <select id="docTo"></select></label><span class="grow"></span><button id="docSend">📄 Hand it out</button></div>
+          <ul id="docList" class="fxlist"></ul>
+        </div>
+
         <h2>Clocks <span class="hint" title="Countdowns on every player's screen: a breach, oxygen running out, a self-destruct. The agent can start and stop them too. When one runs out, the agent makes it happen.">?</span></h2>
         <div class="card stack">
           <div class="row wrap clockform">

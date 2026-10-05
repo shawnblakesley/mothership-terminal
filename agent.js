@@ -107,7 +107,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "clocks", "layout", "room_plans", "effects", "outcome_check", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -169,6 +169,20 @@ function buildSchema(voices) {
             action: { type: "string", enum: ["start", "stop"] },
             label: { type: "string", description: "Short and caps-friendly, e.g. REACTOR BREACH. To stop one, its label." },
             seconds: { type: "integer", description: "To start: how long it runs, real time (60-1800 is typical). To stop: 0." },
+          },
+        },
+      },
+      handouts: {
+        type: "array",
+        description: "Documents put in the players' hands, shown on their screens to read and keep: a log they downloaded, a memo, a manifest, a medical report, a diary page. For things they find or pull from the system that are worth reading in full. Usually empty.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "text", "for"],
+          properties: {
+            title: { type: "string", description: "What the document is, e.g. MEDICAL LOG: DR. SALK, DAY 19." },
+            text: { type: "string", description: "Its full text, as written in the world (line breaks kept)." },
+            for: { type: "string", description: "A crew member's name if only they get it; empty for everyone." },
           },
         },
       },
@@ -243,6 +257,7 @@ const REPLY_EXAMPLE = {
   station_changes: [{ path: "quarantine", value: "DECK 3" }],
   crew_changes: [],
   clocks: [],
+  handouts: [],
   layout: "",
   room_plans: [],
   effects: [],
@@ -419,7 +434,7 @@ function buildMessages(state) {
   for (const e of state.log.filter((x) => x.kind !== "note" && !x.cut).slice(-HISTORY_ENTRIES)) {
     const role = USER_KINDS.has(e.kind) ? "user" : "assistant";
     let last = turns.at(-1);
-    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], clocks: [], effects: [], notes: [], layout: "", plans: [] }));
+    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
     if (e.kind === "player") last.inputs.push(`[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}] ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
@@ -434,6 +449,7 @@ function buildMessages(state) {
       last.changes.push(...(e.changes || []));
       last.crew.push(...(e.crewChanges || []));
       last.clocks.push(...(e.clockChanges || []));
+      last.handouts.push(...(e.handouts || []));
       last.effects.push(...(e.effects || []));
     }
   }
@@ -448,7 +464,7 @@ function buildMessages(state) {
   return turns.map((t) =>
     t.role === "user"
       ? { role: "user", content: t.inputs.join("\n") }
-      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, clocks: t.clocks, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
+      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
   );
 }
 
@@ -638,6 +654,10 @@ export function parseReply(text, voices) {
       .filter((c) => c && ["start", "stop"].includes(c.action) && String(c.label ?? "").trim())
       .slice(0, 4)
       .map((c) => ({ action: c.action, label: String(c.label).replace(/\s+/g, " ").trim().toUpperCase().slice(0, 40), seconds: Math.max(0, Math.min(7200, Math.round(Number(c.seconds) || 0))) })),
+    handouts: (Array.isArray(r?.handouts) ? r.handouts : [])
+      .filter((h) => h && String(h.title ?? "").trim() && String(h.text ?? "").trim())
+      .slice(0, 3)
+      .map((h) => ({ title: scrub(h.title).trim().slice(0, 120), text: scrub(h.text).slice(0, 6000), for: String(h.for ?? "").trim().slice(0, 60) })),
     station_changes: (Array.isArray(r?.station_changes) ? r.station_changes : [])
       .filter((c) => c && typeof c.path === "string" && c.path.trim())
       .map((c) => ({ path: c.path.trim(), value: String(c.value ?? "") })),
