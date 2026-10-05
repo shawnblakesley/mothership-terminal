@@ -67,13 +67,6 @@
       <select id="effort" aria-label="Thinking effort" title="Thinking effort (off/low = fastest & cheapest)"></select>
       <button id="keyBtn" title="Your API key for this session">🔑 API key…</button>
     </div>
-    <h3 class="sethead">Station</h3>
-    <div class="fxopts">
-      <label>Station name <input id="stationName"></label>
-      <label>Screen colour
-        <select id="theme"><option>green</option><option>amber</option><option>cyan</option><option>white</option><option>red</option></select>
-      </label>
-    </div>
     <label class="field talkrow"><span>How much the characters say</span>
       <select id="talk">
         <option value="terse">Terse: a line or two, fragments</option>
@@ -383,6 +376,11 @@
         <div id="crew"></div>
         <div class="row edit-only"><button id="addCrew" class="ghost">+ Add character</button></div>
         <h2>Terminals <span class="hint" title="Where each player's screen is. A terminal's look shows on that screen and the agent answers from that place. Players switch with TERM (if allowed in Settings); move anyone from their crew card.">?</span></h2>
+        <!-- The station: its name (every screen's header) and the colour of every terminal set to "station's". -->
+        <div class="row wrap stationrow">
+          <label class="small muted">Station name <input id="stationName"></label>
+          <label class="small muted">Screen colour <select id="theme"><option>green</option><option>amber</option><option>cyan</option><option>white</option><option>red</option></select></label>
+        </div>
         <div id="terminals" class="edit-only"></div>
         <div id="terminalsPlay" class="play-only"></div>
         <div class="row edit-only"><button id="addTerminal" class="ghost">+ Add terminal</button></div>

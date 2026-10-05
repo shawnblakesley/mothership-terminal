@@ -169,7 +169,7 @@ After a restart the next first move saves the story again, so changes you make i
 
 ## Settings
 
-**⚙** (Settings) in the console header holds the join code and player link, the AI provider, model and **API key**, the station name and screen colour, **how much the characters say** (Terse, Brief, Normal or Expansive; Brief by default, and enforced on every reply), the session actions (clear screen, restart story, factory reset, Warden link, end session), and switches for what the agent and players may do:
+**⚙** (Settings) in the console header holds the join code and player link, the AI provider, model and **API key**, **how much the characters say** (Terse, Brief, Normal or Expansive; Brief by default, and enforced on every reply), the session actions (clear screen, restart story, factory reset, Warden link, end session), and switches for what the agent and players may do:
 
 - the agent may check with you first;
 - the agent may trigger screen effects; send different versions of a line to different players; change the crew's health, wounds and stress,
@@ -198,7 +198,7 @@ After a restart the next first move saves the story again, so changes you make i
 | **Station state** | JSON the agent reads every turn and can change, e.g. opening doors or raising `access_level`. The player header shows `access_level`. |
 | **Standing orders** | Persistent steering, e.g. "the AI is slowly being infected". |
 | **Lore & secrets** | What the computer knows. Secrets, such as passwords and company directives, are guarded by access level. |
-| **Voices & personas** | Every voice with its persona, look and sound (see below). Station name, screen colour and feature switches are under **⚙** (Settings). |
+| **Voices & personas** | Every voice with its persona, look and sound (see below). The station's name and screen colour are at the top of **Terminals** (Crew tab); feature switches are under **⚙** (Settings). |
 
 ## Notes to the agent
 

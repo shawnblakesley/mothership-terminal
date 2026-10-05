@@ -597,6 +597,12 @@ summary .muted { font-weight: 400; font-size: 12px; }
 /* Lore, secrets, standing orders: grown to fit their text (dm.js growStory). */
 #lore, #secrets, #standingOrders { overflow-y: hidden; resize: none; min-height: 4em; }
 
+/* The station's name and colour, at the top of the terminals. */
+.stationrow { gap: 8px 16px; }
+.stationrow label { display: inline-flex; align-items: center; gap: 6px; }
+.stationrow #stationName { width: 12em; }
+.stationrow select { width: auto; }
+
 /* Clocks */
 .clockform input#clockLabel { flex: 1; min-width: 140px; }
 .clockform input#clockMins { width: 64px; }
