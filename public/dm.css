@@ -486,7 +486,10 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .tcard .looks { display: flex; flex-wrap: wrap; gap: 4px; }
 .tcard .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 99px; padding: 2px 9px; color: var(--fg); }
 .tcard .chip input { width: auto; }
-.pc select[data-move] { width: auto; padding: 3px 6px; }
+/* Where they are, in the card's header: reads as text, opens as a picker. */
+.pc .where { display: inline-flex; align-items: baseline; gap: 4px; }
+.pc select[data-move] { width: auto; max-width: 220px; padding: 1px 4px; font: inherit; color: var(--fg); background: transparent; border: 1px solid transparent; border-radius: 5px; cursor: pointer; }
+.pc select[data-move]:hover, .pc select[data-move]:focus-visible { border-color: var(--line); background: var(--panel3); }
 
 /* Lines cut off by a player before they were said */
 .entry.cut { opacity: 0.45; }

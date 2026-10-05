@@ -486,9 +486,9 @@
         <summary><span class="pcname">${esc(c.name || "Unnamed")}</span>
           <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
           <span class="pill ${playing ? "ok" : ""}">${playing ? `playing on ${playing} screen${playing > 1 ? "s" : ""}` : "not picked"}</span>
-          ${whereIs(c.id) ? `<span class="muted small">at ${esc(whereIs(c.id))}</span>` : ""}</summary>
-        ${playing ? `<div class="row small"><span class="muted">Move them to</span><select data-move="${esc(c.id)}">${S.config.terminals.map((t) =>
-          `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></div>` : ""}
+          ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move their screens to another terminal" aria-label="Move ${esc(c.name)} to">${
+            (whereIs(c.id) ? "" : '<option value="" selected>(no terminal yet)</option>') + S.config.terminals.map((t) =>
+            `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></span>` : ""}</summary>
         <div class="pcgrid">
           ${txt("name", c.name, "Name")}
           <label>Pronouns<input data-c="pronouns" value="${esc(c.pronouns)}"></label>
@@ -521,8 +521,16 @@
   };
   $("crew").addEventListener("change", (e) => {
     const who = e.target.dataset.move;
-    if (who) { send({ t: "moveScreens", character: who, terminal: e.target.value }); e.target.blur(); }
+    if (who && e.target.value) { send({ t: "moveScreens", character: who, terminal: e.target.value }); e.target.blur(); }
   });
+  // The where-they-are picker sits in the card's header: using it doesn't open or close the card.
+  for (const type of ["click", "keydown", "keyup"]) {
+    $("crew").addEventListener(type, (e) => {
+      if (!e.target.matches?.("summary select[data-move]")) return;
+      if (type === "click") e.preventDefault();
+      else if (e.key === " " || e.key === "Enter") e.stopPropagation();
+    });
+  }
   $("crew").addEventListener("toggle", (e) => {
     const i = e.target.dataset?.i;
     if (i !== undefined) e.target.open ? openCrew.add(i) : openCrew.delete(i);
