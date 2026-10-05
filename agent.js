@@ -326,7 +326,13 @@ const xmlAttr = (s) => String(s).replace(/[&"<>]/g, (c) => ({ "&": "&amp;", '"':
 // "Michael (US male)" for a Kokoro speaker, the variant id for eSpeak.
 const voiceLabel = (v, id) => (v.voice.engine === "neural" ? SPEAKERS[id] || id : id);
 
-function buildVoices(voices) {
+// config: for the connection graph (which systems each voice is heard on), when there's more than one.
+function buildVoices(voices, config) {
+  const systems = config ? systemsOf(config) : [];
+  const heardOn = (v) => {
+    const nets = (v.systems ?? [""]).filter((n) => n === "*" || systems.some((s) => s.net === n));
+    return !nets.length || nets.includes("*") ? "every system" : nets.map((n) => systemName(config, n)).join(", ");
+  };
   const blocks = voices.map((v) => {
     const display = (STYLE_NOTES[v.style] ?? STYLE_NOTES.plain)(v);
     const role = v.id === BUILTIN.terminal ? "the station computer: answers terminal commands and system queries" : v.id === BUILTIN.broadcast ? "station-wide announcements" : "another voice";
@@ -337,7 +343,8 @@ function buildVoices(voices) {
       ? `\n\nCHARACTERS (who speaks through this voice; set "character" to one of these names on each line):\n${v.characters.map((c) =>
           `- ${c.name}${c.voice ? ` [${voiceLabel(v, c.voice)}]` : ""}${c.notes ? `: ${c.notes.replace(/<\/?voice\b[^>]*>/gi, "")}` : ""}`).join("\n")}`
       : "";
-    return `<voice id="${xmlAttr(v.id)}" name="${xmlAttr(v.name)}" role="${xmlAttr(role)}" display="${xmlAttr(display)}">\n${body}${cast}\n</voice>`;
+    const where = systems.length > 1 ? ` heard_on="${xmlAttr(heardOn(v))}"` : "";
+    return `<voice id="${xmlAttr(v.id)}" name="${xmlAttr(v.name)}" role="${xmlAttr(role)}" display="${xmlAttr(display)}"${where}>\n${body}${cast}\n</voice>`;
   });
   return `VOICES YOU CONTROL
 Every line you write is said by exactly one of these voices; put its id in the "voice" field.
@@ -355,7 +362,7 @@ function buildSystem(state) {
   const c = state.config;
   return [
     WARDEN_PROTOCOL,
-    buildVoices(c.voices),
+    buildVoices(c.voices, c),
     `STATION NAME: ${c.stationName}`,
     ...(c.crew?.length
       ? [`THE PLAYERS' CHARACTERS (the crew at the terminal; a [PLAYER] line names who typed it when known):\n${crewBrief(c.crew)}`]
@@ -547,7 +554,7 @@ function buildContext(state, steer, aside = false) {
       const routing = occupied.length > 1
         ? `The players are on DIFFERENT systems. Set each line's "system" to the name of the system whose screens should show it; players on other systems won't see or hear it. Give each group what happens where they are, with the voices on their system. A line with an empty system goes to ${systemName(state.config, state.defaultNet)}.`
         : `The players are all on ${occupied[0]?.name || systemName(state.config, state.defaultNet)}: every line goes there. Leave "system" empty.`;
-      ctx.push(`SYSTEMS (separate computer networks: each one's screens show only the lines sent on it, and a system can't see or work anything on another):\n${rows.join("\n")}\n\n${routing} A line's system can also be "ALL": it shows on every system's screens at once. Keep that for something that truly reaches every machine (the entity, a signal on every band), never ordinary dialogue.`);
+      ctx.push(`SYSTEMS (separate computer networks: each one's screens show only the lines sent on it, and a system can't see or work anything on another):\n${rows.join("\n")}\n\n${routing} Each voice is only connected to the systems in its heard_on (see VOICES): its lines can only go to those, and on any other system it can't hear, see or answer anything (a line sent where its voice isn't is moved to one it's on). A line's system can also be "ALL": it shows on every system's screens at once, for a voice heard on every system. Keep that for something that truly reaches every machine (the entity, a signal on every band), never ordinary dialogue.`);
     }
   }
   ctx.push(TALK[state.config.talk] || TALK.brief);

@@ -6,7 +6,7 @@
 // Two kinds of call: a conversation turn ({ reply, ready }) and a full draft.
 import { BUILTIN, PRESETS, SPEAKERS, defaultVoices, fromPreset, sanitizeVoices, castCharacter } from "./voices.js";
 import { CLASSES, STATS, SAVES, sanitizeCrew } from "./crew.js";
-import { LOOKS, DEFAULT_TERMINALS, sanitizeTerminals } from "./terminals.js";
+import { LOOKS, DEFAULT_TERMINALS, sanitizeTerminals, netKey } from "./terminals.js";
 
 const THEMES = ["green", "amber", "cyan", "white", "red"];
 const PRESET_IDS = Object.keys(PRESETS);
@@ -42,7 +42,7 @@ FIELDS
 - map: the layout, one line per deck: "Deck 1 · Command / Comms: room_id=Room Name, other_room=Other Name". Then optional connections: "Link: room_a - room_b (air vents)". Room ids are snake_case and match the station state paths. 2-5 decks, 1-6 rooms each.
 - computer: the station computer's display name (e.g. "HV-CORE") and persona: who it is and how it writes (it prints on a monochrome CRT terminal; casing, tone, length), what it knows, how it treats access levels and hacking attempts. Write the persona as instructions addressed to it ("You are ...").
 - broadcastPersona: the automated public-address voice's persona (announces, never converses).
-- voices: other voices that can speak (at least an intercom-style voice for the living cast; optionally something uncanny). For each: id (snake_case), name (as shown on screen, e.g. "INTERCOM"), preset (sound: intercom/human for people, robotic, ethereal, radio, demonic, whisper, clean), color (#rrggbb or ""), persona (who uses it and how it sounds; for a shared voice like the intercom, the general rules), and characters: the named people who speak through it, each with sex (f/m), a voice (a distinct speaker id from the list; never reuse one within a voice) and notes (who they are, where, what they want, how they talk, and anything the AI must keep in mind).
+- voices: other voices that can speak (at least an intercom-style voice for the living cast; optionally something uncanny). For each: id (snake_case), name (as shown on screen, e.g. "INTERCOM"), preset (sound: intercom/human for people, robotic, ethereal, radio, demonic, whisper, clean), color (#rrggbb or ""), persona (who uses it and how it sounds; for a shared voice like the intercom, the general rules), systems (where it can be heard: [] for the station's own network, a terminal's system name for a separate machine like the players' ship, or ["ALL"] for something in every machine), and characters: the named people who speak through it, each with sex (f/m), a voice (a distinct speaker id from the list; never reuse one within a voice) and notes (who they are, where, what they want, how they talk, and anything the AI must keep in mind).
 - terminals: 3-6 physical terminals the players can use, in map rooms (room = a room id from the map), each with a look (any of: ${LOOKS.filter((l) => l !== "portable").join(", ")}; [] for clean), open (can the players reach it at the start?), system and os, and notes (what's there, what happened at it). system is "" for the station's own network; a separate machine that isn't on it (the players' ship, a shuttle, a derelict) gets its own system name, and os the name of its operating system (e.g. "TUG-CORE OS v2.7"), and its screens show only what's said on it. Most terminals are on the station ("" and ""). Make the looks tell the story: clean where they arrive, bloody and cracked where it went wrong. A portable handheld terminal is added automatically.
 - crew: the players' characters (1-4, normally 4), Mothership 1e. className one of ${CLASSES.join(", ")}. Stats ${STATS.join("/")} roughly 20-50 (class strengths higher); Saves ${SAVES.join("/")} roughly 15-40 (Android: Fear 60ish, Sanity lower). Health max 10-20, Wounds max 2 (Android 3), Stress 2. 3-5 skills (e.g. Zero-G, Mechanical Repair, Computers, Chemistry, Firearms, Military Training, Hacking, Piloting, Athletics, Medicine). Give each a role, pronouns, crime or reason they're here (field "crime"; for non-convicts, why they took the job), a 3-5 sentence backstory with a hook, loadout (realistic for why they came), trinket and patch. notes: anything only the Warden should know about them, or "".
 
@@ -78,6 +78,7 @@ export const DRAFT_SCHEMA = obj({
       preset: { type: "string", enum: PRESET_IDS },
       color: str,
       persona: str,
+      systems: { type: "array", items: str },
       characters: {
         type: "array",
         items: obj({ name: str, sex: { type: "string", enum: ["f", "m"] }, voice: { type: "string", enum: Object.keys(SPEAKERS) }, notes: str }),
@@ -152,6 +153,7 @@ export function normalizeDraft(raw) {
     voices: (Array.isArray(d.voices) ? d.voices : []).slice(0, 8).map((v) => ({
       id: s(v?.id, 40), name: s(v?.name, 40), preset: PRESET_IDS.includes(v?.preset) ? v.preset : "intercom",
       color: /^#[0-9a-f]{6}$/i.test(v?.color || "") ? v.color : "", persona: s(v?.persona, 8000),
+      systems: (Array.isArray(v?.systems) ? v.systems : []).slice(0, 16).map((n) => s(n, 40)).filter(Boolean),
       characters: (Array.isArray(v?.characters) ? v.characters : []).slice(0, 30).map((c) => ({ name: s(c?.name, 40), sex: c?.sex === "m" ? "m" : "f", voice: SPEAKERS[c?.voice] ? c.voice : "", notes: s(c?.notes, 500) })),
     })).filter((v) => v.name),
     crew: (Array.isArray(d.crew) ? d.crew : []).slice(0, 4),
@@ -167,6 +169,8 @@ export function applyDraft(d) {
   const others = d.voices.map((v) => {
     const voice = {
       id: v.id || v.name, name: v.name, style: "label", color: v.color, persona: v.persona, ...fromPreset(v.preset),
+      // System names to net keys ("" the station, "*" everywhere); none: the station.
+      systems: (v.systems || []).map((n) => (/^all$/i.test(n) ? "*" : netKey(n) === netKey(d.stationName) ? "" : netKey(n))).filter((n, i, a) => a.indexOf(n) === i),
       characters: [],
     };
     // Each character keeps the voice it was given (if it suits the voice's engine), or is cast one.

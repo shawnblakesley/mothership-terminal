@@ -158,6 +158,14 @@ export const OLD_DEFAULT_PERSONAS = {
 // so the first plays while the rest generate. public/player.js splits the same way.
 export const speechParts = (text) => String(text).split(/\n+/).map((s) => s.trim()).filter(Boolean);
 
+// The connection graph: which systems each voice can be heard on (terminals.js
+// net keys: "" is the station's network, "*" every system). The station's
+// computer, broadcasts and intercom are on the station; the tug's flight
+// computer only on the tug; the entity is in every machine.
+const SHIP_NET = "second-chance"; // (netOf(SHIP_TERMINAL))
+const DEFAULT_SYSTEMS = { ship: [SHIP_NET], unknown: ["*"] };
+export const defaultSystemsFor = (id) => [...(DEFAULT_SYSTEMS[id] || [""])];
+
 export function defaultVoices() {
   return [
     { id: BUILTIN.terminal, name: "HV-CORE", style: "plain", color: "", persona: DEFAULT_PERSONAS.terminal, ...fromPreset("robotic") },
@@ -189,7 +197,7 @@ const DEFAULT_INTERCOM_CHARACTERS = [
 
 // The SECOND CHANCE's own flight computer: a separate machine, off the station network.
 export function shipVoice() {
-  return { id: "ship", name: "SECOND CHANCE", style: "label", color: "#ffb347", persona: DEFAULT_PERSONAS.ship, ...fromPreset("radio") };
+  return { id: "ship", name: "SECOND CHANCE", style: "label", color: "#ffb347", persona: DEFAULT_PERSONAS.ship, systems: defaultSystemsFor("ship"), ...fromPreset("radio") };
 }
 
 const DEFAULT_ENTITY_VOICES = [
@@ -287,7 +295,10 @@ export function sanitizeVoices(list) {
         wordgap: clampInt(raw.voice?.wordgap, 0, 10, 0),
       },
       fx: fillFx(raw.fx),
+      // Where it can be heard (net keys; see DEFAULT_SYSTEMS). Voices from before this get their default.
+      systems: (Array.isArray(raw.systems) ? [...new Set(raw.systems.map((n) => String(n)).filter((n) => n === "*" || /^[a-z0-9-]{0,60}$/.test(n)))].slice(0, 64) : []),
     });
+    if (!out.at(-1).systems.length) out.at(-1).systems = defaultSystemsFor(id); // (none given: its default)
     const engine = out.at(-1).voice.engine;
     // Voices saved before characters existed: the intercom gets the default cast.
     out.at(-1).characters = sanitizeCharacters(raw.characters ?? (id === "intercom" ? DEFAULT_INTERCOM_CHARACTERS : []), engine);

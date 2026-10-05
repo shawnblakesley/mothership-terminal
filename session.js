@@ -13,7 +13,7 @@ import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
-import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, netOf, netNamed, shownOn, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -396,6 +396,24 @@ export class Session {
     const nets = new Set([...this.sockets].filter((c) => c.role === "player" && c.terminal).map((c) => this.netOfSocket(c)));
     return nets.size === 1 ? [...nets][0] : this.lastNet;
   }
+  // The connection graph: the systems a voice can be heard on (voices.js). Only
+  // systems the story has count; a voice left with none can be heard anywhere.
+  voiceNets(voiceId) {
+    const exist = new Set(systemsOf(this.state.config).map((x) => x.net));
+    const v = this.state.config.voices.find((x) => x.id === voiceId);
+    const nets = (v?.systems ?? [""]).filter((n) => n === ALL_NET || exist.has(n));
+    return nets.length ? nets : [ALL_NET];
+  }
+  // Where a line can really be said: on `net` if its voice is on that system,
+  // else on one it is on (where the players are, if possible). Someone speaking
+  // in person is in the room, not on a network.
+  routeLine(voiceId, net, inPerson = false) {
+    if (inPerson) return net;
+    const ok = this.voiceNets(voiceId);
+    if (ok.includes(ALL_NET) || ok.includes(net)) return net;
+    const occupied = new Set([...this.sockets].filter((c) => c.role === "player" && c.terminal).map((c) => this.netOfSocket(c)));
+    return ok.find((n) => n === this.defaultNet()) ?? ok.find((n) => occupied.has(n)) ?? ok[0];
+  }
   // Only the player screens on one system (log lines belong to the system they were said on).
   toNet(net, p) {
     const data = JSON.stringify(p);
@@ -740,7 +758,9 @@ export class Session {
         const line = { voice: as, character: String(msg.character || "").slice(0, 60) };
         this.castCharacters([line]);
         // On a system the Warden picked (when the players are split), else where the players are.
-        const net = netNamed(s.config, msg.system) ?? this.defaultNet();
+        const asked = netNamed(s.config, msg.system) ?? this.defaultNet();
+        const net = this.routeLine(as, asked);
+        if (net !== asked) this.send("dm", { t: "toast", level: "info", text: `${s.config.voices.find((v) => v.id === as)?.name} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(s.config, asked)}`}, so it went to ${systemName(s.config, net)}.` });
         this.addLog(kind, text, { source: "dm", net, ...(kind === "entity" ? { entity: as } : {}), ...(line.character ? { character: line.character } : {}) });
         if (msg.clearPending) { this.genCounter++; s.pending = null; this.setBusy(false); }
         break;
@@ -1439,7 +1459,9 @@ export class Session {
       for (const c of cues) if (c.type === "blackout") c.hold = true;
       waiting = [];
       const kind = kindOf(voice);
-      const net = netNamed(this.state.config, system) ?? here;
+      const asked = netNamed(this.state.config, system) ?? here;
+      const net = this.routeLine(voice, asked, inPerson && !!character);
+      if (net !== asked) this.addLog("note", `${voices.find((v) => v.id === voice)?.name || voice} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(this.state.config, asked)}`}: its line went to ${systemName(this.state.config, net)}.`);
       const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson && character ? { inPerson: true } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
       lastEntry = entry;

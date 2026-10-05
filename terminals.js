@@ -63,7 +63,7 @@ export function sanitizeTerminals(list) {
 }
 
 // Which system a terminal is on, as a key: "" for the station's network.
-const netKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+export const netKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 export const netOf = (t) => (t?.system ? netKey(t.system) : "");
 
 // Every system, station first: [{ net, name }] (name: the station's for "").

@@ -278,6 +278,7 @@
     renderMap();
     renderCrew();
     renderTerminals();
+    renderConnections();
     renderBuilder();
     renderSynopsis();
     renderRoom();
@@ -710,6 +711,39 @@
       </div>`;
     }).join("");
   }
+  // The connection graph: which voices are heard on which system (voice.systems,
+  // net keys: "" the station, "*" every system). Shown once there's more than one system.
+  function renderConnections() {
+    const panel = $("connections");
+    const systems = [{ net: "", name: S.config.stationName }];
+    for (const t of S.config.terminals) if (t.system && !systems.some((s) => s.net === netKey(t.system))) systems.push({ net: netKey(t.system), name: t.system });
+    const json = JSON.stringify([S.config.voices.map((v) => [v.id, v.name, v.systems]), systems]);
+    if (panel.dataset.json === json) return;
+    panel.dataset.json = json;
+    if (systems.length < 2) { panel.innerHTML = '<p class="muted small">Only one system. Give a terminal its own System (a ship, a shuttle...) to choose which voices reach it.</p>'; return; }
+    const on = (v, net) => (v.systems || [""]).includes(net);
+    panel.innerHTML = `<table class="conns"><thead><tr><th>Voice</th>${systems.map((s) => `<th>${esc(s.name)}</th>`).join("")}<th title="Heard on every system, now and later">All</th></tr></thead><tbody>${
+      S.config.voices.map((v) => { const all = on(v, "*"); return `<tr data-v="${esc(v.id)}"><td>${esc(v.name)}</td>${
+        systems.map((s) => `<td class="${all ? "off" : ""}"><input type="checkbox" data-net="${esc(s.net)}" ${all || on(v, s.net) ? "checked" : ""} ${all ? "disabled" : ""} aria-label="${esc(v.name)} on ${esc(s.name)}"></td>`).join("")
+      }<td><input type="checkbox" data-net="*" ${all ? "checked" : ""} aria-label="${esc(v.name)} on every system"></td></tr>`; }).join("")
+    }</tbody></table>`;
+  }
+  $("connections").addEventListener("change", (e) => {
+    const net = e.target.dataset.net;
+    const id = e.target.closest("tr")?.dataset.v;
+    if (net === undefined || !id) return;
+    const voices = structuredClone(S.config.voices);
+    const v = voices.find((x) => x.id === id);
+    const set = new Set((v.systems || [""]).filter((n) => n !== "*"));
+    if (net === "*") v.systems = e.target.checked ? ["*"] : [...set].length ? [...set] : [""];
+    else {
+      e.target.checked ? set.add(net) : set.delete(net);
+      if (!set.size) { e.target.checked = true; return toast(`${v.name} needs at least one system (or All).`, "error"); }
+      v.systems = [...set];
+    }
+    send({ t: "voices", voices });
+  });
+
   // Door-like paths in the station state (doors.*, hatches...), for "opens with".
   function doorPaths() {
     const out = [];
@@ -750,11 +784,31 @@
 
   // ------------------------------------------------------------ tabs
   // Tab bars ([data-tabs]) show one panel at a time; the choice is remembered.
+  // The highlight slides to the chosen tab and the panel eases in (dm.css).
   for (const bar of document.querySelectorAll(".tabs[data-tabs]")) {
     const group = bar.dataset.tabs;
+    bar.classList.add("slider");
+    const place = () => {
+      const on = bar.querySelector("[data-tab].on");
+      if (!on || !on.offsetWidth) return;
+      bar.style.setProperty("--x", `${on.offsetLeft}px`);
+      bar.style.setProperty("--w", `${on.offsetWidth}px`);
+    };
+    new ResizeObserver(place).observe(bar);
+    let current = null;
     const show = (tab) => {
       for (const b of bar.querySelectorAll("[data-tab]")) b.classList.toggle("on", b.dataset.tab === tab);
-      for (const p of document.querySelectorAll(`.tabpanel[data-tabs="${group}"]`)) p.hidden = p.dataset.panel !== tab;
+      for (const p of document.querySelectorAll(`.tabpanel[data-tabs="${group}"]`)) {
+        p.hidden = p.dataset.panel !== tab;
+        p.classList.remove("enter");
+        if (!p.hidden && current !== null && current !== tab) { void p.offsetWidth; p.classList.add("enter"); } // (restart the animation)
+      }
+      // A new tab starts at its top (the bar stays put above it).
+      const col = bar.closest(".col");
+      if (current !== null && current !== tab && col && col.scrollTop > 0) col.scrollTop = 0;
+      current = tab;
+      place();
+      requestAnimationFrame(() => bar.classList.add("ready")); // (no slide on first draw)
       store.set(`tab:${group}`, tab);
       if (group === "side" && tab === "map" && S) renderMap(true); // (drawn for its width)
       if (group === "side" && tab === "actions") $("actionsDot").hidden = true;

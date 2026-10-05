@@ -471,6 +471,13 @@ summary .muted { font-weight: 400; font-size: 12px; }
 
 /* ---- terminals ---- */
 #terminals { display: flex; flex-direction: column; gap: 6px; }
+/* The connection graph as a grid: voices down, systems across. */
+.conns { width: 100%; border-collapse: collapse; font-size: 12px; }
+.conns th, .conns td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: center; }
+.conns th:first-child, .conns td:first-child { text-align: left; }
+.conns thead th { color: var(--muted); font-weight: 500; }
+.conns input { width: auto; }
+.conns td.off input:not(:checked) { opacity: .35; }
 .tcard { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .tcard .tname { font-weight: 600; flex: 1; }
 .tcard .check { margin: 0; }
@@ -491,6 +498,21 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .tabs button { flex: 1; }
 .tabpanel { display: flex; flex-direction: column; gap: 10px; }
 .tabpanel[hidden] { display: none; }
+/* The side panel's tab bar stays at the top of its column while it scrolls
+   (the shadow is the page colour, so nothing shows round it), with a
+   highlight that slides to the chosen tab and panels that ease in. */
+.col > .tabs[data-tabs] { position: sticky; top: 0; z-index: 5; flex-shrink: 0; box-shadow: 0 0 0 8px var(--bg), 0 -16px 0 8px var(--bg); }
+.tabs.seg { position: relative; }
+.tabs.seg button { position: relative; z-index: 1; transition: color .18s ease; }
+.tabs.seg.slider button.on { background: transparent; }
+.tabs.seg.slider::before { content: ""; position: absolute; top: 2px; bottom: 2px; left: var(--x, 2px); width: var(--w, 0); border-radius: 6px; background: var(--accent-soft); }
+.tabs.seg.slider.ready::before { transition: left .22s cubic-bezier(.3, .7, .2, 1), width .22s cubic-bezier(.3, .7, .2, 1); }
+@keyframes tabIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.tabpanel.enter { animation: tabIn .2s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .tabs.seg.slider.ready::before { transition: none; }
+  .tabpanel.enter { animation: none; }
+}
 /* A reply or ruling waiting on the Warden while another tab is open. */
 .tabdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); margin-left: 6px; vertical-align: 1px; box-shadow: 0 0 6px var(--warn); }
 .hint { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--line2); color: var(--muted); font-size: 10px; font-weight: 600; cursor: help; letter-spacing: 0; text-transform: none; }
