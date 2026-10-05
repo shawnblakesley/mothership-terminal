@@ -173,14 +173,14 @@ export function defaultGame(keys = {}) {
       playerRolls: true, // players may roll their own stats and saves
       tts: true,
       voices: defaultVoices(),
-      theme: "green",
+      theme: "cyan",
       map: DEFAULT_MAP,
       crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
       playerTerminals: true, // players may move between terminals themselves
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -267,6 +267,11 @@ function migrateGame(saved) {
   if (!config.upgrades.includes("start-ship")) {
     if (config.lore === DEFAULT_LORE) config.terminals = startAboardShip(config.terminals);
     config.upgrades.push("start-ship");
+  }
+  // Once: KESTREL-9's screens went cyan (green, the old default, counts as unchanged).
+  if (!config.upgrades.includes("cyan")) {
+    if (config.stationName === "KESTREL-9" && (config.theme || "green") === "green") config.theme = "cyan";
+    config.upgrades.push("cyan");
   }
   // Once: an original KESTREL-9 story starts the crew with their work order.
   config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];
