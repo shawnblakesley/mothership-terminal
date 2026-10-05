@@ -876,8 +876,8 @@ export class Session {
         break;
       case "resetSession":
         this.clearClocks();
-        // Terminals opened during play by moving someone there are closed again.
-        for (const t of s.config.terminals) if (t.openedInPlay) Object.assign(t, { open: false, openedInPlay: false });
+        // Every terminal back to how the story starts (opened in play, or ticked since: closed again).
+        for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
         // Everyone fresh for the story: full Health, no Wounds, starting Stress and items.
         for (const pc of s.config.crew) freshen(pc);
         this.crewChanged();

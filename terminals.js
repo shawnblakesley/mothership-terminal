@@ -69,7 +69,10 @@ export function sanitizeTerminals(list) {
       look: [...new Set((Array.isArray(t.look) ? t.look : []).filter((l) => LOOKS.includes(l)))],
       theme: THEMES.includes(t.theme) ? t.theme : "",
       open: t.open !== false,
-      openedInPlay: t.open !== false && !!t.openedInPlay, // reachable because the Warden moved someone there (a restart closes it again)
+      openedInPlay: t.open !== false && !!t.openedInPlay, // reachable because the Warden moved someone there
+      // Reachable when the story starts (a restart puts every terminal back to this):
+      // as set up, or for the default story's terminals, as they ship.
+      startOpen: typeof t.startOpen === "boolean" ? t.startOpen : DEFAULT_TERMINALS.find((d) => d.id === id)?.open ?? t.open !== false,
       requires: String(t.requires || "").replace(/[^A-Za-z0-9_.]/g, "").slice(0, 80),
       system: String(t.system || "").replace(/\s+/g, " ").trim().slice(0, 40),
       os: String(t.os || "").replace(/\s+/g, " ").trim().slice(0, 40),

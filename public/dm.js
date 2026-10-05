@@ -865,7 +865,7 @@
     if (e.target.dataset.look) {
       const k = e.target.dataset.look;
       t.look = e.target.checked ? [...new Set([...t.look, k])] : t.look.filter((x) => x !== k);
-    } else if (e.target.dataset.t === "open") t.open = e.target.checked;
+    } else if (e.target.dataset.t === "open") t.open = t.startOpen = e.target.checked; // (setting up the story: how it starts, too)
     else if (e.target.dataset.t) t[e.target.dataset.t] = e.target.value;
     saveTerminals();
   });
