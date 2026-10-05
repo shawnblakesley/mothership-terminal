@@ -141,6 +141,8 @@ body {
 /* Per-voice display styles (set by the Warden in the DM console) */
 .line.style-boxed { border: 1px solid var(--fg); padding: 0.2em 0.5em; display: inline-block; }
 .line.style-label::before { content: attr(data-label); opacity: 0.75; }
+/* The narrator: scene description, set apart from the voices. */
+.line.style-narration { font-style: italic; opacity: 0.82; }
 /* (no cursor on output: the only blinking cursor is where the player types) */
 
 #busy { color: var(--dim); margin-bottom: 0.35em; }

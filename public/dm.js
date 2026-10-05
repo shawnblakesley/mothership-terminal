@@ -1297,7 +1297,7 @@
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
   // On/off features in the Settings window (config keys of the same name).
-  const SETTING_SWITCHES = ["agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals", "tts"];
+  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals", "tts"];
 
   function renderConfig() {
     const c = S.config;
@@ -1475,7 +1475,7 @@
   $("resetAll").onclick = async () => (await sure("Factory reset?", "Everything (lore, personas, voices, secrets, station) goes back to the defaults.", "Factory reset")) && send({ t: "resetAll" });
 
   // ------------------------------------------------------------ voices & entities
-  const BUILTIN_IDS = ["terminal", "broadcast"];
+  const BUILTIN_IDS = ["terminal", "broadcast", "narrator"];
   // Every voice keeps settings for both engines, so switching engine loses nothing.
   const BASE_VOICE = { engine: "espeak", speaker: "am_michael", pace: 1, variant: "", pitch: 50, speed: 170, wordgap: 0 };
   const FX_LABELS = {
@@ -1555,7 +1555,7 @@
           <textarea data-k="persona" rows="${v.id === "terminal" ? 10 : 4}" placeholder="e.g. Dr. Imre Salk, the station medic. Exhausted, kind, hiding a fever...">${esc(v.persona || "")}</textarea></label>
         <div class="vgrid">
           <label>Style
-            <select data-k="style">${o.styles.map((st) => `<option value="${st}" ${st === v.style ? "selected" : ""}>${{ plain: "plain text", label: "NAME: label", boxed: "boxed" }[st]}</option>`).join("")}</select>
+            <select data-k="style">${o.styles.map((st) => `<option value="${st}" ${st === v.style ? "selected" : ""}>${{ plain: "plain text", label: "NAME: label", boxed: "boxed", narration: "narration (italic, no name)" }[st]}</option>`).join("")}</select>
           </label>
           <label>Colour
             <span class="row"><input type="color" data-k="color" value="${v.color || "#3bff7a"}" ${v.color ? "" : "disabled"}>

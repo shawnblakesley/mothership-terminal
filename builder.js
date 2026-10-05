@@ -212,7 +212,7 @@ export function applyDraft(d) {
       secrets: d.secrets,
       standingOrders: d.standingOrders,
       map: d.map,
-      voices: sanitizeVoices([terminal, broadcast, ...others]),
+      voices: sanitizeVoices([terminal, broadcast, base.find((v) => v.id === BUILTIN.narrator), ...others.filter((v) => v.id !== BUILTIN.narrator)]),
       crew,
       // The story's terminals (the players start at the first open one), plus a portable unit.
       terminals: sanitizeTerminals([...d.terminals, DEFAULT_TERMINALS.find((t) => t.portable || t.id === "portable")]),

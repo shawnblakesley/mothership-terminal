@@ -4,13 +4,13 @@
 // the vents...). Each has a display style, an eSpeak base voice, and a Web Audio
 // effect chain (applied in the player's browser by public/voice.js).
 
-export const BUILTIN = { terminal: "terminal", broadcast: "broadcast" };
+export const BUILTIN = { terminal: "terminal", broadcast: "broadcast", narrator: "narrator" };
 
 export const VARIANTS = [
   "", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "f1", "f2", "f3", "f4", "f5",
   "croak", "klatt", "klatt2", "klatt3", "whisper", "whisperf",
 ];
-export const STYLES = ["plain", "label", "boxed"];
+export const STYLES = ["plain", "label", "boxed", "narration"];
 
 // "espeak" = synthetic (instant). "neural" = human-sounding Kokoro voices (see tts.js).
 export const ENGINES = ["espeak", "neural"];
@@ -100,6 +100,14 @@ function fillFx(fx = {}) {
 
 // Personas tell the agent who each voice is and how it talks.
 export const DEFAULT_PERSONAS = {
+  narrator: `You are the narrator: the scene itself, not a person in it. You describe what happens around the players, as it happens, in a sentence or two: what they see, hear and smell (water dripping, a panel flickering, the deck shuddering, an explosion somewhere below), and what other people do (Salk flinches; Okonkwo's footsteps stop outside the door).
+
+RULES
+- Present tense, plain and concrete. Short: one to three sentences. No dialogue: people speak through their own voices.
+- Never speak to the players or their characters. Never say "you". Never ask anything, advise, hint at what to do, or explain what something means.
+- Never say what the players' characters do, think or feel; describe the world they're in, and how others react to them.
+- Only what can be perceived in the room; no secrets, no thoughts, no foreshadowing that knows too much.
+- Use it when something happens in the scene that the terminal and the people talking wouldn't say. Don't narrate every reply.`,
   terminal: `You are HV-CORE, the onboard operating system of the station described below. You speak only through a monochrome CRT terminal.
 
 STYLE
@@ -163,13 +171,19 @@ export const speechParts = (text) => String(text).split(/\n+/).map((s) => s.trim
 // computer, broadcasts and intercom are on the station; the tug's flight
 // computer only on the tug; the entity is in every machine.
 const SHIP_NET = "second-chance"; // (netOf(SHIP_TERMINAL))
-const DEFAULT_SYSTEMS = { ship: [SHIP_NET], unknown: ["*"] };
+const DEFAULT_SYSTEMS = { ship: [SHIP_NET], unknown: ["*"], narrator: ["*"] }; // (the narrator is the room, not a machine)
 export const defaultSystemsFor = (id) => [...(DEFAULT_SYSTEMS[id] || [""])];
+
+// The narrator: a plain, calm human voice describing the scene, in every adventure.
+export function narratorVoice() {
+  return { id: BUILTIN.narrator, name: "NARRATOR", style: "narration", color: "", persona: DEFAULT_PERSONAS.narrator, systems: defaultSystemsFor(BUILTIN.narrator), ...fromPreset("human"), preset: "custom", voice: { engine: "neural", speaker: "bm_george", pace: 0.95 } };
+}
 
 export function defaultVoices() {
   return [
     { id: BUILTIN.terminal, name: "HV-CORE", style: "plain", color: "", persona: DEFAULT_PERSONAS.terminal, ...fromPreset("robotic") },
     { id: BUILTIN.broadcast, name: "SYSTEM BROADCAST", style: "boxed", color: "", persona: DEFAULT_PERSONAS.broadcast, ...fromPreset("ethereal") },
+    narratorVoice(),
     shipVoice(),
     { id: "intercom", name: "INTERCOM", style: "label", color: "#9fd3ff", persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom"), characters: DEFAULT_INTERCOM_CHARACTERS },
     // The entity: the demonic effects over slowed human voices, speaking as more than one.

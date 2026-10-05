@@ -3,7 +3,7 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
-import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES, shipVoice } from "./voices.js";
+import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES, shipVoice, narratorVoice } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
@@ -178,6 +178,7 @@ export function defaultGame(keys = {}) {
       crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
       playerTerminals: true, // players may move between terminals themselves
+      narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
       upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan"], // one-time additions already made to this story (see migrateGame)
@@ -289,6 +290,8 @@ function migrateGame(saved) {
     if (ship && config.stationName === "KESTREL-9") Object.assign(ship, SHIP_SYSTEM);
     config.upgrades.push("systems");
   }
+  // Every story has the narrator (the Warden can switch it off, not delete it).
+  if (!voices.some((v) => v.id === BUILTIN.narrator)) voices.splice(Math.min(2, voices.length), 0, narratorVoice());
   config.rooms = sanitizeRooms(config.rooms);
   // Once, for a KESTREL-9 story from before them: floor plans, who and what is
   // where, the lift, and the tug docked on the airlock instead of on its own deck.
@@ -752,7 +755,7 @@ export class Session {
     if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "tts", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
@@ -1582,6 +1585,7 @@ export class Session {
     const cast = new Map(voices.map((v) => [v.id, new Set((v.characters || []).map((c) => c.name.toLowerCase()))]));
     this.castCharacters(lines);
     for (const { voice, character, inPerson, system, text, effects: lineFx, variants: rawVariants } of lines) {
+      if (voice === BUILTIN.narrator && source === "agent" && this.state.config.narrator === false) continue; // (switched off)
       // Per-player versions of this line, for the crew they name (if the Warden allows them).
       const variants = source === "agent" && !this.state.config.agentVariants ? [] : resolveVariants(rawVariants, this.state.config.crew);
       // Effects from an effect-only beat are marked hold: the next line waits for them.

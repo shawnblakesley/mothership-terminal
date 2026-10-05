@@ -376,6 +376,7 @@ const STYLE_NOTES = {
   plain: () => "printed as plain terminal text",
   label: (v) => `shown as "${v.name}${v.characters?.length ? " · <character>" : ""}: <text>"`,
   boxed: () => "shown in a box",
+  narration: () => "printed as italic scene description, with no name",
 };
 
 // Each persona goes in its own tagged block with an explicit scope rule, so one
@@ -395,7 +396,10 @@ function buildVoices(voices, config) {
   };
   const blocks = voices.map((v) => {
     const display = (STYLE_NOTES[v.style] ?? STYLE_NOTES.plain)(v);
-    const role = v.id === BUILTIN.terminal ? "the station computer: answers terminal commands and system queries" : v.id === BUILTIN.broadcast ? "station-wide announcements" : "another voice";
+    const role = v.id === BUILTIN.terminal ? "the station computer: answers terminal commands and system queries"
+      : v.id === BUILTIN.broadcast ? "station-wide announcements"
+      : v.id === BUILTIN.narrator ? "the narrator: describes what happens around the players (sights, sounds, people moving and reacting) in a sentence or two, when something happens in the scene; never speaks to anyone"
+      : "another voice";
     const persona = v.persona.trim() || "(No persona set: use your judgment from the name and the lore.)";
     // A Warden-written persona can't close the block early.
     const body = persona.replace(/<\/?voice\b[^>]*>/gi, "");
@@ -422,7 +426,7 @@ function buildSystem(state) {
   const c = state.config;
   return [
     WARDEN_PROTOCOL,
-    buildVoices(c.voices, c),
+    buildVoices(agentVoices(c), c),
     `STATION NAME: ${c.stationName}`,
     ...(c.crew?.length
       ? [`THE PLAYERS' CHARACTERS (the crew at the terminal; a [PLAYER] line names who typed it when known):\n${crewBrief(c.crew)}`]
@@ -578,6 +582,9 @@ export function limitLength(reply, talk) {
 
 // Per-turn context: live station state plus any Warden steering.
 // aside: answering a private Warden note (no lines for the players).
+// The voices the agent may use: all of them, but the narrator only while the Warden has it on.
+export const agentVoices = (config) => config.voices.filter((v) => v.id !== BUILTIN.narrator || config.narrator !== false);
+
 // A game without a Warden: the agent is the Warden too.
 const SOLO = `NO WARDEN: nobody is running this game but you. The players chose this story and are playing it on their own, so you are the Warden as well as every voice.
 - Run it like a good Warden: a living world that reacts to what they do, clues they can find, people with their own agendas, threats that escalate when they dawdle, and real consequences. Be fair: never cheat them, never save them for free.
@@ -648,7 +655,7 @@ export function buildRequest(state, steer, { aside = false } = {}) {
     system: buildSystem(state),
     context: buildContext(state, steer, aside),
     messages,
-    schema: buildSchema(state.config.voices),
+    schema: buildSchema(agentVoices(state.config)),
     example: REPLY_EXAMPLE,
   };
 }

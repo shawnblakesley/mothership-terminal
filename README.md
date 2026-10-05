@@ -288,6 +288,8 @@ Sounds play through the players' VOL control. Players who join or reload mid-sce
 
 ## Voices & entities
 
+**The narrator** is part of every adventure: a plain, calm human voice (NARRATOR) that describes what happens around the players, like water dripping, a panel flickering, an explosion below, people moving and reacting. Its lines show as italic scene description with no name. It never speaks to the players or their characters (never "you"), never says what the characters do or feel, and is used when something happens, not on every reply. It's heard on every system (it's the room, not a machine). Switch it off under ⚙ (**narrate the scene**); you can still Speak as it yourself.
+
 Every line on the players' screen belongs to a voice, and **the agent can speak as any of them**. No voice is the default: the agent answers as whoever would really respond. If the players talk to Salk, Salk answers on the intercom; HV-CORE answers terminal commands. A reply can mix voices, for example Dr. Salk on the intercom, then a station-wide announcement. Two voices are built in: **HV-CORE** (the terminal) and **System Broadcast**. Add any number of others under **Voices, personas & settings**, such as an intercom, a stranger on comms, or the thing in the vents. You can also pick one in the comms box (or Tab to it) and **Speak** as it yourself.
 
 Each voice has:
