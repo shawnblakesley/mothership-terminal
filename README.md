@@ -159,6 +159,14 @@ Every password attempt, and anything else the players try that could go either w
 
 If a player types while lines are still playing, the comms cut off on every screen. Lines that hadn't started were never said: they vanish from the players' screens and from the agent's memory (your log keeps them, struck through). A line cut off mid-way keeps only what was spoken. The agent carries on from exactly what the players heard.
 
+## Restart story
+
+The story is saved the moment it's first played: a player types, rolls or changes their sheet; you give a Direction, Speak, write a Note, call a roll, hand something out or start a clock; or the agent replies. Until then, set it up as you like.
+
+**Restart story** (⚙) puts it back exactly as it was then: setting, lore, secrets, standing orders, cast and voices (characters the agent added in play are gone), map and floor plans, terminals (reachable as the story starts them), every character sheet, the station state and the synopsis. It clears the log, rolls, rulings, drafts, clocks, effects, playing sounds and shown floor plans, and hands out the starting documents again. Your settings (AI, mode, switches, voice output) and sounds are kept, and players stay connected, as GUEST, at the starting terminal. **Restart, keep doors & systems** keeps the station state as it is now.
+
+After a restart the next first move saves the story again, so changes you make in between count.
+
 ## Settings
 
 **⚙** (Settings) in the console header holds the join code and player link, the AI provider, model and **API key**, the station name and screen colour, **how much the characters say** (Terse, Brief, Normal or Expansive; Brief by default, and enforced on every reply), the session actions (clear screen, restart story, factory reset, Warden link, end session), and switches for what the agent and players may do:

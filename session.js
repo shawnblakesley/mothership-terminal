@@ -331,6 +331,8 @@ function migrateGame(saved) {
     handouts: Array.isArray(saved.handouts) ? saved.handouts : [], // documents given to the players (see "handouts")
     localKeys: !!saved.localKeys, // started on the server's own computer: may use its .env keys (providers/index.js)
     clocks: Array.isArray(saved.clocks) ? saved.clocks : [], // countdowns on the players' screens (see "clocks")
+    // The story as it was when play began (see "the story's start"): what Restart story restores.
+    storyStart: saved.storyStart && saved.storyStart.config ? saved.storyStart : null,
     solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
 }
@@ -342,6 +344,10 @@ const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
+// The session's settings, not part of the story (a restart keeps them as they are).
+const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "upgrades"]);
+// The Warden's moves that play the story (the first one saves it; see storyBegins).
+const STORY_ACTIONS = new Set(["command", "inject", "note", "rollRequest", "rollFor", "generate", "approve", "outcome", "handout", "clockStart"]);
 // A crew member named by the agent ("" for none, or no match).
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
@@ -541,6 +547,8 @@ export class Session {
     return {
       version: APP_VERSION,
       ...this.state,
+      storyStart: undefined,
+      storyStartedAt: this.state.storyStart?.at ?? null,
       claims: this.claims(),
       screens: this.screens(),
       canRetcon: this.undoStack.length,
@@ -720,6 +728,7 @@ export class Session {
     if (msg.t === "pilot") return this.pilotAuth(ws, msg.token);
     if (String(msg.t).startsWith("pilot")) return ws.pilot && this.handlePilot(ws, msg);
     if (msg.t === "input" && this.state.solo && this.state.solo.phase !== "play") return; // (still choosing the story)
+    if (["input", "roll", "selfRoll", "vitals"].includes(msg.t)) this.storyBegins();
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
     if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() })); // clock sync
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
@@ -764,6 +773,7 @@ export class Session {
   // ---------------------------------------------------------------- Warden
   handleDm(msg) {
     const s = this.state;
+    if (STORY_ACTIONS.has(msg.t)) this.storyBegins();
     const action = WARDEN_ACTIONS[msg.t];
     if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
@@ -875,28 +885,7 @@ export class Session {
         this.initPlayers();
         break;
       case "resetSession":
-        this.clearClocks();
-        // Every terminal back to how the story starts (opened in play, or ticked since: closed again).
-        for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
-        // Everyone fresh for the story: full Health, no Wounds, starting Stress and items.
-        for (const pc of s.config.crew) freshen(pc);
-        this.crewChanged();
-        this.genCounter++;
-        this.playhead = 0;
-        this.undoStack = [];
-        s.log = [];
-        s.handouts = structuredClone(s.config.startDocs || []);
-        s.pending = null;
-        s.whisper = "";
-        s.roll = null;
-        s.outcomeCheck = null;
-        s.station = structuredClone(msg.keepStation ? s.station : DEFAULT_STATION);
-        // A new story starts with the players logged in as guests, even when the
-        // rest of the station (doors, systems...) is kept.
-        s.station.access_level = DEFAULT_STATION.access_level;
-        for (const e of [...s.effects]) this.endEffect(e.id);
-        this.stopSounds();
-        this.initPlayers();
+        this.restartStory(!!msg.keepStation);
         // Everyone back where the story starts: the first terminal they can reach.
         { const start = s.config.terminals.find((t) => reachable(t, s.station));
           if (start) for (const ws of this.sockets) if (ws.role === "player" && ws.terminal) { ws.terminal = null; this.playerTerminal(ws, start.id, "warden"); } }
@@ -1322,7 +1311,7 @@ export class Session {
     this.genCounter++;
     this.playhead = 0;
     Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] }); // (new rooms: plans are drawn when first opened)
-    Object.assign(s, { station, log: [], handouts: structuredClone(s.config.startDocs), pending: null, whisper: "", roll: null, outcomeCheck: null, synopsis: null });
+    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), pending: null, whisper: "", roll: null, outcomeCheck: null, synopsis: null });
     for (const e of [...s.effects]) this.endEffect(e.id);
     this.stopSounds();
     for (const ws of this.sockets) if (ws.role === "player") ws.character = null; // everyone picks a new crew file
@@ -1680,6 +1669,7 @@ export class Session {
 
   async generate(steer) {
     const s = this.state;
+    this.storyBegins();
     const myGen = ++this.genCounter;
     const forEntry = s.log.filter((e) => e.kind === "player").at(-1)?.id ?? null;
     const { provider: providerId, model, effort } = s.config;
@@ -1953,6 +1943,59 @@ export class Session {
         return;
     }
     for (const c of this.sockets) if (c.pilot && c.readyState === 1) this.sendPilot(c);
+  }
+
+  // ---------------------------------------------------------------- the story's start
+  // The story is saved the moment it's first played (a player types, rolls or
+  // changes their sheet; the Warden directs, speaks, notes, rolls, hands out or
+  // starts a clock; the agent replies). Until then the Warden can set it up
+  // freely. Restart story puts everything back to that save, and the next first
+  // move saves it again (so set-up changes made after a restart count).
+  storyBegins() {
+    const s = this.state;
+    if (s.storyStart || s.solo && s.solo.phase !== "play") return;
+    const config = Object.fromEntries(Object.entries(s.config).filter(([k]) => !SESSION_SETTINGS.has(k)));
+    s.storyStart = structuredClone({ config, station: s.station, synopsis: s.synopsis, at: Date.now() });
+    this.touch();
+  }
+
+  restartStory(keepStation = false) {
+    const s = this.state;
+    const snap = s.storyStart;
+    this.genCounter++; // (orphan anything in flight)
+    this.rerun = false;
+    this.playhead = 0;
+    this.undoStack = [];
+    this.lastNet = "";
+    this.clearClocks();
+    for (const e of [...s.effects]) this.endEffect(e.id);
+    this.stopSounds();
+    if (snap) {
+      // The whole story as it was (settings stay: they're the session's, not the story's).
+      Object.assign(s.config, structuredClone(snap.config));
+      s.config.voices = sanitizeVoices(s.config.voices);
+      if (!keepStation) s.station = structuredClone(snap.station);
+      s.synopsis = structuredClone(snap.synopsis ?? null);
+    } else {
+      // Played before saves existed: everyone fresh, and the default story's own station.
+      for (const pc of s.config.crew) freshen(pc);
+      if (!keepStation && s.config.stationName === "KESTREL-9") s.station = structuredClone(DEFAULT_STATION);
+      s.synopsis = null;
+    }
+    // Every terminal reachable as the story starts it.
+    for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
+    // Players start as guests, even when the doors and systems are kept.
+    s.station.access_level = DEFAULT_STATION.access_level;
+    Object.assign(s, { log: [], handouts: structuredClone(s.config.startDocs || []), pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null });
+    if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
+    this.setBusy(false);
+    this.toPlayers({ t: "roomPlan", rows: null }); // (any floor plan they were shown)
+    this.toPlayers({ t: "roll", roll: null });
+    this.toPlayers({ t: "header", header: this.playerHeader() });
+    this.crewChanged();
+    this.addLog("note", snap ? `Story restarted from when play began (${new Date(snap.at).toLocaleString()}).` : "Story restarted.");
+    this.initPlayers();
+    if (s.solo) this.soloChanged();
   }
 
   // ---------------------------------------------------------------- handouts
