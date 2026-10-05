@@ -231,6 +231,14 @@
     <section class="col">
       <h2>Comms log</h2>
       <div id="log" class="log"></div>
+      <!-- What needs the Warden now, between the log and the compose box (hidden when nothing does):
+           an uncertain attempt to rule on, the agent's draft reply, a roll in progress. -->
+      <div id="tray" class="tray">
+        <!-- An uncertain player action the agent left to the Warden (rule of cool). -->
+        <div id="outcome" class="card outcome" hidden></div>
+        <div id="pending" class="card empty" hidden></div>
+        <div id="rollStatus" class="card rollstatus" hidden></div>
+      </div>
       <div class="compose">
         <textarea id="compose" rows="3"></textarea>
         <div id="castLists" hidden></div>
@@ -243,7 +251,10 @@
             <button id="sendVoice" title="Speak: your exact words on the players' screens, in that voice">Speak</button>
           </span>
         </div>
-        <div class="muted small keyhint">Tab switches · Enter sends · Shift+Enter new line · Ctrl+Enter note</div>
+        <div class="row keyrow">
+          <span class="muted small keyhint grow">Tab switches · Enter sends · Shift+Enter new line · Ctrl+Enter note</span>
+          <button id="retcon" class="ghost small" title="Undo the agent's last response: its lines are removed from the players' screens, this log and the agent's memory, and its station and crew changes and effects are reverted">↶ Retcon last response</button>
+        </div>
       </div>
     </section>
 
@@ -252,30 +263,24 @@
       <!-- Tabs, and Edit: read-only (the default) shows what matters while running the game; Edit shows the setup. -->
       <div class="sidehead">
         <div class="tabs seg" data-tabs="side" role="tablist">
-          <button data-tab="actions">Actions<span id="actionsDot" class="tabdot" hidden title="Waiting on you"></span></button><button data-tab="map">Map</button><button data-tab="crew">Crew</button><button data-tab="story">Story</button><button data-tab="rules">Rules</button>
+          <button data-tab="actions">Actions</button><button data-tab="map">Map</button><button data-tab="crew">Crew</button><button data-tab="story">Story</button><button data-tab="rules">Rules</button>
         </div>
         <button id="editMode" class="ghost editmode" aria-pressed="false" title="Edit the setup: characters, terminals, connections, voices, lore. Off: just what you need to run the game.">✎ Edit</button>
       </div>
       <!-- The next response, rolls, effects and sounds. -->
       <div class="tabpanel" data-tabs="side" data-panel="actions">
-        <h2>Next response</h2>
-        <label class="field">
-          <span>⚑ Command for the next reply <em>(obeyed once, applied when the players next type)</em></span>
-          <textarea id="whisper" rows="2" placeholder="e.g. Pretend the cargo door opened, but it's lying. Mention a heartbeat sensor spike."></textarea>
-        </label>
-        <div id="pending" class="card empty">No reply pending.</div>
+        <h2>Agent</h2>
         <div class="row">
           <button id="promptNow" title="Make the agent speak now, even without new player input">Prompt agent now</button>
-          <span class="grow"></span>
-          <button id="retcon" class="ghost" title="Undo the agent's last response: its lines are removed from the players' screens, this log and the agent's memory, and its station and crew changes and effects are reverted">↶ Retcon last response</button>
+          <span id="noKeyNote" class="muted small" hidden>No AI key, so the agent is quiet: reply with Speak, or add a key under ⚙.</span>
         </div>
-
-        <!-- An uncertain player action the agent left to the Warden (rule of cool). -->
-        <div id="outcome" class="card outcome" hidden></div>
 
         <h2>Roll <span class="hint" title="Call for a roll from one character or all of them. Each rolls on their own screen against their own sheet.">?</span></h2>
         <div class="stack">
         <div class="card stack" id="rollCard">
+          <p id="rollAway" class="muted small" hidden>The roll form is open in ⚖ Your call, beside the log.</p>
+          <!-- The form also opens inside ⚖ Your call (its 🎲), and comes back here after. -->
+          <div id="rollForm" class="stack">
           <div class="rollgrid">
             <label>Who rolls
               <select id="rollWho" title="Each rolls on their own screen against their own sheet"></select>
@@ -306,7 +311,7 @@
           </div>
           <div id="rollTarget" class="muted small"></div>
           <div class="row"><button id="rollCall" class="primary" title="Stats and Saves: d100 under Stat + Skill, doubles crit, a failure adds 1 Stress. Panic: d20 above current Stress, or they Panic.">🎲 Call for roll</button></div>
-          <div id="rollStatus" hidden></div>
+          </div>
         </div>
         </div>
 

@@ -284,9 +284,6 @@
     renderBuilder();
     renderSynopsis();
     renderRoom();
-    // Something waits on the Warden under Actions (a reply to review, a ruling): flag the tab.
-    const waiting = ["ready", "error"].includes(S.pending?.status) || !!S.outcomeCheck;
-    $("actionsDot").hidden = !waiting || store.get("tab:side") === "actions";
     $("retcon").disabled = !S.canRetcon;
     $("retcon").textContent = S.canRetcon > 1 ? `↶ Retcon last response (${S.canRetcon})` : "↶ Retcon last response";
   }
@@ -372,18 +369,14 @@
     const p = S.pending;
     const card = $("pending");
     const k = p ? `${p.status}|${p.forEntry}|${JSON.stringify(p.reply || p.error || "")}` : `none|${hasKey()}`;
+    $("noKeyNote").hidden = hasKey();
     if (k === pendingKey) return;
     pendingKey = k;
+    card.hidden = !p; // (nothing pending: out of the way)
     const forText = p?.forEntry ? S.log.find((e) => e.id === p.forEntry)?.text : null;
     const forLine = forText ? `<div class="label">Replying to: <span class="muted">${esc(forText.slice(0, 120))}</span></div>` : "";
 
-    if (!p) {
-      card.className = "card empty";
-      card.innerHTML = hasKey()
-        ? "No reply pending."
-        : "No AI key, so the agent is quiet: reply with Speak, or add a key under ⚙.";
-      return;
-    }
+    if (!p) { card.innerHTML = ""; return; }
     if (p.status === "generating") {
       card.className = "card generating";
       card.innerHTML = `${forLine}<div><span class="spinner"></span>${esc(p.model || "Agent")} is thinking…</div>
@@ -897,7 +890,6 @@
       requestAnimationFrame(() => bar.classList.add("ready")); // (no slide on first draw)
       store.set(`tab:${group}`, tab);
       if (group === "side" && tab === "map" && S) renderMap(true); // (drawn for its width)
-      if (group === "side" && tab === "actions") $("actionsDot").hidden = true;
     };
     bar.addEventListener("click", (e) => { const t = e.target.closest("[data-tab]")?.dataset.tab; if (t) show(t); });
     show(store.get(`tab:${group}`) || bar.querySelector("[data-tab]").dataset.tab);
@@ -1260,7 +1252,6 @@
       if (!dirty.has(id) && document.activeElement !== el && el.value !== c[id]) el.value = c[id];
     }
     for (const id of SETTING_SWITCHES) $(id).checked = c[id] !== false;
-    if (!dirty.has("whisper") && document.activeElement !== $("whisper")) $("whisper").value = S.whisper;
     if (!dirty.has("station") && document.activeElement !== $("station")) $("station").value = JSON.stringify(S.station, null, 2);
   }
 
@@ -1282,14 +1273,6 @@
   for (const id of SETTING_SWITCHES) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.checked } }));
   $("settingsBtn").onclick = () => $("settingsDialog").showModal();
   $("settingsClose").onclick = () => $("settingsDialog").close();
-
-  {
-    const el = $("whisper");
-    let t;
-    const save = () => { clearTimeout(t); dirty.delete("whisper"); send({ t: "whisper", text: el.value }); };
-    el.addEventListener("input", () => { dirty.add("whisper"); clearTimeout(t); t = setTimeout(save, 500); });
-    el.addEventListener("blur", () => dirty.has("whisper") && save());
-  }
 
   $("station").addEventListener("input", () => { dirty.add("station"); $("stationErr").textContent = "unsaved changes"; });
   $("stationSave").addEventListener("click", () => {
@@ -1687,9 +1670,17 @@
   const advMark = (a) => (a === "advantage" ? " [+]" : a === "disadvantage" ? " [−]" : "");
 
   // An attempt the agent left open: the Warden rules on it, or calls for a roll.
+  // The roll form lives in the Actions tab; ⚖ Your call's 🎲 borrows it (under the stakes).
+  function rollFormHome() {
+    if ($("rollForm").parentElement !== $("rollCard")) $("rollCard").append($("rollForm"));
+    $("rollAway").hidden = true;
+    rollFromOutcome = false;
+  }
+
   function renderOutcome() {
     const card = $("outcome");
     const oc = S.outcomeCheck;
+    if (!oc || card.dataset.id !== oc.id) rollFormHome(); // (before the card is redrawn or hidden)
     card.hidden = !oc;
     if (!oc) { card.dataset.id = ""; return; }
     if (card.dataset.id === oc.id) return;
@@ -1710,7 +1701,8 @@
         <button data-oc="roll" class="ocbtn" title="Call for a roll" aria-label="Call for a roll">🎲</button>
         <span class="grow"></span>
         <button data-oc="dismiss" class="ghost">Dismiss</button>
-      </div>`;
+      </div>
+      <div class="ocroll"></div>`;
   }
 
   // The stakes are editable: what you write is what the agent narrates by.
@@ -1734,6 +1726,7 @@
     if (act === "success" || act === "failure") send({ t: "outcome", verdict: act });
     else if (act === "dismiss") send({ t: "outcomeDismiss" });
     else if (act === "roll") {
+      if ($("rollForm").parentElement !== $("rollCard")) return rollFormHome(); // (🎲 again: close it)
       // Pre-fill the roll form from the agent's suggestion, for whoever typed the attempt.
       if (oc.suggested_check !== "none") $("rollCheck").value = oc.suggested_check;
       const by = S.log.findLast((e) => e.kind === "player" && e.by)?.by;
@@ -1743,7 +1736,10 @@
       $("rollReason").value = oc.attempt || "";
       rollFromOutcome = true;
       rollFormChanged();
-      $("rollCard").scrollIntoView({ behavior: "smooth", block: "center" });
+      // The who-rolls-what form opens here, under the stakes.
+      $("outcome").querySelector(".ocroll").append($("rollForm"));
+      $("rollAway").hidden = false;
+      $("rollForm").scrollIntoView({ behavior: "smooth", block: "nearest" });
       $("rollWho").focus();
     }
   });

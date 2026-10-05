@@ -135,7 +135,7 @@ Every password attempt, and anything else the players try that could go either w
 
 ## Retcon
 
-**↶ Retcon last response** (under **Actions**) undoes the agent's last response: its lines are removed from the players' screens, your log and the agent's memory, its station and crew-condition changes are reverted, and its effects end. Press it again to go back further (up to five responses). The player input or roll that prompted it stays, so you can prompt the agent again or narrate it yourself.
+**↶ Retcon last response** (under the Speak button) undoes the agent's last response: its lines are removed from the players' screens, your log and the agent's memory, its station and crew-condition changes are reverted, and its effects end. Press it again to go back further (up to five responses). The player input or roll that prompted it stays, so you can prompt the agent again or narrate it yourself.
 
 ## Interrupting
 
@@ -154,12 +154,11 @@ If a player types while lines are still playing, the comms cut off on every scre
 
 | Area | What it does |
 |---|---|
-| **Layout** | Left: the comms log and compose box. Right: the control panel, with tabs for **Actions** (the next response, **Roll**, **Effects** and **Sounds**, one under another; a dot on the tab means a reply or ruling is waiting for you), **Map** (drawing or status board, plus the raw station state), **Crew** (player characters and terminals) and **Story** (voices & personas, standing orders, lore & secrets). |
+| **Layout** | Left: the comms log, then whatever needs you right now (a **⚖ Your call** ruling, the agent's draft reply, a roll in progress or its results; hidden when nothing does), then the compose box. Right: the control panel, with tabs for **Actions** (**Prompt agent now**, **Roll** for rolls you call yourself, **Effects** and **Sounds**), **Map** (drawing or status board, plus the raw station state), **Crew** (player characters and terminals) and **Story** (voices & personas, standing orders, lore & secrets). |
 | **Read-only / ✎ Edit** | Beside the side tabs. Read-only (the default, remembered per device) shows what you need while running the game: compact character sheets (Health, Wounds and Stress still adjustable), where each terminal is, whether it's reachable and who's at it, the cast, standing orders, and lore and secrets to read. **✎ Edit** shows the setup: full character sheets, terminal settings, the Connections grid, voice editors, the raw station state, and editable lore. |
 | **Rules** tab | A quick Mothership 1e reference: checks and saves, criticals, advantage, Stress and Panic, Health and Wounds, combat, tips for running it, and how rolls work in this app. |
 | **Mode** (top right) | **Auto** (the default): agent replies go straight to players. **Review**: every reply arrives as an editable draft that you send, regenerate with steering, or discard. |
 | **Comms log** | Full transcript, with one box for everything you send. **Direction** gives the agent an order it must obey; it acts on it right away and players never see the order. **Speak** puts your exact words on screen as any voice or character (see below). **Note** is private between you and the agent (see below). Keyboard first: **Tab** / **Shift+Tab** in the box switches between Direction, Note, and each voice and character; **Enter** sends, **Shift+Enter** is a new line, and **Ctrl+Enter** sends a Note whatever is selected. Deleting an entry also removes it from the agent's memory. |
-| **Command for the next reply** | A one-shot order applied to the agent's next reply, e.g. "lie about the door". |
 | **Draft card** | A reply is a list of lines, each said by a voice. Edit the text, change who says each line, add or remove lines, and untick any station changes or effects you don't want. The 🧠 note is the agent's private read on what the players are attempting. |
 | **Screen effects** | Blood, goo (players can drag to wipe these off the glass), cracked screen, hacker alarm with siren, red alert with klaxon, glitch, static, blackout, terminal lockout (blocks input), giant banner, text corruption. Set the caption, duration (blank, the default, keeps it on until you clear it) and intensity. |
 | **Station map** | The station state drawn as decks and rooms (see below). Click any value to change it; **⤢ Expand** opens the full map. |
@@ -231,7 +230,7 @@ The agent puts station-wide announcements in a separate broadcast field. If it e
 The agent says yes to cool ideas but **never decides whether an uncertain action works**. You do.
 
 - **The agent's side:** when players try something risky, like hacking a door, overriding a lockout, forcing a hatch or bluffing someone, the agent plays it up to the moment of truth and stops there. It never contradicts the players or flatly shuts an idea down.
-- **Your side:** an **⚖ Your call** card appears in the console with **It works**, **It fails** or **Call for a roll**. The agent suggests a Stat or Save and whether [+] or [−] fits. Choosing works or fails has the agent narrate the result and make any station changes.
+- **Your side:** an **⚖ Your call** card appears under the comms log with the stakes (**If it works:** / **If it fails:**, which you can edit) and three buttons: ✓ (it works), ✗ (it fails) and 🎲 (call for a roll). The agent suggests a Stat or Save and whether [+] or [−] fits. ✓ or ✗ has the agent narrate the result by the stakes and make any station changes; 🎲 opens the who-rolls-what form right in the card, under the stakes.
 
 **Rolls** (under **Actions**) follow Mothership's rules:
 
