@@ -514,6 +514,11 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .editmode { flex-shrink: 0; white-space: nowrap; }
 .editmode[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
 
+/* The stakes on the "your call" card: what happens if it works / fails. */
+.outcome .stakes { display: flex; flex-direction: column; gap: 3px; font-size: 13px; margin: 2px 0 4px; }
+.outcome .stakes .ok { color: var(--accent); }
+.outcome .stakes .bad { color: var(--danger, #ff6b6b); }
+
 /* Read-only (the default) vs Edit: setup controls only while editing. */
 .col.side:not(.editing) .edit-only, .col.side.editing .play-only { display: none !important; }
 

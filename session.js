@@ -515,7 +515,7 @@ export class Session {
   // roll); then the agent writes what happens, knowing the result.
   holdForWarden(raw, note) {
     const s = this.state;
-    const oc = { needed: true, attempt: String(raw.attempt || "").slice(0, 140), suggested_check: CHECKS[raw.suggested_check] ? raw.suggested_check : "none", advantage: ["advantage", "disadvantage"].includes(raw.advantage) ? raw.advantage : "none", why: String(raw.why || "").slice(0, 300) };
+    const oc = { needed: true, attempt: String(raw.attempt || "").slice(0, 140), suggested_check: CHECKS[raw.suggested_check] ? raw.suggested_check : "none", advantage: ["advantage", "disadvantage"].includes(raw.advantage) ? raw.advantage : "none", why: String(raw.why || "").slice(0, 300), on_success: String(raw.on_success || "").slice(0, 200), on_failure: String(raw.on_failure || "").slice(0, 200) };
     s.outcomeCheck = { ...oc, id: Date.now().toString(36), at: Date.now(), held: true };
     this.addLog("note", `⚖ Your call first (nothing shown to players yet): ${oc.attempt || "(unspecified)"}${oc.suggested_check !== "none" ? ` · suggests ${CHECKS[oc.suggested_check].label}${oc.advantage === "advantage" ? " [+]" : oc.advantage === "disadvantage" ? " [-]" : ""}` : ""}`);
     if (note) this.addLog("note", `Agent: ${note}`);
@@ -826,6 +826,11 @@ export class Session {
           break;
         }
         if (msg.fromOutcome) {
+          // The stakes the Warden was shown go to the agent for when the result comes in.
+          const oc = s.outcomeCheck;
+          const trim = (t) => String(t || "").trim().replace(/[.\s]+$/, "");
+          const stakes = [oc?.on_success && `on a success, ${trim(oc.on_success)}`, oc?.on_failure && `on a failure, ${trim(oc.on_failure)}`].filter(Boolean);
+          if (stakes.length) this.addLog("warden", `Stakes for this roll (narrate the result by them): ${stakes.join("; ")}.`);
           s.outcomeCheck = null;
           this.setBusy(false); // the roll prompt replaces PROCESSING
         }
@@ -861,7 +866,9 @@ export class Session {
         if (!oc || !["success", "failure"].includes(msg.verdict)) break;
         s.outcomeCheck = null;
         const verdict = msg.verdict === "success" ? "SUCCEEDS" : "FAILS";
-        this.addLog("warden", `The players' attempt (${oc.attempt || "their last action"}) ${verdict}. Narrate the result in character and apply any station changes.`);
+        // The stakes the Warden was shown for this outcome: the narration follows them.
+        const stake = msg.verdict === "success" ? oc.on_success : oc.on_failure;
+        this.addLog("warden", `The players' attempt (${oc.attempt || "their last action"}) ${verdict}.${stake ? ` As the stakes said: ${stake}` : ""} Narrate the result in character and apply any station changes.`);
         this.generate();
         break;
       }

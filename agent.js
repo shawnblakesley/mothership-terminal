@@ -188,13 +188,15 @@ function buildSchema(voices) {
         type: "object",
         description: "Hand an uncertain player action to the Warden (see RULE OF COOL). needed=false when nothing is left undecided.",
         additionalProperties: false,
-        required: ["needed", "attempt", "suggested_check", "advantage", "why"],
+        required: ["needed", "attempt", "suggested_check", "advantage", "why", "on_success", "on_failure"],
         properties: {
           needed: { type: "boolean" },
           attempt: { type: "string", description: "What the players are attempting, in a few words (empty if not needed)." },
           suggested_check: { type: "string", enum: ["none", ...Object.keys(CHECKS)], description: "The Mothership Stat or Save that fits, if a roll seems right." },
           advantage: { type: "string", enum: ["none", "advantage", "disadvantage"], description: "Suggest [+] if their approach is clever or well set up, [-] if it's rushed or hampered." },
-          why: { type: "string", description: "One line for the Warden: why it's uncertain and what success / failure could look like." },
+          why: { type: "string", description: "One line for the Warden: why it's uncertain." },
+          on_success: { type: "string", description: "The stakes, if it works: what happens, in one short sentence (empty if not needed)." },
+          on_failure: { type: "string", description: "The stakes, if it fails: what goes wrong or gets worse (not just 'nothing happens'), in one short sentence (empty if not needed)." },
         },
       },
       dm_note: { type: "string", description: "Private note to the Warden: reasoning, what the players may be trying, suggestions, answers to Warden questions. Never shown to players." },
@@ -215,7 +217,7 @@ function effectSchema() {
   };
 }
 
-const NO_CHECK = { needed: false, attempt: "", suggested_check: "none", advantage: "none", why: "" };
+const NO_CHECK = { needed: false, attempt: "", suggested_check: "none", advantage: "none", why: "", on_success: "", on_failure: "" };
 
 // Shown to models without enforced schemas (DeepSeek) so they copy the shape.
 const REPLY_EXAMPLE = {
@@ -262,7 +264,7 @@ RULE OF COOL (how to treat what players try)
 - EVERY password, passcode or login attempt goes to the Warden, whether or not it matches anything in SECRETS: never answer ACCESS GRANTED or ACCESS DENIED to one yourself. Show the system taking it (e.g. "VERIFYING CREDENTIALS..."), stop there, and in outcome_check.why tell the Warden whether it matches a known password.
 - The same goes for anything else that has a chance of succeeding or failing: if you can imagine it going either way, it's the Warden's call, not yours.
 - CHECK FIRST: when outcome_check.needed=true, NOTHING in your reply reaches the players. The Warden rules (it works / it fails / a roll) and then asks you to narrate what happens. So never write the result in a reply that needs a check, and never write a result and ask afterwards. If your reply stops at a moment of truth, needed MUST be true.
-- For such an action: acknowledge it in character and build tension up to the moment of truth (e.g. "ATTEMPTING BYPASS..."), then STOP before the result. Set outcome_check.needed=true with the attempt, a fitting Mothership Stat (Strength, Speed, Intellect, Combat) or Save (Sanity, Fear, Body), and [+]/[-] if the approach deserves it. Make NO station_changes for the undecided result.
+- For such an action: acknowledge it in character and build tension up to the moment of truth (e.g. "ATTEMPTING BYPASS..."), then STOP before the result. Set outcome_check.needed=true with the attempt, a fitting Mothership Stat (Strength, Speed, Intellect, Combat) or Save (Sanity, Fear, Body), and [+]/[-] if the approach deserves it, and the stakes: in one short sentence each, what happens if it works (on_success) and if it fails (on_failure). A failure should cost something or make things worse, not just "nothing happens". Make NO station_changes for the undecided result.
 - Routine things just happen: reading what the access level allows, status reports, simple commands. Restricted data can still be locked (ACCESS DENIED), but trying to get past a lock is an uncertain action, not a refusal.
 - Rolls are out-of-world. NEVER mention dice, rolls, checks, saves, stats, Stress, targets or "success/failure" in lines; show the result only through what happens in the fiction.
 - When a Warden command or a [ROLL RESULT] gives the outcome, narrate it vividly and apply its station_changes. Critical success: make it extra cool. Failure: it doesn't work, or works at a cost. Critical failure: add a nasty complication.
@@ -448,7 +450,7 @@ NEEDS THE WARDEN (needed=true):
 
 DOES NOT (needed=false): routine commands and queries the system would simply answer (help, status, list, reading what their access allows, asking a question), talking to someone, describing what they look at.
 
-If needed: attempt = what they're trying, in a few words; suggested_check = the Mothership Stat (strength, speed, intellect, combat) or Save (sanity, fear, body) that fits, or none if it should simply work or fail; advantage for a clever or a hampered approach; why = one line for the Warden, and for passwords say whether it matches a password in SECRETS.`;
+If needed: attempt = what they're trying, in a few words; suggested_check = the Mothership Stat (strength, speed, intellect, combat) or Save (sanity, fear, body) that fits, or none if it should simply work or fail; advantage for a clever or a hampered approach; why = one line for the Warden, and for passwords say whether it matches a password in SECRETS; on_success / on_failure = the stakes, one short sentence each: what happens if it works, and what goes wrong or gets worse if it fails (not just "nothing happens").`;
 
 export function buildPrecheck(state) {
   const c = state.config;
@@ -461,7 +463,7 @@ export function buildPrecheck(state) {
     context: [`STATION: ${c.stationName}`, `SECRETS:\n${c.secrets || "(none)"}`, `STATION STATE:\n${JSON.stringify(state.station)}`].join("\n\n"),
     messages: [{ role: "user", content: `RECENT:\n${recent}\n\nLATEST PLAYER INPUT: ${JSON.stringify(last?.text || "")}\n\nDoes it need the Warden's call first?` }],
     schema: buildSchema(c.voices).properties.outcome_check,
-    example: { needed: true, attempt: "log in as admin with password THAW", suggested_check: "none", advantage: "none", why: "Matches the admin password in SECRETS." },
+    example: { needed: true, attempt: "log in as admin with password THAW", suggested_check: "none", advantage: "none", why: "Matches the admin password in SECRETS.", on_success: "They're in as ADMIN: full system access.", on_failure: "Locked out, and the failed login alerts Okonkwo's console." },
   };
 }
 
@@ -624,5 +626,7 @@ function normalizeCheck(c) {
     suggested_check: CHECKS[c.suggested_check] ? c.suggested_check : "none",
     advantage: ["advantage", "disadvantage"].includes(c.advantage) ? c.advantage : "none",
     why: String(c.why ?? "").slice(0, 300),
+    on_success: String(c.on_success ?? "").slice(0, 200),
+    on_failure: String(c.on_failure ?? "").slice(0, 200),
   };
 }

@@ -1700,6 +1700,7 @@
       <div class="attempt">${esc(oc.attempt || "(something uncertain)")}</div>
       ${oc.suggested_check !== "none" ? `<div class="muted small">Agent suggests: ${esc(checkName(oc.suggested_check))}${advMark(oc.advantage)}</div>` : ""}
       ${oc.why ? `<div class="note">${esc(oc.why)}</div>` : ""}
+      ${oc.on_success || oc.on_failure ? `<div class="stakes">${oc.on_success ? `<div><b class="ok">✓ If it works:</b> ${esc(oc.on_success)}</div>` : ""}${oc.on_failure ? `<div><b class="bad">✗ If it fails:</b> ${esc(oc.on_failure)}</div>` : ""}</div>` : ""}
       <div class="row wrap">
         <button data-oc="success" class="primary">✓ It works</button>
         <button data-oc="failure" class="danger">✗ It fails</button>
