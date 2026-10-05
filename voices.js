@@ -104,6 +104,7 @@ export const DEFAULT_PERSONAS = {
 
 RULES
 - BRIEF: one or two short sentences, under 25 words. One telling detail beats a full description. Present tense, plain and concrete. No dialogue: people speak through their own voices.
+- Each sentence on its own line: it's spoken a line at a time.
 - Never speak to the players or their characters. Never say "you". Never ask anything, advise, hint at what to do, or explain what something means.
 - Never say what the players' characters do, think or feel; describe the world they're in, and how others react to them.
 - Only what can be perceived in the room; no secrets, no thoughts, no foreshadowing that knows too much.
@@ -149,7 +150,7 @@ const INTERCOM_BASE = `The live station intercom: real people elsewhere on the s
 - Only people the lore says are on the station can speak, and only about what they would know.`;
 export const OLD_DEFAULT_PERSONAS = {
   // the first narrator, before it was kept brief
-  narrator: [DEFAULT_PERSONAS.narrator.replace("- BRIEF: one or two short sentences, under 25 words. One telling detail beats a full description. Present tense, plain and concrete. No dialogue: people speak through their own voices.", "- Present tense, plain and concrete. Short: one to three sentences. No dialogue: people speak through their own voices.")],
+  narrator: [DEFAULT_PERSONAS.narrator.replace("- Each sentence on its own line: it's spoken a line at a time.\n", ""), DEFAULT_PERSONAS.narrator.replace("- Each sentence on its own line: it's spoken a line at a time.\n", "").replace("- BRIEF: one or two short sentences, under 25 words. One telling detail beats a full description. Present tense, plain and concrete. No dialogue: people speak through their own voices.", "- Present tense, plain and concrete. Short: one to three sentences. No dialogue: people speak through their own voices.")],
   terminal: [
     // before the rule of cool: HV-CORE decided whether hacks worked
     DEFAULT_PERSONAS.terminal.replace(
@@ -166,6 +167,15 @@ export const OLD_DEFAULT_PERSONAS = {
 
 // How a human (neural) voice's line is split for speech: one clip per text line,
 // so the first plays while the rest generate. public/player.js splits the same way.
+// One sentence per line: human voices are spoken a line at a time, so the first
+// sentence can play while the rest is still being voiced. ("Dr. Vale" stays whole.)
+export function sentenceLines(text) {
+  const abbr = /\b(Dr|Mr|Mrs|Ms|St|Sgt|Lt|Capt|No|vs)\./g;
+  return String(text).replace(abbr, "$1\u2024").split("\n")
+    .flatMap((row) => (row.match(/[^.!?…]+(?:[.!?…]+["')\]]*|$)\s*/g) || [row]).map((s) => s.trim()))
+    .filter(Boolean).join("\n").replaceAll("\u2024", ".");
+}
+
 export const speechParts = (text) => String(text).split(/\n+/).map((s) => s.trim()).filter(Boolean);
 
 // The connection graph: which systems each voice can be heard on (terminals.js

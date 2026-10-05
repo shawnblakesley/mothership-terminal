@@ -3,7 +3,7 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
-import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES, shipVoice, narratorVoice, NARRATOR_WHITE } from "./voices.js";
+import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
@@ -849,10 +849,11 @@ export class Session {
         this.setBusy(false);
         break;
       case "inject": {
-        const text = String(msg.text || "").trim().slice(0, 4000);
+        let text = String(msg.text || "").trim().slice(0, 4000);
         if (!text) break;
         // "as" is a voice id: the terminal, broadcasts, or any Warden-defined voice.
         const as = msg.as === "system" ? BUILTIN.broadcast : msg.as || BUILTIN.terminal;
+        if (as === BUILTIN.narrator) text = sentenceLines(text); // (a sentence per line, like the agent's)
         if (!s.config.voices.some((v) => v.id === as)) break;
         const kind = kindOf(as);
         // Optionally as one of that voice's characters (e.g. Salk on the intercom).
@@ -1629,8 +1630,10 @@ export class Session {
     // (a computer like the tug's can't, even if the agent gives it a speaker).
     const cast = new Map(voices.map((v) => [v.id, new Set((v.characters || []).map((c) => c.name.toLowerCase()))]));
     this.castCharacters(lines);
-    for (const { voice, character, inPerson, system, text, effects: lineFx, variants: rawVariants } of lines) {
+    for (let { voice, character, inPerson, system, text, effects: lineFx, variants: rawVariants } of lines) {
       if (voice === BUILTIN.narrator && source === "agent" && this.state.config.narrator === false) continue; // (switched off)
+      // The narrator a sentence per line, so its voice starts sooner (spoken a line at a time).
+      if (voice === BUILTIN.narrator) { text = sentenceLines(text); for (const v of rawVariants || []) v.text = sentenceLines(v.text); }
       // Per-player versions of this line, for the crew they name (if the Warden allows them).
       const variants = source === "agent" && !this.state.config.agentVariants ? [] : resolveVariants(rawVariants, this.state.config.crew);
       // Effects from an effect-only beat are marked hold: the next line waits for them.
