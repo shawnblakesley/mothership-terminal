@@ -885,7 +885,7 @@ export class Session {
         this.initPlayers();
         break;
       case "resetSession":
-        this.restartStory(!!msg.keepStation);
+        this.restartStory();
         // Everyone back where the story starts: the first terminal they can reach.
         { const start = s.config.terminals.find((t) => reachable(t, s.station));
           if (start) for (const ws of this.sockets) if (ws.role === "player" && ws.terminal) { ws.terminal = null; this.playerTerminal(ws, start.id, "warden"); } }
@@ -1959,7 +1959,7 @@ export class Session {
     this.touch();
   }
 
-  restartStory(keepStation = false) {
+  restartStory() {
     const s = this.state;
     const snap = s.storyStart;
     this.genCounter++; // (orphan anything in flight)
@@ -1974,17 +1974,17 @@ export class Session {
       // The whole story as it was (settings stay: they're the session's, not the story's).
       Object.assign(s.config, structuredClone(snap.config));
       s.config.voices = sanitizeVoices(s.config.voices);
-      if (!keepStation) s.station = structuredClone(snap.station);
+      s.station = structuredClone(snap.station);
       s.synopsis = structuredClone(snap.synopsis ?? null);
     } else {
       // Played before saves existed: everyone fresh, and the default story's own station.
       for (const pc of s.config.crew) freshen(pc);
-      if (!keepStation && s.config.stationName === "KESTREL-9") s.station = structuredClone(DEFAULT_STATION);
+      if (s.config.stationName === "KESTREL-9") s.station = structuredClone(DEFAULT_STATION);
       s.synopsis = null;
     }
     // Every terminal reachable as the story starts it.
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
-    // Players start as guests, even when the doors and systems are kept.
+    // Players start as guests.
     s.station.access_level = DEFAULT_STATION.access_level;
     Object.assign(s, { log: [], handouts: structuredClone(s.config.startDocs || []), pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });

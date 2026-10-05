@@ -1489,8 +1489,8 @@
         ? `Puts the story back exactly as it was when play began (${since}): setting, lore, secrets, cast, map, terminals, characters and station. Anything changed since, by the agent or by you, is undone.`
         : "The story hasn't been played yet, so there's nothing to undo; everything is cleared and the characters made fresh.")
       + " Clears the log, rolls, clocks, effects and handouts. Your settings and sounds are kept; players stay connected, as GUEST, at the starting terminal.",
-      [["default", "Restart", "danger"], ["keep", "Restart, keep doors & systems"]]);
-    if (how) send({ t: "resetSession", keepStation: how === "keep" });
+      [["default", "Restart", "danger"]]);
+    if (how) send({ t: "resetSession" });
   };
   $("resetAll").onclick = async () => (await sure("Factory reset?", "Everything (lore, personas, voices, secrets, station) goes back to the defaults.", "Factory reset")) && send({ t: "resetAll" });
 
