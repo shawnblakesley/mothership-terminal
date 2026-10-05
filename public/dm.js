@@ -411,12 +411,25 @@
       ${steerRow()}
       <div class="row"><button data-act="regen">↻ Regenerate</button></div>`;
   }
+  // The story's systems by name, station first (one entry: no separate systems).
+  const systemNames = () => [...new Set([S.config.stationName, ...S.config.terminals.filter((t) => t.system).map((t) => t.system)])];
+  // Which system's screens a draft line goes to (the agent's pick; the Warden can change it).
+  const sysSelect = (system) => {
+    const names = systemNames();
+    if (names.length < 2) return "";
+    const want = netKey(system);
+    const sel = want === "all" ? "ALL" : names.find((n) => netKey(n) === want) || "";
+    const opts = [["", "(where they are)"], ...names.map((n) => [n, n]), ["ALL", "to All"]];
+    return `<select class="dsys" aria-label="System" title="Which system's screens show this line">${opts.map(([v, label]) => `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>`;
+  };
+
   // One editable line of a draft: who says it, and what.
   // A line's effects fire as it begins (between lines of dialogue); untick to drop one.
   const draftLine = (l) => `
     <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}" data-inperson="${l.inPerson ? 1 : ""}" ${l.inPerson ? 'title="Spoken in person, in the room with the players"' : ""}>
       <div class="dwho">
         <select aria-label="Voice">${S.config.voices.map((v) => `<option value="${esc(v.id)}" ${v.id === l.voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
+        ${sysSelect(l.system)}
         <input class="dchar" list="chars-${esc(l.voice)}" value="${esc(l.character || "")}" placeholder="speaker" aria-label="Character" title="Who speaks this line (for voices several people share, like the intercom)" ${hasCast(l.voice) || l.character ? "" : "hidden"}>
       </div>
       <textarea rows="${Math.min(12, Math.max(2, l.text.split("\n").length))}" placeholder="${l.effects?.length ? "(effect only: no text)" : ""}">${esc(l.text)}</textarea>
@@ -1221,7 +1234,7 @@
           const fx = JSON.parse(row.dataset.effects || "[]").filter((_, i) => row.querySelector(`[data-leff="${i}"]`)?.checked);
           const variants = [...row.querySelectorAll(".dvar")].map((d) => ({ for: d.querySelector(".dvfor").value.trim(), text: d.querySelector(".dvtext").value }))
             .filter((v) => v.for && v.text.trim());
-          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), inPerson: !!row.dataset.inperson, text: row.querySelector(".dwho + textarea").value, effects: fx, variants };
+          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), inPerson: !!row.dataset.inperson, system: row.querySelector(".dsys")?.value || "", text: row.querySelector(".dwho + textarea").value, effects: fx, variants };
         })
         .filter((l) => l.text.trim() || l.effects.length || l.variants.length), // effect-only beats count
       station_changes: r.station_changes.filter((_, i) => card.querySelector(`[data-chg="${i}"]`)?.checked),
@@ -1242,7 +1255,7 @@
   });
   // Switching a line's voice: its speaker box follows (shown for shared voices).
   $("pending").addEventListener("change", (e) => {
-    if (!e.target.matches(".dwho select")) return;
+    if (!e.target.matches(".dwho select:not(.dsys)")) return;
     const box = e.target.parentElement.querySelector(".dchar");
     box.setAttribute("list", `chars-${e.target.value}`);
     box.hidden = !hasCast(e.target.value) && !box.value;
