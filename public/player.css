@@ -87,7 +87,7 @@ body {
 .line.player { color: var(--dim); text-transform: uppercase; }
 .line.player::before { content: attr(data-prompt); }
 /* Ability rolls */
-.line.roll { border: 3px double var(--fg); padding: 0.2em 0.5em; display: inline-block; }
+.line.roll { border: 3px double var(--fg); padding: 0.2em 0.5em; display: block; }
 /* Another character's roll: text on a filled white background. */
 .line.roll.others { background: #ecece6; color: #0a0a0a; border-color: #ecece6; text-shadow: none; }
 .line.roll.others.ok { background: #4fdc86; border-color: #4fdc86; color: #03150a; }
