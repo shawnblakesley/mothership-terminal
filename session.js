@@ -181,7 +181,7 @@ export function defaultGame(keys = {}) {
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "stress-2"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -268,6 +268,11 @@ function migrateGame(saved) {
   if (!config.upgrades.includes("start-ship")) {
     if (config.lore === DEFAULT_LORE) config.terminals = startAboardShip(config.terminals);
     config.upgrades.push("start-ship");
+  }
+  // Once: by the rules every character starts at Stress 2 (Tick and MOLL-7 had 4 and 1).
+  if (!config.upgrades.includes("stress-2")) {
+    for (const pc of config.crew) if ((pc.id === "varga" && pc.startStress === 4) || (pc.id === "moll" && pc.startStress === 1)) pc.startStress = 2;
+    config.upgrades.push("stress-2");
   }
   // Once: KESTREL-9's screens went cyan (green, the old default, counts as unchanged).
   if (!config.upgrades.includes("cyan")) {
