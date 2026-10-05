@@ -7,7 +7,7 @@ import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
-import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS, changeItem } from "./crew.js";
+import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS, changeItem, freshen } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
@@ -864,6 +864,9 @@ export class Session {
         break;
       case "resetSession":
         this.clearClocks();
+        // Everyone fresh for the story: full Health, no Wounds, starting Stress and items.
+        for (const pc of s.config.crew) freshen(pc);
+        this.crewChanged();
         this.genCounter++;
         this.playhead = 0;
         this.undoStack = [];

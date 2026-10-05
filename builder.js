@@ -201,6 +201,7 @@ export function applyDraft(d) {
   station.access_level = "GUEST";
   const crew = sanitizeCrew(d.crew.map((c) => ({
     ...c,
+    startStress: c.stress,
     health: { current: c.health_max, max: c.health_max },
     wounds: { current: 0, max: c.wounds_max },
   })));

@@ -118,6 +118,9 @@ export function sanitizeCrew(list) {
       health: { current: int(c.health?.current, 0, 99, 12), max: int(c.health?.max, 1, 99, 12) },
       wounds: { current: int(c.wounds?.current, 0, 9, 0), max: int(c.wounds?.max, 1, 9, 2) },
       stress: int(c.stress, 0, 20, 2),
+      // Where their Stress starts in a fresh story (a restart puts it back here):
+      // the original crew file's, or Mothership's 2.
+      startStress: int(c.startStress ?? DEFAULT_CREW.find((d) => d.id === slug(c.id || name))?.stress, 0, 20, 2),
       skills: (Array.isArray(c.skills) ? c.skills : String(c.skills || "").split(",")).map((s) => str(s, 40).trim()).filter(Boolean).slice(0, 12),
       loadout: str(c.loadout, 400),
       // What they carry now (the loadout is how they started): changes in play.
@@ -164,6 +167,15 @@ export function setVital(pc, field, value) {
 // Their current condition and what they carry, for the agent's per-turn context.
 export function crewStatus(crew) {
   return crew.map((c) => `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}. Carrying: ${c.items.join(", ") || "nothing"}`).join("\n");
+}
+
+// Fresh for a new start of the story: full Health, no Wounds, starting Stress,
+// and what their loadout says they carry.
+export function freshen(pc) {
+  pc.health.current = pc.health.max;
+  pc.wounds.current = 0;
+  pc.stress = pc.startStress;
+  pc.items = itemsFrom(pc.loadout);
 }
 
 // Items: a loadout's first sentence, split into things ("Vaccsuit, plasma cutter, 2 flares.").

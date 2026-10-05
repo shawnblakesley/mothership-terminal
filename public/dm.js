@@ -514,7 +514,7 @@
           ${Object.entries(c.saves).map(([k, v]) => num(`saves.${k}`, v, `${k[0].toUpperCase() + k.slice(1)} save`)).join("")}
           ${num("health.current", c.health.current, "Health")}${num("health.max", c.health.max, "Max health")}
           ${num("wounds.current", c.wounds.current, "Wounds")}${num("wounds.max", c.wounds.max, "Max wounds")}
-          ${num("stress", c.stress, "Stress")}
+          ${num("stress", c.stress, "Stress")}${num("startStress", c.startStress, "Starting stress")}
           ${txt("skills", c.skills.join(", "), "Skills (comma-separated)")}
           ${txt("crime", c.crime, "Conviction", 2)}
           ${txt("backstory", c.backstory, "Backstory", 4)}
