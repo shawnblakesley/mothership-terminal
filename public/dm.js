@@ -483,9 +483,8 @@
     panel.innerHTML = crewDraft.map((c, i) => {
       const playing = S.claims?.[c.id] || 0;
       return `<details class="pc" data-i="${i}">
-        <summary><span class="pcname">${esc(c.name || "Unnamed")}</span>
+        <summary><span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Connected: playing on ${playing} screen${playing > 1 ? "s" : ""}` : "Not connected: no player has picked them"}">${esc(c.name || "Unnamed")}</span>
           <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
-          <span class="pill ${playing ? "ok" : ""}">${playing ? `playing on ${playing} screen${playing > 1 ? "s" : ""}` : "not picked"}</span>
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move their screens to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(no terminal yet)</option>') + S.config.terminals.map((t) =>
             `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></span>` : ""}</summary>
