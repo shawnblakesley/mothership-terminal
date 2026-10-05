@@ -173,7 +173,7 @@ export function defaultGame(keys = {}) {
       playerRolls: true, // players may roll their own stats and saves
       tts: true,
       voices: defaultVoices(),
-      theme: "cyan",
+      theme: "green",
       map: DEFAULT_MAP,
       crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
@@ -181,7 +181,7 @@ export function defaultGame(keys = {}) {
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "stress-2", "airlock-closed"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "stress-2", "airlock-closed"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -281,10 +281,17 @@ function migrateGame(saved) {
     for (const pc of config.crew) if ((pc.id === "varga" && pc.startStress === 4) || (pc.id === "moll" && pc.startStress === 1)) pc.startStress = 2;
     config.upgrades.push("stress-2");
   }
-  // Once: KESTREL-9's screens went cyan (green, the old default, counts as unchanged).
-  if (!config.upgrades.includes("cyan")) {
-    if (config.stationName === "KESTREL-9" && (config.theme || "green") === "green") config.theme = "cyan";
-    config.upgrades.push("cyan");
+  // (The "cyan" upgrade turned the whole station cyan; it was meant for the tug. Undone just below.)
+  if (!config.upgrades.includes("cyan")) config.upgrades.push("cyan");
+  // Once: the station is green and the SECOND CHANCE's terminal cyan (it was amber;
+  // a station turned cyan by the old upgrade goes back to green).
+  if (!config.upgrades.includes("ship-cyan")) {
+    if (config.stationName === "KESTREL-9") {
+      if (config.theme === "cyan") config.theme = "green";
+      const ship = config.terminals.find((t) => t.id === "ship");
+      if (ship && ship.theme === "amber") ship.theme = "cyan";
+    }
+    config.upgrades.push("ship-cyan");
   }
   // Once: an original KESTREL-9 story starts the crew with their work order.
   config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];
