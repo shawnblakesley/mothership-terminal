@@ -419,6 +419,8 @@ body.look-portable #crt::before { content: "PORTABLE UNIT · SIGNAL ▂▄▆_ �
 .pilotform button.dangerbtn { color: #ff8a80; border-color: #6b3330; }
 .pilotform .ghostbtn { padding: 3px 10px; font-size: 13px; }
 .pilotform .err { color: #ff8a80; font-size: 14px; }
+#ss-note b { color: #ffcf6e; }
+#busy-t { color: var(--dim); }
 .pilotform b { letter-spacing: 0.08em; }
 #rb-stakes { white-space: pre-line; }
 #lines .line.notice { color: var(--dim); font-style: italic; }

@@ -352,10 +352,21 @@
 
   function scrollDown() { screenEl.scrollTop = screenEl.scrollHeight; }
 
+  // How long it's been thinking, once that's more than a moment (slow models
+  // shouldn't look broken).
+  let busySince = 0;
   function updateBusy() {
     busyEl.hidden = !(busy && !plays.size);
+    if (busy && !busySince) busySince = Date.now();
+    if (!busy) busySince = 0;
+    tickBusy();
     if (!busyEl.hidden) scrollDown();
   }
+  function tickBusy() {
+    const s = busySince ? Math.round((Date.now() - busySince) / 1000) : 0;
+    $("busy-t").textContent = s >= 8 ? `· ${s}S` : "";
+  }
+  setInterval(tickBusy, 1000);
 
   // ------------------------------------------------------------ input
   const measure = document.createElement("canvas").getContext("2d");
@@ -635,7 +646,7 @@
     const list = await providerList();
     // The free model first when the server offers one: nothing to set up.
     const order = [...list.filter((p) => p.free), ...list.filter((p) => !p.free)];
-    $("ss-provider").innerHTML = order.map((p) => `<option value="${escH(p.id)}">${escH(p.label)}${p.free ? " · no key needed" : ` · ${escH(p.models[0].label)}`}</option>`).join("");
+    $("ss-provider").innerHTML = order.map((p) => `<option value="${escH(p.id)}">${escH(p.label)}${p.free ? " · no key needed, slow" : ` · ${escH(p.models[0].label)}`}</option>`).join("");
     syncSoloStart();
   }
   function syncSoloStart() {
@@ -647,8 +658,8 @@
     const remembered = p && ls.get(`wardenKey:${p.id}`);
     $("ss-key").value = remembered || "";
     $("ss-remember").checked = !!remembered;
-    $("ss-note").textContent = free
-      ? "The free model is shared and a little slower. If its limit runs out, add your own key under PILOT."
+    $("ss-note").innerHTML = free
+      ? "<b>Heads up:</b> the free model is shared, slow (a reply can take a minute or more) and writes thinner stories, and if its limit runs out the game stops answering. For a much better game, use DeepSeek: a fraction of a cent per reply. You can switch any time under PILOT."
       : "Your key stays in the server's memory for this game only; it is never saved or shown to anyone. You pay your provider for what the AI uses (a fraction of a cent per reply on the cheap models).";
   }
   $("solo-start").onclick = openSoloStart;
