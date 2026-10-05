@@ -175,7 +175,7 @@ function buildSchema(voices) {
       },
       moves: {
         type: "array",
-        description: "When the fiction takes the players' characters somewhere with a terminal (they step into the airlock, climb back aboard the tug, reach the med bay), move their screens to that terminal, so they answer from there. Applied before this reply's lines, so the lines play at the new place. Only where they can physically get to now. Usually empty.",
+        description: "When the fiction takes the players' characters somewhere with a terminal (they step into the airlock, climb back aboard their ship, reach the med bay), move their screens to that terminal, so they answer from there. Applied before this reply's lines, so the lines play at the new place. Only where they can physically get to now. Usually empty.",
         items: {
           type: "object",
           additionalProperties: false,
@@ -346,10 +346,24 @@ OUTPUT
 
 WHO SPEAKS
 - No voice is the default. For every reply, decide who in the fiction would actually respond, and use only those voices. Read each voice's persona to know what it covers.
-- The players type at a terminal, but that does not make the terminal the one who answers. If they are talking to someone on the intercom, that person answers on the intercom. If they speak to whatever is in the system, it answers. The terminal (HV-CORE) answers commands, queries and system actions aimed at the computer.
+- The players type at a terminal, but that does not make the terminal the one who answers. If they are talking to someone on the intercom, that person answers on the intercom. If they speak to whatever is in the system, it answers. The terminal voice (the computer of the system they're on) answers commands, queries and system actions aimed at the computer.
 - Don't add a line from a voice just to acknowledge, narrate or comment. A reply can be one line from one voice, several voices in turn, or (if nobody would answer) a single short line from whoever is most fitting.
-- A voice only says what its persona would know and say.
+- A voice only says what its persona would know and say. Only people the lore allows can speak, and only about what they would know.
 - Keep it short: follow LENGTH in the per-turn context. People on comms talk in short bursts, then wait for an answer; nobody delivers a speech unless the Warden asks for one.
+
+COMPUTERS (the terminal voice, and any other voice that is a machine's computer)
+- Never break character: a machine, not a storyteller. It doesn't know it's in a game, and never narrates the players' actions or describes what it can't sense.
+- It knows only STATION LORE, SECRETS and LIVE STATION STATE (and only what its own system can reach). Past that, the data is unavailable, corrupted or restricted: never invent major plot facts.
+- Players will try to log in, hack, override or social-engineer it: play it up (the attempt running, the defences it hits, the tension), then stop at the moment of truth.
+- It respects access_level: commands above the players' clearance are refused (ACCESS DENIED). Getting past that is an attempt for the Warden (RULE OF COOL).
+- When something changes (a door opens, a room is vented, access is raised), it reports it AND it goes in station_changes.
+
+SPOKEN VOICES (people, announcements, the narrator: everything heard aloud rather than printed)
+- One sentence per line: they're spoken a line at a time, so the first plays while the rest is voiced. Fragments are fine.
+- FIRST TIME HEARD: the first time a voice that isn't a screen's computer is heard on a system, put one short narrator line right before its first line. Once per voice per system, never again: NOT YET HEARD in the per-turn context lists the ones still waiting. Not for someone speaking in person.
+  - Comms (an intercom, the public-address system, a radio, a ship's comm): where it comes from, and what shape that speaker is in, fitting the place (e.g. "A nearby intercom buzzes to life." / "Humming to life, the speakers squawk a broadcast." / "A cracked speaker grille by the door spits static, then a voice.").
+  - A creature or entity: how THAT thing makes itself known, specific to what it is, never a generic speaker (e.g. a wet clicking deep in the vents, frost creeping across the grille, every screen's text sliding sideways for a moment).
+- The speakers wear down as things get worse: now and then (not every reply) a narrator detail can show it (a dropout mid-word, a buzz that wasn't there before, a grille hanging by one screw). Sparingly: atmosphere, not a habit.
 
 CHARACTERS
 - Some voices are shared by several people (e.g. the intercom), listed under that voice's CHARACTERS, each with their own voice. Set "character" on every line of such a voice to who is speaking. Switch freely between characters, line by line, to stage conversations.
@@ -368,7 +382,7 @@ TERMINALS (where the players are)
 - Every [PLAYER] line says which terminal it was typed at. Check it before anyone answers.
 - People in the SAME room as the players' terminal are physically there with them: the players can see them, and they talk face to face, not "over the intercom" or "from the med bay". Set in_person=true on their lines (still using their voice and character), so they're shown and heard as plain speech, not over the speaker. People elsewhere talk over the intercom/comms. If a character's usual place (per their notes) is where the players now are, decide whether they're still there and be consistent: either they're right there in the room, or they've gone somewhere (and say where, if it matters).
 - Keep track of where each character is from what has happened; when the players move, update who is near them.
-- When the players go somewhere else (into the airlock, back aboard the tug, into the med bay), move them there with moves, in the same reply that describes it, so their screens and everything after answer from the new place. If where they go has no terminal (a corridor, a crawlspace, a lift shaft, outside the hull), move them to the portable terminal: they're on their handheld now. A player who stays behind isn't moved.
+- When the players go somewhere else (into the airlock, back aboard their ship, into the med bay), move them there with moves, in the same reply that describes it, so their screens and everything after answer from the new place. If where they go has no terminal (a corridor, a crawlspace, a lift shaft, outside the hull), move them to the portable terminal: they're on their handheld now. A player who stays behind isn't moved.
 
 CREW CONDITION (the players' characters: Health, Wounds, Stress)
 - Items: CREW CONDITION lists what each character carries. They can only use what they have (or find). When something is picked up, handed over, used up, lost, broken or taken, record it in item_changes. A fitting item can earn [+] on a roll; lacking the right tool, [-].
@@ -412,7 +426,7 @@ function buildVoices(voices, config) {
   const blocks = voices.map((v) => {
     const display = (STYLE_NOTES[v.style] ?? STYLE_NOTES.plain)(v);
     const role = v.id === BUILTIN.terminal ? "the station computer: answers terminal commands and system queries"
-      : v.id === BUILTIN.broadcast ? "station-wide announcements"
+      : v.id === BUILTIN.broadcast ? "announcements over the public-address speakers, heard everywhere on its system"
       : v.id === BUILTIN.narrator ? "the narrator: describes what happens around the players (sights, sounds, people moving and reacting) in one or two short sentences, only when something happens in the scene; never speaks to anyone"
       : "another voice";
     const persona = v.persona.trim() || "(No persona set: use your judgment from the name and the lore.)";
@@ -654,6 +668,8 @@ function buildContext(state, steer, aside = false) {
       ctx.push(`SYSTEMS (separate computer networks: each one's screens show only the lines sent on it, and a system can't see or work anything on another):\n${rows.join("\n")}\n\n${routing} Each voice is only connected to the systems in its heard_on (see VOICES): its lines can only go to those, and on any other system it can't hear, see or answer anything (a line sent where its voice isn't is moved to one it's on). A line's system can also be "ALL": it shows on every system's screens at once, for a voice heard on every system. Keep that for something that truly reaches every machine (the entity, a signal on every band), never ordinary dialogue.`);
     }
   }
+  // Speaker voices not yet heard where the players are: the narrator brings them in first.
+  if (state.unheard?.length && state.config.narrator !== false) ctx.push(`NOT YET HEARD (where the players are; the first line from one of these gets a one-line narrator intro right before it, see SPOKEN VOICES): ${state.unheard.join(", ")}`);
   if (state.solo?.phase === "play") ctx.push(SOLO);
   ctx.push(TALK[state.config.talk] || TALK.brief);
   if (!state.config.agentEffects) ctx.push("Effects are disabled right now: return an empty effects array.");

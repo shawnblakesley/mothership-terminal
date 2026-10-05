@@ -14,17 +14,21 @@ import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
-import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
 const FREE_CALLS_PER_DAY = Number(process.env.FREE_CALLS_PER_DAY || 150);
 
-// The narrator's line the first time each is heard (see introduce).
+// The narrator's line the first time a comms voice is heard on a system, when
+// the agent didn't write one itself (see introduce). Nothing station-specific: any
+// system. (A creature's or entity's is the agent's to write: specific to what it is.)
 const INTROS = {
-  intercom: ["A nearby intercom buzzes to life.", "The intercom on the wall crackles, then clicks open.", "Static spits from a speaker grille beside the door."],
-  broadcast: ["Humming to life, the station's speakers squawk a broadcast.", "Every speaker on the deck pops, then a tone rings out.", "Overhead speakers crackle on all at once."],
+  broadcast: ["Humming to life, the speakers squawk a broadcast.", "Every speaker in earshot pops, then a tone rings out.", "Overhead speakers crackle on all at once, one of them a beat behind."],
+  comms: ["A nearby intercom buzzes to life.", "A speaker grille crackles, half its mesh rusted through.", "Static spits from a speaker close by, then a voice."],
 };
+// Voices that sound like comms (people on a speaker or radio), by their sound preset.
+const COMMS_PRESETS = new Set(["intercom", "radio", "human", "clean"]);
 
 const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
 const MAX_SOCKETS = 40; // per session
@@ -862,7 +866,7 @@ export class Session {
         if (!text) break;
         // "as" is a voice id: the terminal, broadcasts, or any Warden-defined voice.
         const as = msg.as === "system" ? BUILTIN.broadcast : msg.as || BUILTIN.terminal;
-        if (as === BUILTIN.narrator) text = sentenceLines(text); // (a sentence per line, like the agent's)
+        if (this.speaksBySentence(as)) text = sentenceLines(text); // (a sentence per line, like the agent's)
         if (!s.config.voices.some((v) => v.id === as)) break;
         const kind = kindOf(as);
         // Optionally as one of that voice's characters (e.g. Salk on the intercom).
@@ -1643,8 +1647,8 @@ export class Session {
     let prev = null; // the voice of the line before
     for (let { voice, character, inPerson, system, text, effects: lineFx, variants: rawVariants } of lines) {
       if (voice === BUILTIN.narrator && source === "agent" && this.state.config.narrator === false) continue; // (switched off)
-      // The narrator a sentence per line, so its voice starts sooner (spoken a line at a time).
-      if (voice === BUILTIN.narrator) { text = sentenceLines(text); for (const v of rawVariants || []) v.text = sentenceLines(v.text); }
+      // People and the narrator a sentence per line, so their voices start sooner.
+      if (this.speaksBySentence(voice)) { text = sentenceLines(text); for (const v of rawVariants || []) v.text = sentenceLines(v.text); }
       // Per-player versions of this line, for the crew they name (if the Warden allows them).
       const variants = source === "agent" && !this.state.config.agentVariants ? [] : resolveVariants(rawVariants, this.state.config.crew);
       // Effects from an effect-only beat are marked hold: the next line waits for them.
@@ -1660,7 +1664,7 @@ export class Session {
       const person = inPerson && !!character && !!cast.get(voice)?.has(character.toLowerCase());
       const net = this.routeLine(voice, asked, person);
       if (net !== asked) this.addLog("note", `${voices.find((v) => v.id === voice)?.name || voice} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(this.state.config, asked)}`}: its line went to ${systemName(this.state.config, net)}.`);
-      if (prev !== BUILTIN.narrator) this.introduce(voice, net); else this.introduce(voice, null); // (the agent's own intro will do)
+      this.introduce(voice, net, { inPerson: person, done: prev === BUILTIN.narrator }); // (the agent's own intro will do)
       prev = voice;
       const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson && character ? { inPerson: true } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
@@ -1748,7 +1752,7 @@ export class Session {
         if (myGen !== this.genCounter) return;
         if (oc?.needed) return this.holdForWarden(oc, "");
       }
-      const request = { apiKey, model, effort, ...buildRequest({ ...s, screens: this.screens(), defaultNet: this.defaultNet() }, steer) };
+      const request = { apiKey, model, effort, ...buildRequest({ ...s, screens: this.screens(), defaultNet: this.defaultNet(), unheard: this.unheard() }, steer) };
       // Silent retries for malformed output (empty / not JSON) before bothering the Warden:
       // one, or two on the free shared model (its routed models are less reliable).
       let reply;
@@ -2008,18 +2012,48 @@ export class Session {
     this.touch();
   }
 
-  // The first time the intercom or the station's broadcasts are heard, the
-  // narrator brings them in ("A nearby intercom buzzes to life."), once each per
-  // story. net: where (null: just note it as done, e.g. the agent already did it).
-  introduce(voice, net) {
+  // Voices that come through a speaker (the intercom, broadcasts, comms, the thing
+  // in the walls): not a screen's computer (the terminal voice, or one named after
+  // its system, like a ship's), and not the narrator.
+  isSpeaker(voiceId) {
+    const c = this.state.config;
+    const v = c.voices.find((x) => x.id === voiceId);
+    if (!v || voiceId === BUILTIN.terminal || voiceId === BUILTIN.narrator || v.style === "plain") return false;
+    return !systemsOf(c).some((s) => netKey(s.name) === netKey(v.name));
+  }
+  // The first time a speaker voice is heard on a system, the narrator brings it in
+  // ("A nearby intercom buzzes to life."): once per voice per system, per story.
+  // The agent writes it itself (told which are NOT YET HEARD); this adds one when it
+  // (or the Warden's Speak) didn't. done: the line before was already the narrator's.
+  introduce(voice, net, { inPerson = false, done = false } = {}) {
     const s = this.state;
-    const v = s.config.voices.find((x) => x.id === voice);
-    const type = voice === BUILTIN.broadcast ? "broadcast" : v && (v.id === "intercom" || /intercom/i.test(v.name || "")) ? "intercom" : null;
-    if (!type || (s.introduced ||= []).includes(voice)) return;
-    s.introduced.push(voice);
-    if (net === null || s.config.narrator === false || !s.config.voices.some((x) => x.id === BUILTIN.narrator)) return;
-    const lines = INTROS[type];
+    if (inPerson || !this.isSpeaker(voice)) return;
+    const nets = net === ALL_NET ? systemsOf(s.config).map((x) => x.net) : [net || ""];
+    const keys = nets.map((n) => `${voice}@${n}`).filter((k) => !(s.introduced ||= []).includes(k));
+    if (!keys.length) return;
+    s.introduced.push(...keys);
+    if (done || s.config.narrator === false || !s.config.voices.some((x) => x.id === BUILTIN.narrator)) return;
+    // (No stock line for a creature or entity: a speaker crackling would be wrong for it.)
+    const comms = voice === BUILTIN.broadcast || COMMS_PRESETS.has(s.config.voices.find((x) => x.id === voice)?.preset);
+    if (!comms) return;
+    const lines = INTROS[voice === BUILTIN.broadcast ? "broadcast" : "comms"];
     this.addLog(kindOf(BUILTIN.narrator), lines[Math.floor(Math.random() * lines.length)], { source: "auto", net, entity: BUILTIN.narrator });
+  }
+  // Speaker voices the players haven't heard yet where they are (for the agent's context).
+  unheard() {
+    const s = this.state;
+    const nets = new Set([...this.sockets].filter((c) => c.role === "player" && c.terminal).map((c) => this.netOfSocket(c)));
+    if (!nets.size) nets.add(this.defaultNet());
+    return s.config.voices.filter((v) => this.isSpeaker(v.id) && [...nets].some((n) => {
+      const ok = this.voiceNets(v.id);
+      return (ok.includes(ALL_NET) || ok.includes(n)) && !(s.introduced || []).includes(`${v.id}@${n}`);
+    })).map((v) => v.name);
+  }
+  // Voices spoken aloud by a human voice: a sentence per line (spoken a line at a
+  // time, so the first sentence plays while the rest is voiced).
+  speaksBySentence(voiceId) {
+    const v = this.state.config.voices.find((x) => x.id === voiceId);
+    return !!v && v.style !== "plain" && v.voice?.engine === "neural";
   }
 
   restartStory() {
