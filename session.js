@@ -3,7 +3,7 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
-import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES, shipVoice, narratorVoice } from "./voices.js";
+import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES, shipVoice, narratorVoice, NARRATOR_WHITE } from "./voices.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
@@ -292,6 +292,7 @@ function migrateGame(saved) {
   }
   // Every story has the narrator (the Warden can switch it off, not delete it).
   if (!voices.some((v) => v.id === BUILTIN.narrator)) voices.splice(Math.min(2, voices.length), 0, narratorVoice());
+  for (const v of voices) if (v.id === BUILTIN.narrator) v.color = NARRATOR_WHITE; // (always white)
   config.rooms = sanitizeRooms(config.rooms);
   // Once, for a KESTREL-9 story from before them: floor plans, who and what is
   // where, the lift, and the tug docked on the airlock instead of on its own deck.

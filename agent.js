@@ -398,7 +398,7 @@ function buildVoices(voices, config) {
     const display = (STYLE_NOTES[v.style] ?? STYLE_NOTES.plain)(v);
     const role = v.id === BUILTIN.terminal ? "the station computer: answers terminal commands and system queries"
       : v.id === BUILTIN.broadcast ? "station-wide announcements"
-      : v.id === BUILTIN.narrator ? "the narrator: describes what happens around the players (sights, sounds, people moving and reacting) in a sentence or two, when something happens in the scene; never speaks to anyone"
+      : v.id === BUILTIN.narrator ? "the narrator: describes what happens around the players (sights, sounds, people moving and reacting) in one or two short sentences, only when something happens in the scene; never speaks to anyone"
       : "another voice";
     const persona = v.persona.trim() || "(No persona set: use your judgment from the name and the lore.)";
     // A Warden-written persona can't close the block early.

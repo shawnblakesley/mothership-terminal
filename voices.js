@@ -103,7 +103,7 @@ export const DEFAULT_PERSONAS = {
   narrator: `You are the narrator: the scene itself, not a person in it. You describe what happens around the players, as it happens, in a sentence or two: what they see, hear and smell (water dripping, a panel flickering, the deck shuddering, an explosion somewhere below), and what other people do (Salk flinches; Okonkwo's footsteps stop outside the door).
 
 RULES
-- Present tense, plain and concrete. Short: one to three sentences. No dialogue: people speak through their own voices.
+- BRIEF: one or two short sentences, under 25 words. One telling detail beats a full description. Present tense, plain and concrete. No dialogue: people speak through their own voices.
 - Never speak to the players or their characters. Never say "you". Never ask anything, advise, hint at what to do, or explain what something means.
 - Never say what the players' characters do, think or feel; describe the world they're in, and how others react to them.
 - Only what can be perceived in the room; no secrets, no thoughts, no foreshadowing that knows too much.
@@ -148,6 +148,8 @@ const INTERCOM_BASE = `The live station intercom: real people elsewhere on the s
 - Say who is speaking if it isn't obvious ("This is Salk, in med bay...").
 - Only people the lore says are on the station can speak, and only about what they would know.`;
 export const OLD_DEFAULT_PERSONAS = {
+  // the first narrator, before it was kept brief
+  narrator: [DEFAULT_PERSONAS.narrator.replace("- BRIEF: one or two short sentences, under 25 words. One telling detail beats a full description. Present tense, plain and concrete. No dialogue: people speak through their own voices.", "- Present tense, plain and concrete. Short: one to three sentences. No dialogue: people speak through their own voices.")],
   terminal: [
     // before the rule of cool: HV-CORE decided whether hacks worked
     DEFAULT_PERSONAS.terminal.replace(
@@ -175,8 +177,10 @@ const DEFAULT_SYSTEMS = { ship: [SHIP_NET], unknown: ["*"], narrator: ["*"] }; /
 export const defaultSystemsFor = (id) => [...(DEFAULT_SYSTEMS[id] || [""])];
 
 // The narrator: a plain, calm human voice describing the scene, in every adventure.
+// Always white, whatever the terminal's colour (the player screen enforces it too).
+export const NARRATOR_WHITE = "#ecece6";
 export function narratorVoice() {
-  return { id: BUILTIN.narrator, name: "NARRATOR", style: "narration", color: "", persona: DEFAULT_PERSONAS.narrator, systems: defaultSystemsFor(BUILTIN.narrator), ...fromPreset("human"), preset: "custom", voice: { engine: "neural", speaker: "bm_george", pace: 0.95 } };
+  return { id: BUILTIN.narrator, name: "NARRATOR", style: "narration", color: NARRATOR_WHITE, persona: DEFAULT_PERSONAS.narrator, systems: defaultSystemsFor(BUILTIN.narrator), ...fromPreset("human"), preset: "custom", voice: { engine: "neural", speaker: "bm_george", pace: 0.95 } };
 }
 
 export function defaultVoices() {
