@@ -1183,7 +1183,7 @@
     else if (as === "command") send({ t: "command", text });
     else {
       const [voice, character = ""] = $("sendAs").value.split("::");
-      send({ t: "inject", as: voice, character, text, clearPending: true });
+      send({ t: "inject", as: voice, character, text, clearPending: true, system: $("sendOn").hidden ? "" : $("sendOn").value });
     }
     $("compose").value = "";
   }
@@ -1313,7 +1313,20 @@
       ...(v.characters || []).map((c) => [`${v.id}::${c.name}`, `${v.name} · ${c.name}`]),
     ]), prev);
     if (!sel.value) sel.value = "terminal";
+    renderSendOn();
     renderComposeMode(); // (names may have changed)
+  }
+
+  // When the players are on different systems (e.g. some aboard a ship), which
+  // one's screens Speak goes to. Hidden otherwise: it goes where they are.
+  function renderSendOn() {
+    const sel = $("sendOn");
+    const nameOf = (id) => { const t = S.config.terminals.find((x) => x.id === id); return t?.system || S.config.stationName; };
+    const here = [...new Set((S.screens || []).filter((x) => x.terminal).map((x) => nameOf(x.terminal)))];
+    sel.hidden = here.length < 2;
+    if (sel.hidden) return;
+    const prev = here.includes(sel.value) ? sel.value : here[0];
+    fillSelect(sel, here.map((n) => [n, `on ${n}`]), prev);
   }
 
   function saveVoices() {

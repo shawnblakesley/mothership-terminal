@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { BUILTIN, SPEAKERS } from "./voices.js";
 import { CHECKS } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
-import { terminalsBrief, netOf } from "./terminals.js";
+import { terminalsBrief, netOf, systemsOf, systemName } from "./terminals.js";
 import { TILES } from "./rooms.js";
 
 // Every effect the player screen can render. The agent may only trigger the
@@ -43,20 +43,20 @@ export function resolveVoice(ref, voices) {
 // right voice, keeping the order.
 export function splitVoiceTags(lines, voices) {
   const out = [];
-  for (const { voice, character = "", inPerson = false, text, effects, variants } of lines) {
-    // A line's effects and per-player variants stay with its first piece.
-    let current = { voice, character, inPerson, text: [], effects: normalizeEffects(effects), variants: normalizeVariants(variants) };
+  for (const { voice, character = "", inPerson = false, system = "", text, effects, variants } of lines) {
+    // A line's effects and per-player variants stay with its first piece; every piece keeps its system.
+    let current = { voice, character, inPerson, system, text: [], effects: normalizeEffects(effects), variants: normalizeVariants(variants) };
     out.push(current);
     let tagged = false;
     for (const row of String(text).split("\n")) {
       const m = row.match(/^\s*\[\s*([^\]]{1,40}?)\s*\]\s*:?\s*(.*)$/);
       const tagVoice = m && resolveVoice(m[1], voices);
       if (tagVoice) {
-        current = { voice: tagVoice, character: "", text: m[2] ? [m[2]] : [], effects: [], variants: [] };
+        current = { voice: tagVoice, character: "", system, text: m[2] ? [m[2]] : [], effects: [], variants: [] };
         out.push(current);
         tagged = true;
       } else if (tagged && !row.trim()) {
-        current = { voice, character, inPerson, text: [], effects: [], variants: [] }; // a blank line ends a tagged paragraph
+        current = { voice, character, inPerson, system, text: [], effects: [], variants: [] }; // a blank line ends a tagged paragraph
         out.push(current);
         tagged = false;
       } else {
@@ -66,7 +66,7 @@ export function splitVoiceTags(lines, voices) {
   }
   return mergeAdjacent(
     out
-      .map((l) => ({ voice: l.voice, character: l.character, inPerson: !!l.inPerson, text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim(), effects: l.effects, variants: l.variants }))
+      .map((l) => ({ voice: l.voice, character: l.character, inPerson: !!l.inPerson, system: l.system || "", text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim(), effects: l.effects, variants: l.variants }))
       .filter((l) => l.text || l.effects.length || l.variants.length), // effect-only beats are kept
   );
 }
@@ -82,7 +82,7 @@ function mergeAdjacent(lines) {
   for (const l of lines) {
     const last = out.at(-1);
     // (Lines with per-player variants stay separate: each variant replaces its own line.)
-    if (last && last.voice === l.voice && last.character === l.character && !!last.inPerson === !!l.inPerson && last.text && l.text && !l.effects.length && !l.variants.length && !last.variants.length) last.text += `\n${l.text}`;
+    if (last && last.voice === l.voice && last.character === l.character && !!last.inPerson === !!l.inPerson && last.system === l.system && last.text && l.text && !l.effects.length && !l.variants.length && !last.variants.length) last.text += `\n${l.text}`;
     else out.push({ ...l, effects: [...l.effects], variants: [...l.variants] });
   }
   return out;
@@ -115,9 +115,10 @@ function buildSchema(voices) {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["voice", "character", "in_person", "text", "effects", "variants"],
+          required: ["voice", "character", "in_person", "system", "text", "effects", "variants"],
           properties: {
             voice: { type: "string", enum: voices.map((v) => v.id) },
+            system: { type: "string", description: "Which computer system's screens show this line, by its name from SYSTEMS. Empty: wherever the players are. Only needed when they're on different systems." },
             in_person: { type: "boolean", description: "True when the speaker is physically in the same room as the players' terminal and says it aloud (not over the intercom or comms). Their line is then shown and voiced as plain speech." },
             character: { type: "string", description: "For a voice several people speak through (e.g. the intercom): who is speaking this line, by name, from that voice's CHARACTERS. Someone new: their name plus (f) or (m), e.g. \"Marlowe (f)\". Empty for other voices." },
             text: { type: "string", description: "Exactly what this voice says or prints, formatted by THIS voice's persona only. No voice tags or name prefixes. May be empty for an effect-only beat." },
@@ -219,9 +220,9 @@ const NO_CHECK = { needed: false, attempt: "", suggested_check: "none", advantag
 // Shown to models without enforced schemas (DeepSeek) so they copy the shape.
 const REPLY_EXAMPLE = {
   lines: [
-    { voice: "intercom", character: "Dr. Imre Salk", in_person: false, text: "Don't open that door.\nPlease.", effects: [], variants: [] },
-    { voice: "unknown", character: "", in_person: false, text: "you are so warm. so full.", effects: [{ type: "static", text: "", seconds: 2 }], variants: [{ for: "Android", text: "you are cold. like me. we could be cold together." }] },
-    { voice: "broadcast", character: "", in_person: false, text: "Attention. Deck 3 is now under quarantine.", effects: [{ type: "redalert", text: "QUARANTINE", seconds: 8 }], variants: [] },
+    { voice: "intercom", character: "Dr. Imre Salk", in_person: false, system: "", text: "Don't open that door.\nPlease.", effects: [], variants: [] },
+    { voice: "unknown", character: "", in_person: false, system: "", text: "you are so warm. so full.", effects: [{ type: "static", text: "", seconds: 2 }], variants: [{ for: "Android", text: "you are cold. like me. we could be cold together." }] },
+    { voice: "broadcast", character: "", in_person: false, system: "", text: "Attention. Deck 3 is now under quarantine.", effects: [{ type: "redalert", text: "QUARANTINE", seconds: 8 }], variants: [] },
   ],
   station_changes: [{ path: "quarantine", value: "DECK 3" }],
   crew_changes: [],
@@ -389,6 +390,7 @@ const USER_KINDS = new Set(["player", "warden", "roll", "aside"]);
 
 function buildMessages(state) {
   const turns = [];
+  const multi = systemsOf(state.config).length > 1; // (past lines then say which system they went to)
   // (Lines cut off by a player before they were said aren't part of the conversation.)
   for (const e of state.log.filter((x) => x.kind !== "note" && !x.cut).slice(-HISTORY_ENTRIES)) {
     const role = USER_KINDS.has(e.kind) ? "user" : "assistant";
@@ -404,7 +406,7 @@ function buildMessages(state) {
       last.notes.push(e.text);
       last.changes.push(...(e.changes || []));
     } else {
-      last.lines.push({ voice: voiceIdOf(e), character: e.character || "", in_person: !!e.inPerson, text: e.text, effects: e.cues || [], variants: (e.variants || []).map((v) => ({ for: v.for, text: v.text })) });
+      last.lines.push({ voice: voiceIdOf(e), character: e.character || "", in_person: !!e.inPerson, system: multi ? systemName(state.config, e.net) : "", text: e.text, effects: e.cues || [], variants: (e.variants || []).map((v) => ({ for: v.for, text: v.text })) });
       last.changes.push(...(e.changes || []));
       last.crew.push(...(e.crewChanges || []));
       last.effects.push(...(e.effects || []));
@@ -536,10 +538,16 @@ function buildContext(state, steer, aside = false) {
       ? `\n\nIN THE ROOM WITH THEM: the players are physically in ${rooms.join(", ")}. Anyone there (by their notes, or wherever you've placed them since) speaks to them face to face: set in_person=true on those lines. Only people elsewhere use the intercom/comms (in_person=false).`
       : "";
     ctx.push(`TERMINALS ON THE STATION:\n${terminalsBrief(state.config.terminals)}\n\nWHERE THE PLAYERS ARE (which terminal each player's screen is):\n${at.join("\n") || "- (nobody has chosen yet)"}${inRoom}`);
-    // Separate systems (the crew's tug) keep separate logs: say which one this reply lands on.
-    if (state.config.terminals.some((t) => t.system)) {
-      const sys = state.config.terminals.find((t) => t.system && netOf(t) === (state.replyNet || ""))?.system;
-      ctx.push(`THIS REPLY IS SHOWN ON: ${sys ? `the ${sys} system` : `the ${state.config.stationName} station network`}. Only screens on that system show it; players at a terminal on another system don't see or hear it. Answer with the voices that are on that system.`);
+    // Separate systems (ships, outposts...) each show only the lines sent on them.
+    const systems = systemsOf(state.config);
+    if (systems.length > 1) {
+      const who = (net) => (state.screens || []).filter((s) => netOf(state.config.terminals.find((t) => t.id === s.terminal)) === net).map((s) => s.character || "a screen with no crew file");
+      const rows = systems.map((s) => `- ${s.name}${s.net ? "" : " (the station network)"}: ${who(s.net).join(", ") || "no players here"}`);
+      const occupied = systems.filter((s) => who(s.net).length);
+      const routing = occupied.length > 1
+        ? `The players are on DIFFERENT systems. Set each line's "system" to the name of the system whose screens should show it; players on other systems won't see or hear it. Give each group what happens where they are, with the voices on their system. A line with an empty system goes to ${systemName(state.config, state.defaultNet)}.`
+        : `The players are all on ${occupied[0]?.name || systemName(state.config, state.defaultNet)}: every line goes there. Leave "system" empty.`;
+      ctx.push(`SYSTEMS (separate computer networks: each one's screens show only the lines sent on it, and a system can't see or work anything on another):\n${rows.join("\n")}\n\n${routing}`);
     }
   }
   ctx.push(TALK[state.config.talk] || TALK.brief);
@@ -582,7 +590,7 @@ export function parseReply(text, voices) {
   }
   return {
     lines: splitVoiceTags(
-      raw.filter((l) => l && typeof l === "object").map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: scrub(l.character).trim().slice(0, 60), inPerson: !!l.in_person, text: scrub(l.text), effects: normalizeEffects(l.effects), variants: normalizeVariants(l.variants).map((v) => ({ ...v, text: scrub(v.text) })) })),
+      raw.filter((l) => l && typeof l === "object").map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: scrub(l.character).trim().slice(0, 60), inPerson: !!l.in_person, system: String(l.system ?? "").trim().slice(0, 40), text: scrub(l.text), effects: normalizeEffects(l.effects), variants: normalizeVariants(l.variants).map((v) => ({ ...v, text: scrub(v.text) })) })),
       voices,
     ),
     crew_changes: (Array.isArray(r?.crew_changes) ? r.crew_changes : [])

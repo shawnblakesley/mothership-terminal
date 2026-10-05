@@ -11,7 +11,7 @@ export const LOOK_LABELS = {
   dim: "dim, failing backlight", grime: "grimy, stained", portable: "portable handheld unit",
 };
 const THEMES = ["", "green", "amber", "cyan", "white", "red"];
-export const MAX_TERMINALS = 16;
+export const MAX_TERMINALS = 64; // (each separate system needs at least one)
 
 // system: the computer system a terminal is on, and os: what its header calls
 // the operating system. Blank = the station's (its name, the terminal voice's OS).
@@ -63,7 +63,25 @@ export function sanitizeTerminals(list) {
 }
 
 // Which system a terminal is on, as a key: "" for the station's network.
-export const netOf = (t) => (t?.system ? t.system.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "");
+const netKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+export const netOf = (t) => (t?.system ? netKey(t.system) : "");
+
+// Every system, station first: [{ net, name }] (name: the station's for "").
+export function systemsOf(config) {
+  const out = [{ net: "", name: config.stationName }];
+  for (const t of config.terminals) if (t.system && !out.some((s) => s.net === netOf(t))) out.push({ net: netOf(t), name: t.system });
+  return out;
+}
+export const systemName = (config, net) => systemsOf(config).find((s) => s.net === (net || ""))?.name || config.stationName;
+
+// A system named by the agent or the Warden, as its net key; null if it isn't one
+// (an empty or unknown name means "wherever the players are").
+export function netNamed(config, name) {
+  const key = netKey(name);
+  if (!key) return null;
+  if (key === netKey(config.stationName) || key === "station") return "";
+  return systemsOf(config).find((s) => s.net && s.net === key)?.net ?? null;
+}
 
 // Can players get to it: marked reachable, or its door (requires) is open.
 export function reachable(t, station) {

@@ -13,7 +13,7 @@ import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
-import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, netOf, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, netOf, netNamed, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -320,8 +320,8 @@ export class Session {
     this.freeCalls = { day: "", count: 0 }; // calls on the server's free key today (see callModel)
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
-    // The system the players last acted on ("" = the station's network; terminals.js).
-    // New log entries belong to it: players on another system don't see them.
+    // The system the players last acted on ("" = the station's network; terminals.js):
+    // where things go when the players are on more than one (see defaultNet).
     this.lastNet = this.state.log.at(-1)?.net || "";
     this.genCounter = 0;
     // Lines reach the players on one shared timeline (see scheduleLine), in order.
@@ -390,6 +390,12 @@ export class Session {
   toPlayers(p) { this.send("player", p); }
   // Which system a player screen is on ("" = the station's network).
   netOfSocket(ws) { return netOf(this.state.config.terminals.find((t) => t.id === ws.terminal)); }
+  // Where new lines go: the system the players are on; if they're on several,
+  // the one the latest input came from (the agent picks per line; see deliverReply).
+  defaultNet() {
+    const nets = new Set([...this.sockets].filter((c) => c.role === "player" && c.terminal).map((c) => this.netOfSocket(c)));
+    return nets.size === 1 ? [...nets][0] : this.lastNet;
+  }
   // Only the player screens on one system (log lines belong to the system they were said on).
   toNet(net, p) {
     const data = JSON.stringify(p);
@@ -456,8 +462,10 @@ export class Session {
 
   // ---------------------------------------------------------------- log
   addLog(kind, text, extra = {}) {
-    // net: the system it was said on (players elsewhere don't see it).
-    const entry = { id: this.nextId++, kind, text, ts: Date.now(), ...(this.lastNet ? { net: this.lastNet } : {}), ...extra };
+    // net: the system it was said on (players elsewhere don't see it). Unless
+    // given (the agent's pick, the Warden's), wherever the players are.
+    const { net = this.defaultNet(), ...rest } = extra;
+    const entry = { id: this.nextId++, kind, text, ts: Date.now(), ...(net ? { net } : {}), ...rest };
     this.state.log.push(entry);
     this.delivering?.entries.push(entry.id);
     if (this.state.log.length > MAX_LOG) this.state.log.splice(0, this.state.log.length - MAX_LOG);
@@ -731,7 +739,9 @@ export class Session {
         // Optionally as one of that voice's characters (e.g. Salk on the intercom).
         const line = { voice: as, character: String(msg.character || "").slice(0, 60) };
         this.castCharacters([line]);
-        this.addLog(kind, text, { source: "dm", ...(kind === "entity" ? { entity: as } : {}), ...(line.character ? { character: line.character } : {}) });
+        // On a system the Warden picked (when the players are split), else where the players are.
+        const net = netNamed(s.config, msg.system) ?? this.defaultNet();
+        this.addLog(kind, text, { source: "dm", net, ...(kind === "entity" ? { entity: as } : {}), ...(line.character ? { character: line.character } : {}) });
         if (msg.clearPending) { this.genCounter++; s.pending = null; this.setBusy(false); }
         break;
       }
@@ -972,7 +982,7 @@ export class Session {
       startedAt: Date.now(),
       ...(cue ? { atEntry: cue.atEntry, when: cue.when, ...(cue.hold ? { hold: true } : {}) } : {}),
       // The agent's effects happen on the system its reply is for; the Warden's hit every screen.
-      ...(source === "agent" ? { net: this.lastNet } : {}),
+      ...(source === "agent" ? { net: cue ? this.state.log.find((e) => e.id === cue.atEntry)?.net || "" : this.defaultNet() } : {}),
     };
     this.state.effects.push(effect);
     this.delivering?.effects.push(effect.id);
@@ -1402,9 +1412,10 @@ export class Session {
     }
     const voices = this.state.config.voices;
     const lines = splitVoiceTags(
-      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), inPerson: !!(l.inPerson ?? l.in_person), text: String(l.text ?? "").slice(0, 8000), effects: l.effects, variants: l.variants })),
+      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), inPerson: !!(l.inPerson ?? l.in_person), system: String(l.system ?? ""), text: String(l.text ?? "").slice(0, 8000), effects: l.effects, variants: l.variants })),
       voices,
     );
+    const here = this.defaultNet(); // (lines with no system, or one that doesn't exist, go where the players are)
     const useEffects = this.state.config.agentEffects;
     const changes = (reply?.station_changes || []).filter((c) => c && typeof c.path === "string" && c.path);
     const effects = this.state.config.agentEffects ? (reply?.effects || []) : [];
@@ -1417,7 +1428,7 @@ export class Session {
     let waiting = [];
     let lastEntry = null;
     this.castCharacters(lines);
-    for (const { voice, character, inPerson, text, effects: lineFx, variants: rawVariants } of lines) {
+    for (const { voice, character, inPerson, system, text, effects: lineFx, variants: rawVariants } of lines) {
       // Per-player versions of this line, for the crew they name (if the Warden allows them).
       const variants = source === "agent" && !this.state.config.agentVariants ? [] : resolveVariants(rawVariants, this.state.config.crew);
       // Effects from an effect-only beat are marked hold: the next line waits for them.
@@ -1428,7 +1439,8 @@ export class Session {
       for (const c of cues) if (c.type === "blackout") c.hold = true;
       waiting = [];
       const kind = kindOf(voice);
-      const entry = this.addLog(kind, text, { source, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson && character ? { inPerson: true } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
+      const net = netNamed(this.state.config, system) ?? here;
+      const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson && character ? { inPerson: true } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
       lastEntry = entry;
       for (const c of cues) this.startEffect(c, "agent", { atEntry: entry.id, when: "before", hold: c.hold });
@@ -1501,7 +1513,7 @@ export class Session {
         if (myGen !== this.genCounter) return;
         if (oc?.needed) return this.holdForWarden(oc, "");
       }
-      const request = { apiKey, model, effort, ...buildRequest({ ...s, screens: this.screens(), replyNet: this.lastNet }, steer) };
+      const request = { apiKey, model, effort, ...buildRequest({ ...s, screens: this.screens(), defaultNet: this.defaultNet() }, steer) };
       // One silent retry for malformed output (empty / not JSON) before bothering the Warden.
       let reply;
       for (let attempt = 1; ; attempt++) {
