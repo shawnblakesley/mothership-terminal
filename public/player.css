@@ -241,7 +241,7 @@ body {
 #join-err { color: var(--fg); min-height: 1.2em; margin-top: 0.4em; animation: blink 1.2s infinite steps(1); }
 #join-err:empty { animation: none; }
 .warden-link { margin-top: 2em; }
-.warden-link a { color: var(--dim); text-decoration: none; border-bottom: 1px dashed var(--dim); }
+.warden-link a { color: var(--dim); text-decoration: none; border-bottom: 1px dashed var(--dim); text-shadow: none; }
 .warden-link a:hover, .warden-link a:focus-visible { color: var(--fg); border-color: var(--fg); outline: none; }
 
 /* ----- effects ----- */
