@@ -39,7 +39,7 @@ Optional settings go in `.env` (see `.env.example`): `BASE_PATH` to serve under 
 
 For a private LAN game you can set `ALLOW_SERVER_KEYS=1` plus `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY`, so sessions use the server's keys. Never do that on a public server.
 
-If a session has no key, the console still works in **Manual** mode and you type every reply.
+If a session has no key, the agent stays quiet and you reply yourself with **Speak**.
 
 To host it publicly, see [deploy/README.md](deploy/README.md). The hosted copy at [shawnofthe.dev/mothership](https://shawnofthe.dev/mothership/) deploys automatically on every push to `main`.
 
@@ -157,7 +157,7 @@ If a player types while lines are still playing, the comms cut off on every scre
 | **Layout** | Left: the comms log and compose box. Right: the control panel, with tabs for **Actions** (the next response, **Roll**, **Effects** and **Sounds**, one under another; a dot on the tab means a reply or ruling is waiting for you), **Map** (drawing or status board, plus the raw station state), **Crew** (player characters and terminals) and **Story** (voices & personas, standing orders, lore & secrets). |
 | **Read-only / ✎ Edit** | Beside the side tabs. Read-only (the default, remembered per device) shows what you need while running the game: compact character sheets (Health, Wounds and Stress still adjustable), where each terminal is, whether it's reachable and who's at it, the cast, standing orders, and lore and secrets to read. **✎ Edit** shows the setup: full character sheets, terminal settings, the Connections grid, voice editors, the raw station state, and editable lore. |
 | **Rules** tab | A quick Mothership 1e reference: checks and saves, criticals, advantage, Stress and Panic, Health and Wounds, combat, tips for running it, and how rolls work in this app. |
-| **Mode** (top right) | **Auto**: agent replies go straight to players. **Review**: every reply arrives as an editable draft that you send, regenerate with steering, or discard. **Manual**: agent is off. |
+| **Mode** (top right) | **Auto** (the default): agent replies go straight to players. **Review**: every reply arrives as an editable draft that you send, regenerate with steering, or discard. |
 | **Comms log** | Full transcript, with one box for everything you send. **Direction** gives the agent an order it must obey; it acts on it right away and players never see the order. **Speak** puts your exact words on screen as any voice or character (see below). **Note** is private between you and the agent (see below). Keyboard first: **Tab** / **Shift+Tab** in the box switches between Direction, Note, and each voice and character; **Enter** sends, **Shift+Enter** is a new line, and **Ctrl+Enter** sends a Note whatever is selected. Deleting an entry also removes it from the agent's memory. |
 | **Command for the next reply** | A one-shot order applied to the agent's next reply, e.g. "lie about the door". |
 | **Draft card** | A reply is a list of lines, each said by a voice. Edit the text, change who says each line, add or remove lines, and untick any station changes or effects you don't want. The 🧠 note is the agent's private read on what the players are attempting. |
@@ -241,7 +241,7 @@ The agent says yes to cool ideas but **never decides whether an uncertain action
 - **Stats and Saves:** success is under Stat + Skill on d100. **Criticals:** doubles (00, 11 … 99). **[+] / [−]:** roll twice and keep the better or worse result. **Failure:** +1 Stress.
 - **Panic check:** d20 against current Stress. Above it, they keep their cool. Equal or under, they **Panic**: the log gives the number to look up on the Panic Table, and you apply the effect. [+] / [−] keep the higher or lower die. No automatic Stress.
 - Nobody playing a character, or someone slow to roll? **Roll for them** rolls from the console. **Stop waiting** goes on with the rolls already made.
-- Each result appears on everyone's screen and in your console. When everyone has rolled, the agent narrates what happens (in Manual mode, **Have the agent narrate it** does it on request). The agent never mentions dice or stats in-world.
+- Each result appears on everyone's screen and in your console. When everyone has rolled, the agent narrates what happens (with no AI key, you narrate it with Speak). The agent never mentions dice or stats in-world.
 
 ## Screen effects from the agent
 

@@ -365,10 +365,13 @@
     lastLogLen = S.log.length;
   }
 
+  // Does the session have a key for its model? (Without one the agent stays quiet.)
+  const hasKey = () => !!S.providers?.find((p) => p.id === S.config.provider)?.configured;
+
   function renderPending() {
     const p = S.pending;
     const card = $("pending");
-    const k = p ? `${p.status}|${p.forEntry}|${JSON.stringify(p.reply || p.error || "")}` : `none|${S.config.mode}`;
+    const k = p ? `${p.status}|${p.forEntry}|${JSON.stringify(p.reply || p.error || "")}` : `none|${hasKey()}`;
     if (k === pendingKey) return;
     pendingKey = k;
     const forText = p?.forEntry ? S.log.find((e) => e.id === p.forEntry)?.text : null;
@@ -376,9 +379,9 @@
 
     if (!p) {
       card.className = "card empty";
-      card.innerHTML = S.config.mode === "manual"
-        ? "Manual mode — type replies in the comms box."
-        : "No reply pending.";
+      card.innerHTML = hasKey()
+        ? "No reply pending."
+        : "No AI key, so the agent is quiet: reply with Speak, or add a key under ⚙.";
       return;
     }
     if (p.status === "generating") {
@@ -1811,9 +1814,9 @@
       const how = got.by === "warden" ? " (you rolled)" : got.manual ? " (table dice)" : "";
       return `<li class="res ${res.success ? "ok" : "bad"}">${esc(p.name)}: ${dice} ${res.panic ? "vs Stress" : "vs"} ${res.target}${how}: ${esc(verdict)}</li>`;
     }).join("");
-    const narrate = S.config.mode === "manual"
-      ? `<button data-roll="narrate" class="primary">Have the agent narrate it</button>`
-      : `<span class="muted small">The agent narrates the result.</span>`;
+    const narrate = hasKey()
+      ? `<span class="muted small">The agent narrates the result.</span>`
+      : `<span class="muted small">No AI key: narrate it with Speak.</span>`;
     box.innerHTML = `<div>🎲 <b>${esc(label)}</b></div><ul class="rollres">${rows}</ul>
       <div class="row">${r.status === "waiting"
         ? `<span class="grow"></span><button data-roll="cancel" class="ghost">${Object.keys(r.results).length ? "Stop waiting" : "Cancel roll"}</button>`
@@ -1839,7 +1842,6 @@
     const b = e.target.closest("[data-roll]");
     const act = b?.dataset.roll;
     if (act === "cancel" || act === "clear") send({ t: "rollCancel" });
-    else if (act === "narrate") send({ t: "rollNarrate" });
     else if (act === "for") send({ t: "rollFor", pc: b.dataset.pc });
   });
 

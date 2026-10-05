@@ -161,7 +161,7 @@ export function defaultGame(keys = {}) {
       lore: DEFAULT_LORE,
       secrets: DEFAULT_SECRETS,
       standingOrders: "",
-      mode: "review", // auto | review | manual
+      mode: "auto", // auto: replies go straight to the players | review: the Warden approves each one
       ...defaultSelection(keys), // provider, model, effort: cheapest the session has a key for
       agentEffects: true, // the agent may fire screen effects
       agentVariants: true, // the agent may send different versions of a line to different players
@@ -280,7 +280,8 @@ function migrateGame(saved) {
     config.upgrades.push("rooms");
   }
   return {
-    config: { ...config, ...fixSelection(config), voices },
+    // (Manual mode is gone: its sessions review every reply instead, so nothing reaches players unseen.)
+    config: { ...config, ...fixSelection(config), voices, mode: config.mode === "auto" ? "auto" : "review" },
     station: saved.station ?? base.station,
     log: Array.isArray(saved.log) ? saved.log.slice(-MAX_LOG) : [],
     whisper: String(saved.whisper ?? ""),
@@ -666,12 +667,7 @@ export class Session {
     const term = this.state.config.terminals.find((t) => t.id === ws.terminal);
     this.lastNet = netOf(term); // the reply goes to the system they typed on
     this.addLog("player", text, { ...(pc ? { by: pc.name } : {}), ...(term ? { at: term.name } : {}) });
-    if (this.state.config.mode === "manual") {
-      this.state.pending = null;
-      this.syncDm();
-    } else {
-      this.requestReply();
-    }
+    this.requestReply();
   }
 
   isLockedOut() {
@@ -698,6 +694,7 @@ export class Session {
       case "config": {
         const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "tts", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
+        s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
         // Switching provider snaps to its cheapest model; invalid efforts snap to the cheapest valid one.
         if ("provider" in msg.patch && !("model" in msg.patch)) Object.assign(s.config, { model: "", effort: "" });
@@ -858,10 +855,6 @@ export class Session {
       case "retcon":
         this.retcon();
         break;
-      case "rollNarrate":
-        // The [ROLL RESULT] is already the latest thing in the agent's history.
-        if (s.roll?.status === "done") this.generate();
-        return;
       case "outcome": {
         // The Warden rules on an attempt the agent left open (rule of cool).
         const oc = s.outcomeCheck;
@@ -1299,8 +1292,8 @@ export class Session {
     this.toPlayers({ t: "roll", roll: null });
     this.syncDm();
     // The agent narrates what happens, with the [ROLL RESULT]s as the latest input
-    // (in Manual mode the Warden does it, or asks for it from the roll panel).
-    if (this.state.config.mode !== "manual") this.generate();
+    // (with no key, the Warden does it)
+    if (this.hasKey()) this.generate();
   }
 
   // A screen is at a terminal: the player chose it (if allowed), or the Warden moved them.
@@ -1518,10 +1511,13 @@ export class Session {
 
   // Player input: one agent call at a time per session. Input that arrives while
   // the agent is busy gets one combined follow-up reply, not one call each.
+  // With no key for the session's model the agent stays quiet: the Warden replies with Speak.
   requestReply() {
+    if (!this.hasKey()) { this.state.pending = null; this.syncDm(); return; }
     if (this.generating) this.rerun = true;
     else this.generate();
   }
+  hasKey() { return !!keyFor(this.state.config.provider, this.keys); }
 
   async generate(steer) {
     const s = this.state;
