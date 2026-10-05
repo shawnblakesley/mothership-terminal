@@ -1701,8 +1701,8 @@
       ${oc.suggested_check !== "none" ? `<div class="muted small">Agent suggests: ${esc(checkName(oc.suggested_check))}${advMark(oc.advantage)}</div>` : ""}
       ${oc.why ? `<div class="note">${esc(oc.why)}</div>` : ""}
       <div class="stakes">
-        <label><span class="ok" title="If it works">✓</span><input data-stake="on_success" value="${esc(oc.on_success || "")}" placeholder="If it works…" aria-label="If it works"></label>
-        <label><span class="bad" title="If it fails">✗</span><input data-stake="on_failure" value="${esc(oc.on_failure || "")}" placeholder="If it fails…" aria-label="If it fails"></label>
+        <label><span class="ok">✓ If it works:</span><input data-stake="on_success" value="${esc(oc.on_success || "")}" placeholder="what happens"></label>
+        <label><span class="bad">✗ If it fails:</span><input data-stake="on_failure" value="${esc(oc.on_failure || "")}" placeholder="what goes wrong"></label>
       </div>
       <div class="row wrap">
         <button data-oc="success" class="ocbtn ok" title="It works" aria-label="It works">✓</button>
