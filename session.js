@@ -20,6 +20,12 @@ import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, p
 
 const FREE_CALLS_PER_DAY = Number(process.env.FREE_CALLS_PER_DAY || 150);
 
+// The narrator's line the first time each is heard (see introduce).
+const INTROS = {
+  intercom: ["A nearby intercom buzzes to life.", "The intercom on the wall crackles, then clicks open.", "Static spits from a speaker grille beside the door."],
+  broadcast: ["Humming to life, the station's speakers squawk a broadcast.", "Every speaker on the deck pops, then a tone rings out.", "Overhead speakers crackle on all at once."],
+};
+
 const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
 const MAX_SOCKETS = 40; // per session
 const PLAYER_INPUT_GAP_MS = 1200;
@@ -185,6 +191,7 @@ export function defaultGame(keys = {}) {
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
+    introduced: [], // voices the narrator has already brought in (see introduce)
     clocks: [],
     handouts: [structuredClone(WORK_ORDER)],
     whisper: "",
@@ -865,6 +872,7 @@ export class Session {
         const asked = netNamed(s.config, msg.system) ?? this.defaultNet();
         const net = this.routeLine(as, asked);
         if (net !== asked) this.send("dm", { t: "toast", level: "info", text: `${s.config.voices.find((v) => v.id === as)?.name} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(s.config, asked)}`}, so it went to ${systemName(s.config, net)}.` });
+        this.introduce(as, net);
         this.addLog(kind, text, { source: "dm", net, ...(kind === "entity" ? { entity: as } : {}), ...(line.character ? { character: line.character } : {}) });
         if (msg.clearPending) { this.genCounter++; s.pending = null; this.setBusy(false); }
         break;
@@ -1632,6 +1640,7 @@ export class Session {
     // (a computer like the tug's can't, even if the agent gives it a speaker).
     const cast = new Map(voices.map((v) => [v.id, new Set((v.characters || []).map((c) => c.name.toLowerCase()))]));
     this.castCharacters(lines);
+    let prev = null; // the voice of the line before
     for (let { voice, character, inPerson, system, text, effects: lineFx, variants: rawVariants } of lines) {
       if (voice === BUILTIN.narrator && source === "agent" && this.state.config.narrator === false) continue; // (switched off)
       // The narrator a sentence per line, so its voice starts sooner (spoken a line at a time).
@@ -1651,6 +1660,8 @@ export class Session {
       const person = inPerson && !!character && !!cast.get(voice)?.has(character.toLowerCase());
       const net = this.routeLine(voice, asked, person);
       if (net !== asked) this.addLog("note", `${voices.find((v) => v.id === voice)?.name || voice} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(this.state.config, asked)}`}: its line went to ${systemName(this.state.config, net)}.`);
+      if (prev !== BUILTIN.narrator) this.introduce(voice, net); else this.introduce(voice, null); // (the agent's own intro will do)
+      prev = voice;
       const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson && character ? { inPerson: true } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
       lastEntry = entry;
@@ -1997,6 +2008,20 @@ export class Session {
     this.touch();
   }
 
+  // The first time the intercom or the station's broadcasts are heard, the
+  // narrator brings them in ("A nearby intercom buzzes to life."), once each per
+  // story. net: where (null: just note it as done, e.g. the agent already did it).
+  introduce(voice, net) {
+    const s = this.state;
+    const v = s.config.voices.find((x) => x.id === voice);
+    const type = voice === BUILTIN.broadcast ? "broadcast" : v && (v.id === "intercom" || /intercom/i.test(v.name || "")) ? "intercom" : null;
+    if (!type || (s.introduced ||= []).includes(voice)) return;
+    s.introduced.push(voice);
+    if (net === null || s.config.narrator === false || !s.config.voices.some((x) => x.id === BUILTIN.narrator)) return;
+    const lines = INTROS[type];
+    this.addLog(kindOf(BUILTIN.narrator), lines[Math.floor(Math.random() * lines.length)], { source: "auto", net, entity: BUILTIN.narrator });
+  }
+
   restartStory() {
     const s = this.state;
     const snap = s.storyStart;
@@ -2024,7 +2049,7 @@ export class Session {
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
     // Players start as guests.
     s.station.access_level = DEFAULT_STATION.access_level;
-    Object.assign(s, { log: [], handouts: structuredClone(s.config.startDocs || []), pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null });
+    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);
     this.toPlayers({ t: "roomPlan", rows: null }); // (any floor plan they were shown)
