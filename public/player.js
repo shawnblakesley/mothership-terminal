@@ -690,7 +690,7 @@
     const building = solo.phase === "building";
     $("solopick-title").textContent = building ? `■ BUILDING: ${solo.title.toUpperCase()} ■` : "■ CHOOSE A STORY ■";
     $("solopick-note").textContent = building
-      ? "THE AI IS BUILDING THE WORLD AND EVERYONE IN IT. ABOUT A MINUTE."
+      ? "THE AI IS BUILDING THE WORLD AND EVERYONE IN IT. THIS CAN TAKE A FEW MINUTES."
       : `NO WARDEN TONIGHT: THE AI RUNS THE GAME. ${isPilot ? "PICK A STORY (PRESS 1-9)." : "THE PILOT IS PICKING A STORY. TALK IT OVER."}`;
     $("solopick-list").innerHTML = building ? "" : solo.pitches.map((p, i) => {
       const name = `[${i + 1}] ${escH(p.title.toUpperCase())}`;

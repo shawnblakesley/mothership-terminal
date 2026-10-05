@@ -1585,14 +1585,15 @@ export class Session {
         if (oc?.needed) return this.holdForWarden(oc, "");
       }
       const request = { apiKey, model, effort, ...buildRequest({ ...s, screens: this.screens(), defaultNet: this.defaultNet() }, steer) };
-      // One silent retry for malformed output (empty / not JSON) before bothering the Warden.
+      // Silent retries for malformed output (empty / not JSON) before bothering the Warden:
+      // one, or two on the free shared model (its routed models are less reliable).
       let reply;
       for (let attempt = 1; ; attempt++) {
         try {
           reply = parseReply(await this.callModel(provider, request, "reply"), s.config.voices);
           break;
         } catch (err) {
-          if (!err.malformed || attempt >= 2 || myGen !== this.genCounter) throw err;
+          if (!err.malformed || attempt >= (provider.serverKeyOnly ? 3 : 2) || myGen !== this.genCounter) throw err;
           console.warn(`[${this.code}] retrying after malformed reply: ${err.message}`);
         }
       }

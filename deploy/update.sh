@@ -16,7 +16,13 @@ else
   sudo -u mothership git checkout -q main
   sudo -u mothership git pull -q --ff-only
 fi
-sudo -u mothership npm ci --omit=dev --no-audit --no-fund
+# Dependencies only when package-lock.json changed: npm ci rebuilds node_modules
+# from scratch, and most deploys don't touch them.
+lock=$(sha256sum package-lock.json | cut -d' ' -f1)
+if [ "$(cat node_modules/.lock-sha256 2>/dev/null)" != "$lock" ]; then
+  sudo -u mothership npm ci --omit=dev --no-audit --no-fund
+  echo "$lock" | sudo -u mothership tee node_modules/.lock-sha256 >/dev/null
+fi
 
 # Usage telemetry: the CloudWatch agent takes the app's metric records
 # (telemetry.js sends them to it on 127.0.0.1:25888) to CloudWatch, into the
