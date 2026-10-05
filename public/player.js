@@ -98,11 +98,7 @@
   // ------------------------------------------------------------ header / clock
   function applyHeader(h) {
     header = h;
-    $("hdr-station").textContent = h.stationName;
-    $("hdr-access").textContent = h.accessLevel;
-    $("hdr-os").textContent = `${h.voices?.terminal?.name || "TERMINAL"} OS v4.1`;
-    promptEl.textContent = `${h.accessLevel}@${h.stationName}>`;
-    applyTerminal();
+    applyTerminal(); // (with the names: a terminal on another system shows that system's)
     renderSide();
     if (!$("crewfile").hidden) renderFile();
     for (const el of linesEl.querySelectorAll(".line.player")) el.dataset.prompt = el.dataset.prompt || "";
@@ -143,7 +139,7 @@
     div.className = `line ${entry.kind}`;
     div.dataset.id = entry.id;
     if (entry.kind === "player") {
-      div.dataset.prompt = `${header.accessLevel}@${header.stationName}> `;
+      div.dataset.prompt = `${promptText()} `;
       return div;
     }
     if (entry.kind === "roll") { div.classList.add("roll"); return div; }
@@ -653,9 +649,23 @@
     applyTerminal();
   }
 
+  // The system this screen is on: the station's, or a separate one (the crew's tug)
+  // with its own name and OS. The station's access level means nothing there.
+  const sysTerm = () => (spectate ? null : myTerm()?.system ? myTerm() : null);
+  const sysName = () => sysTerm()?.system || header.stationName;
+  const accessText = () => (sysTerm() ? "CREW" : header.accessLevel);
+  const promptText = () => `${accessText()}@${sysName()}>`;
+  function applyNames() {
+    $("hdr-station").textContent = sysName();
+    $("hdr-access").textContent = accessText();
+    $("hdr-os").textContent = sysTerm()?.os || `${header.voices?.terminal?.name || "TERMINAL"} OS v4.1`;
+    promptEl.textContent = promptText();
+  }
+
   // Theme, screen styles (flicker, dim, grime, handheld) and permanent blood/goo/crack.
   let decor = "";
   function applyTerminal() {
+    applyNames();
     const t = spectate ? null : myTerm();
     for (const cls of [...document.body.classList]) if (cls.startsWith("theme-") || cls.startsWith("look-")) document.body.classList.remove(cls);
     document.body.classList.add(`theme-${t?.theme || header.theme || "green"}`);
@@ -893,6 +903,10 @@
   // The socket lives next to this page (works under any mount point, e.g. /mothership/).
   function socketUrl() {
     const u = new URL(`ws?s=${encodeURIComponent(code)}`, location.href);
+    // Where this screen was, so the server starts it on that system's log.
+    let term = termId;
+    try { term ||= localStorage.getItem(termKey()); } catch {}
+    if (term) u.searchParams.set("term", term);
     u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
     return u;
   }

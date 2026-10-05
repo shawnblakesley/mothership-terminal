@@ -333,6 +333,10 @@
   const variantsHtml = (e) => (e.variants || []).map((v) =>
     `<div class="var"><span class="vfor">↳ ${esc(v.to.map(crewName).join(", "))}${v.for && !v.to.some((id) => crewName(id).toLowerCase() === v.for.toLowerCase()) ? ` (${esc(v.for)})` : ""}</span>\n${esc(v.text)}</div>`).join("");
 
+  // A log entry's system (its net key, as in terminals.js netOf) by the name its terminals give it.
+  const netKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const systemName = (net) => S.config.terminals.find((t) => t.system && netKey(t.system) === net)?.system || net;
+
   function renderLog() {
     const log = $("log");
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
@@ -350,7 +354,7 @@
       }
       return `
       <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? `title="${e.retcon ? "Retconned: gone from the players' screens and the agent's memory." : "Cut off by a player before it was said: the players never saw it and the agent doesn't remember it."}"` : ""}>
-        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? `<span class="by">${e.retcon ? "retconned" : "never said (cut off)"}</span>` : ""}${when}</div>
+        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.net ? `<span class="by" title="Said on a separate system: only screens there show it">on ${esc(systemName(e.net))}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? `<span class="by">${e.retcon ? "retconned" : "never said (cut off)"}</span>` : ""}${when}</div>
         <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
       </div>`;
     }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew to type something…</div>`;
@@ -684,6 +688,10 @@
           <label>Colour <select data-t="theme">${["", "green", "amber", "cyan", "white", "red"].map((x) => `<option value="${x}" ${x === t.theme ? "selected" : ""}>${x || "station's"}</option>`).join("")}</select></label>
         </div>
         <div class="looks">${Object.entries(LOOKS).map(([k, label]) => `<label class="chip"><input type="checkbox" data-look="${k}" ${t.look.includes(k) ? "checked" : ""}> ${label}</label>`).join("")}</div>
+        <div class="row wrap small">
+          <label title="Blank: on the station's network. Terminals on another system (e.g. the crew's ship) keep their own log on the players' screens, and show this name instead of the station's.">System <input data-t="system" value="${esc(t.system || "")}" placeholder="the station's" size="14"></label>
+          <label title="What the players' header calls its operating system. Blank: the station's.">OS <input data-t="os" value="${esc(t.os || "")}" placeholder="the station's" size="18"></label>
+        </div>
         <input data-t="notes" value="${esc(t.notes)}" placeholder="What's here, what happened at it (the agent reads this)" aria-label="Notes">
         ${here.length ? `<div class="muted small">Here now: ${here.map(esc).join(", ")}</div>` : ""}
       </div>`;

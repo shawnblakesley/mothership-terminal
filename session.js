@@ -13,7 +13,7 @@ import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
-import { DEFAULT_TERMINALS, SHIP_TERMINAL, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, netOf, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -173,7 +173,7 @@ export function defaultGame(keys = {}) {
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
       playerTerminals: true, // players may move between terminals themselves
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
-      upgrades: ["ship", "rooms"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -253,6 +253,12 @@ function migrateGame(saved) {
     if (!/\bsecond_chance\s*=/.test(config.map)) config.map = `${SHIP_DOCKED}\n${config.map}`;
     config.upgrades.push("ship");
   }
+  // Once: the tug's terminal gets its own system (its own log, name and OS on the players' screens).
+  if (!config.upgrades.includes("systems")) {
+    const ship = config.terminals.find((t) => t.id === "ship" && !t.system);
+    if (ship && config.stationName === "KESTREL-9") Object.assign(ship, SHIP_SYSTEM);
+    config.upgrades.push("systems");
+  }
   config.rooms = sanitizeRooms(config.rooms);
   // Once, for a KESTREL-9 story from before them: floor plans, who and what is
   // where, the lift, and the tug docked on the airlock instead of on its own deck.
@@ -314,6 +320,9 @@ export class Session {
     this.freeCalls = { day: "", count: 0 }; // calls on the server's free key today (see callModel)
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
+    // The system the players last acted on ("" = the station's network; terminals.js).
+    // New log entries belong to it: players on another system don't see them.
+    this.lastNet = this.state.log.at(-1)?.net || "";
     this.genCounter = 0;
     // Lines reach the players on one shared timeline (see scheduleLine), in order.
     this.playhead = 0;
@@ -353,7 +362,8 @@ export class Session {
   }
 
   // ---------------------------------------------------------------- sockets
-  attach(ws, role) {
+  // hint.terminal: where a returning player screen was, so its first view is that system's log.
+  attach(ws, role, hint = {}) {
     if (this.sockets.size >= MAX_SOCKETS) {
       ws.close(4029, "session full");
       return false;
@@ -362,12 +372,14 @@ export class Session {
     ws.lastInput = 0;
     this.sockets.add(ws);
     ws.character = null; // the crew file this player screen has claimed (crew.js)
+    const t = role === "player" && this.state.config.terminals.find((x) => x.id === hint.terminal);
+    if (t && reachable(t, this.state.station)) ws.terminal = t.id;
     ws.on("close", () => {
       this.sockets.delete(ws);
       if (ws.character) this.crewChanged();
     });
     if (role === "dm") ws.send(JSON.stringify({ t: "state", state: this.dmView() }));
-    else ws.send(JSON.stringify({ t: "init", ...this.playerView() }));
+    else ws.send(JSON.stringify({ t: "init", ...this.playerView(ws) }));
     return true;
   }
 
@@ -376,14 +388,27 @@ export class Session {
     for (const c of this.sockets) if (c.role === role && c.readyState === 1) c.send(data);
   }
   toPlayers(p) { this.send("player", p); }
+  // Which system a player screen is on ("" = the station's network).
+  netOfSocket(ws) { return netOf(this.state.config.terminals.find((t) => t.id === ws.terminal)); }
+  // Only the player screens on one system (log lines belong to the system they were said on).
+  toNet(net, p) {
+    const data = JSON.stringify(p);
+    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && this.netOfSocket(c) === net) c.send(data);
+  }
+  // Every player screen redrawn, each with its own system's log.
+  initPlayers() {
+    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1) c.send(JSON.stringify({ t: "init", ...this.playerView(c) }));
+  }
   syncDm() { this.send("dm", { t: "state", state: this.dmView() }); }
 
-  playerView() {
+  // For one player screen: only the log of the system it's on.
+  playerView(ws) {
+    const net = ws ? this.netOfSocket(ws) : "";
     return {
       version: APP_VERSION,
-      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut),
+      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (e.net || "") === net),
       header: this.playerHeader(),
-      effects: this.state.effects,
+      effects: this.state.effects.filter((e) => e.net === undefined || e.net === net),
       playing: this.state.playing.filter((p) => p.loop),
       crew: this.state.config.crew,
       claims: this.claims(),
@@ -400,7 +425,7 @@ export class Session {
       theme: c.theme,
       tts: c.tts,
       vitals: c.playerVitals, // players may edit their own health/wounds/stress
-      terminals: c.terminals.map((t) => ({ id: t.id, name: t.name, look: t.look, theme: t.theme, open: reachable(t, this.state.station) })),
+      terminals: c.terminals.map((t) => ({ id: t.id, name: t.name, look: t.look, theme: t.theme, system: t.system, os: t.os, open: reachable(t, this.state.station) })),
       moveTerminals: c.playerTerminals, // players may switch terminals themselves
       selfRolls: c.playerRolls, // players may roll their own stats/saves
       // What each voice looks like on screen and its effect chain (no personas or base-voice internals).
@@ -431,12 +456,13 @@ export class Session {
 
   // ---------------------------------------------------------------- log
   addLog(kind, text, extra = {}) {
-    const entry = { id: this.nextId++, kind, text, ts: Date.now(), ...extra };
+    // net: the system it was said on (players elsewhere don't see it).
+    const entry = { id: this.nextId++, kind, text, ts: Date.now(), ...(this.lastNet ? { net: this.lastNet } : {}), ...extra };
     this.state.log.push(entry);
     this.delivering?.entries.push(entry.id);
     if (this.state.log.length > MAX_LOG) this.state.log.splice(0, this.state.log.length - MAX_LOG);
     if (SPOKEN_KINDS.has(kind)) this.pregenerate([entry]);
-    if (kind === "player") this.toPlayers({ t: "line", entry }); // what they typed: at once
+    if (kind === "player") this.toNet(entry.net || "", { t: "line", entry }); // what they typed: at once
     else if (!PRIVATE_KINDS.has(kind)) {
       entry.queued = true; // not on players' screens until it's scheduled
       this.lineChain = this.lineChain.then(() => this.scheduleLine(entry)).catch((err) => console.error(`[${this.code}] line schedule failed:`, err));
@@ -465,12 +491,15 @@ export class Session {
   // screen. Lines not yet started were never said (marked cut: kept in the
   // Warden's log, gone from the players' screens and the agent's memory); a line
   // cut off mid-way keeps only what was already spoken.
-  interruptComms() {
+  // Only on the typist's system (net): a player on the tug doesn't cut off the station.
+  interruptComms(net = "") {
     const now = Date.now();
     const cut = [], trimmed = [];
+    let elsewhere = now; // lines still playing on other systems keep the timeline busy
     const c = this.state.config;
     for (const e of this.state.log) {
       if (PRIVATE_KINDS.has(e.kind) || e.kind === "player" || e.cut || e.interrupted) continue;
+      if ((e.net || "") !== net) { if (e.timing?.end > elsewhere) elsewhere = e.timing.end; continue; }
       const t = e.timing;
       if (e.queued || (t && t.speakAt > now)) { e.cut = true; cut.push(e.id); continue; }
       if (!t || (t.end ?? Infinity) <= now) continue;
@@ -489,8 +518,8 @@ export class Session {
     }
     if (!cut.length && !trimmed.length) return;
     for (const fx of [...this.state.effects]) if (fx.atEntry && cut.includes(fx.atEntry)) this.endEffect(fx.id); // never fires
-    this.playhead = now;
-    this.toPlayers({ t: "interrupt", at: now, cut, trimmed });
+    this.playhead = Math.max(now, elsewhere);
+    this.toNet(net, { t: "interrupt", at: now, cut, trimmed });
     this.addLog("note", `Comms cut off by a player${cut.length ? `: ${cut.length} line${cut.length > 1 ? "s" : ""} never said` : ""}.`);
   }
 
@@ -539,24 +568,24 @@ export class Session {
         const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!wav, last: i === pieces[v].length - 1 };
         cursors[v] = part.at + dur + PIECE_GAP;
         timing.versions[v].push(part);
-        if (sent && live()) this.toPlayers({ t: "part", id: entry.id, v, part: { ...part, wav: wavs[v][i] } });
+        if (sent && live()) this.toNet(entry.net || "", { t: "part", id: entry.id, v, part: { ...part, wav: wavs[v][i] } });
       }
       if (!sent) {
         sent = true;
         if (entry.cut) break;
         entry.timing = timing;
         delete entry.queued;
-        if (live()) this.toPlayers({ t: "line", entry: withAudio() });
+        if (live()) this.toNet(entry.net || "", { t: "line", entry: withAudio() });
       }
     }
     if (!sent && !entry.cut) { // nothing to show anyone (shouldn't happen): keep the order, move on
       entry.timing = timing;
       delete entry.queued;
-      if (live()) this.toPlayers({ t: "line", entry });
+      if (live()) this.toNet(entry.net || "", { t: "line", entry });
     }
     if (entry.cut || entry.interrupted) return; // (cut off: the timeline already moved on)
     timing.end = Math.max(timing.speakAt, ...cursors.map((x) => x - PIECE_GAP));
-    if (live()) this.toPlayers({ t: "lineEnd", id: entry.id, end: timing.end });
+    if (live()) this.toNet(entry.net || "", { t: "lineEnd", id: entry.id, end: timing.end });
     this.playhead = timing.end + LINE_GAP;
   }
 
@@ -595,9 +624,10 @@ export class Session {
     if (now - ws.lastInput < PLAYER_INPUT_GAP_MS) return;
     ws.lastInput = now;
     track("PlayerInput");
-    this.interruptComms();
+    this.interruptComms(this.netOfSocket(ws));
     const pc = this.characterOf(ws);
     const term = this.state.config.terminals.find((t) => t.id === ws.terminal);
+    this.lastNet = netOf(term); // the reply goes to the system they typed on
     this.addLog("player", text, { ...(pc ? { by: pc.name } : {}), ...(term ? { at: term.name } : {}) });
     if (this.state.config.mode === "manual") {
       this.state.pending = null;
@@ -722,13 +752,13 @@ export class Session {
         break;
       case "deleteEntry":
         s.log = s.log.filter((e) => e.id !== msg.id);
-        this.toPlayers({ t: "init", ...this.playerView() });
+        this.initPlayers();
         break;
       case "clearScreen":
         // Wipe the visible terminal but keep the entries so the agent's memory survives.
         for (const e of s.log) e.hidden = true;
         this.playhead = 0;
-        this.toPlayers({ t: "init", ...this.playerView() });
+        this.initPlayers();
         break;
       case "resetSession":
         this.genCounter++;
@@ -745,7 +775,7 @@ export class Session {
         s.station.access_level = DEFAULT_STATION.access_level;
         for (const e of [...s.effects]) this.endEffect(e.id);
         this.stopSounds();
-        this.toPlayers({ t: "init", ...this.playerView() });
+        this.initPlayers();
         // Everyone back where the story starts: the first terminal they can reach.
         { const start = s.config.terminals.find((t) => reachable(t, s.station));
           if (start) for (const ws of this.sockets) if (ws.role === "player" && ws.terminal) { ws.terminal = null; this.playerTerminal(ws, start.id, "warden"); } }
@@ -853,10 +883,15 @@ export class Session {
       case "builderApply":
         if (s.builder.draft && !this.builderBusy) this.applyStory(s.builder.draft);
         break;
-      case "terminals":
+      case "terminals": {
+        const players = [...this.sockets].filter((c) => c.role === "player");
+        const nets = players.map((c) => this.netOfSocket(c));
         s.config.terminals = sanitizeTerminals(msg.terminals);
         this.toPlayers({ t: "header", header: this.playerHeader() });
+        // A terminal moved to another system: its screens switch to that system's log.
+        players.forEach((c, i) => { if (c.readyState === 1 && this.netOfSocket(c) !== nets[i]) c.send(JSON.stringify({ t: "init", ...this.playerView(c) })); });
         break;
+      }
       case "moveScreens":
         // The Warden moves a character's player screens to a terminal.
         for (const ws of this.sockets) if (ws.role === "player" && ws.character && ws.character === msg.character) this.playerTerminal(ws, msg.terminal, "warden");
@@ -909,7 +944,7 @@ export class Session {
         this.stopSounds();
         // The sound library is kept (its files are the Warden's uploads).
         this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [] };
-        this.toPlayers({ t: "init", ...this.playerView() });
+        this.initPlayers();
         break;
       default:
         return;
@@ -936,10 +971,13 @@ export class Session {
       source,
       startedAt: Date.now(),
       ...(cue ? { atEntry: cue.atEntry, when: cue.when, ...(cue.hold ? { hold: true } : {}) } : {}),
+      // The agent's effects happen on the system its reply is for; the Warden's hit every screen.
+      ...(source === "agent" ? { net: this.lastNet } : {}),
     };
     this.state.effects.push(effect);
     this.delivering?.effects.push(effect.id);
-    this.toPlayers({ t: "effect", effect });
+    if (effect.net !== undefined) this.toNet(effect.net, { t: "effect", effect });
+    else this.toPlayers({ t: "effect", effect });
     // A cue starts when the players reach its line, which may be a while (voices
     // play first), so the server keeps it listed for a generous margin.
     const listed = cue ? seconds + 180 : seconds;
@@ -1126,7 +1164,7 @@ export class Session {
     for (const ws of this.sockets) if (ws.role === "player") ws.character = null; // everyone picks a new crew file
     if (this.usesNeural()) warmNeural();
     this.addLog("note", `New story applied: "${draft.title}".`);
-    this.toPlayers({ t: "init", ...this.playerView() });
+    this.initPlayers();
     this.setBusy(false);
   }
 
@@ -1183,6 +1221,7 @@ export class Session {
     const r = this.state.roll;
     const pc = this.characterOf(ws);
     if (!r || r.status !== "waiting" || msg.id !== r.id || !pc || !r.pcs.some((p) => p.id === pc.id) || r.results[pc.id]) return;
+    this.lastNet = this.netOfSocket(ws);
     const dice = msg.manual ? (Array.isArray(msg.dice) ? msg.dice : []).map(Number) : diceFor(r);
     try {
       this.rollFor(pc, dice, { manual: !!msg.manual, by: "player" });
@@ -1233,8 +1272,12 @@ export class Session {
     if (by === "player" && ws.terminal && (!this.state.config.playerTerminals || !canReach)) return;
     if (by === "player" && !ws.terminal && !canReach) return;
     const had = ws.terminal;
+    const wasNet = this.netOfSocket(ws);
     ws.terminal = id;
     if (by === "warden") ws.send(JSON.stringify({ t: "terminalSet", id }));
+    // Onto another system: the screen shows that system's log (each keeps its own).
+    if (netOf(t) !== wasNet) ws.send(JSON.stringify({ t: "init", ...this.playerView(ws) }));
+    if (had) this.lastNet = netOf(t);
     const pc = this.characterOf(ws);
     if (had && pc) this.addLog("note", `${pc.name} ${by === "warden" ? "was moved" : "moved"} to the ${t.name}.`);
     this.syncDm();
@@ -1347,7 +1390,7 @@ export class Session {
     s.outcomeCheck = undo.outcome;
     this.playhead = 0;
     this.addLog("note", "↶ Retconned the agent's last response.");
-    this.toPlayers({ t: "init", ...this.playerView() });
+    this.initPlayers();
     this.crewChanged();
   }
 
@@ -1458,7 +1501,7 @@ export class Session {
         if (myGen !== this.genCounter) return;
         if (oc?.needed) return this.holdForWarden(oc, "");
       }
-      const request = { apiKey, model, effort, ...buildRequest({ ...s, screens: this.screens() }, steer) };
+      const request = { apiKey, model, effort, ...buildRequest({ ...s, screens: this.screens(), replyNet: this.lastNet }, steer) };
       // One silent retry for malformed output (empty / not JSON) before bothering the Warden.
       let reply;
       for (let attempt = 1; ; attempt++) {

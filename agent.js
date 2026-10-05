@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { BUILTIN, SPEAKERS } from "./voices.js";
 import { CHECKS } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
-import { terminalsBrief } from "./terminals.js";
+import { terminalsBrief, netOf } from "./terminals.js";
 import { TILES } from "./rooms.js";
 
 // Every effect the player screen can render. The agent may only trigger the
@@ -536,6 +536,11 @@ function buildContext(state, steer, aside = false) {
       ? `\n\nIN THE ROOM WITH THEM: the players are physically in ${rooms.join(", ")}. Anyone there (by their notes, or wherever you've placed them since) speaks to them face to face: set in_person=true on those lines. Only people elsewhere use the intercom/comms (in_person=false).`
       : "";
     ctx.push(`TERMINALS ON THE STATION:\n${terminalsBrief(state.config.terminals)}\n\nWHERE THE PLAYERS ARE (which terminal each player's screen is):\n${at.join("\n") || "- (nobody has chosen yet)"}${inRoom}`);
+    // Separate systems (the crew's tug) keep separate logs: say which one this reply lands on.
+    if (state.config.terminals.some((t) => t.system)) {
+      const sys = state.config.terminals.find((t) => t.system && netOf(t) === (state.replyNet || ""))?.system;
+      ctx.push(`THIS REPLY IS SHOWN ON: ${sys ? `the ${sys} system` : `the ${state.config.stationName} station network`}. Only screens on that system show it; players at a terminal on another system don't see or hear it. Answer with the voices that are on that system.`);
+    }
   }
   ctx.push(TALK[state.config.talk] || TALK.brief);
   if (!state.config.agentEffects) ctx.push("Effects are disabled right now: return an empty effects array.");

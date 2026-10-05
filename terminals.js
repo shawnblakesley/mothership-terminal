@@ -13,8 +13,14 @@ export const LOOK_LABELS = {
 const THEMES = ["", "green", "amber", "cyan", "white", "red"];
 export const MAX_TERMINALS = 16;
 
+// system: the computer system a terminal is on, and os: what its header calls
+// the operating system. Blank = the station's (its name, the terminal voice's OS).
+// Terminals on another system (the crew's tug) keep their own log on the
+// players' screens: going between systems swaps the screen to that one's log.
+export const SHIP_SYSTEM = { system: "SECOND-CHANCE", os: "TUG-CORE OS v2.7" };
+
 // The crew's own tug, docked at Airlock A: its terminal is a separate machine.
-export const SHIP_TERMINAL = { id: "ship", name: "SECOND CHANCE TERMINAL", room: "second_chance", look: ["grime"], theme: "amber", open: true, requires: "", notes: "Aboard the prison tug SECOND CHANCE, through the docking collar from Airlock A. NOT on the station network: answered only by the SECOND CHANCE voice (the tug's flight computer), never by HV-CORE or anyone on the station intercom. It can't see or work anything on the station. The tug sits under a departure lock, waiting for HV-CORE's clearance code." };
+export const SHIP_TERMINAL = { id: "ship", name: "SECOND CHANCE TERMINAL", ...SHIP_SYSTEM, room: "second_chance", look: ["grime"], theme: "amber", open: true, requires: "", notes: "Aboard the prison tug SECOND CHANCE, through the docking collar from Airlock A. NOT on the station network: answered only by the SECOND CHANCE voice (the tug's flight computer), never by HV-CORE or anyone on the station intercom. It can't see or work anything on the station. The tug sits under a departure lock, waiting for HV-CORE's clearance code." };
 
 // requires: a station state path (a door) that makes the terminal reachable
 // once it reads OPEN or UNLOCKED, e.g. the med bay once the airlock is open.
@@ -47,12 +53,17 @@ export function sanitizeTerminals(list) {
       theme: THEMES.includes(t.theme) ? t.theme : "",
       open: t.open !== false,
       requires: String(t.requires || "").replace(/[^A-Za-z0-9_.]/g, "").slice(0, 80),
+      system: String(t.system || "").replace(/\s+/g, " ").trim().slice(0, 40),
+      os: String(t.os || "").replace(/\s+/g, " ").trim().slice(0, 40),
       notes: String(t.notes || "").slice(0, 600),
     });
     if (out.length >= MAX_TERMINALS) break;
   }
   return out;
 }
+
+// Which system a terminal is on, as a key: "" for the station's network.
+export const netOf = (t) => (t?.system ? t.system.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "");
 
 // Can players get to it: marked reachable, or its door (requires) is open.
 export function reachable(t, station) {
@@ -76,5 +87,5 @@ export const upgradeTerminals = (list) => (JSON.stringify(list) === V1 ? sanitiz
 
 // For the agent: every terminal, and who is at which.
 export function terminalsBrief(terminals) {
-  return terminals.map((t) => `- ${t.name}${t.room ? ` (room: ${t.room})` : ""}${t.look.length ? ` · looks: ${t.look.map((l) => LOOK_LABELS[l]).join(", ")}` : " · clean"}${t.open ? "" : t.requires ? ` · reachable once ${t.requires} is open` : " · not reachable yet"}${t.notes ? ` · ${t.notes}` : ""}`).join("\n");
+  return terminals.map((t) => `- ${t.name}${t.room ? ` (room: ${t.room})` : ""}${t.look.length ? ` · looks: ${t.look.map((l) => LOOK_LABELS[l]).join(", ")}` : " · clean"}${t.system ? ` · on its own system, ${t.system}${t.os ? ` (${t.os})` : ""}, not the station network: players there see only what was said on it` : ""}${t.open ? "" : t.requires ? ` · reachable once ${t.requires} is open` : " · not reachable yet"}${t.notes ? ` · ${t.notes}` : ""}`).join("\n");
 }

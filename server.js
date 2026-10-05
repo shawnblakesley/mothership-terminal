@@ -342,7 +342,7 @@ wss.on("connection", (ws, req) => {
   const wantsDm = url.searchParams.get("role") === "dm";
 
   let joined = false;
-  if (!wantsDm) joined = session.attach(ws, "player");
+  if (!wantsDm) joined = session.attach(ws, "player", { terminal: url.searchParams.get("term") || "" });
   if (joined) track("PlayerJoined");
   const authTimer = wantsDm ? setTimeout(() => !joined && ws.close(4001, "auth timeout"), 10_000) : null;
 
