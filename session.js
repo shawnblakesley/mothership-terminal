@@ -17,6 +17,8 @@ import { DEFAULT_TERMINALS, SHIP_TERMINAL, sanitizeTerminals, upgradeTerminals, 
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
+const FREE_CALLS_PER_DAY = Number(process.env.FREE_CALLS_PER_DAY || 150);
+
 const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
 const MAX_SOCKETS = 40; // per session
 const PLAYER_INPUT_GAP_MS = 1200;
@@ -309,6 +311,7 @@ export class Session {
     this.synopsisBusy = false; // the agent is writing the Warden's synopsis
     this.roomBusy = ""; // the map room whose floor plan the agent is drawing
     this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
+    this.freeCalls = { day: "", count: 0 }; // calls on the server's free key today (see callModel)
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
     this.genCounter = 0;
@@ -639,7 +642,7 @@ export class Session {
       case "apiKey": {
         // Keys stay in this process's memory only.
         const p = getProvider(msg.provider);
-        if (!p) { rememberSecret(msg.key); break; }
+        if (!p || p.serverKeyOnly) { rememberSecret(msg.key); break; }
         const key = String(msg.key || "").trim();
         rememberSecret(key);
         if (!key) delete this.keys[p.id];
@@ -1006,7 +1009,16 @@ export class Session {
 
   // One call to the session's model, with a silent retry on malformed output. Returns parsed JSON.
   // One model call, counted (provider, model, how long, whether it worked).
+  // On the free provider (the server's key) each session gets FREE_CALLS_PER_DAY calls.
   async callModel(provider, request, kind) {
+    if (provider.serverKeyOnly) {
+      const day = new Date().toISOString().slice(0, 10);
+      if (this.freeCalls.day !== day) this.freeCalls = { day, count: 0 };
+      if (this.freeCalls.count >= FREE_CALLS_PER_DAY) {
+        throw new Error(`This session has used its ${FREE_CALLS_PER_DAY} free replies for today. Add your own DeepSeek or Claude key under 🔑 Key to keep going.`);
+      }
+      this.freeCalls.count++;
+    }
     const t = Date.now();
     const fields = { Kind: kind, Provider: provider.id, Model: request.model };
     try {

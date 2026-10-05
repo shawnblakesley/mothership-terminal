@@ -6,7 +6,7 @@ Play it at **[shawnofthe.dev/mothership](https://shawnofthe.dev/mothership/)**, 
 
 ## How a game works
 
-1. **The Warden opens `/dm`**, picks a provider and pastes their own API key, and clicks **Create session**. They get a six-character **session code**.
+1. **The Warden opens `/dm`**, picks a provider and pastes their own API key (or picks **Free (shared)** if the server offers it), and clicks **Create session**. They get a six-character **session code**.
 2. **Players open `/`** (the terminal) on a laptop or TV, enter the code, pick their **crew file** (character), and start typing.
 3. Many sessions can run at once; each is separate.
 
@@ -15,6 +15,7 @@ Play it at **[shawnofthe.dev/mothership](https://shawnofthe.dev/mothership/)**, 
 - Each Warden brings their own key and pays their provider for what the agent uses. DeepSeek Flash costs a fraction of a cent per reply.
 - Keys are held in the server's memory only. They are never written to disk or sent to players.
 - After a server restart the Warden re-enters the key, or ticks **Remember this key on this device** to have their browser re-send it.
+- **No key?** If the server sets `OPENROUTER_API_KEY`, the start screen offers **Free (shared)**: OpenRouter's free models, on the server's key. OpenRouter rate-limits free models per key, so every session shares one allowance, and each session gets `FREE_CALLS_PER_DAY` replies a day (default 150). The free provider never takes a Warden's key, and the server's key is only ever used for free models. A Warden can add their own key under **🔑 Key** at any time and switch.
 
 **Getting back into your console:**
 
@@ -55,6 +56,7 @@ The picker in the console's top bar sets the **provider**, **model** and **think
 | Provider | Models (cheapest first) | Notes |
 |---|---|---|
 | DeepSeek | `deepseek-flash`, `deepseek-v4-pro` | Cheapest option. Default effort is "thinking off" (fastest). Uses JSON mode; replies are checked and cleaned up on the server. |
+| Free (shared) | `openrouter/free`, `nvidia/nemotron-3-super-120b-a12b:free`, `google/gemma-4-31b-it:free` | Only when the server sets `OPENROUTER_API_KEY`. Costs nothing; slower and less sharp, and shares OpenRouter's free rate limit. `openrouter/free` picks whichever free model is up. The free lineup changes often, so update `providers/free.js` when one disappears. |
 | Claude | `claude-haiku-4-5`, `claude-sonnet-5-5`, `claude-opus-5-5` | Uses structured outputs, so replies always match the schema. Sonnet and Opus fall back to another model automatically if they decline a request. |
 
 ### Adding a provider

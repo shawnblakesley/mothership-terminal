@@ -3,7 +3,7 @@
 // These APIs don't enforce a JSON schema, so the schema goes into the prompt
 // and the server validates whatever comes back.
 
-export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPattern, baseURL, models, buildExtras = () => ({}) }) {
+export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPattern, baseURL, models, rateLimitText = "rate limited — wait a moment and regenerate.", authText = "authentication failed. Check the API key in the Warden console.", buildExtras = () => ({}) }) {
   return {
     id,
     label,
@@ -43,9 +43,9 @@ export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPatter
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         const msg = data?.error?.message || res.statusText;
-        if (res.status === 401) throw new Error(`${label}: authentication failed. Check the API key in the Warden console.`);
+        if (res.status === 401) throw new Error(`${label}: ${authText}`);
         if (res.status === 402) throw new Error(`${label}: out of credit (402). Top up or switch provider.`);
-        if (res.status === 429) throw new Error(`${label}: rate limited — wait a moment and regenerate.`);
+        if (res.status === 429) throw new Error(`${label}: ${rateLimitText}`);
         throw new Error(`${label} API error ${res.status}: ${msg}`);
       }
 

@@ -149,9 +149,15 @@
     $("startErr").textContent = error;
     const provs = await loadProviders();
     const sel = $("newProvider");
-    sel.innerHTML = provs.map((p) => `<option value="${esc(p.id)}">${esc(p.label)} · cheapest: ${esc(p.models[0].label)}</option>`).join("");
+    sel.innerHTML = provs.map((p) => `<option value="${esc(p.id)}">${esc(p.label)} · ${p.free ? "no key needed, rate-limited" : `cheapest: ${esc(p.models[0].label)}`}</option>`).join("");
     const syncProv = () => {
       const p = provs.find((x) => x.id === sel.value);
+      // The free provider runs on the server's key: no key field.
+      const free = !!p?.free;
+      $("newKeyFields").hidden = free;
+      $("newKey").required = !free;
+      $("newFreeNote").hidden = !free;
+      $("newKeyNote").hidden = free;
       $("newKey").placeholder = p?.keyHint || "";
       $("keyLink").href = p?.keyUrl || "#";
       const rem = p && store.get(`wardenKey:${p.id}`);
@@ -182,15 +188,19 @@
 
   $("createForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const provider = $("newProvider").value, apiKey = $("newKey").value.trim();
+    const provider = $("newProvider").value;
+    const free = !!providerCatalog.find((p) => p.id === provider)?.free;
+    const apiKey = free ? "" : $("newKey").value.trim();
     $("createBtn").disabled = true;
     $("startErr").textContent = "";
     try {
       const r = await fetch("api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, apiKey }) });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.error || `Couldn't create a session (${r.status}).`);
-      if ($("newRemember").checked) store.set(`wardenKey:${provider}`, apiKey);
-      else store.del(`wardenKey:${provider}`);
+      if (!free) {
+        if ($("newRemember").checked) store.set(`wardenKey:${provider}`, apiKey);
+        else store.del(`wardenKey:${provider}`);
+      }
       store.set(tokenKey(data.code), data.token);
       location.href = `dm?s=${data.code}`;
     } catch (err) {
@@ -216,8 +226,10 @@
   // ------------------------------------------------------------ API key dialog
   function openKeyDialog() {
     const sel = $("keyProvider");
-    sel.innerHTML = S.providers.map((p) => `<option value="${esc(p.id)}">${esc(p.label)}${p.configured ? " ✓" : ""}</option>`).join("");
-    sel.value = S.config.provider;
+    // The free provider takes no key, so it isn't listed here.
+    const keyed = S.providers.filter((p) => !p.free);
+    sel.innerHTML = keyed.map((p) => `<option value="${esc(p.id)}">${esc(p.label)}${p.configured ? " ✓" : ""}</option>`).join("");
+    sel.value = keyed.some((p) => p.id === S.config.provider) ? S.config.provider : keyed[0].id;
     const sync = () => {
       const p = S.providers.find((x) => x.id === sel.value);
       $("keyValue").value = "";

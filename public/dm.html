@@ -18,10 +18,13 @@
       <h2>Start a new session</h2>
       <form id="createForm" class="stack">
         <label class="field"><span>AI provider</span><select id="newProvider"></select></label>
+        <div id="newKeyFields" class="stack">
         <label class="field"><span>Your API key <a id="keyLink" target="_blank" rel="noopener">get one ↗</a></span>
           <input id="newKey" type="password" autocomplete="off" spellcheck="false" required></label>
         <label class="check"><input type="checkbox" id="newRemember"> Remember this key on this device</label>
-        <p class="muted small">You bring your own key, and you pay your provider for what the agent uses. DeepSeek Flash costs a fraction of a cent per reply. The key stays in the server's memory for this session only. It is never written to disk or shown to players. If the server restarts, you'll be asked for it again.</p>
+        </div>
+        <p class="muted small" id="newFreeNote" hidden>No key needed. Free models are slower and less sharp than DeepSeek or Claude, and they're shared: if their limit runs out, replies fail until it resets. You can add your own key under 🔑 Key at any time.</p>
+        <p class="muted small" id="newKeyNote">You bring your own key, and you pay your provider for what the agent uses. DeepSeek Flash costs a fraction of a cent per reply. The key stays in the server's memory for this session only. It is never written to disk or shown to players. If the server restarts, you'll be asked for it again.</p>
         <div class="row"><button class="primary" id="createBtn">Create session</button></div>
       </form>
     </section>

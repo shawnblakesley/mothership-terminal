@@ -6,13 +6,18 @@
 // Keys from the server's environment are only used when ALLOW_SERVER_KEYS=1
 // (handy for a private LAN install; never set it on a public server).
 //
+// A provider with serverKeyOnly (free.js) always uses the server's key and
+// never takes one from a Warden; it's offered only when that key is set.
+//
 // Order matters: a new session defaults to the first provider it has a key
-// for, and its first model, so keep both lists cheapest-first.
+// for, and its first model, so keep model lists cheapest-first. The free
+// provider goes last so a Warden's own key always wins.
 
 import deepseek from "./deepseek.js";
 import claude from "./claude.js";
+import free from "./free.js";
 
-export const PROVIDERS = [deepseek, claude];
+export const PROVIDERS = [deepseek, claude, free];
 
 const ALLOW_SERVER_KEYS = process.env.ALLOW_SERVER_KEYS === "1";
 
@@ -23,8 +28,12 @@ export function getProvider(id) {
 // The key a session should use for a provider: its own, or (opt-in) the server's.
 export function keyFor(providerId, sessionKeys = {}) {
   const p = getProvider(providerId);
+  if (p?.serverKeyOnly) return process.env[p.envKey] || "";
   return sessionKeys[providerId] || (ALLOW_SERVER_KEYS && p ? process.env[p.envKey] : "") || "";
 }
+
+// Is this provider offered at all? (The free one only with the server's key.)
+export const offered = (p) => !p.serverKeyOnly || !!process.env[p.envKey];
 
 // The cheapest model the session has a key for (or the cheapest overall).
 export function defaultSelection(sessionKeys = {}) {
@@ -44,9 +53,10 @@ export function fixSelection({ provider, model, effort }) {
 
 // What the Warden console needs to draw the pickers (never the keys themselves).
 export function catalog(sessionKeys = {}) {
-  return PROVIDERS.map((p) => ({
+  return PROVIDERS.filter(offered).map((p) => ({
     id: p.id,
     label: p.label,
+    free: !!p.serverKeyOnly,
     keyHint: p.keyHint,
     keyUrl: p.keyUrl,
     configured: !!keyFor(p.id, sessionKeys),

@@ -10,11 +10,11 @@ import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { synthesize, setCacheDir, warmNeural } from "./tts.js";
 import { sanitizeVoices, speakingVoice, speechParts } from "./voices.js";
-import { getProvider, looksLikeKey, catalog } from "./providers/index.js";
+import { getProvider, looksLikeKey, catalog, offered, fixSelection } from "./providers/index.js";
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
 import { setSoundsDir, saveSound, soundPath, deleteSoundFile, deleteSessionSounds, MAX_SOUND_BYTES } from "./sounds.js";
 import { track, gauge } from "./telemetry.js";
-for (const p of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]) rememberSecret(process.env[p]);
+for (const p of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"]) rememberSecret(process.env[p]);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -61,14 +61,17 @@ function addSession(saved) {
   return session;
 }
 
-function createSession(keys = {}) {
+// provider: start on this one (needed when there are no keys, e.g. the free one).
+function createSession(keys = {}, provider = "") {
   for (const k of Object.values(keys)) rememberSecret(k);
   const code = newCode();
   const token = crypto.randomBytes(24).toString("base64url");
-  const session = addSession({ code, tokenHash: hashToken(token), game: defaultGame(keys) });
+  const game = defaultGame(keys);
+  if (provider) Object.assign(game.config, fixSelection({ provider }));
+  const session = addSession({ code, tokenHash: hashToken(token), game });
   Object.assign(session.keys, keys);
   scheduleSave(session);
-  track("SessionCreated", { Provider: Object.keys(keys)[0] });
+  track("SessionCreated", { Provider: provider || Object.keys(keys)[0] });
   return { session, token };
 }
 
@@ -174,18 +177,19 @@ router.use(express.static(pub, { index: false, maxAge: 0 }));
 // Providers and models for the "start a session" form (no keys involved).
 router.get("/api/providers", (_req, res) => res.json(catalog().map(({ configured, ...p }) => p)));
 
-// Start a session: the Warden brings their own API key (kept in memory only).
+// Start a session: the Warden brings their own API key (kept in memory only),
+// or picks the free provider, which uses the server's key.
 router.post("/api/sessions", express.json({ limit: "4kb" }), (req, res) => {
   noStore(res);
   if (limited(`create:${clientIp(req)}`, 10, 3600_000)) return res.status(429).json({ error: "Too many new sessions from this address. Try again later." });
   const provider = getProvider(req.body?.provider);
   const key = String(req.body?.apiKey || "").trim();
   rememberSecret(key);
-  if (!provider) return res.status(400).json({ error: "Pick a provider." });
-  if (!looksLikeKey(provider.id, key)) return res.status(400).json({ error: `That doesn't look like a ${provider.label} API key (expected ${provider.keyHint}).` });
+  if (!provider || !offered(provider)) return res.status(400).json({ error: "Pick a provider." });
+  if (!provider.serverKeyOnly && !looksLikeKey(provider.id, key)) return res.status(400).json({ error: `That doesn't look like a ${provider.label} API key (expected ${provider.keyHint}).` });
   sweep();
   if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: "The server is full right now. Try again later." });
-  const { session, token } = createSession({ [provider.id]: key });
+  const { session, token } = provider.serverKeyOnly ? createSession({}, provider.id) : createSession({ [provider.id]: key });
   console.log(`  + session ${session.code} created (${provider.id})`);
   res.json({ code: session.code, token });
 });
@@ -390,6 +394,7 @@ server.listen(PORT, "0.0.0.0", () => {
     console.log(`  http://localhost:${PORT}${BASE}/dm?s=${imported.session.code}#token=${imported.token}`);
     console.log(`  Then paste your API key under ⚙ Settings → LLM.`);
   }
+  if (process.env.OPENROUTER_API_KEY) console.log("\n  Free models are on: sessions can use OpenRouter's free models with this server's key.");
   if (process.env.ALLOW_SERVER_KEYS === "1") console.log("\n  ! ALLOW_SERVER_KEYS=1: sessions without their own key will use this server's keys.");
   console.log("");
 });

@@ -69,4 +69,16 @@ On the existing distribution:
   ```
   Every line is redacted before it's printed (`redact.js`): LLM keys never appear in them.
 - **Usage dashboard:** CloudWatch → Dashboards → **Mothership** (us-west-2), from MothershipStack. `deploy/update.sh` installs the CloudWatch agent and points it at the app's telemetry (`telemetry.js`, sent to the agent on 127.0.0.1:25888), which lands in the `/mothership/telemetry` log group (kept 3 months) and the `Mothership` metrics. The agent signs in with the credentials the Systems Manager agent keeps for the server (`/root/.aws/credentials`), and the server role may write to that log group only. Nothing else on the server is shipped. Telemetry problems never fail a deploy; check the agent with `sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a status`.
+- **Free models:** the start screen offers **Free (shared)** when the server has an OpenRouter key. The key isn't in the repo or the deploy workflow; it lives in a systemd drop-in on the server, which redeploys leave alone:
+  ```bash
+  sudo systemctl edit mothership
+  ```
+  ```ini
+  [Service]
+  Environment=OPENROUTER_API_KEY=sk-or-v1-...
+  ```
+  ```bash
+  sudo systemctl restart mothership
+  ```
+  Free models cost nothing, so a public server is fine. OpenRouter allows far more free requests a day on an account that has bought at least $10 of credit at some point. Each session is also capped at `FREE_CALLS_PER_DAY` (default 150), set the same way.
 - **Limits:** set in the systemd unit. `MAX_SESSIONS` defaults to 300, and idle sessions expire after `SESSION_TTL_DAYS` (default 14).
