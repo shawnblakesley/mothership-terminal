@@ -491,7 +491,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .pc .pcname.offline { color: var(--muted); }
 
 /* Where they are, in the card's header: reads as text, opens as a picker. */
-.pc .where { display: inline-flex; align-items: baseline; gap: 4px; }
+.pc .where { display: inline-flex; align-items: baseline; gap: 4px; margin-left: auto; }
 .pc select[data-move] { width: auto; max-width: 220px; padding: 1px 4px; font: inherit; color: var(--fg); background: transparent; border: 1px solid transparent; border-radius: 5px; cursor: pointer; }
 .pc select[data-move]:hover, .pc select[data-move]:focus-visible { border-color: var(--line); background: var(--panel3); }
 
