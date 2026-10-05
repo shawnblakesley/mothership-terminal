@@ -192,7 +192,7 @@ function buildSchema(voices) {
         properties: {
           needed: { type: "boolean" },
           attempt: { type: "string", description: "What the players are attempting, in a few words (empty if not needed)." },
-          suggested_check: { type: "string", enum: ["none", ...Object.keys(CHECKS)], description: "The Mothership Stat or Save that fits, if a roll seems right." },
+          suggested_check: { type: "string", enum: ["none", ...Object.keys(CHECKS), "panic"], description: "The Mothership Stat or Save that fits, if a roll seems right; panic for a Panic check (d20 against Stress) after something truly horrifying." },
           advantage: { type: "string", enum: ["none", "advantage", "disadvantage"], description: "Suggest [+] if their approach is clever or well set up, [-] if it's rushed or hampered." },
           why: { type: "string", description: "One line for the Warden: why it's uncertain." },
           on_success: { type: "string", description: "The stakes, if it works: what happens, in one short sentence (empty if not needed)." },
@@ -517,6 +517,16 @@ export function limitLength(reply, talk) {
 
 // Per-turn context: live station state plus any Warden steering.
 // aside: answering a private Warden note (no lines for the players).
+// A game without a Warden: the agent is the Warden too.
+const SOLO = `NO WARDEN: nobody is running this game but you. The players chose this story and are playing it on their own, so you are the Warden as well as every voice.
+- Run it like a good Warden: a living world that reacts to what they do, clues they can find, people with their own agendas, threats that escalate when they dawdle, and real consequences. Be fair: never cheat them, never save them for free.
+- Uncertain attempts: set outcome_check exactly as usual, with the stakes. The app turns it into a roll for whoever tried it (the result comes back as [ROLL RESULT]), or, when no roll fits, asks you to rule on it. Narrate results by the stakes.
+- Panic: when something truly horrifying happens to them (a crewmate dies, the thing is in the room, there is no way out), set outcome_check.needed=true with suggested_check=panic. On a Panic, give the character a fitting, concrete panic response yourself.
+- Apply harm and Stress through crew_changes as a Warden would.
+- Keep the secrets discoverable: they should be able to find things out by asking, searching and hacking, at the right access level.
+- The story can end: escape, death, a terrible truth. When it does, say so in-world, plainly.
+- Nobody reads dm_note.`;
+
 function buildContext(state, steer, aside = false) {
   const ctx = [`LIVE STATION STATE (JSON):\n${JSON.stringify(state.station, null, 2)}`];
   if (state.config.standingOrders.trim()) ctx.push(`WARDEN STANDING ORDERS (always in force):\n${state.config.standingOrders.trim()}`);
@@ -559,6 +569,7 @@ function buildContext(state, steer, aside = false) {
       ctx.push(`SYSTEMS (separate computer networks: each one's screens show only the lines sent on it, and a system can't see or work anything on another):\n${rows.join("\n")}\n\n${routing} Each voice is only connected to the systems in its heard_on (see VOICES): its lines can only go to those, and on any other system it can't hear, see or answer anything (a line sent where its voice isn't is moved to one it's on). A line's system can also be "ALL": it shows on every system's screens at once, for a voice heard on every system. Keep that for something that truly reaches every machine (the entity, a signal on every band), never ordinary dialogue.`);
     }
   }
+  if (state.solo?.phase === "play") ctx.push(SOLO);
   ctx.push(TALK[state.config.talk] || TALK.brief);
   if (!state.config.agentEffects) ctx.push("Effects are disabled right now: return an empty effects array.");
   if (state.config.agentVariants === false) ctx.push("Per-player variations are disabled: every line's variants must be [].");
@@ -623,7 +634,7 @@ function normalizeCheck(c) {
   return {
     needed: true,
     attempt: String(c.attempt ?? "").slice(0, 140),
-    suggested_check: CHECKS[c.suggested_check] ? c.suggested_check : "none",
+    suggested_check: CHECKS[c.suggested_check] || c.suggested_check === "panic" ? c.suggested_check : "none",
     advantage: ["advantage", "disadvantage"].includes(c.advantage) ? c.advantage : "none",
     why: String(c.why ?? "").slice(0, 300),
     on_success: String(c.on_success ?? "").slice(0, 200),

@@ -215,3 +215,41 @@ export function applyDraft(d) {
     station,
   };
 }
+
+// ---------------------------------------------------------------- no Warden
+// Story pitches for a game played without a Warden: the players pick one, then
+// the agent drafts it (draftRequest, from the pitch) and runs it.
+const PITCHES = `You pitch scenarios for Mothership (sci-fi horror TTRPG) to a group of players with NO Warden: an AI will build the whole world from the one they pick, then run it.
+
+${APP_BRIEF}
+
+Pitch 4 original one-session scenarios, each clearly different from the others: vary the setting (a station, a ship, a colony, a derelict, a moon base, a research lab...), the threat (a creature, a contagion, a rogue AI, a cult, something from the void, corporate horror...) and the mood (dread, paranoia, body horror, isolation, a race against time). Classic Mothership tone: blue-collar crews, corporate greed, nobody coming to help.
+
+For each: title (2-5 words); hook (2 short sentences: who the players are, where, why they came, and what feels wrong; never give away the twist); tags (3 short words, e.g. "derelict · parasite · claustrophobic").`;
+
+const PITCH_SCHEMA = obj({
+  pitches: { type: "array", items: obj({ title: str, hook: str, tags: str }) },
+});
+
+export function pitchesRequest(avoid = []) {
+  return {
+    system: PITCHES,
+    context: avoid.length ? `ALREADY OFFERED (pitch different ones): ${avoid.join("; ")}` : "Nothing offered yet.",
+    messages: [{ role: "user", content: "Pitch 4 scenarios." }],
+    schema: PITCH_SCHEMA,
+    example: { pitches: [{ title: "The Long Quiet", hook: "...", tags: "derelict · signal · dread" }] },
+  };
+}
+
+export function normalizePitches(r) {
+  const s = (v, n) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+  return (Array.isArray(r?.pitches) ? r.pitches : []).map((p) => ({ title: s(p?.title, 60), hook: s(p?.hook, 400), tags: s(p?.tags, 80) })).filter((p) => p.title && p.hook).slice(0, 6);
+}
+
+// The builder conversation for a picked pitch (draftRequest drafts it in full).
+export function pitchBuilder(p) {
+  return {
+    messages: [{ role: "warden", text: `Build this scenario. It will be played WITHOUT a Warden: the AI runs everything, so make it self-contained and playable from the players' terminals, with clues they can find, people they can talk to, and a way to win, escape or die.\n\n${p.title}: ${p.hook} (${p.tags})\n\nWrite 4 player characters.` }],
+    draft: null,
+  };
+}

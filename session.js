@@ -8,7 +8,7 @@ import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, EN
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS } from "./crew.js";
-import { chatRequest, draftRequest, normalizeDraft, applyDraft } from "./builder.js";
+import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { synopsisRequest, normalizeSynopsis } from "./synopsis.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
@@ -291,8 +291,14 @@ function migrateGame(saved) {
     // The story builder's conversation and latest draft (builder.js).
     builder: { messages: Array.isArray(saved.builder?.messages) ? saved.builder.messages.slice(-60) : [], draft: saved.builder?.draft ?? null },
     synopsis: saved.synopsis ?? null, // { sections, started, at, logId } (synopsis.js)
+    // A game without a Warden (see "no Warden" below): { phase, pitches, opened, error }.
+    // (A build cut off by a restart goes back to choosing.)
+    solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
 }
+
+// The built-in story, always on offer in a game without a Warden (no build needed).
+const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
 const clampVol = (v) => Math.max(0, Math.min(1, Number(v) || 0));
@@ -447,6 +453,7 @@ export class Session {
       effects: this.state.effects.filter((e) => e.net === undefined || shownOn(e.net, net)),
       playing: this.state.playing.filter((p) => p.loop),
       crew: this.state.config.crew,
+      solo: this.soloView(), // a game without a Warden: choosing a story, building it, or playing
       claims: this.claims(),
       busy: !!this.state.pending,
       roll: this.publicRoll(),
@@ -515,7 +522,7 @@ export class Session {
   // roll); then the agent writes what happens, knowing the result.
   holdForWarden(raw, note) {
     const s = this.state;
-    const oc = { needed: true, attempt: String(raw.attempt || "").slice(0, 140), suggested_check: CHECKS[raw.suggested_check] ? raw.suggested_check : "none", advantage: ["advantage", "disadvantage"].includes(raw.advantage) ? raw.advantage : "none", why: String(raw.why || "").slice(0, 300), on_success: String(raw.on_success || "").slice(0, 200), on_failure: String(raw.on_failure || "").slice(0, 200) };
+    const oc = { needed: true, attempt: String(raw.attempt || "").slice(0, 140), suggested_check: CHECKS[raw.suggested_check] || raw.suggested_check === PANIC ? raw.suggested_check : "none", advantage: ["advantage", "disadvantage"].includes(raw.advantage) ? raw.advantage : "none", why: String(raw.why || "").slice(0, 300), on_success: String(raw.on_success || "").slice(0, 200), on_failure: String(raw.on_failure || "").slice(0, 200) };
     s.outcomeCheck = { ...oc, id: Date.now().toString(36), at: Date.now(), held: true };
     this.addLog("note", `⚖ Your call first (nothing shown to players yet): ${oc.attempt || "(unspecified)"}${oc.suggested_check !== "none" ? ` · suggests ${CHECKS[oc.suggested_check].label}${oc.advantage === "advantage" ? " [+]" : oc.advantage === "disadvantage" ? " [-]" : ""}` : ""}`);
     if (note) this.addLog("note", `Agent: ${note}`);
@@ -523,6 +530,7 @@ export class Session {
     this.setBusy(true); // players see PROCESSING meanwhile
     this.touch();
     this.syncDm();
+    if (s.solo?.phase === "play") this.soloRule(s.outcomeCheck); // (no Warden: settle it now)
   }
 
   // A player typed while lines were still playing: the comms are cut off on every
@@ -638,6 +646,9 @@ export class Session {
   crewChanged() {
     this.toPlayers({ t: "crew", crew: this.state.config.crew, claims: this.claims() });
     this.syncDm();
+    // No Warden: the story opens once someone has taken a crew file.
+    const x = this.state.solo;
+    if (x?.phase === "play" && !x.opened && Object.keys(this.claims()).length) this.soloOpen();
   }
 
   characterOf(ws) {
@@ -645,6 +656,10 @@ export class Session {
   }
 
   handlePlayer(ws, msg) {
+    // A game without a Warden: its pilot (holding the session's token) runs the AI.
+    if (msg.t === "pilot") return this.pilotAuth(ws, msg.token);
+    if (String(msg.t).startsWith("pilot")) return ws.pilot && this.handlePilot(ws, msg);
+    if (msg.t === "input" && this.state.solo && this.state.solo.phase !== "play") return; // (still choosing the story)
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
     if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() })); // clock sync
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
@@ -826,8 +841,10 @@ export class Session {
           break;
         }
         if (msg.fromOutcome) {
-          // The stakes the Warden was shown go to the agent for when the result comes in.
+          // The stakes the Warden was shown go to the agent for when the result comes in,
+          // and to the players' roll prompt.
           const oc = s.outcomeCheck;
+          if (oc?.on_success || oc?.on_failure) s.roll.stakes = { success: oc.on_success || "", failure: oc.on_failure || "" };
           const trim = (t) => String(t || "").trim().replace(/[.\s]+$/, "");
           const stakes = [oc?.on_success && `on a success, ${trim(oc.on_success)}`, oc?.on_failure && `on a failure, ${trim(oc.on_failure)}`].filter(Boolean);
           if (stakes.length) this.addLog("warden", `Stakes for this roll (narrate the result by them): ${stakes.join("; ")}.`);
@@ -1260,7 +1277,7 @@ export class Session {
     if (!r || r.status !== "waiting") return null;
     return {
       id: r.id, check: r.check, label: checkLabel(r), skill: skillLabel(r), skillName: r.skill, bonus: r.bonus, reason: r.reason, advantage: r.advantage,
-      panic: r.check === PANIC, all: r.all,
+      panic: r.check === PANIC, all: r.all, stakes: r.stakes || null,
       pcs: r.pcs.map((p) => ({ ...p, done: !!r.results[p.id] })), // who rolls, and who already has
     };
   }
@@ -1309,6 +1326,7 @@ export class Session {
     this.syncDm();
     // The agent narrates what happens, with the [ROLL RESULT]s as the latest input
     // (with no key, the Warden does it)
+    if (this.state.solo) this.soloNoCheck = true;
     if (this.hasKey()) this.generate();
   }
 
@@ -1446,7 +1464,7 @@ export class Session {
 
   deliverReply(reply, source) {
     const oc = reply?.outcome_check;
-    if (oc?.needed) {
+    if (oc?.needed && !this.state.solo) { // (no Warden to rule on it: see soloRule)
       this.state.outcomeCheck = { ...oc, id: Date.now().toString(36), at: Date.now() };
       this.addLog("note", `⚖ Outcome needed: ${oc.attempt || "(unspecified)"}${oc.suggested_check !== "none" ? ` · suggests ${CHECKS[oc.suggested_check].label}${oc.advantage === "advantage" ? " [+]" : oc.advantage === "disadvantage" ? " [-]" : ""}` : ""}`);
     }
@@ -1543,6 +1561,10 @@ export class Session {
     // Whisper/steering are logged as Warden commands when the reply goes out,
     // so the agent's history shows what it was told and when.
     const directives = currentDirectives(s, steer);
+    // No Warden: a reply asked for to settle or narrate something (a ruling, a
+    // roll's result, the opening) can't open another check, or it could loop.
+    const noCheck = !!s.solo && this.soloNoCheck;
+    this.soloNoCheck = false;
     s.pending = { status: "generating", forEntry, steer: steer || "", model, directives };
     this.rerun = false;
     this.setBusy(true);
@@ -1578,7 +1600,7 @@ export class Session {
 
       // The one-shot whisper is consumed once a reply exists.
       s.whisper = "";
-      if (reply.outcome_check.needed && s.config.checkFirst !== false) {
+      if (reply.outcome_check.needed && s.config.checkFirst !== false && !noCheck) {
         // (The reply flagged a check the first question missed: hold it too.)
         this.logDirectives(directives);
         return this.holdForWarden(reply.outcome_check, reply.dm_note);
@@ -1599,12 +1621,173 @@ export class Session {
       if (myGen !== this.genCounter) return;
       console.error(`[${this.code}] generation failed:`, err?.message || err);
       s.pending = { status: "error", forEntry, error: err?.message || String(err), model, directives };
+      if (s.solo) { // (no Warden to retry it: the players are told, and can type again)
+        s.pending = null;
+        this.setBusy(false);
+        this.toPlayers({ t: "notice", text: `LINK ERROR: ${err?.message || err}` });
+      }
     }
     this.touch();
     this.syncDm();
     // Players typed while the agent was busy: one follow-up covering all of it
     // (in review mode this replaces the draft, as new input always has).
     if (this.rerun) this.generate();
+  }
+
+  // ---------------------------------------------------------------- no Warden
+  // A game without a Warden. One player, the pilot, created the session: their
+  // screen holds its token, which lets them run the AI (key, model), pick the
+  // story and end the game; they never see the Warden's console. Everyone picks
+  // a story from the agent's pitches, the agent builds it (builder.js) and then
+  // runs it as Warden too: uncertain attempts become rolls (or its own call),
+  // it calls Panic checks, and it opens the story when someone has a crew file.
+
+  soloView() {
+    const x = this.state.solo;
+    return x ? { phase: x.phase, pitches: x.pitches, busy: x.busy || "", error: x.error || "", title: x.title || "" } : null;
+  }
+  soloChanged() {
+    this.toPlayers({ t: "solo", solo: this.soloView() });
+    this.touch();
+  }
+  startSolo() {
+    this.state.solo = { phase: "pick", pitches: [KESTREL_PITCH], busy: "", error: "", opened: false };
+    Object.assign(this.state.config, { mode: "auto", checkFirst: true, agentCrew: true, agentEffects: true });
+    this.soloPitches();
+  }
+
+  // Fresh story ideas (the built-in story always stays first).
+  async soloPitches() {
+    const x = this.state.solo;
+    if (!x || x.busy || x.phase !== "pick") return;
+    Object.assign(x, { busy: "pitches", error: "" });
+    this.soloChanged();
+    try {
+      const fresh = normalizePitches(await this.ask(pitchesRequest(x.pitches.filter((p) => !p.builtin).map((p) => p.title)), "builder"));
+      if (!fresh.length) throw new Error("no stories came back");
+      x.pitches = [KESTREL_PITCH, ...fresh];
+    } catch (err) {
+      x.error = `Couldn't come up with stories (${err?.message || err}). Try again, or play KESTREL-9.`;
+    }
+    x.busy = "";
+    this.soloChanged();
+  }
+
+  // The pilot picked a story: the built-in one at once, any other built by the agent first.
+  async soloBuild(i) {
+    const x = this.state.solo;
+    const p = x?.pitches?.[i];
+    if (!p || x.busy || x.phase !== "pick") return;
+    Object.assign(x, { title: p.title, error: "", opened: false });
+    if (p.builtin) {
+      const s = this.state, keep = { provider: s.config.provider, model: s.config.model, effort: s.config.effort };
+      this.genCounter++;
+      this.playhead = 0;
+      for (const e of [...s.effects]) this.endEffect(e.id);
+      this.stopSounds();
+      this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], solo: x };
+      Object.assign(this.state.config, keep, { mode: "auto", checkFirst: true });
+      for (const ws of this.sockets) if (ws.role === "player") ws.character = null;
+      x.phase = "play";
+      this.addLog("note", "Story: KESTREL-9 (no Warden).");
+      this.initPlayers();
+      this.soloChanged();
+      return this.syncDm();
+    }
+    Object.assign(x, { phase: "building", busy: "build" });
+    this.soloChanged();
+    try {
+      const draft = normalizeDraft(await this.ask(draftRequest(pitchBuilder(p)), "builder"));
+      if (x.phase !== "building") return; // (the pilot started over meanwhile)
+      x.phase = "play";
+      this.applyStory(draft);
+      Object.assign(this.state.config, { mode: "auto", checkFirst: true });
+    } catch (err) {
+      x.phase = "pick";
+      x.error = `Couldn't build "${p.title}" (${err?.message || err}). Try again, or pick another.`;
+    }
+    x.busy = "";
+    this.soloChanged();
+    this.syncDm();
+  }
+
+  // The story's first scene, once someone has a crew file.
+  soloOpen() {
+    this.state.solo.opened = true;
+    this.touch();
+    this.soloNoCheck = true;
+    this.generate("OPENING: there is no Warden, so you start the game. Set the opening scene for the players at their terminal in a few short lines: where they are, what they see and hear, and something that gives them a reason to act. End on a moment that invites them to type.");
+  }
+
+  // An uncertain attempt, settled the way a Warden would: a roll when one fits
+  // (for whoever tried it; characters nobody is playing roll by themselves),
+  // otherwise the agent rules on it fairly and narrates it.
+  soloRule(oc) {
+    const s = this.state;
+    if (!oc) return;
+    const crew = s.config.crew;
+    const by = s.log.findLast((e) => e.kind === "player")?.by;
+    const pc = crew.find((c) => c.name === by);
+    if (oc.suggested_check !== "none" && crew.length) {
+      this.handleDm({ t: "rollRequest", fromOutcome: true, roll: { pc: pc?.id ?? "all", check: oc.suggested_check, advantage: oc.advantage, reason: oc.attempt } });
+      const claimed = this.claims();
+      for (const p of s.roll?.status === "waiting" ? [...s.roll.pcs] : []) {
+        const who = crew.find((c) => c.id === p.id);
+        if (who && !claimed[who.id] && s.roll?.status === "waiting") this.rollFor(who, diceFor(s.roll), { by: "warden" });
+      }
+      return;
+    }
+    s.outcomeCheck = null;
+    const stakes = [oc.on_success && `if it works, ${oc.on_success}`, oc.on_failure && `if it fails, ${oc.on_failure}`].filter(Boolean).join("; ");
+    this.soloNoCheck = true;
+    this.addLog("warden", `No Warden is running this game, so you rule on it: decide fairly, by the fiction and the odds, whether "${oc.attempt || "their attempt"}" works${stakes ? ` (the stakes: ${stakes})` : ""}, then narrate what happens.`);
+    this.generate();
+  }
+
+  // The pilot's screen proves it holds the session token.
+  pilotAuth(ws, token) {
+    if (!this.state.solo || !this.checkToken(token)) return;
+    ws.pilot = true;
+    this.sendPilot(ws);
+  }
+  sendPilot(ws) {
+    const c = this.state.config;
+    ws.send(JSON.stringify({ t: "pilotInfo", providers: catalog(this.keys), config: { provider: c.provider, model: c.model, effort: c.effort } }));
+  }
+  handlePilot(ws, msg) {
+    const x = this.state.solo;
+    if (!x) return;
+    switch (msg.t) {
+      case "pilotConfig": { // the AI provider, model and thinking effort
+        const patch = Object.fromEntries(Object.entries(msg.patch || {}).filter(([k]) => ["provider", "model", "effort"].includes(k)));
+        this.handleDm({ t: "config", patch });
+        break;
+      }
+      case "pilotKey":
+        this.handleDm({ t: "apiKey", provider: msg.provider, key: msg.key });
+        break;
+      case "pilotPitches":
+        this.soloPitches();
+        break;
+      case "pilotBuild":
+        this.soloBuild(Number(msg.i));
+        break;
+      case "pilotNewStory": // back to choosing (the current story is dropped)
+        this.genCounter++;
+        Object.assign(x, { phase: "pick", busy: "", error: "", opened: false });
+        this.state.pending = null;
+        this.setBusy(false);
+        this.soloChanged();
+        if (x.pitches.length < 2) this.soloPitches();
+        break;
+      case "pilotEnd":
+        console.log(`  - session ${this.code} ended by its pilot`);
+        this.onEnd?.(this);
+        return;
+      default:
+        return;
+    }
+    for (const c of this.sockets) if (c.pilot && c.readyState === 1) this.sendPilot(c);
   }
 
   close() {

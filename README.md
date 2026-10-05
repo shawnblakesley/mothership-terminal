@@ -23,6 +23,17 @@ Play it at **[shawnofthe.dev/mothership](https://shawnofthe.dev/mothership/)**, 
 - **Copy Warden link** opens it on another device.
 - Idle sessions are deleted after two weeks.
 
+## Playing without a Warden
+
+A group can play with no Warden at all: the AI builds a story and runs it.
+
+1. **On the player page** (`/`), **NO WARDEN? START A GAME YOURSELF** opens a short setup: pick the AI (the free shared model needs no key; DeepSeek or Claude use your own key) and start. Whoever does this is the **pilot**.
+2. **Everyone picks a story together.** The terminal lists KESTREL-9 (ready at once) and four new sci-fi horror pitches the AI comes up with; the pilot picks one (or asks for **other stories**). Share the session code or link (under **PILOT**) and others join as usual; they see the same list.
+3. **The AI builds it** (about a minute; the same builder as **Story Builder**): station, lore, secrets, cast, map, terminals and four characters. Everyone picks a crew file, and the AI opens the scene.
+4. **Then it plays like a normal game.** The AI is the Warden too: uncertain attempts become rolls for whoever tried them, with the stakes on the roll prompt (**IF IT WORKS / IF IT FAILS**); when no roll fits, it rules fairly itself. It calls Panic checks when something truly horrifying happens, applies harm and Stress, and characters nobody is playing roll by themselves.
+
+**PILOT** (only on the pilot's screen; the session token is kept on that device) has the invite code and link, the AI provider, model, thinking and key, **Choose a new story** and **End the game**. The pilot never sees the Warden's console, so there are no spoilers for them either. If the AI fails to answer, every screen gets a short notice and the players can just type again.
+
 ## Run it yourself
 
 1. Install dependencies:

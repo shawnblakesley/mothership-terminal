@@ -25,6 +25,8 @@
       <span class="sep" id="hdr-term-sep" hidden>//</span>
       <button id="hdr-file" class="hdr-btn" type="button" title="Your crew file" hidden>FILE</button>
       <span class="sep" id="hdr-file-sep" hidden>//</span>
+      <button id="hdr-pilot" class="hdr-btn" type="button" title="You're the pilot: the AI, the story, inviting others" hidden>PILOT</button>
+      <span class="sep" id="hdr-pilot-sep" hidden>//</span>
       <button id="hdr-rules" class="hdr-btn" type="button" title="How to play: the rules, in plain text">RULES</button>
       <span class="sep">//</span>
       <span class="vol">
@@ -40,6 +42,14 @@
         <div class="p-dim">SELECT YOUR CREW FILE (PRESS 1-4).</div>
         <ol id="crewpick-list"></ol>
         <button type="button" id="crewpick-none" class="p-btn">[ NO FILE: JUST WATCHING ]</button>
+      </section>
+      <!-- A game without a Warden: everyone sees the stories on offer; the pilot picks one. -->
+      <section id="solopick" class="panel" hidden>
+        <div class="p-title" id="solopick-title">■ CHOOSE A STORY ■</div>
+        <div class="p-dim" id="solopick-note"></div>
+        <ol id="solopick-list"></ol>
+        <div id="solopick-status" class="p-dim" role="status"></div>
+        <button type="button" id="solopick-more" class="p-btn" hidden>[ OTHER STORIES ]</button>
       </section>
       <!-- Move to another terminal on the station (or the portable unit). -->
       <section id="termpick" class="panel" hidden>
@@ -79,6 +89,7 @@
         <div id="rb-title" class="rb-title">■ ROLL REQUIRED ■</div>
         <div id="rb-label"></div>
         <div id="rb-reason" class="rb-dim"></div>
+        <div id="rb-stakes" class="rb-dim" hidden></div>
         <div id="rb-wait" class="rb-dim"></div>
         <form id="rb-form" autocomplete="off">
           <div id="rb-target"></div>
@@ -113,6 +124,7 @@
       <label for="join-code">ENTER SESSION CODE:</label>
       <input id="join-code" maxlength="12" spellcheck="false" autocapitalize="characters" aria-describedby="join-err">
       <div id="join-err" role="status"></div>
+      <p class="warden-link"><button type="button" id="solo-start" class="linkbtn">NO WARDEN? START A GAME YOURSELF ›</button></p>
       <p class="warden-link"><a href="dm">RUNNING THE GAME? START A SESSION AS WARDEN ›</a></p>
     </form>
   </div>
@@ -124,6 +136,44 @@
     <div class="grain"></div>
     <div class="bezel"></div>
   </div>
+
+  <!-- Start a game without a Warden: this player becomes its pilot (the AI and its key are theirs). -->
+  <dialog id="soloStart" class="rulesdlg" aria-labelledby="solo-start-title">
+    <div class="rules-head">
+      <h1 id="solo-start-title">Play without a Warden</h1>
+      <button type="button" class="dlg-close" aria-label="Close">✕</button>
+    </div>
+    <form class="rules-body pilotform" id="soloStartForm" autocomplete="off">
+      <p class="lead">The AI builds a story and runs it: every voice, every roll, every consequence. You're the pilot: the AI runs on your key, and you pick the story. Then share the code and everyone joins.</p>
+      <label>AI <select id="ss-provider"></select></label>
+      <label id="ss-keyrow">Your API key <a id="ss-keylink" target="_blank" rel="noopener">get one ↗</a>
+        <input id="ss-key" type="password" spellcheck="false"></label>
+      <label class="check" id="ss-rememberrow"><input type="checkbox" id="ss-remember"> Remember this key on this device</label>
+      <p class="fine" id="ss-note"></p>
+      <div class="row"><button type="submit" id="ss-go" class="primary">Start the game</button><span id="ss-err" class="err" role="alert"></span></div>
+    </form>
+  </dialog>
+
+  <!-- The pilot's controls (only on the screen that started the game). -->
+  <dialog id="pilotDlg" class="rulesdlg" aria-labelledby="pilot-title">
+    <div class="rules-head">
+      <h1 id="pilot-title">Pilot</h1>
+      <button type="button" class="dlg-close" aria-label="Close">✕</button>
+    </div>
+    <div class="rules-body pilotform">
+      <h2>Invite</h2>
+      <p>Session code <b id="pl-code"></b>. Others join at this page with the code, or with the link: <button type="button" id="pl-copy" class="ghostbtn">Copy link</button></p>
+      <h2>The AI</h2>
+      <label>Provider <select id="pl-provider"></select></label>
+      <label>Model <select id="pl-model"></select></label>
+      <label id="pl-effortrow">Thinking <select id="pl-effort"></select></label>
+      <label id="pl-keyrow">API key <input id="pl-key" type="password" spellcheck="false" placeholder=""></label>
+      <div class="row" id="pl-keyactions"><button type="button" id="pl-keysave">Save key</button><span id="pl-keystatus" class="fine"></span></div>
+      <h2>The game</h2>
+      <div class="row"><button type="button" id="pl-newstory">Choose a new story</button><button type="button" id="pl-end" class="dangerbtn">End the game</button></div>
+      <p class="fine">A new story starts over for everyone. Ending the game closes it for everyone.</p>
+    </div>
+  </dialog>
 
   <!-- The rules, for players: a plain, readable sheet over the terminal (not terminal text). -->
   <dialog id="rules" class="rulesdlg" aria-labelledby="rules-title">

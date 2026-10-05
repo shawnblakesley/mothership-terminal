@@ -190,7 +190,9 @@ router.post("/api/sessions", express.json({ limit: "4kb" }), (req, res) => {
   sweep();
   if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: "The server is full right now. Try again later." });
   const { session, token } = provider.serverKeyOnly ? createSession({}, provider.id) : createSession({ [provider.id]: key });
-  console.log(`  + session ${session.code} created (${provider.id})`);
+  // A game without a Warden: the player who made it is its pilot (they keep the token).
+  if (req.body?.solo === true) session.startSolo();
+  console.log(`  + session ${session.code} created (${provider.id}${req.body?.solo === true ? ", no Warden" : ""})`);
   res.json({ code: session.code, token });
 });
 

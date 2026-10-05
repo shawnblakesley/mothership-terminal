@@ -462,7 +462,7 @@
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   function openPanel(id) {
-    for (const p of ["crewpick", "crewfile", "selfroll", "termpick"]) $(p).hidden = p !== id;
+    for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "solopick"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
     // (Not before power-on: the key that wakes the terminal would also press the button.)
     if (id === "crewpick" && bootEl.classList.contains("gone")) $("crewpick-list").querySelector("button")?.focus();
@@ -614,6 +614,170 @@
     if (c) { e.preventDefault(); claim(c.id); renderFile(); openPanel("crewfile"); $("crewfile-close").focus(); }
   });
   $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
+  // ------------------------------------------------------------ no Warden
+  // A game without a Warden. Whoever starts it is its pilot: the AI runs on
+  // their key, and this screen keeps the session's token to prove it (PILOT:
+  // the AI, the story, inviting others). Everyone sees the stories on offer;
+  // the pilot picks one, the AI builds it and runs the whole game.
+  const ls = {
+    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+    del: (k) => { try { localStorage.removeItem(k); } catch {} },
+  };
+  const pilotKey = () => `pilot:${code}`;
+  for (const b of document.querySelectorAll(".dlg-close")) b.onclick = () => b.closest("dialog").close();
+
+  // Starting one, from the join screen.
+  let providers = [];
+  const providerList = async () => (providers.length ? providers : (providers = await fetch("api/providers").then((r) => (r.ok ? r.json() : [])).catch(() => [])));
+  async function openSoloStart() {
+    $("soloStart").showModal();
+    const list = await providerList();
+    // The free model first when the server offers one: nothing to set up.
+    const order = [...list.filter((p) => p.free), ...list.filter((p) => !p.free)];
+    $("ss-provider").innerHTML = order.map((p) => `<option value="${escH(p.id)}">${escH(p.label)}${p.free ? " · no key needed" : ` · ${escH(p.models[0].label)}`}</option>`).join("");
+    syncSoloStart();
+  }
+  function syncSoloStart() {
+    const p = providers.find((x) => x.id === $("ss-provider").value);
+    const free = !!p?.free;
+    $("ss-keyrow").hidden = $("ss-rememberrow").hidden = free;
+    $("ss-keylink").href = p?.keyUrl || "#";
+    $("ss-key").placeholder = p?.keyHint || "";
+    const remembered = p && ls.get(`wardenKey:${p.id}`);
+    $("ss-key").value = remembered || "";
+    $("ss-remember").checked = !!remembered;
+    $("ss-note").textContent = free
+      ? "The free model is shared and a little slower. If its limit runs out, add your own key under PILOT."
+      : "Your key stays in the server's memory for this game only; it is never saved or shown to anyone. You pay your provider for what the AI uses (a fraction of a cent per reply on the cheap models).";
+  }
+  $("solo-start").onclick = openSoloStart;
+  $("ss-provider").onchange = syncSoloStart;
+  $("soloStartForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const provider = $("ss-provider").value;
+    const free = !!providers.find((p) => p.id === provider)?.free;
+    const apiKey = free ? "" : $("ss-key").value.trim();
+    $("ss-go").disabled = true;
+    $("ss-err").textContent = "";
+    try {
+      const r = await fetch("api/sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, apiKey, solo: true }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `Couldn't start a game (${r.status}).`);
+      ls.set(`pilot:${data.code}`, data.token);
+      if (!free && $("ss-remember").checked) ls.set(`wardenKey:${provider}`, apiKey);
+      else if (!free) ls.del(`wardenKey:${provider}`);
+      location.href = `?s=${data.code}`;
+    } catch (err) {
+      $("ss-err").textContent = err.message;
+      $("ss-go").disabled = false;
+    }
+  });
+
+  // Choosing the story (everyone sees it; the pilot picks).
+  let solo = null, isPilot = false, pilot = null, pilotKeySent = false;
+  function applySolo(x) {
+    solo = x || null;
+    if (!solo || solo.phase === "play") {
+      if (!$("solopick").hidden) openPanel(null);
+      return;
+    }
+    renderSolo();
+    openPanel("solopick");
+  }
+  function renderSolo() {
+    if (!solo) return;
+    const building = solo.phase === "building";
+    $("solopick-title").textContent = building ? `■ BUILDING: ${solo.title.toUpperCase()} ■` : "■ CHOOSE A STORY ■";
+    $("solopick-note").textContent = building
+      ? "THE AI IS BUILDING THE WORLD AND EVERYONE IN IT. ABOUT A MINUTE."
+      : `NO WARDEN TONIGHT: THE AI RUNS THE GAME. ${isPilot ? "PICK A STORY (PRESS 1-9)." : "THE PILOT IS PICKING A STORY. TALK IT OVER."}`;
+    $("solopick-list").innerHTML = building ? "" : solo.pitches.map((p, i) => {
+      const name = `[${i + 1}] ${escH(p.title.toUpperCase())}`;
+      return `<li>${isPilot ? `<button type="button" class="p-btn pick" data-pick="${i}">${name}</button>` : name}<span class="p-dim tags"> · ${escH(p.tags.toUpperCase())}</span>
+        <div class="p-dim p-crime">${escH(p.hook)}</div></li>`;
+    }).join("");
+    $("solopick-status").innerHTML = solo.busy === "pitches" ? 'GENERATING STORIES<span class="dots"></span>'
+      : building ? 'BUILDING<span class="dots"></span>' : escH(solo.error.toUpperCase());
+    $("solopick-more").hidden = !isPilot || building;
+    $("solopick-more").disabled = !!solo.busy;
+  }
+  const pickStory = (i) => solo?.phase === "pick" && !solo.busy && ws?.send(JSON.stringify({ t: "pilotBuild", i }));
+  $("solopick-list").addEventListener("click", (e) => { const i = e.target.closest("[data-pick]")?.dataset.pick; if (i !== undefined) pickStory(Number(i)); });
+  $("solopick-more").onclick = () => ws?.send(JSON.stringify({ t: "pilotPitches" }));
+  addEventListener("keydown", (e) => {
+    if ($("solopick").hidden || !isPilot || e.ctrlKey || e.metaKey || e.altKey || !/^[1-9]$/.test(e.key)) return;
+    if (Number(e.key) <= (solo?.pitches.length || 0)) { e.preventDefault(); pickStory(Number(e.key) - 1); }
+  });
+
+  // The pilot's controls.
+  function setPilot(info) {
+    isPilot = true;
+    pilot = info;
+    $("hdr-pilot").hidden = $("hdr-pilot-sep").hidden = false;
+    // After a server restart the key is gone: re-send a remembered one.
+    const p = info.providers.find((x) => x.id === info.config.provider);
+    const remembered = p && !p.configured && ls.get(`wardenKey:${p.id}`);
+    if (remembered && !pilotKeySent) {
+      pilotKeySent = true;
+      ws.send(JSON.stringify({ t: "pilotKey", provider: p.id, key: remembered }));
+    }
+    renderSolo();
+    if ($("pilotDlg").open) renderPilot();
+  }
+  const fill = (sel, opts, value) => { sel.innerHTML = opts.map(([v, l]) => `<option value="${escH(v)}">${escH(l)}</option>`).join(""); sel.value = value; };
+  function renderPilot() {
+    const { providers: list, config } = pilot;
+    const p = list.find((x) => x.id === config.provider) || list[0];
+    const m = p.models.find((x) => x.id === config.model) || p.models[0];
+    $("pl-code").textContent = code;
+    fill($("pl-provider"), list.map((x) => [x.id, `${x.label}${x.configured ? "" : " (no key)"}`]), p.id);
+    fill($("pl-model"), p.models.map((x) => [x.id, x.label]), m.id);
+    fill($("pl-effort"), m.efforts.map((e) => [e, e === "off" ? "off (fastest)" : e]), config.effort);
+    $("pl-effortrow").hidden = !m.efforts.length;
+    $("pl-keyrow").hidden = $("pl-keyactions").hidden = !!p.free;
+    $("pl-key").placeholder = p.configured ? "•••••••• (set; paste to replace)" : p.keyHint;
+    $("pl-keystatus").textContent = p.configured ? "A key is set for this game." : "No key yet: the AI can't answer on this provider until you add one.";
+  }
+  $("hdr-pilot").onclick = () => { renderPilot(); $("pilotDlg").showModal(); };
+  const pilotSend = (msg) => ws?.readyState === 1 && ws.send(JSON.stringify(msg));
+  $("pl-provider").onchange = (e) => pilotSend({ t: "pilotConfig", patch: { provider: e.target.value } });
+  $("pl-model").onchange = (e) => pilotSend({ t: "pilotConfig", patch: { model: e.target.value } });
+  $("pl-effort").onchange = (e) => pilotSend({ t: "pilotConfig", patch: { effort: e.target.value } });
+  $("pl-keysave").onclick = () => {
+    const key = $("pl-key").value.trim();
+    if (!key) return;
+    pilotSend({ t: "pilotKey", provider: $("pl-provider").value, key });
+    pilotSend({ t: "pilotConfig", patch: { provider: $("pl-provider").value } });
+    $("pl-key").value = "";
+  };
+  $("pl-copy").onclick = async () => {
+    const link = `${location.origin}${location.pathname}?s=${code}`;
+    try { await navigator.clipboard.writeText(link); $("pl-copy").textContent = "Copied"; } catch { prompt("Copy this link:", link); }
+    setTimeout(() => { $("pl-copy").textContent = "Copy link"; }, 1500);
+  };
+  $("pl-newstory").onclick = () => {
+    if (!confirm("Choose a new story? The current one ends for everyone.")) return;
+    pilotSend({ t: "pilotNewStory" });
+    $("pilotDlg").close();
+  };
+  $("pl-end").onclick = () => {
+    if (!confirm("End the game for everyone?")) return;
+    pilotSend({ t: "pilotEnd" });
+    ls.del(pilotKey());
+  };
+  // While a dialog is open the terminal's own shortcuts stand down (as for the rules).
+  addEventListener("keydown", (e) => { if ($("soloStart").open || $("pilotDlg").open) e.stopImmediatePropagation(); }, true);
+
+  // A message from the system, not the story (e.g. the AI didn't answer).
+  function notice(text) {
+    const div = document.createElement("div");
+    div.className = "line notice";
+    div.textContent = `[ ${String(text).toUpperCase()} ]`;
+    linesEl.append(div);
+    scrollDown();
+  }
+
   // The rules: a readable modal over the terminal (Esc or ✕ closes it).
   $("hdr-rules").onclick = () => $("rules").showModal();
   $("rules-close").onclick = () => $("rules").close();
@@ -813,6 +977,8 @@
     $("rb-title").textContent = mustRoll ? "■ ROLL REQUIRED ■" : "■ ROLL IN PROGRESS ■";
     $("rb-label").textContent = [roll.label, roll.skill].filter(Boolean).join(" · ");
     $("rb-reason").textContent = roll.reason ? roll.reason.toUpperCase() : "";
+    $("rb-stakes").hidden = !roll.stakes;
+    $("rb-stakes").textContent = roll.stakes ? [roll.stakes.success && `IF IT WORKS: ${roll.stakes.success}`, roll.stakes.failure && `IF IT FAILS: ${roll.stakes.failure}`].filter(Boolean).join("\n").toUpperCase() : "";
     $("rb-wait").textContent = waiting.length ? `WAITING ON: ${waiting.join(", ")}` : "";
     $("rb-form").hidden = !mustRoll;
     if (!mustRoll) return;
@@ -934,6 +1100,8 @@
     ws = new WebSocket(socketUrl());
     ws.onopen = () => {
       $("hdr-link").classList.remove("down");
+      const token = ls.get(pilotKey());
+      if (token) ws.send(JSON.stringify({ t: "pilot", token }));
       // Sync this screen's clock with the server's (a few tries; the quickest wins).
       bestRtt = Infinity;
       for (let i = 0; i < 4; i++) setTimeout(ping, i * 250);
@@ -976,11 +1144,16 @@
           busy = msg.busy;
           updateBusy();
           showRoll(msg.roll || null);
+          // A game without a Warden: the stories on offer until one is playing.
+          applySolo(msg.solo);
           // First visit, or a new story replaced the crew: reclaim a remembered file or pick one.
-          if (!mine()) crewOnInit();
+          if (!mine() && (!msg.solo || msg.solo.phase === "play")) crewOnInit();
           terminalOnInit();
           scrollDown();
           break;
+        case "solo": applySolo(msg.solo); break;
+        case "pilotInfo": setPilot(msg); break;
+        case "notice": notice(msg.text); break;
         case "header":
           if (header.tts && !msg.header.tts) Voice.stop();
           applyHeader(msg.header);

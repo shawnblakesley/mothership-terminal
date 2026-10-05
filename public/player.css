@@ -397,3 +397,30 @@ body.look-grime #crt::after {
 }
 body.look-portable #crt { inset: 5vh 6vw; border: 3px solid var(--dim); border-radius: 22px; box-shadow: 0 0 0 9999px #050505, inset 0 0 40px rgba(0, 0, 0, 0.6); font-size: 0.9em; }
 body.look-portable #crt::before { content: "PORTABLE UNIT · SIGNAL ▂▄▆_ · BATT 62%"; position: absolute; right: 2.2em; bottom: 0.6em; color: var(--dim); font-size: 0.7em; letter-spacing: 0.08em; }
+
+/* A game without a Warden: the start button on the join screen, the setup and
+   pilot dialogs (readable, like the rules), the stakes on a roll, notices. */
+.warden-link + .warden-link { margin-top: 0.8em; }
+.warden-link .linkbtn { background: none; border: 0; border-bottom: 1px dashed var(--dim); padding: 0; font: inherit; color: var(--dim); letter-spacing: inherit; cursor: pointer; text-transform: inherit; }
+.warden-link .linkbtn:hover, .warden-link .linkbtn:focus-visible { color: var(--fg); outline: none; }
+.pilotform { display: flex; flex-direction: column; gap: 10px; padding-bottom: 20px; }
+.pilotform [hidden] { display: none !important; }
+.pilotform h2 { margin-bottom: 0; }
+.pilotform p { margin: 0; }
+.pilotform label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: #b9c0c6; }
+.pilotform label.check { flex-direction: row; align-items: center; gap: 8px; }
+.pilotform label a { color: var(--fg); font-size: 13px; }
+.pilotform input:not([type="checkbox"]), .pilotform select { font: 15px system-ui, "Segoe UI", sans-serif; color: #e9ecef; background: #0e1012; border: 1px solid #3a3f44; border-radius: 8px; padding: 8px 10px; text-shadow: none; text-transform: none; letter-spacing: normal; }
+.pilotform input:focus, .pilotform select:focus { outline: 2px solid color-mix(in srgb, var(--fg) 60%, transparent); outline-offset: 0; }
+.pilotform .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.pilotform button, .pilotform .ghostbtn { font: 600 14px system-ui, "Segoe UI", sans-serif; color: #e9ecef; background: #262b2f; border: 1px solid #3a3f44; border-radius: 8px; padding: 8px 14px; cursor: pointer; text-shadow: none; text-transform: none; letter-spacing: normal; }
+.pilotform button:hover { background: #30363b; }
+.pilotform button.primary { background: var(--fg); color: #000; border-color: var(--fg); }
+.pilotform button.dangerbtn { color: #ff8a80; border-color: #6b3330; }
+.pilotform .ghostbtn { padding: 3px 10px; font-size: 13px; }
+.pilotform .err { color: #ff8a80; font-size: 14px; }
+.pilotform b { letter-spacing: 0.08em; }
+#rb-stakes { white-space: pre-line; }
+#lines .line.notice { color: var(--dim); font-style: italic; }
+#solopick li .p-btn { text-align: left; }
+#solopick .tags { color: var(--dim); }
