@@ -599,7 +599,7 @@
     const card = e.target.closest(".castm");
     if (!act || !card) return;
     const i = Number(card.dataset.i), m = castDraft[i];
-    if (act === "pic") { picFor = { cast: i }; $("portraitFile").value = ""; $("portraitFile").click(); }
+    if (act === "pic") openPortraits({ cast: i });
     else if (act === "nopic") { m.portrait = ""; saveCast(true); renderCast(true); }
     else if (act === "test") Voice.test({ name: "test", voice: { engine: "neural", speaker: m.voice || "am_michael", pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     else if (act === "del") {
@@ -617,11 +617,41 @@
     renderCast(true);
     $("cast").querySelector(".castm:last-of-type .cname")?.select();
   };
-  // A picture: cropped to a small square here, then uploaded.
+  // Whose picture is being picked, and setting it (an upload's file, a pack one's "kit/…", or "").
+  const picTarget = () => (picFor?.crew !== undefined ? crewDraft[picFor.crew] : castDraft[picFor?.cast]);
+  function setPortrait(file) {
+    const m = picTarget();
+    if (!m) return;
+    m.portrait = file;
+    if (picFor.crew !== undefined) { saveCrew(); renderCrew(true); }
+    else { saveCast(true); renderCast(true); }
+    $("portraitDialog").close();
+  }
+  // The picker: the pack's portraits (public/portraits/pack.json), or upload your own.
+  let pack = null;
+  async function openPortraits(target) {
+    picFor = target;
+    const m = picTarget();
+    if (!m) return;
+    $("portraitTitle").textContent = `Picture: ${m.name || "unnamed"}`;
+    $("portraitNone").disabled = !m.portrait;
+    $("portraitDialog").showModal();
+    pack ??= await fetch("portraits/pack.json").then((r) => r.json()).catch(() => []);
+    $("portraitGrid").innerHTML = pack.map((id) => `<button data-face="${esc(id)}" class="${m.portrait === `kit/${id}.png` ? "on" : ""}" title="No. ${esc(id.replace("sfcp-", ""))}"><img src="portraits/${esc(id)}.png" alt="Portrait ${esc(id.replace("sfcp-", ""))}" loading="lazy"></button>`).join("");
+    $("portraitGrid").querySelector(".on")?.scrollIntoView({ block: "center" });
+  }
+  $("portraitGrid").addEventListener("click", (e) => {
+    const id = e.target.closest("[data-face]")?.dataset.face;
+    if (id) setPortrait(`kit/${id}.png`);
+  });
+  $("portraitUpload").onclick = () => { $("portraitFile").value = ""; $("portraitFile").click(); };
+  $("portraitNone").onclick = () => setPortrait("");
+  $("portraitClose").onclick = () => $("portraitDialog").close();
+
+  // A picture of their own: cropped to a small square here, then uploaded.
   $("portraitFile").addEventListener("change", async () => {
     const file = $("portraitFile").files[0];
-    const m = picFor?.crew !== undefined ? crewDraft[picFor.crew] : castDraft[picFor?.cast];
-    if (!file || !m) return;
+    if (!file || !picTarget()) return;
     try {
       const img = await createImageBitmap(file);
       const side = Math.min(img.width, img.height), SIZE = 128;
@@ -631,9 +661,7 @@
       const r = await fetch(`api/sessions/${code}/portraits`, { method: "POST", headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" }, body: blob });
       const out = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(out.error || `Upload failed (${r.status}).`);
-      m.portrait = out.file;
-      if (picFor.crew !== undefined) { saveCrew(); renderCrew(true); }
-      else { saveCast(true); renderCast(true); }
+      setPortrait(out.file);
     } catch (err) {
       toast(err.message || "That picture couldn't be used.", "error");
     }
@@ -669,9 +697,7 @@
     if (!pic && !off) return;
     e.preventDefault(); // (it's in the card's header: don't open or close the card)
     if (off) { crewDraft[Number(off.dataset.pcnopic)].portrait = ""; saveCrew(); renderCrew(true); return; }
-    picFor = { crew: Number(pic.dataset.pcpic) };
-    $("portraitFile").value = "";
-    $("portraitFile").click();
+    openPortraits({ crew: Number(pic.dataset.pcpic) });
   });
   $("crew").addEventListener("change", (e) => {
     const who = e.target.dataset.move;

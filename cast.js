@@ -5,9 +5,10 @@
 // intercom (config.castChannel, a voice: its name, look and speaker effects).
 // The Warden edits the cast; the agent brings new people in and moves them.
 //   { id, name, voice: Kokoro speaker id, notes, room: map room id or "", portrait: file or "" }
-// portrait: an upload (portraits.js), or "kit/<file>.png", one that comes with the
-// app (public/portraits/): from Victor J Merino's Sci-fi character portraits
-// project, CC BY-NC 4.0, credited on the players' screens when one is in use.
+// portrait: an upload (portraits.js), or "kit/sfcp-<n>.png", one of the pack that
+// comes with the app (public/portraits/, listed in pack.json): Victor J Merino's
+// Sci-fi character portraits project, CC BY-NC 4.0, credited on the players'
+// screens while one is in use.
 import { SPEAKERS, COMMS_PRESETS, voiceFor } from "./voices.js";
 
 export const MAX_CAST = 40;
@@ -19,6 +20,8 @@ const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").re
 // KESTREL-9's people, where they are when the crew arrives.
 export const OLD_MARLOWE_NOTES = "Runs the reactor deck. Blunt, practical, swears. Wants the cargo bay opened and dealt with; has no patience for Okonkwo.";
 export const DEFAULT_MARLOWE_NOTES = "Runs the reactor deck. Blunt, practical, swears. Knows the reactor has bled power into the cargo bay for two weeks and that HV-CORE won't let her cut the feed. Can talk the crew through the reactor service. Wants the cargo bay opened and dealt with; has no patience for Okonkwo.";
+// Their faces, by number in the portrait pack.
+const DEFAULT_FACES = { Okonkwo: "70", Salk: "09", Marlowe: "44", Voss: "71", Adar: "86", Petrov: "58", Webb: "14", Ostrand: "98", Yusuf: "12" };
 export const DEFAULT_CAST = [
   { name: "Administrator Ruth Okonkwo", voice: "bf_emma", room: "command_deck", notes: "Station administrator, sealed in on the command deck. Clipped, controlled, company first. Gives orders, never answers questions about what she has reported." },
   { name: "Dr. Imre Salk", voice: "am_onyx", room: "med_bay", notes: "The station medic, in med bay. Kind, exhausted, frightened. Rambles when scared; insists the fever is under control." },
@@ -29,7 +32,7 @@ export const DEFAULT_CAST = [
   { name: "Carys Webb", voice: "af_nicole", room: "med_bay", notes: "Driller, a 'fever' patient in med bay. Drowsy and sweet; says gentle, unsettling things about the cold." },
   { name: "Pell Ostrand", voice: "am_eric", room: "med_bay", notes: "Driller, a 'fever' patient in med bay. Mostly silent; when he does speak, it's in someone else's rhythm." },
   { name: "Sam Yusuf", voice: "am_puck", room: "", notes: "Refinery hand hiding in the dark on Deck 3. Whispers; cracks jokes when he's terrified." },
-].map((c) => ({ id: slug(c.name), portrait: "", ...c }));
+].map((c) => ({ id: slug(c.name), ...c, portrait: `kit/sfcp-${DEFAULT_FACES[c.name.split(" ").at(-1)]}.png` }));
 export const defaultCast = () => structuredClone(DEFAULT_CAST);
 
 // Validate whatever the console (or a saved story, or the story builder) sends.

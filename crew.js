@@ -88,6 +88,9 @@ export const DEFAULT_CREW = [
     notes: "",
   },
 ];
+// Their faces, from the portrait pack that comes with the app (public/portraits/; cast.js).
+const DEFAULT_FACES = { rusk: "94", varga: "20", moll: "45", oyelaran: "21" };
+for (const c of DEFAULT_CREW) c.portrait = `kit/sfcp-${DEFAULT_FACES[c.id]}.png`;
 
 const str = (v, n) => String(v ?? "").slice(0, n);
 const int = (v, min, max, def) => {

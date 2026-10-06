@@ -142,8 +142,8 @@ body {
 .line.style-boxed { border: 1px solid var(--fg); padding: 0.2em 0.5em; display: inline-block; }
 .line.style-label::before { content: attr(data-label); opacity: 0.75; }
 /* The cast's portraits (about two lines tall), to the left of what they say.
-   Tinted to the line's colour (the screen's, in person): a grey picture
-   multiplied over the phosphor colour, with scanlines. */
+   Tinted to the line's colour (the screen's, in person): the picture inverted
+   (line art glows, paper goes dark) and multiplied over the phosphor colour, with scanlines. */
 .line.has-portrait { display: flex; gap: 0.6em; align-items: flex-start; }
 .line.has-portrait::before { content: none; }
 .line.has-portrait .lt { flex: 1; min-width: 0; white-space: pre-wrap; }
@@ -155,18 +155,18 @@ body {
 .portrait.big { float: right; width: 7em; height: 7em; margin: 0 0 0.6em 1em; }
 .portrait.side { width: 5.5em; height: 5.5em; margin-bottom: 0.5em; }
 .portrait {
-  position: relative; flex: none; width: 2.3em; height: 2.3em; margin-top: 0.05em;
+  position: relative; display: block; flex: none; width: 2.3em; height: 2.3em; margin-top: 0.05em;
   background: currentColor; overflow: hidden; isolation: isolate;
-  box-shadow: 0 0 6px color-mix(in srgb, currentColor 45%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent), 0 0 6px color-mix(in srgb, currentColor 30%, transparent);
 }
-.portrait img { display: block; width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) contrast(1.15) brightness(1.05); mix-blend-mode: multiply; }
+.portrait img { display: block; width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) invert(1) contrast(1.25); mix-blend-mode: multiply; }
 .portrait::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.32) 2px 3px);
 }
 /* Over the intercom: dimmer, crawling static, a rolling bar, flicker and jitter. */
 .portrait.comms { animation: p-flicker 2.7s infinite steps(1); }
-.portrait.comms img { filter: grayscale(1) contrast(1.5) brightness(0.8) blur(0.4px); animation: p-jitter 0.35s infinite steps(2); }
+.portrait.comms img { filter: grayscale(1) invert(1) contrast(1.5) brightness(0.85) blur(0.4px); animation: p-jitter 0.35s infinite steps(2); }
 .portrait.comms::before {
   content: ""; position: absolute; inset: -32px; z-index: 1; pointer-events: none;
   background-image: var(--noise, none); background-size: 32px 32px; image-rendering: pixelated;

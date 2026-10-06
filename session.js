@@ -189,7 +189,7 @@ export function defaultGame(keys = {}) {
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -326,6 +326,12 @@ function migrateGame(saved) {
       if (ship && ship.theme === "amber") ship.theme = "cyan";
     }
     config.upgrades.push("ship-cyan", "ship-cyan-2");
+  }
+  // Once: the default story's people and crew get their portraits (anyone who has none yet).
+  if (!config.upgrades.includes("portraits")) {
+    for (const m of config.cast) m.portrait ||= findCast(DEFAULT_CAST, m.name)?.portrait || "";
+    for (const pc of config.crew) pc.portrait ||= DEFAULT_CREW.find((d) => d.id === pc.id && d.name === pc.name)?.portrait || "";
+    config.upgrades.push("portraits");
   }
   // Once: an original KESTREL-9 story starts the crew with their work order.
   config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];

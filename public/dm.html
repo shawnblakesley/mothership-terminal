@@ -124,6 +124,18 @@
   </dialog>
 
   <!-- Synopsis: a briefing for the players (the setup, or the story so far), with Warden-only notes. -->
+  <!-- A character's picture: upload one, or pick from the portrait pack that comes with the app. -->
+  <dialog id="portraitDialog" class="portraitdlg">
+    <div class="row wrap">
+      <h2 class="grow" id="portraitTitle">Picture</h2>
+      <button id="portraitUpload" title="Use a picture of your own: it's cropped to a square">Upload your own…</button>
+      <button id="portraitNone" class="ghost">No picture</button>
+      <button id="portraitClose" class="ghost" aria-label="Close">✕</button>
+    </div>
+    <p class="muted small">Or pick one from <a href="https://ashen-victor.itch.io/sci-fi-character-portraits-poject" target="_blank" rel="noopener">Sci-fi character portraits project</a> by Victor J Merino (CC BY-NC 4.0; the players' screens credit it while one is in use).</p>
+    <div id="portraitGrid" class="portraitgrid"></div>
+  </dialog>
+
   <dialog id="synopsisDialog" class="synopsisdlg">
     <div class="row wrap">
       <h2 class="grow">Synopsis</h2>
