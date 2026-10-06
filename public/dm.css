@@ -512,6 +512,8 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .sidehead .tabs { flex: 1; width: auto; min-width: 0; }
 .sidehead .tabs button { padding-left: 6px; padding-right: 6px; }
 .editmode { flex-shrink: 0; white-space: nowrap; }
+.lockbtn { display: inline-flex; align-items: center; justify-content: center; padding: 5px 8px; line-height: 0; }
+.lockbtn .icon { display: block; }
 .editmode[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
 
 /* Between the comms log and the compose box: what needs the Warden now (a ruling,

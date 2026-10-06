@@ -533,7 +533,7 @@
     $("addCrew").disabled = crewDraft.length >= 4;
   }
   // Read-only: what a character can do at a glance. Health, Wounds and Stress
-  // stay adjustable (they change in play); the rest is edited with Edit.
+  // stay adjustable (they change in play); the rest is edited with the padlock unlocked.
   const cap = (k) => k[0].toUpperCase() + k.slice(1);
   function pcSheet(c) {
     const nums = (o) => Object.entries(o).map(([k, v]) => `<span>${cap(k)} <b>${v}</b></span>`).join("");
@@ -917,6 +917,14 @@
   addEventListener("resize", () => requestAnimationFrame(growStory));
   document.addEventListener("toggle", (e) => { if (e.target.open && STORY_BOXES.some((id) => e.target.contains($(id)))) growStory(); }, true); // (a section opened)
 
+  // Padlock icons for the edit toggles: locked = read-only, open = editing.
+  // Lucide's "lock" and "lock-open" (lucide.dev, ISC licence), inlined.
+  const LOCK_SVG = (open) => `<svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="${open ? "M7 11V7a5 5 0 0 1 9.9-1" : "M7 11V7a5 5 0 0 1 10 0v4"}"/></svg>`;
+  function setLock(btn, editing, what) {
+    btn.innerHTML = LOCK_SVG(editing);
+    btn.setAttribute("aria-label", editing ? `Done editing ${what}` : `Edit ${what}`);
+  }
+
   // ------------------------------------------------------------ edit mode
   // Read-only (the default, remembered per device) shows what matters while
   // running the game; Edit shows the setup (dm.css .edit-only / .play-only).
@@ -924,7 +932,7 @@
   function setEditing(on) {
     sideCol.classList.toggle("editing", on);
     $("editMode").setAttribute("aria-pressed", String(on));
-    $("editMode").textContent = on ? "Done" : "Edit";
+    setLock($("editMode"), on, "the setup");
     for (const id of ["lore", "secrets"]) $(id).readOnly = !on;
     if (on) store.set("editMode", "1"); else store.del("editMode");
   }
@@ -1073,10 +1081,10 @@
     if (!roomEditing) roomRows = plan ? [...plan.rows] : null;
     const box = $("roomPlan");
     if (busy) box.innerHTML = `<div class="rpempty muted"><span class="spinner"></span>The agent is drawing ${esc(room.label)}…</div>`;
-    else if (!roomRows) box.innerHTML = `<div class="rpempty muted">No floor plan yet. <b>Redraw with agent</b> sketches one, or <b>Edit</b> to paint it yourself.</div>`;
+    else if (!roomRows) box.innerHTML = `<div class="rpempty muted">No floor plan yet. <b>Redraw with agent</b> sketches one, or unlock the padlock to paint it yourself.</div>`;
     else box.innerHTML = RoomPlan.svg(roomRows, { cell: 24, title: room.label, cls: roomEditing ? "editing" : "" });
     $("roomLegend").innerHTML = roomRows ? RoomPlan.legend(roomRows).map(([c, n]) => `<span><b>${esc(c)}</b> ${esc(n)}</span>`).join("") : "";
-    $("roomEdit").textContent = roomEditing ? "Done" : "Edit";
+    setLock($("roomEdit"), roomEditing, "the floor plan");
     $("roomEdit").classList.toggle("primary", roomEditing);
     $("roomRedraw").disabled = busy || !!S.roomBusy;
     $("roomShow").disabled = !plan;
