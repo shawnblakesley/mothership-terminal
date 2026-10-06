@@ -61,6 +61,7 @@ export function logLine(e, voices) {
     case "roll": return `[ROLL] ${clip(e.text).replace(/\n/g, " · ")}`;
     case "warden": return `[WARDEN COMMAND, private] ${clip(e.text)}`;
     case "aside": return `[WARDEN NOTE, private] ${clip(e.text)}`;
+    case "heard": return `[WARDEN, said aloud at the table] ${clip(e.text)}`;
     case "aside_reply": return `[AGENT TO WARDEN, private] ${clip(e.text)}`;
     case "note": return `[CONSOLE NOTE, private] ${clip(e.text)}`;
     default: {

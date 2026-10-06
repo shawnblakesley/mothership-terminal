@@ -35,7 +35,7 @@ const MAX_SOCKETS = 40; // per session
 const PLAYER_INPUT_GAP_MS = 1200;
 // Warden messages counted as actions in telemetry (what they used, never what they wrote).
 const WARDEN_ACTIONS = {
-  command: "direction", inject: "speak", note: "note", effect: "effect", soundPlay: "sound", rollRequest: "roll", retcon: "retcon",
+  command: "direction", inject: "speak", note: "note", heard: "speech", effect: "effect", soundPlay: "sound", rollRequest: "roll", retcon: "retcon",
   synopsis: "synopsis", roomShow: "room_show", roomDraft: "room_draft", builderSay: "builder_chat", builderDraft: "builder_draft",
   builderApply: "builder_apply", resetSession: "story_restart",
 }; // per connection: stops spamming the agent (and the Warden's bill)
@@ -161,8 +161,9 @@ const DEFAULT_STATION = {
 };
 
 // Log kinds players never see: Warden notes, the Warden's commands to the agent,
-// and private notes between the Warden and the agent (aside / aside_reply).
-const PRIVATE_KINDS = new Set(["note", "warden", "aside", "aside_reply"]);
+// private notes between the Warden and the agent (aside / aside_reply), and what
+// the Warden said aloud at the table (heard: speech-to-text, for the agent).
+const PRIVATE_KINDS = new Set(["note", "warden", "aside", "aside_reply", "heard"]);
 export const SPOKEN_KINDS = new Set(["terminal", "system", "entity"]);
 
 export function defaultGame(keys = {}) {
@@ -367,7 +368,7 @@ const label = (field) => field[0].toUpperCase() + field.slice(1);
 // The session's settings, not part of the story (a restart keeps them as they are).
 const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "upgrades"]);
 // The Warden's moves that play the story (the first one saves it; see storyBegins).
-const STORY_ACTIONS = new Set(["command", "inject", "note", "rollRequest", "rollFor", "generate", "approve", "outcome", "handout", "clockStart"]);
+const STORY_ACTIONS = new Set(["command", "inject", "note", "heard", "rollRequest", "rollFor", "generate", "approve", "outcome", "handout", "clockStart"]);
 // A crew member named by the agent ("" for none, or no match).
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
@@ -879,6 +880,19 @@ export class Session {
         this.introduce(as, net);
         this.addLog(kind, text, { source: "dm", net, ...(kind === "entity" ? { entity: as } : {}), ...(line.character ? { character: line.character } : {}) });
         if (msg.clearPending) { this.genCounter++; s.pending = null; this.setBusy(false); }
+        break;
+      }
+      case "heard": {
+        // What the Warden said aloud at the table (their console's speech-to-text).
+        // It doesn't prompt the agent: it goes with the next request, as fact.
+        // Speech in a row (nothing else logged in between) adds up in one entry.
+        const text = String(msg.text || "").replace(/\s+/g, " ").trim().slice(0, 2000);
+        if (!text) break;
+        const last = s.log.at(-1);
+        if (last?.kind === "heard" && last.text.length + text.length < 4000) {
+          last.text += ` ${text}`;
+          last.ts = Date.now();
+        } else this.addLog("heard", text);
         break;
       }
       case "note": {

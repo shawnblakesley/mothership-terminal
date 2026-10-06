@@ -161,7 +161,7 @@ If a player types while lines are still playing, the comms cut off on every scre
 
 ## Restart story
 
-The story is saved the moment it's first played: a player types, rolls or changes their sheet; you give a Direction, Speak, write a Note, call a roll, hand something out or start a clock; or the agent replies. Until then, set it up as you like.
+The story is saved the moment it's first played: a player types, rolls or changes their sheet; you give a Direction, Speak, write a Note, speak with Listen on, call a roll, hand something out or start a clock; or the agent replies. Until then, set it up as you like.
 
 **Restart story** (⚙) puts it back exactly as it was then: setting, lore, secrets, standing orders, cast and voices (characters the agent added in play are gone), map and floor plans, terminals (reachable as the story starts them), every character sheet, the station state and the synopsis. It clears the log, rolls, rulings, drafts, clocks, effects, playing sounds and shown floor plans, and hands out the starting documents again. Your settings (AI, mode, switches, voice output) and sounds are kept, and players stay connected, as GUEST, at the starting terminal.
 
@@ -209,6 +209,13 @@ After a restart the next first move saves the story again, so changes you make i
 - replies to you in the log ("Agent → you"), listing what it changed.
 
 You can also ask it questions this way. Notes need an API key; they work in every mode.
+
+**🎙 Listen** (under the comms box) writes down what you say aloud at the table, so the agent knows what you narrated or ruled. Click it to turn it on, and again to turn it off; it's off until you switch it on, and your browser asks for the microphone the first time.
+
+- What you're saying shows under the box as you speak; each finished phrase goes into the log as **Warden · said aloud**. Phrases in a row add up in one entry. You can't edit it (✕ still deletes it).
+- It doesn't prompt the agent. It goes with the agent's next prompt (a player typing, a roll, a Direction), marked as your speech, and the agent takes everything in it as having happened.
+- Players never see it.
+- It uses the browser's own speech recognition: Chrome, Edge and Safari have it, Firefox doesn't.
 
 ## Station map
 

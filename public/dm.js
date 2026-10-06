@@ -335,6 +335,7 @@
       case "warden": return { name: "Warden → agent", c: "var(--warden)" };
       case "aside": return { name: "Note → agent", by: "private", c: "var(--aside)" };
       case "aside_reply": return { name: "Agent → you", by: "private", c: "var(--aside)" };
+      case "heard": return { name: "Warden · said aloud", by: "speech → agent", c: "var(--heard)" };
       case "roll": return { name: "Roll result", c: "var(--roll)" };
       case "terminal": return { name: who(voiceName("terminal")), by, c: "var(--accent)" };
       case "system": return { name: who(voiceName("broadcast")), by, c: "var(--warn)" };
@@ -1412,6 +1413,50 @@
     }
   });
   renderComposeMode();
+
+  // 🎙 Listen: the browser's speech-to-text writes down what the Warden says aloud
+  // at the table. Each finished phrase goes to the log (read-only, private) and
+  // with the agent's next prompt, as things that happened. Off until switched on.
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let listening = false, recog = null;
+  function setListening(on) {
+    listening = on;
+    $("micBtn").setAttribute("aria-pressed", String(on));
+    $("micBtn").textContent = on ? "Listening" : "🎙 Listen";
+    $("micLive").hidden = !on;
+    $("micLive").textContent = on ? "Listening… speak and it's written down." : "";
+    if (on) startRecog();
+    else recog?.abort();
+  }
+  function startRecog() {
+    const r = (recog = new Recognition());
+    recog.lang = navigator.language || "en-US";
+    recog.continuous = true;
+    recog.interimResults = true;
+    recog.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) { const text = r[0].transcript.trim(); if (text) send({ t: "heard", text }); }
+        else interim += r[0].transcript;
+      }
+      $("micLive").textContent = interim.trim() ? `${interim.trim()}…` : "Listening…";
+    };
+    recog.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture") {
+        toast(e.error === "audio-capture" ? "No microphone found." : "The microphone is blocked: allow it for this page to use Listen.", "error");
+        setListening(false);
+      }
+    };
+    // Browsers stop listening after a silence or a while: start again while it's on.
+    recog.onend = () => { if (listening && recog === r) setTimeout(() => listening && recog === r && startRecog(), 250); };
+    try { recog.start(); } catch { /* (already starting) */ }
+  }
+  if (!Recognition) {
+    $("micBtn").disabled = true;
+    $("micBtn").title = "Listen needs speech recognition, which this browser doesn't have (try Chrome, Edge or Safari).";
+  }
+  $("micBtn").onclick = () => setListening(!listening);
 
   $("log").addEventListener("click", (e) => {
     const id = e.target.closest("[data-del]")?.dataset.del;
