@@ -982,6 +982,13 @@
   addEventListener("keydown", (e) => { if ($("rules").open) e.stopImmediatePropagation(); }, true);
 
   $("hdr-file").onclick = () => {
+    // No crew file yet (FILE: NONE): straight to the crew picker (or close it again).
+    if (!mine()) {
+      if (!$("crewpick").hidden) return openPanel(null);
+      renderPicker();
+      openPanel("crewpick");
+      return $("crewpick-list").querySelector("button")?.focus();
+    }
     if (mine() && wide() && $("crewfile").hidden && $("crewpick").hidden) return setSide(!sideOpen);
     renderFile();
     openPanel($("crewfile").hidden ? "crewfile" : null);
