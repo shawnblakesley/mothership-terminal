@@ -565,6 +565,8 @@
               m.room && !rooms.has(m.room) ? `<option value="${esc(m.room)}" selected>${esc(m.room)}</option>` : ""}</select></label>
             <label class="small muted mood" title="How they feel about the players. The agent plays them by it and moves it as they earn or lose their trust; you can set it too. Players never see it.">feels <select data-m="attitude" data-num aria-label="How ${esc(m.name)} feels about the players" class="att${m.attitude > 0 ? " up" : m.attitude < 0 ? " down" : ""}">${
               ATTITUDES.map(([n, label]) => `<option value="${n}" ${n === (m.attitude || 0) ? "selected" : ""}>${label} (${n > 0 ? "+" : ""}${n})</option>`).join("")}</select></label>
+            <label class="small muted stress" title="Their Stress (0-20). The agent raises it when frightening things happen to them; a Panic check is a d20 at or under it.">Stress <input type="number" data-m="stress" data-num min="0" max="20" value="${m.stress ?? 2}" aria-label="${esc(m.name)}'s Stress"></label>
+            <button data-mact="panic" class="small" title="Roll a Panic check for them now, in front of the players: a d20 at or under their Stress and they panic (from shaking hands up to a heart attack). The agent plays it out.">Panic check</button>
             ${withPlayers.has(m.room) ? '<span class="pill ok" title="In a room with players: they talk face to face, and only screens in that room show it">in person</span>' : '<span class="pill" title="Not in a room with any players: heard over the intercom">intercom</span>'}
           </div>
           <div class="row wrap edit-only small">
@@ -606,6 +608,7 @@
     const i = Number(card.dataset.i), m = castDraft[i];
     if (act === "pic") openPortraits({ cast: i });
     else if (act === "nopic") { m.portrait = ""; saveCast(true); renderCast(true); }
+    else if (act === "panic") send({ t: "castPanic", id: m.id });
     else if (act === "test") Voice.test({ name: "test", voice: { engine: "neural", speaker: m.voice || "am_michael", pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     else if (act === "del") {
       if (!(await sure(`Remove ${m.name || "this character"}?`, "They leave the story: the agent no longer knows them.", "Remove"))) return;
@@ -617,7 +620,7 @@
   $("addCast").onclick = () => {
     let n = castDraft.length + 1;
     while (castDraft.some((c) => c.name === `New character ${n}`)) n++;
-    castDraft.push({ id: "", name: `New character ${n}`, voice: "", notes: "", room: "", portrait: "", attitude: 0, why: "" });
+    castDraft.push({ id: "", name: `New character ${n}`, voice: "", notes: "", room: "", portrait: "", attitude: 0, why: "", stress: 2 });
     saveCast(true);
     renderCast(true);
     $("cast").querySelector(".castm:last-of-type .cname")?.select();

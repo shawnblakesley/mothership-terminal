@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS } from "./voices.js";
-import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, shiftAttitude, attitudeLabel, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
+import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, shiftAttitude, attitudeLabel, shiftStress, CAST_PANIC, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
@@ -885,6 +885,11 @@ export class Session {
         if (this.usesNeural()) warmNeural();
         this.toPlayers({ t: "header", header: this.playerHeader() });
         break;
+      case "castPanic": { // the Warden has someone of the cast roll a Panic check, in front of the players
+        const member = s.config.cast.find((m) => m.id === msg.id);
+        if (member) this.castPanic(member, "warden");
+        break;
+      }
       case "cast": // the story's people (cast.js), and the voice they're heard through elsewhere
         s.config.cast = sanitizeCast(msg.cast);
         if (s.config.voices.some((v) => v.id === msg.channel)) s.config.castChannel = msg.channel;
@@ -1316,9 +1321,29 @@ export class Session {
       // How they feel about the players now.
       const [was, now] = shiftAttitude(member, ch.attitude_change, String(ch.why ?? ""));
       if (now !== was) this.addLog("note", `Cast: ${member.name} feels ${attitudeLabel(now)} towards the players (was ${attitudeLabel(was)})${member.why ? `: ${member.why}` : ""}.`);
+      // Their Stress, and a Panic check (rolled once this reply's lines are out).
+      const [s0, s1] = shiftStress(member, ch.stress_change);
+      if (s1 !== s0) this.addLog("note", `Cast: ${member.name}: Stress ${s0} → ${s1}.`);
+      if (ch.panic_check && !(this.panics ||= []).includes(member.id)) this.panics.push(member.id);
       any ||= created || moved || !!notes || now !== was;
     }
     if (any) this.toPlayers({ t: "header", header: this.playerHeader() }); // (their portraits)
+  }
+
+  // Someone of the cast rolls a Panic check, in front of the players (the same dice
+  // on their screens as their own rolls): a d20 at or under their Stress and they
+  // panic, by CAST_PANIC. Then the agent plays it out (a follow-up reply).
+  castPanic(member, by = "agent") {
+    const req = { check: PANIC, advantage: "none" };
+    const result = resolve(req, member.stress ?? 2, diceFor(req));
+    const fx = result.success ? null : CAST_PANIC[result.used];
+    track("Roll", { Kind: "panic", Who: "cast" });
+    this.toPlayers({ t: "rollResult", result, label: "Panic", who: member.name, effect: fx?.name || "" });
+    this.addLog("roll", `${member.name}${by === "warden" ? " (the Warden called it)" : ""}: PANIC CHECK\nSTRESS ${result.target} · ROLLED ${result.used} (D20)\n${fx ? `PANIC · ${fx.name.toUpperCase()}` : "KEPT THEIR COOL"}`,
+      { outcome: result.outcome, by: member.name, cast: true, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
+    // The agent plays out what happens (after this reply, if one is being written).
+    if (this.generating) this.rerun = true;
+    else setTimeout(() => this.requestReply(), 0);
   }
 
   // One call to the session's model, with a silent retry on malformed output. Returns parsed JSON.
@@ -1787,6 +1812,11 @@ export class Session {
     }
     for (const c of waiting) this.startEffect(c, "agent", lastEntry ? { atEntry: lastEntry.id, when: "after" } : null);
     if (source === "agent") this.applyCastChanges(reply?.cast_changes, "after"); // (whoever leaves the players' room goes now)
+    // Panic checks the agent called for, rolled in front of the players now its lines are out.
+    for (const id of this.panics?.splice(0) || []) {
+      const member = this.state.config.cast.find((m) => m.id === id);
+      if (member) this.castPanic(member);
+    }
     for (const c of changes) {
       setPath(this.state.station, c.path, c.value);
       this.addLog("note", `Station: ${c.path} → ${c.value}`);

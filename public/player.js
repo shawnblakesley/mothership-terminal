@@ -1216,7 +1216,7 @@
   }
 
   function playRollResult() {
-    const { result, label, who } = rollQueue[0];
+    const { result, label, who, effect } = rollQueue[0];
     const fx = $("rollfx"), diceEl = fx.querySelector(".rf-dice"), outEl = fx.querySelector(".rf-out");
     const show = result.panic ? String : (d) => String(d).padStart(2, "0");
     const random = () => (result.panic ? 1 + Math.floor(Math.random() * 20) : Math.floor(Math.random() * 100));
@@ -1233,7 +1233,7 @@
       clearInterval(tumble);
       diceEl.textContent = result.dice.length > 1 ? `${result.dice.map(show).join(" / ")} → ${show(result.used)}` : show(result.used);
       outEl.textContent = name + (result.panic
-        ? (result.success ? `KEPT THEIR COOL (ABOVE STRESS ${result.target})` : `PANIC! (STRESS ${result.target}) · PANIC TABLE ${result.used}`)
+        ? (result.success ? `KEPT THEIR COOL (ABOVE STRESS ${result.target})` : `PANIC! (STRESS ${result.target}) · ${effect ? effect.toUpperCase() : `PANIC TABLE ${result.used}`}`)
         : `${result.outcome.toUpperCase()} (UNDER ${result.target})${result.success ? "" : " · +1 STRESS"}`);
       fx.classList.add(result.success ? "pass" : "fail");
       if (result.critical) fx.classList.add("crit");

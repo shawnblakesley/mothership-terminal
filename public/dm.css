@@ -274,6 +274,9 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .castbody .mood select.up { color: var(--accent); }
 .castbody .mood select.down { color: #e07a72; }
 .castbody .why { font-size: 12.5px; padding: 3px 6px; }
+.castbody .stress { display: inline-flex; align-items: baseline; gap: 4px; }
+.castbody .stress input { width: 3.6em; padding: 1px 4px; }
+.castbody [data-mact="panic"] { padding: 2px 8px; font-size: 12px; }
 .castbody textarea { font-size: 12.5px; }
 .castchip { display: inline-block; border: 1px dashed var(--line); border-radius: 99px; padding: 2px 9px; font-size: 12px; margin: 0 4px 4px 0; }
 

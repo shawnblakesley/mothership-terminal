@@ -5,7 +5,8 @@
 // intercom (config.castChannel, a voice: its name, look and speaker effects).
 // The Warden edits the cast; the agent brings new people in and moves them.
 //   { id, name, voice: Kokoro speaker id, notes, room: map room id or "", portrait: file or "",
-//     attitude: how they feel about the players, -3 (hostile) to 3 (loyal), 0 neutral; why: the reason }
+//     attitude: how they feel about the players, -3 (hostile) to 3 (loyal), 0 neutral; why: the reason,
+//     stress: 0-20, like the crew's (2 to start): a Panic check is a d20 at or under it }
 // portrait: an upload (portraits.js), or "kit/sfcp-<n>.png", one of the pack that
 // comes with the app (public/portraits/, listed in pack.json): Victor J Merino's
 // Sci-fi character portraits project, CC BY-NC 4.0, credited on the players'
@@ -17,6 +18,34 @@ export const MAX_CAST = 40;
 export const ATTITUDES = { "-3": "Hostile", "-2": "Resentful", "-1": "Wary", 0: "Neutral", 1: "Friendly", 2: "Trusting", 3: "Loyal" };
 export const attitudeLabel = (n) => ATTITUDES[n] || "Neutral";
 const clampAttitude = (n) => Math.max(-3, Math.min(3, Math.round(Number(n) || 0)));
+const clampStress = (n, def = 2) => (Number.isFinite(Number(n)) && n !== null && n !== "" ? Math.max(0, Math.min(20, Math.round(Number(n)))) : def);
+
+// When someone of the cast panics (a d20 at or under their Stress), the number rolled
+// is looked up here: worse the higher it goes, so only the very stressed can roll the
+// worst. (Our own table for the cast, in the spirit of Mothership's; the crew's own
+// Panic Table results are the Warden's to apply.)
+export const CAST_PANIC = [null,
+  { name: "Steels themself", effect: "a surge of adrenaline: for the next few moments they act with sudden, sharp courage." },
+  { name: "Shaking hands", effect: "they tremble badly; anything delicate they try goes wrong." },
+  { name: "Hears things", effect: "they insist they hear voices or movement nobody else does, and won't let it go." },
+  { name: "Jumpy", effect: "they flinch at everything and startle at any sound; they might lash out by reflex." },
+  { name: "Freezes", effect: "they lock up, unable to move or speak for a while; someone has to pull them along." },
+  { name: "Bolts", effect: "they turn and run, abandoning whatever they were doing and whoever they were with." },
+  { name: "Hides", effect: "they find somewhere to hide and won't come out." },
+  { name: "Babbles", effect: "they talk fast and make no sense, and blurt out something they shouldn't (a secret slips)." },
+  { name: "Begs", effect: "they cling to the players and plead to be saved; useless until someone calms them." },
+  { name: "Lashes out", effect: "they attack the nearest person, or smash whatever is in reach." },
+  { name: "Hopeless", effect: "they give up: they're sure everyone is going to die, and refuse to help." },
+  { name: "Paranoid", effect: "they decide one of the players is to blame, or infected, and turn on them." },
+  { name: "Collapses", effect: "they're violently sick and drop to the floor, too weak to stand for a while." },
+  { name: "Reckless", effect: "they do something rash that puts themselves and everyone near them in danger." },
+  { name: "Faints", effect: "they pass out cold." },
+  { name: "Catatonic", effect: "they stare into nothing, unresponsive, until something snaps them out of it." },
+  { name: "Berserk", effect: "they attack wildly, friend or foe, until they're restrained or stopped." },
+  { name: "Breaks", effect: "a complete breakdown: screaming, weeping, beyond reason for the rest of the scene." },
+  { name: "Desperate act", effect: "they do something that makes everything much worse: seal a door with people behind it, trigger an alarm, take a hostage." },
+  { name: "Heart attack", effect: "they collapse clutching their chest, and will die within minutes without medical help. (Something artificial suffers a catastrophic shutdown instead.)" },
+];
 // A portrait file: an upload, or one that comes with the app (the crew's use these too).
 export const PORTRAIT_FILE = /^([a-f0-9]{12}\.(png|jpg|webp|gif)|kit\/[a-z0-9_-]{1,60}\.(png|jpg))$/;
 
@@ -60,6 +89,7 @@ export function sanitizeCast(list) {
       portrait: PORTRAIT_FILE.test(c?.portrait || "") ? c.portrait : "",
       attitude: clampAttitude(c?.attitude),
       why: String(c?.why || "").slice(0, 160),
+      stress: clampStress(c?.stress),
     });
     if (out.length >= MAX_CAST) break;
   }
@@ -93,7 +123,7 @@ export function addCast(cast, raw, { room = "", notes = "" } = {}) {
   for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   let id = slug(name);
   for (let n = 2; cast.some((c) => c.id === id); n++) id = `${slug(name)}-${n}`;
-  const member = { id, name, voice: pool[h % pool.length] || "", notes: String(notes).slice(0, 600), room, portrait: "", attitude: 0, why: "" };
+  const member = { id, name, voice: pool[h % pool.length] || "", notes: String(notes).slice(0, 600), room, portrait: "", attitude: 0, why: "", stress: 2 };
   cast.push(member);
   return { member, created: true };
 }
@@ -102,6 +132,13 @@ export function addCast(cast, raw, { room = "", notes = "" } = {}) {
 export const castVoice = (member) => ({ engine: "neural", speaker: member?.voice || "am_michael", pace: 1 });
 
 // The base voice a log line is spoken with: its speaker's (the cast's own), or its voice's.
+// Raise or lower someone's Stress (0-20). Returns [before, after].
+export function shiftStress(member, change) {
+  const before = member.stress ?? 2;
+  member.stress = clampStress(before + (Math.round(Number(change)) || 0));
+  return [before, member.stress];
+}
+
 // Move someone's attitude by `change` steps (clamped). Returns [before, after].
 export function shiftAttitude(member, change, why = "") {
   const before = member.attitude || 0;
