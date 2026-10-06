@@ -640,7 +640,7 @@
   function renderSide() {
     const c = mine();
     const side = $("side");
-    side.hidden = !c || !sideOpen || !wide() || spectate || !$("crewpick").hidden; // (hidden while choosing a character)
+    side.hidden = !c || !sideOpen || !wide() || spectate || !$("crewpick").hidden || !$("crewfile").hidden; // (hidden while choosing a character, or with the full sheet open)
     $("hdr-file").classList.toggle("on", !side.hidden);
     if (side.hidden) return;
     // (the buttons stay at the bottom of the panel, whatever is scrolled above them)
