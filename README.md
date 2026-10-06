@@ -212,10 +212,14 @@ You can also ask it questions this way. Notes need an API key; they work in ever
 
 **Listen** (under the comms box) writes down what you say aloud at the table, so the agent knows what you narrated or ruled. Click it to turn it on, and again to turn it off; it's off until you switch it on, and your browser asks for the microphone the first time.
 
-- What you're saying shows under the box as you speak; each finished phrase goes into the log as **Warden · said aloud**. Phrases in a row add up in one entry. You can't edit it (✕ still deletes it).
+- The button has a gray border when it's off and a green one while it's listening.
+- Each finished phrase goes into the log as **Warden · said aloud**. Phrases in a row add up in one entry. You can't edit it (✕ still deletes it).
 - It doesn't prompt the agent. It goes with the agent's next prompt (a player typing, a roll, a Direction), marked as your speech, and the agent takes everything in it as having happened.
 - Players never see it.
-- It uses the browser's own speech recognition: Chrome, Edge and Safari have it, Firefox doesn't.
+- **Chrome, Edge and Safari** use the browser's own speech recognition: your words show under the box as you speak. Chrome and Edge send the audio to Google or Microsoft to transcribe.
+- **Firefox** (and any browser whose own recognition doesn't work, like Brave) records each phrase and the server writes it down when you pause, with Whisper: an open speech-to-text model run on the server, like the human voices. No key, no cost, and the audio never leaves the server. Under the box it says **Hearing you…** while you talk and **Writing it down…** while the server works (about a second a phrase). The model (about 300 MB) downloads the first time anyone uses it, so the very first phrase takes longer.
+- It needs a secure page: the hosted site (https), or `localhost` on the computer running the server. On `http://` and a LAN address the browser blocks the microphone.
+- If something stops it (the microphone is blocked, no microphone), it switches off and says why.
 
 ## Station map
 
@@ -335,6 +339,8 @@ A **blackout** cuts off the voice that's speaking instantly. Queued lines wait f
 - Audio is generated as soon as a line exists. In Review mode that's while you read the draft, so an unedited line plays the moment you send it.
 - Clips are cached in memory, and on disk under `data/tts-cache` (capped by `TTS_CACHE_MB`, default 200), so repeated lines are instant.
 - If RAM is tight, `TTS_DTYPE=q8` uses about 300 MB less, but is slower.
+
+**Speech-to-text** (Listen, for Firefox) uses Whisper (`Xenova/whisper-base.en`), loaded the first time a Warden switches Listen on, at full precision on all cores (about 1 s a phrase on a desktop, and about 300 MB of RAM). `STT_MODEL=Xenova/whisper-tiny.en` is smaller and faster but less accurate; `STT_DTYPE` and `STT_THREADS` work like their `TTS_` versions.
 
 Players have a **volume control** in the top-right corner: a ten-segment meter you can click, drag, scroll or use the arrow keys on. Click **VOL** to mute. It's remembered per device and controls all sound, both effects and voices.
 

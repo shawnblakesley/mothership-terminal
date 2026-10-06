@@ -9,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { synthesize, setCacheDir, warmNeural } from "./tts.js";
+import { transcribe, warmStt, STT_RATE, MAX_PHRASE_SECONDS } from "./stt.js";
 import { sanitizeVoices, speakingVoice, speechParts } from "./voices.js";
 import { getProvider, looksLikeKey, catalog, offered, fixSelection, LOCAL_KEYS } from "./providers/index.js";
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
@@ -308,8 +309,29 @@ router.get("/api/sessions/:code/sounds/:id", (req, res) => {
   res.sendFile(soundPath(s.code, sound), (err) => err && !res.headersSent && res.status(404).end());
 });
 
+// Listen, in browsers without their own speech recognition: one phrase the Warden
+// said aloud (16 kHz mono 16-bit PCM), written down and logged for the agent.
+router.post("/api/sessions/:code/listen", express.raw({ type: () => true, limit: STT_RATE * 2 * MAX_PHRASE_SECONDS + 1024 }), async (req, res) => {
+  noStore(res);
+  const s = wardenOf(req);
+  if (!s) return res.status(403).end();
+  if (limited(`listen:${s.code}`, 200, 600_000)) return res.status(429).json({ error: "Too much speech at once. Wait a minute." });
+  const pcm = Buffer.isBuffer(req.body) ? req.body : null;
+  if (req.query.warm !== undefined) { warmStt(); return res.status(204).end(); } // (Listen was switched on)
+  if (!pcm || pcm.length < STT_RATE * 2 * 0.2) return res.json({ text: "" }); // (under 0.2s: nothing said)
+  try {
+    const text = await transcribe(pcm);
+    if (text) s.handleDm({ t: "heard", text });
+    res.json({ text });
+  } catch (err) {
+    console.error("speech-to-text failed:", err?.message || err);
+    res.status(500).json({ error: "The server couldn't write that down." });
+  }
+});
+
 // Upload errors (e.g. too large) as JSON the console can show.
 router.use((err, req, res, next) => {
+  if (err?.type === "entity.too.large" && req.path.endsWith("/listen")) return res.status(413).json({ error: "That phrase was too long." });
   if (err?.type === "entity.too.large") return res.status(413).json({ error: `Sounds can be up to ${MAX_SOUND_BYTES / 1048576} MB each.` });
   next(err);
 });

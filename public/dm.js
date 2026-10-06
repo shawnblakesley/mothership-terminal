@@ -1422,21 +1422,30 @@
   });
   renderComposeMode();
 
-  // Listen: the browser's speech-to-text writes down what the Warden says aloud
-  // at the table. Each finished phrase goes to the log (read-only, private) and
-  // with the agent's next prompt, as things that happened. Off until switched on.
+  // Listen: what the Warden says aloud at the table is written down. Each
+  // finished phrase goes to the log (read-only, private) and with the agent's
+  // next prompt, as things that happened. Off until switched on.
+  // Two ways to write it down: the browser's own speech recognition (Chrome,
+  // Edge, Safari: words appear as you speak), or, without it (Firefox) or when it
+  // can't reach its service, the server's (listen.js records, stt.js transcribes).
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let listening = false, recog = null, quickEnds = 0;
+  let engine = Recognition ? "browser" : "server";
+  let listening = false, recog = null, recorder = null, quickEnds = 0, uploads = Promise.resolve(), pendingUploads = 0;
   const micStatus = (text) => { $("micLive").textContent = text; };
   function setListening(on) {
     listening = on;
     quickEnds = 0;
     $("micBtn").setAttribute("aria-pressed", String(on));
     $("micBtn").textContent = on ? "Listening" : "Listen";
-    $("micLive").hidden = !on;
-    micStatus(on ? "Starting the microphone…" : "");
-    if (on) startRecog();
-    else recog?.abort();
+    $("micLive").hidden = !on && !pendingUploads;
+    micStatus(on ? "Starting the microphone…" : pendingUploads ? "Writing it down…" : "");
+    if (on) (engine === "browser" ? startRecog : startRecorder)();
+    else {
+      recog?.abort();
+      recog = null;
+      recorder?.stop();
+      recorder = null;
+    }
   }
   // Something stops it for good: say what, in the toast and under the box.
   function micFailed(text) {
@@ -1446,11 +1455,11 @@
   }
   const MIC_ERRORS = {
     "not-allowed": "The microphone is blocked for this page: allow it (the icon in the address bar) and press Listen again.",
-    "service-not-allowed": "This browser won't run speech recognition here. Use Chrome or Edge.",
     "audio-capture": "No microphone found.",
-    network: "This browser can't reach a speech-recognition service (Brave, the Claude app's browser and some other Chromium browsers don't have one). Use Chrome or Edge.",
     "language-not-supported": `Speech recognition doesn't support your browser's language (${navigator.language}).`,
   };
+
+  // The browser's own recognition.
   function startRecog() {
     const r = (recog = new Recognition());
     const started = Date.now();
@@ -1470,24 +1479,64 @@
       micStatus(interim.trim() ? `${interim.trim()}…` : "Listening…");
     };
     recog.onerror = (e) => {
-      if (e.error === "no-speech" || e.error === "aborted") return; // (a silence; or switched off)
-      if (recog === r) micFailed(MIC_ERRORS[e.error] || `Speech recognition stopped: ${e.error}${e.message ? ` (${e.message})` : ""}.`);
+      if (e.error === "no-speech" || e.error === "aborted" || recog !== r) return; // (a silence; or switched off)
+      if (e.error === "network" || e.error === "service-not-allowed") return useServer();
+      micFailed(MIC_ERRORS[e.error] || `Speech recognition stopped: ${e.error}${e.message ? ` (${e.message})` : ""}.`);
     };
     // Browsers stop listening after a silence or a while: start again while it's on.
     // If it keeps ending at once without hearing anything, it isn't working.
     recog.onend = () => {
       if (!listening || recog !== r) return;
       quickEnds = !heardAny && Date.now() - started < 1500 ? quickEnds + 1 : 0;
-      if (quickEnds >= 4) return micFailed("Speech recognition keeps stopping straight away in this browser. Use Chrome or Edge.");
+      if (quickEnds >= 4) return useServer();
       setTimeout(() => listening && recog === r && startRecog(), 250);
     };
-    try { recog.start(); } catch (err) { micFailed(`Couldn't start speech recognition: ${err.message}`); }
+    try { recog.start(); } catch { useServer(); }
   }
-  if (!Recognition || !window.isSecureContext) {
+  // This browser's recognition doesn't work (Brave and other Chromium browsers
+  // have no service behind it): use the server's from now on.
+  function useServer() {
+    console.warn("[listen] the browser's speech recognition isn't working: using the server's");
+    engine = "server";
+    const r = recog;
+    recog = null;
+    r?.abort();
+    if (listening) startRecorder();
+  }
+
+  // The server's: record phrases here, the server writes each one down.
+  async function startRecorder() {
+    fetch(`api/sessions/${code}/listen?warm`, { method: "POST", headers: { "X-Warden-Token": key } }).catch(() => {}); // (the server loads its model)
+    try {
+      const rec = await PhraseRecorder.start({
+        onSpeaking: (on) => listening && micStatus(on ? "Hearing you…" : pendingUploads ? "Writing it down…" : "Listening…"),
+        onPhrase: (pcm) => {
+          pendingUploads++;
+          if (listening) micStatus("Writing it down…");
+          // One at a time, so the phrases are logged in the order they were said.
+          uploads = uploads.then(async () => {
+            const r = await fetch(`api/sessions/${code}/listen`, { method: "POST", headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" }, body: pcm.buffer });
+            if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || `The server couldn't write that down (${r.status}).`);
+          }).catch((err) => toast(err.message, "error")).finally(() => {
+            if (--pendingUploads) return;
+            if (listening) micStatus("Listening…");
+            else $("micLive").hidden = true;
+          });
+        },
+      });
+      if (!listening || engine !== "server") return rec.stop(); // (switched off while starting)
+      recorder = rec;
+      micStatus("Listening… speak, and each phrase is written down when you pause.");
+    } catch (err) {
+      micFailed(err?.name === "NotAllowedError" ? MIC_ERRORS["not-allowed"] : err?.name === "NotFoundError" ? MIC_ERRORS["audio-capture"] : `Couldn't start the microphone: ${err?.message || err}`);
+    }
+  }
+
+  if (!window.isSecureContext || (!Recognition && !window.PhraseRecorder?.supported)) {
     $("micBtn").disabled = true;
-    $("micBtn").title = !Recognition
-      ? "Listen needs speech recognition, which this browser doesn't have. Use Chrome or Edge."
-      : "Listen needs a secure page: open the console over https, or at localhost on the computer running it.";
+    $("micBtn").title = !window.isSecureContext
+      ? "Listen needs a secure page: open the console over https, or at localhost on the computer running it."
+      : "Listen needs microphone access, which this browser doesn't have.";
   }
   $("micBtn").onclick = () => setListening(!listening);
 
