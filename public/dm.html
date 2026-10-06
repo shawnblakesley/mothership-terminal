@@ -114,7 +114,7 @@
         <textarea id="bInput" rows="3" placeholder="e.g. A derelict research ship found drifting near a gas giant. The players are salvagers… (Ctrl+Enter sends)"></textarea>
         <div class="row wrap">
           <button id="bSend" class="primary">Send</button>
-          <button id="bDraft" title="Write the whole scenario from the conversation so far">✎ Draft it</button>
+          <button id="bDraft" title="Write the whole scenario from the conversation so far">Draft it</button>
           <span class="grow"></span>
           <button id="bReset" class="ghost">Start over</button>
         </div>
@@ -161,7 +161,7 @@
     <div class="roomgrid">
       <section class="roomplanbox">
         <div class="row wrap">
-          <button id="roomEdit" title="Paint tiles on the floor plan">✎ Edit</button>
+          <button id="roomEdit" title="Paint tiles on the floor plan">Edit</button>
           <button id="roomRedraw" class="ghost" title="Have the agent draw this room again (uses the session's model and key)">↻ Redraw with agent</button>
           <span class="grow"></span>
           <select id="roomShowTo" aria-label="Show to" title="Who sees the layout"></select>
@@ -261,7 +261,7 @@
         <div class="tabs seg" data-tabs="side" role="tablist">
           <button data-tab="actions">Actions</button><button data-tab="map">Map</button><button data-tab="crew">Crew</button><button data-tab="story">Story</button><button data-tab="rules">Rules</button>
         </div>
-        <button id="editMode" class="ghost editmode" aria-pressed="false" title="Edit the setup: characters, terminals, connections, voices, lore. Off: just what you need to run the game.">✎ Edit</button>
+        <button id="editMode" class="ghost editmode" aria-pressed="false" title="Edit the setup: characters, terminals, connections, voices, lore. Off: just what you need to run the game.">Edit</button>
       </div>
       <!-- The next response, rolls, effects and sounds. -->
       <div class="tabpanel" data-tabs="side" data-panel="actions">
@@ -392,7 +392,7 @@
 
       <div class="tabpanel" data-tabs="side" data-panel="story">
         <details class="sec play-only" open>
-          <summary><h2>Cast <span class="hint" title="Who can speak, and the people behind each voice. Edit them with ✎ Edit.">?</span></h2></summary>
+          <summary><h2>Cast <span class="hint" title="Who can speak, and the people behind each voice. Edit them with Edit.">?</span></h2></summary>
           <div id="castPlay"></div>
         </details>
         <details id="voicesPanel" class="sec edit-only" open>

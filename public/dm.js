@@ -533,7 +533,7 @@
     $("addCrew").disabled = crewDraft.length >= 4;
   }
   // Read-only: what a character can do at a glance. Health, Wounds and Stress
-  // stay adjustable (they change in play); the rest is edited with ✎ Edit.
+  // stay adjustable (they change in play); the rest is edited with Edit.
   const cap = (k) => k[0].toUpperCase() + k.slice(1);
   function pcSheet(c) {
     const nums = (o) => Object.entries(o).map(([k, v]) => `<span>${cap(k)} <b>${v}</b></span>`).join("");
@@ -645,7 +645,7 @@
     msgs.scrollTop = msgs.scrollHeight;
     for (const id of ["bSend", "bDraft", "bReset"]) $(id).disabled = !!busy;
     $("bDraft").classList.toggle("primary", !!b.messages.at(-1)?.ready);
-    $("bDraft").textContent = b.draft ? "✎ Redraft" : "✎ Draft it";
+    $("bDraft").textContent = b.draft ? "Redraft" : "Draft it";
     renderDraft(b.draft);
   }
 
@@ -919,12 +919,12 @@
 
   // ------------------------------------------------------------ edit mode
   // Read-only (the default, remembered per device) shows what matters while
-  // running the game; ✎ Edit shows the setup (dm.css .edit-only / .play-only).
+  // running the game; Edit shows the setup (dm.css .edit-only / .play-only).
   const sideCol = document.querySelector(".col.side");
   function setEditing(on) {
     sideCol.classList.toggle("editing", on);
     $("editMode").setAttribute("aria-pressed", String(on));
-    $("editMode").textContent = on ? "✓ Done" : "✎ Edit";
+    $("editMode").textContent = on ? "Done" : "Edit";
     for (const id of ["lore", "secrets"]) $(id).readOnly = !on;
     if (on) store.set("editMode", "1"); else store.del("editMode");
   }
@@ -1076,7 +1076,7 @@
     else if (!roomRows) box.innerHTML = `<div class="rpempty muted">No floor plan yet. <b>Redraw with agent</b> sketches one, or <b>Edit</b> to paint it yourself.</div>`;
     else box.innerHTML = RoomPlan.svg(roomRows, { cell: 24, title: room.label, cls: roomEditing ? "editing" : "" });
     $("roomLegend").innerHTML = roomRows ? RoomPlan.legend(roomRows).map(([c, n]) => `<span><b>${esc(c)}</b> ${esc(n)}</span>`).join("") : "";
-    $("roomEdit").textContent = roomEditing ? "✓ Done" : "✎ Edit";
+    $("roomEdit").textContent = roomEditing ? "Done" : "Edit";
     $("roomEdit").classList.toggle("primary", roomEditing);
     $("roomRedraw").disabled = busy || !!S.roomBusy;
     $("roomShow").disabled = !plan;
