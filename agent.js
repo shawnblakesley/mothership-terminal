@@ -45,9 +45,9 @@ export function resolveVoice(ref, voices) {
 // right voice, keeping the order.
 export function splitVoiceTags(lines, voices) {
   const out = [];
-  for (const { voice, character = "", system = "", text, effects, variants } of lines) {
-    // A line's effects and per-player variants stay with its first piece; every piece keeps its system.
-    let current = { voice, character, system, text: [], effects: normalizeEffects(effects), variants: normalizeVariants(variants) };
+  for (const { voice, character = "", system = "", reveal = "", text, effects, variants } of lines) {
+    // A line's effects, per-player variants and reveal stay with its first piece; every piece keeps its system.
+    let current = { voice, character, system, reveal, text: [], effects: normalizeEffects(effects), variants: normalizeVariants(variants) };
     out.push(current);
     let tagged = false;
     for (const row of String(text).split("\n")) {
@@ -68,7 +68,7 @@ export function splitVoiceTags(lines, voices) {
   }
   return mergeAdjacent(
     out
-      .map((l) => ({ voice: l.voice, character: l.character, system: l.system || "", text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim(), effects: l.effects, variants: l.variants }))
+      .map((l) => ({ voice: l.voice, character: l.character, system: l.system || "", reveal: l.reveal || "", text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim(), effects: l.effects, variants: l.variants }))
       .filter((l) => l.text || l.effects.length || l.variants.length), // effect-only beats are kept
   );
 }
@@ -84,7 +84,7 @@ function mergeAdjacent(lines) {
   for (const l of lines) {
     const last = out.at(-1);
     // (Lines with per-player variants stay separate: each variant replaces its own line.)
-    if (last && last.voice === l.voice && last.character === l.character && last.system === l.system && last.text && l.text && !l.effects.length && !l.variants.length && !last.variants.length) last.text += `\n${l.text}`;
+    if (last && last.voice === l.voice && last.character === l.character && last.system === l.system && !l.reveal && last.text && l.text && !l.effects.length && !l.variants.length && !last.variants.length) last.text += `\n${l.text}`;
     else out.push({ ...l, effects: [...l.effects], variants: [...l.variants] });
   }
   return out;
@@ -109,7 +109,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "item_changes", "moves", "cast_changes", "reveal", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "item_changes", "moves", "cast_changes", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -117,11 +117,12 @@ function buildSchema(voices) {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["voice", "character", "system", "text", "effects", "variants"],
+          required: ["voice", "character", "system", "text", "effects", "variants", "reveal"],
           properties: {
             voice: { type: "string", enum: voices.map((v) => v.id) },
             system: { type: "string", description: "Which computer system's screens show this line, by its name from SYSTEMS, or \"ALL\" for every system's screens at once (rare: something reaching every machine, like the entity or a signal on every network). Empty: wherever the players are." },
             character: { type: "string", description: "When someone of THE CAST speaks: their name (voice is then the cast's channel; whether it's face to face or over it follows from where they are). Someone new: their name plus (f) or (m), e.g. \"Marlowe (f)\". Empty for every other voice." },
+            reveal: { type: "string", description: "On the line where the players first SEE an adversary (it shows itself, the light finds it, a camera catches it): that adversary's name. As this line begins, its picture goes up on their screens and its name replaces ??? from here on. Empty on every other line." },
             text: { type: "string", description: "Exactly what this voice says or prints, formatted by THIS voice's persona only. No voice tags or name prefixes. May be empty for an effect-only beat." },
             effects: {
               type: "array",
@@ -186,11 +187,6 @@ function buildSchema(voices) {
             terminal: { type: "string", description: "The terminal's name, from TERMINALS ON THE STATION. Somewhere with no terminal (a corridor, a crawlspace, outside the hull): the portable terminal." },
           },
         },
-      },
-      reveal: {
-        type: "array",
-        description: "Adversaries (by name) the players SEE for the first time in this reply (it shows itself, a camera catches it, they open the door on it): from the next line on, theirs show its name instead of ???. Usually empty.",
-        items: { type: "string" },
       },
       cast_changes: {
         type: "array",
@@ -320,7 +316,6 @@ const REPLY_EXAMPLE = {
   crew_changes: [],
   item_changes: [],
   moves: [],
-  reveal: [],
   cast_changes: [{ name: "Dr. Imre Salk", room: "", notes: "", attitude_change: 1, why: "they promised medicine for Webb", stress_change: 0, panic_check: false }],
   clocks: [],
   handouts: [],
@@ -412,7 +407,7 @@ SPOKEN VOICES (people, announcements, the narrator: everything heard aloud rathe
 
 ADVERSARIES (the threats: voices marked ADVERSARY)
 - Until the players actually see an adversary, it has no name: its lines show as ???, and nobody (no voice, no character, no narrator) calls it by its true name. People can only describe what they've noticed (a sound in the vents, "the thing in the bay") or give it a nickname.
-- The moment they see it (it shows itself, a camera catches it, they open the door on it), put its name in reveal, in that same reply. From then on it goes by its name.
+- The moment they see it (it shows itself, the light finds it, a camera catches it, they open the door on it), set "reveal" to its name on THE LINE where that happens (usually the narrator's line that shows it). Its picture goes up on their screens as that line begins, and from then on it goes by its name. Not a line early: lines before it still show ???.
 
 THE CAST (the story's people: see THE CAST below, and WHERE THE CAST ARE in the per-turn context)
 - When one of them speaks, set "character" to their name and "voice" to the cast's channel (the intercom: see THE CAST). Switch freely between people, line by line, to stage conversations.
@@ -565,7 +560,7 @@ function buildMessages(state) {
   for (const e of state.log.filter((x) => x.kind !== "note" && !x.cut).slice(-HISTORY_ENTRIES)) {
     const role = USER_KINDS.has(e.kind) ? "user" : "assistant";
     let last = turns.at(-1);
-    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], moves: [], cast: [], reveal: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
+    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], moves: [], cast: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
     if (e.kind === "player") last.inputs.push(`[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}] ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
@@ -577,13 +572,12 @@ function buildMessages(state) {
       last.notes.push(e.text);
       last.changes.push(...(e.changes || []));
     } else {
-      last.lines.push({ voice: voiceIdOf(e), character: e.character || "", system: multi ? systemName(state.config, e.net) : "", text: e.text, effects: e.cues || [], variants: (e.variants || []).map((v) => ({ for: v.for, text: v.text })) });
+      last.lines.push({ voice: voiceIdOf(e), character: e.character || "", reveal: e.reveal?.name || "", system: multi ? systemName(state.config, e.net) : "", text: e.text, effects: e.cues || [], variants: (e.variants || []).map((v) => ({ for: v.for, text: v.text })) });
       last.changes.push(...(e.changes || []));
       last.crew.push(...(e.crewChanges || []));
       last.items.push(...(e.itemChanges || []));
       last.moves.push(...(e.moves || []));
       last.cast.push(...(e.castChanges || []));
-      last.reveal.push(...(e.reveals || []));
       last.clocks.push(...(e.clockChanges || []));
       last.handouts.push(...(e.handouts || []));
       last.effects.push(...(e.effects || []));
@@ -600,7 +594,7 @@ function buildMessages(state) {
   return turns.map((t) =>
     t.role === "user"
       ? { role: "user", content: t.inputs.join("\n") }
-      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, moves: t.moves, reveal: t.reveal, cast_changes: t.cast, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
+      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, moves: t.moves, cast_changes: t.cast, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
   );
 }
 
@@ -792,7 +786,7 @@ export function parseReply(text, voices) {
   }
   return {
     lines: splitVoiceTags(
-      raw.filter((l) => l && typeof l === "object").map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: scrub(l.character).trim().slice(0, 60), system: String(l.system ?? "").trim().slice(0, 40), text: scrub(l.text), effects: normalizeEffects(l.effects), variants: normalizeVariants(l.variants).map((v) => ({ ...v, text: scrub(v.text) })) })),
+      raw.filter((l) => l && typeof l === "object").map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: scrub(l.character).trim().slice(0, 60), reveal: String(l.reveal ?? "").trim().slice(0, 60), system: String(l.system ?? "").trim().slice(0, 40), text: scrub(l.text), effects: normalizeEffects(l.effects), variants: normalizeVariants(l.variants).map((v) => ({ ...v, text: scrub(v.text) })) })),
       voices,
     ),
     crew_changes: (Array.isArray(r?.crew_changes) ? r.crew_changes : [])
@@ -807,7 +801,7 @@ export function parseReply(text, voices) {
       .filter((m) => m && String(m.for ?? "").trim() && String(m.terminal ?? "").trim())
       .slice(0, 8)
       .map((m) => ({ for: String(m.for).trim().slice(0, 60), terminal: String(m.terminal).trim().slice(0, 60) })),
-    reveal: (Array.isArray(r?.reveal) ? r.reveal : []).map((x) => String(x ?? "").trim().slice(0, 60)).filter(Boolean).slice(0, 5),
+    reveal: (Array.isArray(r?.reveal) ? r.reveal : []).map((x) => String(x ?? "").trim().slice(0, 60)).filter(Boolean).slice(0, 5), // (old shape: names, at the end)
     cast_changes: (Array.isArray(r?.cast_changes) ? r.cast_changes : [])
       .filter((c) => c && String(c.name ?? "").trim())
       .slice(0, 12)

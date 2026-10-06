@@ -176,7 +176,7 @@
     div.classList.add(`style-${entry.inPerson ? "label" : v?.style || (entry.kind === "system" ? "boxed" : "plain")}`);
     // Someone of the cast over the intercom shows who is speaking: "INTERCOM · SALK: ".
     const label = entry.inPerson && entry.character ? `${entry.character.toUpperCase()}: ` // (in the room with them)
-      : v?.style === "label" ? `${v.name}${entry.character ? ` · ${entry.character.toUpperCase()}` : ""}: ` : "";
+      : v?.style === "label" ? `${entry.shownAs || v.name}${entry.character ? ` · ${entry.character.toUpperCase()}` : ""}: ` : ""; // (an adversary: the name its line was said under)
     if (label) div.dataset.label = label;
     // Their portrait, to the left of what they say: clear in person, full of static over the intercom.
     const portrait = entry.character && header.portraits?.[entry.character.toLowerCase()];
@@ -284,6 +284,7 @@
   function startLine(play) {
     if (play.gen !== lineGen) return;
     cueState.set(play.raw.id, "showing");
+    if (play.raw.reveal) showImage(play.raw.reveal); // (the players see it: now, not before)
     releaseCues(play.raw.id, "before");
   }
 
@@ -640,7 +641,7 @@
   function renderSide() {
     const c = mine();
     const side = $("side");
-    side.hidden = !c || !sideOpen || !wide() || spectate || !$("crewpick").hidden || !$("crewfile").hidden; // (hidden while choosing a character, or with the full sheet open)
+    side.hidden = !c || !sideOpen || !wide() || spectate || !$("crewpick").hidden || !$("crewfile").hidden || !$("reveal").hidden; // (hidden while choosing a character, with the full sheet open, or a picture up)
     $("hdr-file").classList.toggle("on", !side.hidden);
     if (side.hidden) return;
     // (the buttons stay at the bottom of the panel, whatever is scrolled above them)
@@ -1273,16 +1274,28 @@
     FX.Sound.beep(520, 0.08, 0.05);
     setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90);
   }
-  // The Warden shows an adversary's picture: full screen, tinted to the screen's colour.
-  function showImage({ title, src, credit = "" }) {
-    const fx = $("planfx");
-    fx.hidden = false;
-    fx.querySelector(".pf-title").textContent = String(title || "").toUpperCase();
+  // An adversary's picture (the agent's reveal, as its line begins; or the Warden's Show):
+  // in the panel beside the terminal, tinted to the screen's colour, so the dialogue
+  // stays in view. Closes with a click, Esc or [ CLOSE ].
+  function showImage({ title, name, src, credit = "" }) {
+    if (!src) return FX.Sound.sting(); // (revealed, but no picture: just the sting)
+    const box = $("reveal");
+    box.querySelector(".rv-title").textContent = String(title || name || "").toUpperCase();
     // (a credit's link stays clickable: everything else in it is text)
-    const link = (t) => escH(t).replace(/(https?:\/\/[^\s<]+|[\w-]+(?:\.[\w-]+)+\/[^\s<]*)/g, (u) => `<a href="${u.startsWith("http") ? u : `https://${u}`}" target="_blank" rel="noopener">${u}</a>`);
-    fx.querySelector(".pf-plan").innerHTML = `<div class="pf-pic"><img src="${escH(src)}" alt="" referrerpolicy="no-referrer"></div>${credit ? `<div class="pf-credit">${link(credit)}</div>` : ""}`;
+    const link = (t) => escH(t).replace(/(https?:\/\/[^\s<]+|[\w-]+(?:\.[\w-]+)+\/[^\s<]*)/g, (u) => `<a href="${u.startsWith("http") ? u : `https://${u}`}" target="_blank" rel="noopener">${u}</a>`);
+    box.querySelector(".rv-pic").innerHTML = `<img src="${escH(src)}" alt="" referrerpolicy="no-referrer">`;
+    box.querySelector(".rv-credit").innerHTML = credit ? link(credit) : "";
+    box.hidden = false;
+    renderSide(); // (the character sheet steps aside while it's up)
     FX.Sound.sting(); // (a horror sting: it's been seen)
   }
+  function closeReveal() {
+    if ($("reveal").hidden) return;
+    $("reveal").hidden = true;
+    renderSide();
+  }
+  $("reveal").addEventListener("click", (e) => { if (!e.target.closest("a")) closeReveal(); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape") closeReveal(); });
   $("planfx").addEventListener("click", () => { $("planfx").hidden = true; });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("planfx").hidden) $("planfx").hidden = true; });
 

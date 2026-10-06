@@ -684,6 +684,8 @@ export class Session {
     // given (the agent's pick, the Warden's), wherever the players are.
     const { net = this.defaultNet(), ...rest } = extra;
     const entry = { id: this.nextId++, kind, text, ts: Date.now(), ...(net ? { net } : {}), ...rest };
+    const adv = kind === "entity" && this.state.config.voices.find((v) => v.id === entry.entity && v.adversary);
+    if (adv) entry.shownAs = shownName(adv); // (the name its line goes by: ??? until it's been seen)
     this.state.log.push(entry);
     this.delivering?.entries.push(entry.id);
     if (this.state.log.length > MAX_LOG) this.state.log.splice(0, this.state.log.length - MAX_LOG);
@@ -1401,6 +1403,20 @@ export class Session {
     if (any) this.toPlayers({ t: "header", header: this.playerHeader() }); // (their portraits)
   }
 
+  // An adversary the players see on this line (by name or id): revealed now. Returns what
+  // the line carries for the players' screens ({ id, name, src?, credit? }), or null.
+  revealOnLine(ref) {
+    const c = this.state.config;
+    const n = String(ref || "").trim().toLowerCase();
+    const v = c.voices.find((x) => x.adversary && !x.adversary.revealed && (x.id === n || x.name.toLowerCase() === n || (n === "???" && x.adversary)));
+    if (!v) return null;
+    v.adversary.revealed = true;
+    this.addLog("note", `Adversary revealed: the players see ${v.name}${v.adversary.picture ? " (its picture goes up as the line plays)" : ""}.`);
+    this.toPlayers({ t: "header", header: this.playerHeader() });
+    const pic = v.adversary.picture;
+    return { id: v.id, name: v.name, ...(pic ? { src: PICTURE_LINK.test(pic) ? pic : `api/sessions/${this.code}/portraits/${pic}`, credit: v.adversary.credit || "" } : {}) };
+  }
+
   // Adversaries the players have now seen (by name or id): from here on their lines
   // show their name, not ???. Returns whether any were new.
   revealAdversaries(names = []) {
@@ -1839,7 +1855,7 @@ export class Session {
     }
     const voices = this.state.config.voices;
     const lines = splitVoiceTags(
-      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), inPerson: !!(l.inPerson ?? l.in_person), system: String(l.system ?? ""), text: String(l.text ?? "").slice(0, 8000), effects: l.effects, variants: l.variants })),
+      (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), inPerson: !!(l.inPerson ?? l.in_person), system: String(l.system ?? ""), reveal: String(l.reveal ?? "").slice(0, 60), text: String(l.text ?? "").slice(0, 8000), effects: l.effects, variants: l.variants })),
       voices,
     );
     // The fiction moved them: screens go to their new terminals first, so this reply
@@ -1856,7 +1872,7 @@ export class Session {
     // The first entry carries the reply's changes/effects so the agent's history
     // shows that it really changed things (otherwise it learns to leave them empty).
     const mapChanges = this.mapChanges(reply);
-    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], moves: reply?.moves || [], castChanges: reply?.cast_changes || [], reveals: reply?.reveal || [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
+    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], moves: reply?.moves || [], castChanges: reply?.cast_changes || [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
     // Effects on a line fire as it begins. An effect-only beat (no text) fires
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
@@ -1864,7 +1880,7 @@ export class Session {
     const config = this.state.config;
     const channel = channelOf(config);
     let prev = null; // the voice of the line before
-    for (let { voice, character, system, text, effects: lineFx, variants: rawVariants } of lines) {
+    for (let { voice, character, system, reveal, text, effects: lineFx, variants: rawVariants } of lines) {
       if (voice === BUILTIN.narrator && source === "agent" && config.narrator === false) continue; // (switched off)
       // Someone of the cast speaking: their lines are on the cast's channel (someone
       // new joins the cast). A name on any other voice (a computer, the entity) is dropped.
@@ -1894,16 +1910,18 @@ export class Session {
         if (net !== asked) this.addLog("note", `${voices.find((v) => v.id === voice)?.name || voice} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(config, asked)}`}: its line went to ${systemName(config, net)}.`);
       }
       const kind = kindOf(voice);
+      // The players see an adversary on this line: revealed now, its picture up as the line begins.
+      const shown = source === "agent" && reveal ? this.revealOnLine(reveal) : null;
       this.introduce(voice, net, { inPerson, done: prev === BUILTIN.narrator }); // (the agent's own intro will do)
       prev = voice;
-      const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson ? { inPerson: true, room } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
+      const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson ? { inPerson: true, room } : {}), ...(variants.length ? { variants } : {}), ...(shown ? { reveal: shown } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
       lastEntry = entry;
       for (const c of cues) this.startEffect(c, "agent", { atEntry: entry.id, when: "before", hold: c.hold });
     }
     for (const c of waiting) this.startEffect(c, "agent", lastEntry ? { atEntry: lastEntry.id, when: "after" } : null);
     if (source === "agent") this.applyCastChanges(reply?.cast_changes, "after"); // (whoever leaves the players' room goes now)
-    if (source === "agent") this.revealAdversaries(reply?.reveal); // (seen now: named from the next line on)
+    if (source === "agent") this.revealAdversaries(reply?.reveal); // (an old-style reveal list: at the end)
     // Panic checks the agent called for, rolled in front of the players now its lines are out.
     for (const id of this.panics?.splice(0) || []) {
       const member = this.state.config.cast.find((m) => m.id === id);

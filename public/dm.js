@@ -351,7 +351,7 @@
       case "system": return { name: who(voiceName("broadcast")), by, c: "var(--warn)" };
       case "entity": {
         const v = S.config.voices.find((x) => x.id === e.entity);
-        return { name: who(v?.name || e.entity), by: [by, v?.adversary && !v.adversary.revealed ? "seen as ???" : ""].filter(Boolean).join(" · "), c: v?.color || "var(--entity)" };
+        return { name: who(v?.name || e.entity), by: [by, (e.shownAs ?? (v?.adversary && !v.adversary.revealed ? "???" : "")) === "???" ? "seen as ???" : "", e.reveal ? "revealed here" : ""].filter(Boolean).join(" · "), c: v?.color || "var(--entity)" };
       }
       default: return null;
     }

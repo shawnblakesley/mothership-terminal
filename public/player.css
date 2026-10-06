@@ -119,7 +119,21 @@ body {
 .pf-title { letter-spacing: 0.2em; text-shadow: 0 0 6px var(--glow); }
 .pf-hint { color: var(--dim); font-size: 0.85em; animation: blink 1.2s infinite steps(1); }
 .pf-plan { width: min(92vw, 900px); display: flex; justify-content: center; filter: drop-shadow(0 0 4px var(--glow)); }
-/* An adversary's picture: grey, multiplied over the screen's colour, with scanlines. */
+/* An adversary's picture beside the terminal (the right-hand panel), grey multiplied
+   over the screen's colour, with scanlines. On narrow screens, over everything. */
+#reveal { flex: 0 0 clamp(280px, 38%, 560px); display: flex; flex-direction: column; align-items: center; gap: 0.4em;
+  border-left: 2px solid var(--dim); padding: 0 0 0 0.8em; cursor: pointer; min-height: 0; }
+#reveal[hidden] { display: none; }
+.rv-title { letter-spacing: 0.2em; text-shadow: 0 0 6px var(--glow); }
+.rv-pic { position: relative; flex: 1; min-height: 0; width: 100%; display: flex; justify-content: center; background: var(--fg); box-shadow: 0 0 18px var(--glow); overflow: hidden; }
+.rv-pic img { width: 100%; height: 100%; object-fit: cover; object-position: top; filter: grayscale(1) contrast(1.15); mix-blend-mode: multiply; }
+.rv-pic::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.3) 2px 3px); }
+.rv-credit { color: var(--dim); font-size: 0.6em; text-shadow: none; text-align: center; }
+.rv-credit a { color: inherit; }
+@media (max-width: 899px) {
+  #reveal { position: fixed; inset: 0; z-index: 60; background: var(--bg); padding: 4vh 4vw; border: 0; }
+}
+/* (the floor plan overlay's picture style) */
 .pf-pic { position: relative; background: var(--fg); line-height: 0; box-shadow: 0 0 18px var(--glow); }
 .pf-pic img { height: 70vh; width: auto; max-width: 88vw; object-fit: contain; filter: grayscale(1) contrast(1.15); mix-blend-mode: multiply; } /* (scaled up to fill: small pictures too) */
 .pf-pic::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.3) 2px 3px); }
