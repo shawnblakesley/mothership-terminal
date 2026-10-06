@@ -537,6 +537,8 @@
   // in a room with players they talk face to face, anywhere else over the intercom.
   // The room is set in read-only too (it changes in play).
   let castDraft = null, castTimer = null, castSentAt = 0;
+  // How a character feels about the players (cast.js ATTITUDES).
+  const ATTITUDES = [[-3, "Hostile"], [-2, "Resentful"], [-1, "Wary"], [0, "Neutral"], [1, "Friendly"], [2, "Trusting"], [3, "Loyal"]];
   const portraitUrl = (file) => (file.startsWith("kit/") ? `portraits/${file.slice(4)}` : `api/sessions/${code}/portraits/${file}`);
   const initials = (name) => { const w = name.split(/\s+/).filter(Boolean); return ((w[0]?.[0] || "") + (w.length > 1 ? w.at(-1)[0] : "")).toUpperCase(); };
   function renderCast(fromDraft = false) {
@@ -561,6 +563,8 @@
             <label class="small muted where">in <select data-m="room" aria-label="Where ${esc(m.name)} is"><option value="">nowhere on the map</option>${
               [...rooms].map(([id, label]) => `<option value="${esc(id)}" ${id === m.room ? "selected" : ""}>${esc(label)}</option>`).join("")}${
               m.room && !rooms.has(m.room) ? `<option value="${esc(m.room)}" selected>${esc(m.room)}</option>` : ""}</select></label>
+            <label class="small muted mood" title="How they feel about the players. The agent plays them by it and moves it as they earn or lose their trust; you can set it too. Players never see it.">feels <select data-m="attitude" data-num aria-label="How ${esc(m.name)} feels about the players" class="att${m.attitude > 0 ? " up" : m.attitude < 0 ? " down" : ""}">${
+              ATTITUDES.map(([n, label]) => `<option value="${n}" ${n === (m.attitude || 0) ? "selected" : ""}>${label} (${n > 0 ? "+" : ""}${n})</option>`).join("")}</select></label>
             ${withPlayers.has(m.room) ? '<span class="pill ok" title="In a room with players: they talk face to face, and only screens in that room show it">in person</span>' : '<span class="pill" title="Not in a room with any players: heard over the intercom">intercom</span>'}
           </div>
           <div class="row wrap edit-only small">
@@ -569,6 +573,7 @@
             ${m.portrait ? '<button data-mact="nopic" class="ghost">Remove picture</button>' : ""}
             <span class="grow"></span><button data-mact="del" class="ghost" title="Remove ${esc(m.name)}">✕</button>
           </div>
+          <input data-m="why" class="why" value="${esc(m.why || "")}" placeholder="Why they feel that way (the agent keeps this up to date)" aria-label="Why ${esc(m.name)} feels that way">
           <textarea data-m="notes" class="edit-only" rows="2" placeholder="Who they are, what they want, how they talk (the agent reads this)" aria-label="Notes">${esc(m.notes)}</textarea>
           ${m.notes ? `<div class="play-only small muted">${esc(m.notes)}</div>` : ""}
         </div>
@@ -588,7 +593,7 @@
     const key = e.target.dataset.m;
     const card = e.target.closest(".castm");
     if (!key || !card) return;
-    castDraft[Number(card.dataset.i)][key] = e.target.value;
+    castDraft[Number(card.dataset.i)][key] = "num" in e.target.dataset ? Number(e.target.value) : e.target.value;
     saveCast(e.target.tagName === "SELECT");
   });
   $("cast").addEventListener("focusout", () => setTimeout(() => S && renderCast(), 1600));
@@ -612,7 +617,7 @@
   $("addCast").onclick = () => {
     let n = castDraft.length + 1;
     while (castDraft.some((c) => c.name === `New character ${n}`)) n++;
-    castDraft.push({ id: "", name: `New character ${n}`, voice: "", notes: "", room: "", portrait: "" });
+    castDraft.push({ id: "", name: `New character ${n}`, voice: "", notes: "", room: "", portrait: "", attitude: 0, why: "" });
     saveCast(true);
     renderCast(true);
     $("cast").querySelector(".castm:last-of-type .cname")?.select();

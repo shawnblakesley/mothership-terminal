@@ -3,7 +3,7 @@
 // Pure functions of a session's state; no I/O here.
 import crypto from "crypto";
 import { BUILTIN, SPEAKERS } from "./voices.js";
-import { channelOf } from "./cast.js";
+import { channelOf, attitudeLabel } from "./cast.js";
 import { CHECKS } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
 import { terminalsBrief, netOf, systemsOf, systemName } from "./terminals.js";
@@ -193,11 +193,13 @@ function buildSchema(voices) {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["name", "room", "notes"],
+          required: ["name", "room", "notes", "attitude_change", "why"],
           properties: {
             name: { type: "string", description: "Their name from THE CAST; someone new: their name plus (f) or (m)." },
             room: { type: "string", description: "Where they are now: a room id from MAP LAYOUT, \"none\" for nowhere on the map (dead and gone, off the station, lost in the vents), or \"\" if they haven't moved." },
-            notes: { type: "string", description: "Their whole notes, rewritten, when what's true about them changes (keep what still holds); \"\" to leave them." },
+            notes: { type: "string", description: "Something new that's now true about them (hurt, infected, has the keycard, dead), in one short sentence: it's ADDED to their notes, never replaces them. Not how they feel about the players (that's attitude_change). \"\" for nothing new." },
+            attitude_change: { type: "integer", description: "How their attitude to the players moves (see ATTITUDES): -1 or +1 for something that clearly earns or costs their trust, -2 or +2 only for something huge (saving their life, betraying them), 0 for no change." },
+            why: { type: "string", description: "When the attitude changes: the reason, in a few words (e.g. \"they got Webb's fever down\"). Otherwise \"\"." },
           },
         },
       },
@@ -311,7 +313,7 @@ const REPLY_EXAMPLE = {
   crew_changes: [],
   item_changes: [],
   moves: [],
-  cast_changes: [],
+  cast_changes: [{ name: "Dr. Imre Salk", room: "", notes: "", attitude_change: 1, why: "they promised medicine for Webb" }],
   clocks: [],
   handouts: [],
   layout: "",
@@ -386,8 +388,9 @@ THE CAST (the story's people: see THE CAST below, and WHERE THE CAST ARE in the 
 - When one of them speaks, set "character" to their name and "voice" to the cast's channel (the intercom: see THE CAST). Switch freely between people, line by line, to stage conversations.
 - WHERE THEY ARE decides how they're heard, and the app does it for you: someone in the same room as a player's terminal talks face to face (clear, in person, and only the players in that room hear it); anyone else comes over the intercom, with its static. So write their words to fit: in person, they're right there and can be seen; elsewhere, they're on the intercom.
 - Keep their rooms true with cast_changes: when someone comes to the players, flees, is dragged off, hides, or dies, move them (room "none" for nowhere on the map) in the same reply that shows it. To have someone walk in and talk face to face, move them into the players' room in that reply; to have them say something and go, move them out in the same reply (they leave after this reply's lines).
-- You may bring in someone not listed (someone the lore allows): give their name with (f) or (m) the first time, e.g. "Marlowe (f)", and add them with cast_changes (with where they are, and notes on who they are). They get a voice of their own. Keep using the same name afterwards.
+- You may bring in someone not listed (someone the lore allows): give their name with (f) or (m) the first time, e.g. "Marlowe (f)", and add them with cast_changes (with where they are, and notes on who they are). A cast_changes note is added to what's already known about someone: use it for something new that's now true (hurt, infected, dead), never to restate them. They get a voice of their own. Keep using the same name afterwards.
 - Never put the speaker's name in the text itself; the screen shows it.
+- ATTITUDES: each of them feels a certain way about the players, from Hostile (-3) through Wary (-1), Neutral (0) and Friendly (1) to Loyal (3), listed in WHERE THE CAST ARE with why. Play them by it: what they'll share, how they talk to the players, whether they help, stall, lie or turn on them. When the players clearly earn or lose someone's trust (help them, keep a promise, threaten them, abandon someone they care about, lie and get caught), move it with cast_changes (attitude_change, and why), in the same reply. One step for most things; it changes slowly, and not for small talk. They don't announce it.
 
 PER-PLAYER VARIATIONS
 - Each player reads their own screen as their own character, so a line can say something different to each of them. Put the version most players see in "text", and add "variants" for the ones who should see something else: "for" is a crew member's name, a class (Android, Marine, Scientist, Teamster) for all of that class, or "Humans" for everyone who isn't an android.
@@ -701,9 +704,11 @@ function castWhereabouts(state) {
   const c = state.config;
   const roomOf = (s) => c.terminals.find((t) => t.id === s.terminal)?.room || "";
   const playerRooms = new Set((state.screens || []).map(roomOf).filter(Boolean));
-  const rows = (c.cast || []).map((m) => `- ${m.name}: ${m.room ? `${m.room}${playerRooms.has(m.room) ? " (WITH THE PLAYERS: face to face)" : ""}` : "nowhere on the map"}`);
+  const rows = (c.cast || []).map((m) => `- ${m.name}: ${m.room ? `${m.room}${playerRooms.has(m.room) ? " (WITH THE PLAYERS: face to face)" : ""}` : "nowhere on the map"} · attitude to the players: ${attitudeLabel(m.attitude)} (${m.attitude > 0 ? "+" : ""}${m.attitude || 0})${m.why ? `, because ${m.why}` : ""}`);
   const rooms = [...playerRooms];
-  return `WHERE THE CAST ARE (now; change it with cast_changes):\n${rows.join("\n") || "- (no cast)"}\n\nThe players are physically in: ${rooms.join(", ") || "no room on the map (a portable terminal, or nobody's chosen one)"}. Cast in those rooms talk to them face to face; everyone else is heard over the intercom.`;
+  return `WHERE THE CAST ARE, AND HOW THEY FEEL ABOUT THE PLAYERS (now; change either with cast_changes):\n${rows.join("\n") || "- (no cast)"}\n\nThe players are physically in: ${rooms.join(", ") || "no room on the map (a portable terminal, or nobody's chosen one)"}. Cast in those rooms talk to them face to face; everyone else is heard over the intercom.
+
+If this reply shows the players earning or losing someone's trust (a promise, help, a threat, a betrayal, defying them), record it in cast_changes: attitude_change and why.`;
 }
 
 // Everything a provider needs for one reply.
@@ -757,7 +762,7 @@ export function parseReply(text, voices) {
     cast_changes: (Array.isArray(r?.cast_changes) ? r.cast_changes : [])
       .filter((c) => c && String(c.name ?? "").trim())
       .slice(0, 12)
-      .map((c) => ({ name: scrub(c.name).trim().slice(0, 60), room: String(c.room ?? "").trim().slice(0, 60), notes: scrub(c.notes).trim().slice(0, 600) })),
+      .map((c) => ({ name: scrub(c.name).trim().slice(0, 60), room: String(c.room ?? "").trim().slice(0, 60), notes: scrub(c.notes).trim().slice(0, 600), attitude_change: Math.max(-3, Math.min(3, Math.round(Number(c.attitude_change) || 0))), why: scrub(c.why).trim().slice(0, 160) })),
     clocks: (Array.isArray(r?.clocks) ? r.clocks : [])
       .filter((c) => c && ["start", "stop"].includes(c.action) && String(c.label ?? "").trim())
       .slice(0, 4)

@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS } from "./voices.js";
-import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
+import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, shiftAttitude, attitudeLabel, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
@@ -1307,12 +1307,16 @@ export class Session {
       const to = target(ch);
       const moved = !!room && to !== member.room;
       if (moved) member.room = to;
+      // (A note adds to what's known about them; it never replaces it.)
       const notes = String(ch.notes ?? "").trim();
-      if (notes) member.notes = notes.slice(0, 600);
+      if (notes && !member.notes.includes(notes)) member.notes = `${member.notes}${member.notes ? " " : ""}${notes}`.slice(0, 1500);
       if (created) this.addLog("note", `Cast: ${member.name} joins the story${member.room ? ` (in ${member.room})` : ""}.`);
       else if (moved) this.addLog("note", `Cast: ${member.name} → ${member.room || "nowhere on the map"}.`);
-      else if (notes) this.addLog("note", `Cast: ${member.name}'s notes updated.`);
-      any ||= created || moved || !!notes;
+      else if (notes) this.addLog("note", `Cast: ${member.name}: ${notes}`);
+      // How they feel about the players now.
+      const [was, now] = shiftAttitude(member, ch.attitude_change, String(ch.why ?? ""));
+      if (now !== was) this.addLog("note", `Cast: ${member.name} feels ${attitudeLabel(now)} towards the players (was ${attitudeLabel(was)})${member.why ? `: ${member.why}` : ""}.`);
+      any ||= created || moved || !!notes || now !== was;
     }
     if (any) this.toPlayers({ t: "header", header: this.playerHeader() }); // (their portraits)
   }

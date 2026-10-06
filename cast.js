@@ -4,7 +4,8 @@
 // players' room they talk face to face, clear; anywhere else they come over the
 // intercom (config.castChannel, a voice: its name, look and speaker effects).
 // The Warden edits the cast; the agent brings new people in and moves them.
-//   { id, name, voice: Kokoro speaker id, notes, room: map room id or "", portrait: file or "" }
+//   { id, name, voice: Kokoro speaker id, notes, room: map room id or "", portrait: file or "",
+//     attitude: how they feel about the players, -3 (hostile) to 3 (loyal), 0 neutral; why: the reason }
 // portrait: an upload (portraits.js), or "kit/sfcp-<n>.png", one of the pack that
 // comes with the app (public/portraits/, listed in pack.json): Victor J Merino's
 // Sci-fi character portraits project, CC BY-NC 4.0, credited on the players'
@@ -12,6 +13,10 @@
 import { SPEAKERS, COMMS_PRESETS, voiceFor } from "./voices.js";
 
 export const MAX_CAST = 40;
+// How someone feels about the players: everyone starts Neutral; the agent (and the Warden) move it.
+export const ATTITUDES = { "-3": "Hostile", "-2": "Resentful", "-1": "Wary", 0: "Neutral", 1: "Friendly", 2: "Trusting", 3: "Loyal" };
+export const attitudeLabel = (n) => ATTITUDES[n] || "Neutral";
+const clampAttitude = (n) => Math.max(-3, Math.min(3, Math.round(Number(n) || 0)));
 // A portrait file: an upload, or one that comes with the app (the crew's use these too).
 export const PORTRAIT_FILE = /^([a-f0-9]{12}\.(png|jpg|webp|gif)|kit\/[a-z0-9_-]{1,60}\.(png|jpg))$/;
 
@@ -50,9 +55,11 @@ export function sanitizeCast(list) {
       id,
       name,
       voice: SPEAKERS[c.voice] ? c.voice : "",
-      notes: String(c?.notes || "").slice(0, 600),
+      notes: String(c?.notes || "").slice(0, 1500),
       room: String(c?.room || "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 60),
       portrait: PORTRAIT_FILE.test(c?.portrait || "") ? c.portrait : "",
+      attitude: clampAttitude(c?.attitude),
+      why: String(c?.why || "").slice(0, 160),
     });
     if (out.length >= MAX_CAST) break;
   }
@@ -86,7 +93,7 @@ export function addCast(cast, raw, { room = "", notes = "" } = {}) {
   for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   let id = slug(name);
   for (let n = 2; cast.some((c) => c.id === id); n++) id = `${slug(name)}-${n}`;
-  const member = { id, name, voice: pool[h % pool.length] || "", notes: String(notes).slice(0, 600), room, portrait: "" };
+  const member = { id, name, voice: pool[h % pool.length] || "", notes: String(notes).slice(0, 600), room, portrait: "", attitude: 0, why: "" };
   cast.push(member);
   return { member, created: true };
 }
@@ -95,6 +102,14 @@ export function addCast(cast, raw, { room = "", notes = "" } = {}) {
 export const castVoice = (member) => ({ engine: "neural", speaker: member?.voice || "am_michael", pace: 1 });
 
 // The base voice a log line is spoken with: its speaker's (the cast's own), or its voice's.
+// Move someone's attitude by `change` steps (clamped). Returns [before, after].
+export function shiftAttitude(member, change, why = "") {
+  const before = member.attitude || 0;
+  member.attitude = clampAttitude(before + clampAttitude(change));
+  if (why.trim()) member.why = why.trim().slice(0, 160);
+  return [before, member.attitude];
+}
+
 export function speakingVoice(config, entry) {
   const member = entry.character ? findCast(config.cast, entry.character) : null;
   return member ? castVoice(member) : voiceFor(config.voices, entry).voice;

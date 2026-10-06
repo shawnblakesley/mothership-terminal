@@ -269,6 +269,11 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .castbody .where { display: inline-flex; align-items: baseline; gap: 4px; margin-left: auto; }
 .castbody .where select { width: auto; max-width: 200px; padding: 1px 4px; }
 .castbody .pill.ok { color: var(--accent); }
+.castbody .mood { display: inline-flex; align-items: baseline; gap: 4px; }
+.castbody .mood select { width: auto; padding: 1px 4px; }
+.castbody .mood select.up { color: var(--accent); }
+.castbody .mood select.down { color: #e07a72; }
+.castbody .why { font-size: 12.5px; padding: 3px 6px; }
 .castbody textarea { font-size: 12.5px; }
 .castchip { display: inline-block; border: 1px dashed var(--line); border-radius: 99px; padding: 2px 9px; font-size: 12px; margin: 0 4px 4px 0; }
 
