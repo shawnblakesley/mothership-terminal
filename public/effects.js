@@ -113,9 +113,9 @@
       const iv = setInterval(blast, 2200);
       return () => { on = false; clearInterval(iv); };
     },
-    // A horror sting, for a reveal (about 1 s): a quick hiss swelling up, then a sharp
-    // crack over a sub-bass hit, a bright dissonant chord snapping shut, and a high
-    // screech sliding down. (into: any AudioContext and node, for testing.)
+    // A horror sting, for a reveal (under a second): a quick hiss swelling up, then the
+    // clash: a sharp crack over a sub-bass hit, and a bright dissonant chord ringing
+    // out. (into: any AudioContext and node, for testing.)
     sting(into) {
       if (!into && !this.ok()) return;
       const ctx = into?.ctx || this.ctx, dest = into?.dest || this.bus();
@@ -147,25 +147,17 @@
       { const n = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
         f.type = "lowpass"; f.frequency.value = 260;
         env(g, hit, 0.28, 0.003, 0.4); n.connect(f); f.connect(g); g.connect(out); n.start(hit); n.stop(hit + 0.45); }
-      // 3. the stab: a bright dissonant cluster (a tritone, and a semitone rub up high), snapping shut
+      // 3. the clash: a bright dissonant cluster (a tritone, and a semitone rub up high), ringing out
       { const f = ctx.createBiquadFilter(), g = ctx.createGain();
         f.type = "lowpass"; f.Q.value = 3;
-        f.frequency.setValueAtTime(4200, hit); f.frequency.exponentialRampToValueAtTime(600, hit + 0.85);
-        g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.34, hit + 0.008); g.gain.exponentialRampToValueAtTime(0.13, hit + 0.3); g.gain.exponentialRampToValueAtTime(0.06, hit + 0.72); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.86);
+        f.frequency.setValueAtTime(4200, hit); f.frequency.exponentialRampToValueAtTime(2600, hit + 0.75); // (no sweep: a steady ring, not a whirl)
+        g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.34, hit + 0.008); g.gain.exponentialRampToValueAtTime(0.11, hit + 0.25); g.gain.exponentialRampToValueAtTime(0.04, hit + 0.6); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.75);
         for (const [hz, det] of [[110, -2], [155.6, 2], [233, -2], [246.9, 3], [329.6, -2]]) { // (the semitone rub up high: harsh, not warbling)
           const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = hz; o.detune.value = det;
-          o.connect(f); o.start(hit); o.stop(hit + 0.9);
+          o.connect(f); o.start(hit); o.stop(hit + 0.8);
         }
         f.connect(g); g.connect(out); }
-      // 4. the screech: high and thin, sliding down fast
-      { const o = ctx.createOscillator(), lfo = ctx.createOscillator(), depth = ctx.createGain(), f = ctx.createBiquadFilter(), g = ctx.createGain();
-        o.type = "sawtooth";
-        o.frequency.setValueAtTime(2600, hit); o.frequency.exponentialRampToValueAtTime(1100, hit + 0.85);
-        lfo.frequency.value = 6; depth.gain.value = 8; // (a faint tremble, not a warble) lfo.connect(depth); depth.connect(o.frequency);
-        f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 2.5;
-        g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.16, hit + 0.06); g.gain.exponentialRampToValueAtTime(0.09, hit + 0.55); g.gain.exponentialRampToValueAtTime(0.045, hit + 0.75); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.86);
-        o.connect(f); f.connect(g); g.connect(out); o.start(hit); lfo.start(hit); o.stop(hit + 0.9); lfo.stop(hit + 0.9); }
-      return hit + 0.88 - t0; // (how long it lasts)
+      return hit + 0.78 - t0; // (how long it lasts)
     },
     powerDown() {
       if (!this.ok()) return;
