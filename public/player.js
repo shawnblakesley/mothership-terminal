@@ -151,9 +151,6 @@
     div.dataset.id = entry.id;
     if (entry.kind === "player") {
       div.dataset.prompt = `${promptText()} `;
-      // Who typed it, by their crew file's portrait.
-      const pc = entry.by && crew.find((c) => c.name === entry.by);
-      if (pc?.portrait) withPortrait(div, pc.portrait, { prompt: div.dataset.prompt });
       return div;
     }
     if (entry.kind === "roll") {
@@ -190,7 +187,7 @@
   // A portrait as HTML (crew files): tinted to the text colour; gone if it won't load.
   const portraitHtml = (file, cls = "") => (file ? `<span class="portrait ${cls}"><img src="${escH(portraitSrc(file))}" alt="" onerror="this.parentNode.remove()"></span>` : "");
   // A line with a portrait on its left; its text goes in a span beside it.
-  function withPortrait(div, file, { comms = false, label = "", prompt = "" } = {}) {
+  function withPortrait(div, file, { comms = false, label = "" } = {}) {
     div.classList.add("has-portrait");
     const pic = document.createElement("span");
     pic.className = `portrait${comms ? " comms" : ""}`;
@@ -202,7 +199,6 @@
     const text = document.createElement("span");
     text.className = "lt";
     if (label) text.dataset.label = label;
-    if (prompt) text.dataset.prompt = prompt;
     div.append(pic, text);
   }
 
