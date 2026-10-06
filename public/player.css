@@ -453,6 +453,7 @@ button.cs-num:focus-visible { outline: none; }
 .p-sec { margin-top: 0.45em; }
 .p-text { white-space: pre-wrap; }
 .p-actions { margin-top: 0.8em; display: flex; gap: 2em; flex-wrap: wrap; }
+.p-actions.p-top { margin: 0 0 0.6em; } /* (the crew file's Back and Select, above the sheet) */
 
 /* The character sidebar beside the terminal. */
 #mainrow { flex: 1; min-height: 0; display: flex; gap: 0.9em; }
