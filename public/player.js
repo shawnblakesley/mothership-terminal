@@ -539,6 +539,7 @@
     // (Not before power-on: the key that wakes the terminal would also press the button.)
     if (id === "crewpick" && bootEl.classList.contains("gone")) $("crewpick-list").querySelector("button")?.focus();
     if (!id && !spectate) input.focus();
+    renderSide(); // (out of the way while choosing a character)
   }
 
   function setCrew(list, taken) {
@@ -639,7 +640,7 @@
   function renderSide() {
     const c = mine();
     const side = $("side");
-    side.hidden = !c || !sideOpen || !wide() || spectate;
+    side.hidden = !c || !sideOpen || !wide() || spectate || !$("crewpick").hidden; // (hidden while choosing a character)
     $("hdr-file").classList.toggle("on", !side.hidden);
     if (side.hidden) return;
     // (the buttons stay at the bottom of the panel, whatever is scrolled above them)
