@@ -15,7 +15,7 @@ import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
-import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -178,7 +178,7 @@ export function defaultGame(keys = {}) {
       playerVitals: true, // players may change their own health, wounds and stress
       playerRolls: true, // players may roll their own stats and saves
       tts: true,
-      voices: defaultVoices(),
+      voices: defaultVoices().map((v) => ({ ...v, systems: ["*"] })), // (the default story: every voice reaches every system, the tug's too)
       theme: "green",
       map: DEFAULT_MAP,
       crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
@@ -189,7 +189,7 @@ export function defaultGame(keys = {}) {
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -354,6 +354,17 @@ function migrateGame(saved) {
       }
     }
     config.upgrades.push("adversaries");
+  }
+  // Once: in KESTREL-9 every voice reaches every system (Connections: All), so the
+  // station's comms reach the crew aboard their tug too. In the saved start as well.
+  if (!config.upgrades.includes("connections-all")) {
+    for (const c of [config, saved.storyStart?.config].filter(Boolean)) {
+      if (c.stationName !== "KESTREL-9") continue;
+      for (const v of c === config ? voices : c.voices || []) v.systems = ["*"];
+      const ship = (c.terminals || []).find((t) => t.id === "ship");
+      if (ship?.notes === OLD_SHIP_NOTES) ship.notes = SHIP_TERMINAL.notes;
+    }
+    config.upgrades.push("connections-all");
   }
   // Once: KESTREL-9's monster is THE COLD (it was briefly THE ORGANISM), unless renamed since.
   if (!config.upgrades.includes("the-cold")) {
