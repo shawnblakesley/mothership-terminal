@@ -210,7 +210,7 @@ After a restart the next first move saves the story again, so changes you make i
 
 You can also ask it questions this way. Notes need an API key; they work in every mode.
 
-**🎙 Listen** (under the comms box) writes down what you say aloud at the table, so the agent knows what you narrated or ruled. Click it to turn it on, and again to turn it off; it's off until you switch it on, and your browser asks for the microphone the first time.
+**Listen** (under the comms box) writes down what you say aloud at the table, so the agent knows what you narrated or ruled. Click it to turn it on, and again to turn it off; it's off until you switch it on, and your browser asks for the microphone the first time.
 
 - What you're saying shows under the box as you speak; each finished phrase goes into the log as **Warden · said aloud**. Phrases in a row add up in one entry. You can't edit it (✕ still deletes it).
 - It doesn't prompt the agent. It goes with the agent's next prompt (a player typing, a roll, a Direction), marked as your speech, and the agent takes everything in it as having happened.

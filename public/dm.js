@@ -1414,7 +1414,7 @@
   });
   renderComposeMode();
 
-  // 🎙 Listen: the browser's speech-to-text writes down what the Warden says aloud
+  // Listen: the browser's speech-to-text writes down what the Warden says aloud
   // at the table. Each finished phrase goes to the log (read-only, private) and
   // with the agent's next prompt, as things that happened. Off until switched on.
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1422,7 +1422,7 @@
   function setListening(on) {
     listening = on;
     $("micBtn").setAttribute("aria-pressed", String(on));
-    $("micBtn").textContent = on ? "Listening" : "🎙 Listen";
+    $("micBtn").textContent = on ? "Listening" : "Listen";
     $("micLive").hidden = !on;
     $("micLive").textContent = on ? "Listening… speak and it's written down." : "";
     if (on) startRecog();
