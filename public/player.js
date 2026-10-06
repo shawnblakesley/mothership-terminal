@@ -603,19 +603,19 @@
       <div class="cs-facebox">${portraitHtml(c.portrait, "cs-face") || `<span class="cs-noface">NO PHOTO</span>`}</div>
       <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns)}${field("CLASS", c.className)}${field("ROLE", c.role)}</div>
     </div>`;
-  const statusCard = (c) => `<div class="cs-card"><div class="cs-title">STATUS REPORT</div><div class="cs-vitals">
+  const statusCard = (c) => `<div class="cs-card cs-status"><div class="cs-title">STATUS REPORT</div><div class="cs-vitals">
       ${pill("health", "HEALTH", c.health.current, c.health.max, ["CURRENT", "MAX"])}
       ${pill("wounds", "WOUNDS", c.wounds.current, c.wounds.max, ["CURRENT", "MAX"])}
       ${pill("stress", "STRESS", c.stress, undefined, ["CURRENT"])}
     </div></div>`;
-  const numbersCard = (title, obj, hint = "") => `<div class="cs-card"><div class="cs-title">${title}</div>
+  const numbersCard = (title, obj, hint = "") => `<div class="cs-card cs-${title.toLowerCase()}"><div class="cs-title">${title}</div>
       <div class="cs-nums">${Object.entries(obj).map(([k, v]) => circle(k, v)).join("")}</div>${hint}</div>`;
   const rollHint = () => (header.selfRolls && !spectate ? '<div class="cs-hint">TAP A STAT OR SAVE TO ROLL IT</div>' : "");
 
   function renderFile() {
     const c = mine();
     if (!c) { $("crewfile-body").innerHTML = '<div class="p-dim">NO CREW FILE SELECTED.</div>'; return; }
-    $("crewfile-body").innerHTML = `<div class="cs">${sheetCards(c)}</div>`;
+    $("crewfile-body").innerHTML = `<div class="cs cs-full">${sheetCards(c)}</div>`;
   }
   // Everything on their sheet, in cards (the full file and the side sheet alike).
   const sheetCards = (c) => `
@@ -623,8 +623,8 @@
       ${statusCard(c)}
       ${numbersCard("STATS", c.stats, rollHint())}
       ${numbersCard("SAVES", c.saves)}
-      <div class="cs-card"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((x) => `<div>${escH(x)}</div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
-      <div class="cs-card"><div class="cs-title">ITEMS</div>${c.items.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${escH(x)}</span>`).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
+      <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((x) => `<div>${escH(x)}</div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
+      <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${escH(x)}</span>`).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
       <div class="cs-card cs-story">
         ${c.crime ? `<div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>` : ""}
         ${c.backstory ? `<div class="p-text">${escH(c.backstory)}</div>` : ""}
