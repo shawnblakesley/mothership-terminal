@@ -7,8 +7,14 @@
 export const BUILTIN = { terminal: "terminal", broadcast: "broadcast", narrator: "narrator" };
 // Adversaries (the creature, the thing in the walls) are voices with an "adversary"
 // part: { revealed, picture }. Until the players see one, its lines show as "???";
-// after, by its name. picture: an uploaded file (portraits.js) the Warden can show them;
+// after, by its name. picture: an uploaded file (portraits.js), or a link to one on
+// the web (it loads from there: nothing is copied), the Warden can show them;
 // credit: where the picture is from (the artist, a link), shown with it.
+export const PICTURE_LINK = /^https:\/\/[^\s"'<>()`]{4,600}$/;
+// THE COLD, from Matt Harding's art (linked from his site, not copied).
+const COLD_PICTURE = "https://images.squarespace-cdn.com/content/v1/58d3f460d482e9f596028aac/1503694623654-WL23BVBQK0KZH1XVQBSJ/thingarbook_art_03.jpg?format=2500w";
+const COLD_CREDIT = "Art: Matt Harding, matthardingart.com/thething";
+export const DEFAULT_COLD = { picture: COLD_PICTURE, credit: COLD_CREDIT };
 export const isAdversary = (v) => !!v?.adversary;
 export const shownName = (v) => (v?.adversary && !v.adversary.revealed ? "???" : v?.name || "");
 const PICTURE_FILE = /^[a-f0-9]{12}\.(png|jpg|webp|gif)$/;
@@ -213,7 +219,7 @@ export function defaultVoices() {
       persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom") },
     // The organism (an adversary: "???" until the players see it): the demonic effects over a slowed human voice.
     { id: "unknown", name: "THE COLD", style: "label", color: "#ff5a5a", persona: DEFAULT_PERSONAS.unknown, ...fromPreset("demonic"),
-      preset: "custom", voice: { engine: "neural", speaker: "am_onyx", pace: 0.75 }, adversary: { revealed: false, picture: "", credit: "" } },
+      preset: "custom", voice: { engine: "neural", speaker: "am_onyx", pace: 0.75 }, adversary: { revealed: false, picture: COLD_PICTURE, credit: COLD_CREDIT } },
   ];
 }
 
@@ -259,7 +265,7 @@ export function sanitizeVoices(list) {
     });
     if (!out.at(-1).systems.length) out.at(-1).systems = defaultSystemsFor(id); // (none given: its default)
     if (raw.adversary && typeof raw.adversary === "object") {
-      out.at(-1).adversary = { revealed: !!raw.adversary.revealed, picture: PICTURE_FILE.test(raw.adversary.picture || "") ? raw.adversary.picture : "", credit: String(raw.adversary.credit || "").replace(/\s+/g, " ").trim().slice(0, 200) };
+      out.at(-1).adversary = { revealed: !!raw.adversary.revealed, picture: PICTURE_FILE.test(raw.adversary.picture || "") || PICTURE_LINK.test(raw.adversary.picture || "") ? raw.adversary.picture : "", credit: String(raw.adversary.credit || "").replace(/\s+/g, " ").trim().slice(0, 200) };
     }
   }
   for (const b of defaults.slice(0, 2)) if (!seen.has(b.id)) out.unshift(b);

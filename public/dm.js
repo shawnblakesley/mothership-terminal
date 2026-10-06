@@ -698,6 +698,8 @@
   // The threats: voices with an adversary part. "???" to the players until they've
   // seen one (the agent reveals it then; or tick Revealed); a picture to show them.
   let advTimer = null, advFor = null;
+  // A picture: an upload, or a link to one on the web.
+  const advSrc = (pic) => (/^https:\/\//.test(pic) ? pic : `api/sessions/${code}/portraits/${pic}`);
   function renderAdversaries() {
     const panel = $("adversaries");
     const editing = panel.contains(document.activeElement) && document.activeElement.matches("input:not([type=checkbox]), textarea");
@@ -707,7 +709,7 @@
     panel.dataset.json = json;
     const presets = Object.keys(S.voiceOptions.presets);
     panel.innerHTML = list.map((v) => `<div class="castm advm" data-id="${esc(v.id)}">
-        <button class="pick big" data-aact="pic" title="${v.adversary.picture ? "Change its picture" : "Add a picture you can show the players"}" aria-label="Picture of ${esc(v.name)}">${v.adversary.picture ? `<img src="${esc(`api/sessions/${code}/portraits/${v.adversary.picture}`)}" alt="">` : "<span>+</span>"}</button>
+        <button class="pick big" data-aact="pic" title="${v.adversary.picture ? "Change its picture" : "Add a picture you can show the players"}" aria-label="Picture of ${esc(v.name)}">${v.adversary.picture ? `<img src="${esc(advSrc(v.adversary.picture))}" alt="" referrerpolicy="no-referrer">` : "<span>+</span>"}</button>
         <div class="castbody">
           <div class="row wrap">
             <input data-a="name" class="edit-only cname" value="${esc(v.name)}" aria-label="Its name">
@@ -724,6 +726,7 @@
             ${v.adversary.picture ? '<button data-aact="nopic" class="ghost">Remove picture</button>' : ""}
             <span class="grow"></span><button data-aact="del" class="ghost" title="Remove ${esc(v.name)}">✕</button>
           </div>
+          <input data-a="picture" class="edit-only why" value="${esc(/^https:\/\//.test(v.adversary.picture) ? v.adversary.picture : "")}" placeholder="Or a link to a picture on the web (https://…): it loads from there" aria-label="Picture link">
           ${v.adversary.picture ? `<input data-a="credit" class="edit-only why" value="${esc(v.adversary.credit || "")}" placeholder="Picture credit, if you want one: the artist, a link (shown with it)" aria-label="Picture credit">` : ""}
           <textarea data-a="persona" class="edit-only" rows="3" aria-label="What it is" placeholder="What it is, what it wants, how it acts and speaks (the agent reads this)">${esc(v.persona)}</textarea>
           <div class="play-only small muted">${esc(v.persona.slice(0, 220))}${v.persona.length > 220 ? "…" : ""}</div>

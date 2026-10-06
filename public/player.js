@@ -1280,7 +1280,7 @@
     fx.querySelector(".pf-title").textContent = String(title || "").toUpperCase();
     // (a credit's link stays clickable: everything else in it is text)
     const link = (t) => escH(t).replace(/(https?:\/\/[^\s<]+|[\w-]+(?:\.[\w-]+)+\/[^\s<]*)/g, (u) => `<a href="${u.startsWith("http") ? u : `https://${u}`}" target="_blank" rel="noopener">${u}</a>`);
-    fx.querySelector(".pf-plan").innerHTML = `<div class="pf-pic"><img src="${escH(src)}" alt=""></div>${credit ? `<div class="pf-credit">${link(credit)}</div>` : ""}`;
+    fx.querySelector(".pf-plan").innerHTML = `<div class="pf-pic"><img src="${escH(src)}" alt="" referrerpolicy="no-referrer"></div>${credit ? `<div class="pf-credit">${link(credit)}</div>` : ""}`;
     FX.Sound.beep(180, 0.4, 0.12);
   }
   $("planfx").addEventListener("click", () => { $("planfx").hidden = true; });

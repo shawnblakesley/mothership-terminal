@@ -3,7 +3,7 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
-import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset } from "./voices.js";
+import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD } from "./voices.js";
 import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
@@ -189,7 +189,7 @@ export function defaultGame(keys = {}) {
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -362,6 +362,14 @@ function migrateGame(saved) {
       if (v) v.name = "THE COLD";
     }
     config.upgrades.push("the-cold");
+  }
+  // Once: KESTREL-9's THE COLD gets its picture (a link to Matt Harding's art), if it has none.
+  if (!config.upgrades.includes("the-cold-picture")) {
+    for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
+      const v = list.find((x) => x.id === "unknown" && x.adversary && !x.adversary.picture);
+      if (v && config.stationName === "KESTREL-9") Object.assign(v.adversary, DEFAULT_COLD);
+    }
+    config.upgrades.push("the-cold-picture");
   }
   // Once: an original KESTREL-9 story starts the crew with their work order.
   config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];
@@ -915,7 +923,7 @@ export class Session {
         if (typeof p.persona === "string") v.persona = p.persona.slice(0, 8000);
         if (typeof p.color === "string" && /^#[0-9a-f]{6}$/i.test(p.color)) v.color = p.color;
         if (typeof p.preset === "string" && PRESETS[p.preset]) Object.assign(v, fromPreset(p.preset));
-        if (typeof p.picture === "string") v.adversary.picture = /^[a-f0-9]{12}\.(png|jpg|webp|gif)$/.test(p.picture) ? p.picture : "";
+        if (typeof p.picture === "string") v.adversary.picture = /^[a-f0-9]{12}\.(png|jpg|webp|gif)$/.test(p.picture) || PICTURE_LINK.test(p.picture.trim()) ? p.picture.trim() : "";
         if (typeof p.credit === "string") v.adversary.credit = p.credit.replace(/\s+/g, " ").trim().slice(0, 200);
         if (typeof p.revealed === "boolean" && p.revealed !== v.adversary.revealed) {
           v.adversary.revealed = p.revealed;
@@ -935,7 +943,8 @@ export class Session {
         const v = s.config.voices.find((x) => x.id === msg.id && x.adversary);
         if (!v?.adversary.picture) break;
         this.revealAdversaries([v.id]);
-        this.toPlayers({ t: "showImage", title: v.name, src: `api/sessions/${this.code}/portraits/${v.adversary.picture}`, credit: v.adversary.credit || "" });
+        const pic = v.adversary.picture;
+        this.toPlayers({ t: "showImage", title: v.name, src: PICTURE_LINK.test(pic) ? pic : `api/sessions/${this.code}/portraits/${pic}`, credit: v.adversary.credit || "" });
         this.addLog("note", `Showed the players ${v.name}.`);
         break;
       }
