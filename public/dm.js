@@ -656,7 +656,17 @@
       const img = await createImageBitmap(file);
       const side = Math.min(img.width, img.height), SIZE = 128;
       const cv = Object.assign(document.createElement("canvas"), { width: SIZE, height: SIZE });
-      cv.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, SIZE, SIZE);
+      const g = cv.getContext("2d");
+      g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, SIZE, SIZE);
+      // Like the pack's: white, with the dark of the picture as how opaque it is (the
+      // players' screens draw it in their colour, the light parts see-through).
+      const px = g.getImageData(0, 0, SIZE, SIZE), d = px.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const light = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        d[i + 3] = Math.min(255, Math.round((255 - light) * 1.15 * (d[i + 3] / 255)));
+        d[i] = d[i + 1] = d[i + 2] = 255;
+      }
+      g.putImageData(px, 0, 0);
       const blob = await new Promise((res) => cv.toBlob(res, "image/png"));
       const r = await fetch(`api/sessions/${code}/portraits`, { method: "POST", headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" }, body: blob });
       const out = await r.json().catch(() => ({}));

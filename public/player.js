@@ -184,18 +184,22 @@
 
   // A portrait's address: one that comes with the app, or one the Warden uploaded.
   const portraitSrc = (file) => (file.startsWith("kit/") ? `portraits/${file.slice(4)}` : `api/sessions/${code}/portraits/${file}`);
-  // A portrait as HTML (crew files): tinted to the text colour; gone if it won't load.
-  const portraitHtml = (file, cls = "") => (file ? `<span class="portrait ${cls}"><img src="${escH(portraitSrc(file))}" alt="" onerror="this.parentNode.remove()"></span>` : "");
+  // Portraits are see-through line art (the lines opaque, the paper clear): used as a
+  // stencil, the lines take the text's colour and the screen shows through the rest.
+  // (The hidden image is only there to drop the portrait if it won't load.)
+  const portraitHtml = (file, cls = "") => (file ? `<span class="portrait ${cls}" style="--src: url('${escH(portraitSrc(file))}')"><span class="ink"></span><img src="${escH(portraitSrc(file))}" alt="" hidden onerror="this.parentNode.remove()"></span>` : "");
   // A line with a portrait on its left; its text goes in a span beside it.
   function withPortrait(div, file, { comms = false, label = "" } = {}) {
     div.classList.add("has-portrait");
     const pic = document.createElement("span");
     pic.className = `portrait${comms ? " comms" : ""}`;
-    const img = document.createElement("img");
-    img.src = portraitSrc(file);
-    img.alt = "";
-    img.onerror = () => pic.remove();
-    pic.append(img);
+    pic.style.setProperty("--src", `url('${portraitSrc(file)}')`);
+    const ink = document.createElement("span");
+    ink.className = "ink";
+    const probe = new Image(); // (drop it if it won't load)
+    probe.onerror = () => pic.remove();
+    probe.src = portraitSrc(file);
+    pic.append(ink);
     const text = document.createElement("span");
     text.className = "lt";
     if (label) text.dataset.label = label;

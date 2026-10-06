@@ -451,7 +451,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .portraitdlg[open] { display: flex; flex-direction: column; gap: 8px; }
 .portraitdlg p { margin: 0; }
 .portraitgrid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; padding: 2px; }
-.portraitgrid button { padding: 0; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: #fff; }
+.portraitgrid button { padding: 0; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: #0b0f0d; }
 .portraitgrid button img { width: 100%; height: 100%; display: block; }
 .portraitgrid button.on { outline: 3px solid var(--accent); outline-offset: 1px; }
 .synopsisdlg { width: min(860px, calc(100vw - 32px)); height: calc(100vh - 40px); max-height: none; display: none; }
