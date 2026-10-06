@@ -614,7 +614,10 @@
   function renderFile() {
     const c = mine();
     if (!c) { $("crewfile-body").innerHTML = '<div class="p-dim">NO CREW FILE SELECTED.</div>'; return; }
-    $("crewfile-body").innerHTML = `<div class="cs">
+    $("crewfile-body").innerHTML = `<div class="cs">${sheetCards(c)}</div>`;
+  }
+  // Everything on their sheet, in cards (the full file and the side sheet alike).
+  const sheetCards = (c) => `
       ${sheetHead(c)}
       ${statusCard(c)}
       ${numbersCard("STATS", c.stats, rollHint())}
@@ -622,13 +625,11 @@
       <div class="cs-card"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((x) => `<div>${escH(x)}</div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
       <div class="cs-card"><div class="cs-title">ITEMS</div>${c.items.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${escH(x)}</span>`).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
       <div class="cs-card cs-story">
-        <div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>
-        <div class="p-text">${escH(c.backstory)}</div>
+        ${c.crime ? `<div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>` : ""}
+        ${c.backstory ? `<div class="p-text">${escH(c.backstory)}</div>` : ""}
         ${c.trinket ? `<div><span class="cs-k">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
         ${c.patch ? `<div><span class="cs-k">PATCH</span> ${escH(c.patch)}</div>` : ""}
-      </div>
-    </div>`;
-  }
+      </div>`;
 
   // ---- the sidebar: the player's sheet beside the terminal (on wide screens).
   let sideOpen = true;
@@ -641,18 +642,13 @@
     side.hidden = !c || !sideOpen || !wide() || spectate;
     $("hdr-file").classList.toggle("on", !side.hidden);
     if (side.hidden) return;
-    side.innerHTML = `<div class="cs cs-compact">
-      ${sheetHead(c)}
-      ${statusCard(c)}
-      ${numbersCard("STATS", c.stats, rollHint())}
-      ${numbersCard("SAVES", c.saves)}
-      <div class="cs-card"><div class="cs-title">ITEMS</div>${c.items.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${escH(x)}</span>`).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
-      </div>
-      <div class="s-sec"><button type="button" class="p-btn" id="side-more">[ FULL FILE ]</button> <button type="button" class="p-btn" id="side-hide">[ HIDE ]</button></div>`;
+    // (the buttons stay at the bottom of the panel, whatever is scrolled above them)
+    side.innerHTML = `<div class="cs cs-compact">${sheetCards(c)}</div>
+      <div class="s-foot"><button type="button" class="p-btn" id="side-change">[ CHANGE CHARACTER ]</button> <button type="button" class="p-btn" id="side-hide">[ HIDE ]</button></div>`;
   }
   addEventListener("resize", () => renderSide());
   $("side").addEventListener("click", (e) => {
-    if (e.target.id === "side-more") { renderFile(); openPanel("crewfile"); }
+    if (e.target.id === "side-change") $("crewfile-change").click(); // (the crew picker, as from the full file)
     if (e.target.id === "side-hide") setSide(false);
   });
   function setSide(open) {

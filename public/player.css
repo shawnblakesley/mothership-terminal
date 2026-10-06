@@ -437,6 +437,8 @@ button.cs-num:focus-visible { outline: none; }
 /* (beside the terminal: a little smaller) */
 .cs-compact { font-size: 0.85em; max-width: none; }
 .cs-compact .cs-head { grid-template-columns: 4.6em 1fr; }
+/* The side sheet's buttons, always at the bottom of the panel (the sheet scrolls above them). */
+.s-foot { position: sticky; bottom: 0; display: flex; gap: 1.2em; padding: 0.45em 0 0.2em; background: var(--bg); border-top: 1px solid var(--dim); margin-top: auto; }
 
 .panel { border: 3px double var(--fg); padding: 0.6em 0.9em; margin: 0.2em 0 0.8em; max-width: 52em; }
 .panel[hidden] { display: none; }
@@ -458,7 +460,9 @@ button.cs-num:focus-visible { outline: none; }
 #side {
   flex: 0 0 clamp(260px, 30%, 440px); overflow-y: auto; scrollbar-width: none;
   border-left: 2px solid var(--dim); padding: 0 0 0 0.8em; line-height: 1.25;
+  display: flex; flex-direction: column; /* (the sheet, then its buttons at the bottom) */
 }
+#side > .cs { flex: 1 0 auto; }
 #side::-webkit-scrollbar { display: none; }
 #side[hidden] { display: none; }
 .s-sec { margin-top: 0.7em; }
