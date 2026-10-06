@@ -269,7 +269,7 @@ The agent puts station-wide announcements in a separate broadcast field. If it e
 
 ## Rule of cool, outcomes and ability rolls
 
-**The panic table** is on the **Rules** tab: 20 lines, one per d20 result, as *Name: what happens*. Every panic uses it, the crew's and the characters' alike: the players see the name on the dice ("PANIC! (STRESS 6) · …"), and the agent gets the whole line and shows it in the fiction (for the crew, Stress and lasting penalties stay yours to apply). It starts as the app's own table, from *Steels themself* (1) up to *Heart attack* (20); paste in your own, such as the Player's Survival Guide's, to use that instead (numbered or not), or **Use the app's table** to go back. It's a session setting, so a restart keeps it.
+**The panic table** is Mothership 1e's Panic Table (Tuesday Knight Games), its entries restated in brief; the **Rules** tab lists it. Every panic uses it, the crew's and the characters' alike: the players see the name on the dice ("PANIC! (STRESS 6) · HEART ATTACK / SHORT CIRCUIT (ANDROIDS)"), and the agent gets the whole entry and shows it in the fiction. For the crew, the mechanics (Stress, Conditions, Minimum Stress) are yours to apply; for the characters, the agent plays it out. *Compounding problems* (18) rolls twice more on the table by itself. The table is `PANIC_TABLE` in `cast.js`.
 
 The agent says yes to cool ideas but **never decides whether an uncertain action works**. You do.
 

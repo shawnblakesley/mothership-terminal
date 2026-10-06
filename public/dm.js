@@ -277,36 +277,12 @@
   });
 
   // ------------------------------------------------------------ render
-  // The panic table (Rules tab): 20 lines, saved as you type; the app's own until replaced.
-  let panicTimer = null;
+  // The panic table (Rules tab), for reference.
   function renderPanicTable() {
-    const box = $("panicTable");
-    if (document.activeElement === box || panicTimer) return;
-    const lines = S.config.panicTable || [];
-    box.value = lines.map((l, i) => `${i + 1}. ${l}`).join("\n");
-    $("panicTableNote").textContent = S.defaultPanicTable && lines.join("\n") === S.defaultPanicTable.join("\n") ? "The app's own table." : "Your table.";
+    const list = $("panicTable");
+    if (list.childElementCount || !S.panicTable) return;
+    list.innerHTML = S.panicTable.map((e) => `<li><b>${esc(e.name)}.</b> ${esc(e.effect[0].toUpperCase() + e.effect.slice(1))}</li>`).join("");
   }
-  const panicLines = (text) => {
-    const out = Array(20).fill("");
-    let next = 0;
-    for (const raw of text.split("\n")) {
-      if (!raw.trim()) continue;
-      const m = /^\s*(\d{1,2})\s*[.):-]\s*(.*)$/.exec(raw); // "14. Name: what happens" (numbered or not)
-      const i = m && Number(m[1]) >= 1 && Number(m[1]) <= 20 ? Number(m[1]) - 1 : next;
-      if (i < 20) out[i] = (m ? m[2] : raw).trim();
-      next = i + 1;
-    }
-    return out;
-  };
-  $("panicTable").addEventListener("input", () => {
-    clearTimeout(panicTimer);
-    panicTimer = setTimeout(() => { panicTimer = null; send({ t: "config", patch: { panicTable: panicLines($("panicTable").value) } }); }, 800);
-  });
-  $("panicTable").addEventListener("blur", () => setTimeout(() => S && renderPanicTable(), 1200));
-  $("panicTableReset").onclick = async () => {
-    if (!(await sure("Use the app's panic table?", "Your table is replaced by the app's own.", "Use it"))) return;
-    send({ t: "config", patch: { panicTable: S.defaultPanicTable } });
-  };
 
   function render() {
     renderAgentPicker();

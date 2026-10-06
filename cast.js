@@ -20,32 +20,46 @@ export const attitudeLabel = (n) => ATTITUDES[n] || "Neutral";
 const clampAttitude = (n) => Math.max(-3, Math.min(3, Math.round(Number(n) || 0)));
 const clampStress = (n, def = 2) => (Number.isFinite(Number(n)) && n !== null && n !== "" ? Math.max(0, Math.min(20, Math.round(Number(n)))) : def);
 
-// The panic table: when anyone panics (a d20 at or under their Stress), the number
-// rolled is looked up here, worse the higher it goes (so only the very stressed can
-// roll the worst). The Warden can replace it with their own (config.panicTable: 20
-// lines, "Name: what happens"); this is the app's own, in the spirit of Mothership's.
-const APP_PANIC = [null,
-  { name: "Steels themself", effect: "a surge of adrenaline: for the next few moments they act with sudden, sharp courage." },
-  { name: "Shaking hands", effect: "they tremble badly; anything delicate they try goes wrong." },
-  { name: "Hears things", effect: "they insist they hear voices or movement nobody else does, and won't let it go." },
-  { name: "Jumpy", effect: "they flinch at everything and startle at any sound; they might lash out by reflex." },
-  { name: "Freezes", effect: "they lock up, unable to move or speak for a while; someone has to pull them along." },
-  { name: "Bolts", effect: "they turn and run, abandoning whatever they were doing and whoever they were with." },
-  { name: "Hides", effect: "they find somewhere to hide and won't come out." },
-  { name: "Babbles", effect: "they talk fast and make no sense, and blurt out something they shouldn't (a secret slips)." },
-  { name: "Begs", effect: "they cling to the players and plead to be saved; useless until someone calms them." },
-  { name: "Lashes out", effect: "they attack the nearest person, or smash whatever is in reach." },
-  { name: "Hopeless", effect: "they give up: they're sure everyone is going to die, and refuse to help." },
-  { name: "Paranoid", effect: "they decide one of the players is to blame, or infected, and turn on them." },
-  { name: "Collapses", effect: "they're violently sick and drop to the floor, too weak to stand for a while." },
-  { name: "Reckless", effect: "they do something rash that puts themselves and everyone near them in danger." },
-  { name: "Faints", effect: "they pass out cold." },
-  { name: "Catatonic", effect: "they stare into nothing, unresponsive, until something snaps them out of it." },
-  { name: "Berserk", effect: "they attack wildly, friend or foe, until they're restrained or stopped." },
-  { name: "Breaks", effect: "a complete breakdown: screaming, weeping, beyond reason for the rest of the scene." },
-  { name: "Desperate act", effect: "they do something that makes everything much worse: seal a door with people behind it, trigger an alarm, take a hostage." },
-  { name: "Heart attack", effect: "they collapse clutching their chest, and will die within minutes without medical help. (Something artificial suffers a catastrophic shutdown instead.)" },
+// The panic table, for every panic (the crew's and the cast's): when someone rolls
+// a d20 at or under their Stress, the number is looked up here. Mothership 1e's
+// Panic Table (Tuesday Knight Games), its entries restated in our own words.
+// Mechanics (Stress, Conditions, Minimum Stress) are the Warden's to apply to the
+// crew; for the cast, the agent plays it out.
+export const PANIC_TABLE = [null,
+  { name: "Adrenaline rush", effect: "[+] on every roll for the next 2d10 minutes, and Stress drops by 1d5." },
+  { name: "Anxious", effect: "+1 Stress." },
+  { name: "Jumpy", effect: "+1 Stress, and every crewmember close by gains 2 Stress." },
+  { name: "Overwhelmed", effect: "[-] on everything for 1d10 minutes, and Minimum Stress goes up by 1 for good." },
+  { name: "Coward", effect: "new Condition: they must pass a Fear Save before they can fight, or run away." },
+  { name: "Frightened", effect: "new Condition, a Phobia: facing it calls for a Fear Save at [-], or they gain 1d5 Stress." },
+  { name: "Nightmares", effect: "new Condition: sleep won't come easily; [-] on every Rest Save." },
+  { name: "Loss of confidence", effect: "new Condition: one of their Skills (their choice) no longer gives its bonus." },
+  { name: "Deflated", effect: "new Condition: whenever a crewmember close by fails a Save, they gain 1 Stress." },
+  { name: "Doomed", effect: "new Condition: they feel cursed and unlucky; their Critical Successes count as Critical Failures." },
+  { name: "Paranoid", effect: "for the next week, whenever someone joins their group (even back from a short absence), a Fear Save or +1 Stress." },
+  { name: "Haunted", effect: "new Condition: something has started visiting them, at night, in dreams, at the edge of sight. Soon it will want things." },
+  { name: "Death wish", effect: "for the next 24 hours, meeting a stranger or a known enemy means a Sanity Save, or they attack at once." },
+  { name: "Prophetic vision", effect: "a sudden, vivid hallucination or vision of a terror still to come; +1 Stress." },
+  { name: "Catatonic", effect: "unresponsive and unmoving for 2d10 minutes; Stress drops by 1d10." },
+  { name: "Rage", effect: "they attack the closest crewmember at once, until they've dealt 2d10 damage; with nobody close, they attack their surroundings." },
+  { name: "Spiraling", effect: "new Condition: their Panic Checks are rolled with Disadvantage." },
+  { name: "Compounding problems", effect: "roll twice more on this table, and Minimum Stress goes up by 1 for good." },
+  { name: "Heart attack / short circuit (androids)", effect: "lose 1 Wound for good, [-] on every roll for 1d10 hours, and Minimum Stress goes up by 1 for good." },
+  { name: "Collapse", effect: "the character is lost to their player: the sheet goes to the Warden, and the player makes a new character." },
 ];
+
+// The panic for a roll of n: { name, effect }. Compounding problems (18) rolls twice
+// more on the table itself (an 18 again is rerolled).
+export function panicEntry(n) {
+  const e = PANIC_TABLE[n];
+  if (!e) return null;
+  if (n !== 18) return { ...e };
+  const more = [0, 0].map(() => { let d; do d = 1 + Math.floor(Math.random() * 20); while (d === 18); return d; });
+  return {
+    name: `${e.name} (${more.map((d) => `${d}: ${PANIC_TABLE[d].name}`).join(" + ")})`,
+    effect: `Minimum Stress goes up by 1 for good, and two more panics: ${more.map((d) => `${d}, ${PANIC_TABLE[d].name}: ${PANIC_TABLE[d].effect}`).join(" Then ")}`,
+  };
+}
 // A portrait file: an upload, or one that comes with the app (the crew's use these too).
 export const PORTRAIT_FILE = /^([a-f0-9]{12}\.(png|jpg|webp|gif)|kit\/[a-z0-9_-]{1,60}\.(png|jpg))$/;
 
@@ -133,21 +147,6 @@ export const castVoice = (member) => ({ engine: "neural", speaker: member?.voice
 
 // The base voice a log line is spoken with: its speaker's (the cast's own), or its voice's.
 // Raise or lower someone's Stress (0-20). Returns [before, after].
-export const DEFAULT_PANIC_TABLE = APP_PANIC.slice(1).map((e) => `${e.name}: ${e.effect}`);
-
-// 20 lines, one per result (a blank one falls back to the app's).
-export function sanitizePanicTable(list) {
-  const lines = Array.isArray(list) ? list : [];
-  return DEFAULT_PANIC_TABLE.map((d, i) => String(lines[i] ?? "").replace(/\s+/g, " ").trim().slice(0, 400) || d);
-}
-
-// Result n (1-20) of the session's table: { name, effect }.
-export function panicEntry(table, n) {
-  const line = sanitizePanicTable(table)[n - 1] || "";
-  const m = /^([^:]{1,60}):\s*(.*)$/.exec(line);
-  return m ? { name: m[1].trim(), effect: m[2].trim() || m[1].trim() } : { name: line.split(" ").slice(0, 4).join(" "), effect: line };
-}
-
 export function shiftStress(member, change) {
   const before = member.stress ?? 2;
   member.stress = clampStress(before + (Math.round(Number(change)) || 0));

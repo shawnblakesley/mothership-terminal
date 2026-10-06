@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS } from "./voices.js";
-import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, shiftAttitude, attitudeLabel, shiftStress, DEFAULT_PANIC_TABLE, sanitizePanicTable, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
+import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
@@ -184,7 +184,6 @@ export function defaultGame(keys = {}) {
       crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
       cast: defaultCast(), // the story's people, and where they are (cast.js)
       castChannel: "intercom", // the voice the cast is heard through when not in the players' room
-      panicTable: [...DEFAULT_PANIC_TABLE], // what a panic means, by the d20 rolled (the Warden's to replace: cast.js)
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
       playerTerminals: true, // players may move between terminals themselves
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
@@ -283,7 +282,7 @@ function migrateGame(saved) {
   }
   config.crew = sanitizeCrew(config.crew);
   config.cast = sanitizeCast(cast);
-  config.panicTable = sanitizePanicTable(config.panicTable);
+  delete config.panicTable; // (it was briefly the Warden's to edit; now it's the one table: cast.js)
   config.terminals = upgradeTerminals(sanitizeTerminals(config.terminals));
   // Once, for a KESTREL-9 story from before it: the crew's tug, its own terminal
   // and flight computer (not on the station network). Deleting them later sticks.
@@ -403,7 +402,7 @@ const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew do
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
 // The session's settings, not part of the story (a restart keeps them as they are).
-const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "upgrades", "panicTable"]);
+const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "upgrades"]);
 // The Warden's moves that play the story (the first one saves it; see storyBegins).
 const STORY_ACTIONS = new Set(["command", "inject", "note", "heard", "rollRequest", "rollFor", "generate", "approve", "outcome", "handout", "clockStart"]);
 // A crew member named by the agent ("" for none, or no match).
@@ -639,7 +638,7 @@ export class Session {
       allEffects: ALL_EFFECTS,
       rollOptions: { checks: CHECKS, skillLevels: SKILL_LEVELS },
       voiceOptions: { presets: PRESETS, fxParams: FX_PARAMS, variants: VARIANTS, styles: STYLES, engines: ENGINES, speakers: SPEAKERS },
-      defaultPanicTable: DEFAULT_PANIC_TABLE, // (the app's own, for "Use the app's table")
+      panicTable: PANIC_TABLE.slice(1), // (shown on the Rules tab)
     };
   }
 
@@ -856,11 +855,10 @@ export class Session {
     if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "theme", "map", "panicTable"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
-        s.config.panicTable = sanitizePanicTable(s.config.panicTable);
         // Switching provider snaps to its cheapest model; invalid efforts snap to the cheapest valid one.
         if ("provider" in msg.patch && !("model" in msg.patch)) Object.assign(s.config, { model: "", effort: "" });
         else if ("model" in msg.patch && !("effort" in msg.patch)) s.config.effort = "";
@@ -1340,7 +1338,7 @@ export class Session {
   castPanic(member, by = "agent") {
     const req = { check: PANIC, advantage: "none" };
     const result = resolve(req, member.stress ?? 2, diceFor(req));
-    const fx = result.success ? null : panicEntry(this.state.config.panicTable, result.used);
+    const fx = result.success ? null : panicEntry(result.used);
     track("Roll", { Kind: "panic", Who: "cast" });
     this.toPlayers({ t: "rollResult", result, label: "Panic", who: member.name, effect: fx?.name || "" });
     this.addLog("roll", `${member.name}${by === "warden" ? " (the Warden called it)" : ""}: PANIC CHECK\nSTRESS ${result.target} · ROLLED ${result.used} (D20)\n${fx ? `PANIC · ${fx.name.toUpperCase()}` : "KEPT THEIR COOL"}`,
@@ -1544,7 +1542,7 @@ export class Session {
     track("Roll", { Kind: r.check === PANIC ? "panic" : CHECKS[r.check].kind === "Save" ? "save" : "stat", Who: r.all ? "all" : "one" });
     r.results[pc.id] = { result, manual, by };
     // A panic: its entry on the panic table (shown on the dice, and to the agent to play out).
-    const fx = result.panic && !result.success ? panicEntry(this.state.config.panicTable, result.used) : null;
+    const fx = result.panic && !result.success ? panicEntry(result.used) : null;
     this.toPlayers({ t: "rollResult", result, label: checkLabel(r), who: pc.name, effect: fx?.name || "" });
     this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(r, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
     if (result.stress) {
