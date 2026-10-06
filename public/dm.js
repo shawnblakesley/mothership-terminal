@@ -1426,43 +1426,68 @@
   // at the table. Each finished phrase goes to the log (read-only, private) and
   // with the agent's next prompt, as things that happened. Off until switched on.
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let listening = false, recog = null;
+  let listening = false, recog = null, quickEnds = 0;
+  const micStatus = (text) => { $("micLive").textContent = text; };
   function setListening(on) {
     listening = on;
+    quickEnds = 0;
     $("micBtn").setAttribute("aria-pressed", String(on));
     $("micBtn").textContent = on ? "Listening" : "Listen";
     $("micLive").hidden = !on;
-    $("micLive").textContent = on ? "Listening… speak and it's written down." : "";
+    micStatus(on ? "Starting the microphone…" : "");
     if (on) startRecog();
     else recog?.abort();
   }
+  // Something stops it for good: say what, in the toast and under the box.
+  function micFailed(text) {
+    console.warn(`[listen] ${text}`);
+    toast(text, "error");
+    setListening(false);
+  }
+  const MIC_ERRORS = {
+    "not-allowed": "The microphone is blocked for this page: allow it (the icon in the address bar) and press Listen again.",
+    "service-not-allowed": "This browser won't run speech recognition here. Use Chrome or Edge.",
+    "audio-capture": "No microphone found.",
+    network: "This browser can't reach a speech-recognition service (Brave, the Claude app's browser and some other Chromium browsers don't have one). Use Chrome or Edge.",
+    "language-not-supported": `Speech recognition doesn't support your browser's language (${navigator.language}).`,
+  };
   function startRecog() {
     const r = (recog = new Recognition());
+    const started = Date.now();
+    let heardAny = false;
     recog.lang = navigator.language || "en-US";
     recog.continuous = true;
     recog.interimResults = true;
+    recog.onaudiostart = () => micStatus("Listening… speak and it's written down.");
     recog.onresult = (e) => {
+      heardAny = true;
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) { const text = r[0].transcript.trim(); if (text) send({ t: "heard", text }); }
-        else interim += r[0].transcript;
+        const res = e.results[i];
+        if (res.isFinal) { const text = res[0].transcript.trim(); if (text) send({ t: "heard", text }); }
+        else interim += res[0].transcript;
       }
-      $("micLive").textContent = interim.trim() ? `${interim.trim()}…` : "Listening…";
+      micStatus(interim.trim() ? `${interim.trim()}…` : "Listening…");
     };
     recog.onerror = (e) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture") {
-        toast(e.error === "audio-capture" ? "No microphone found." : "The microphone is blocked: allow it for this page to use Listen.", "error");
-        setListening(false);
-      }
+      if (e.error === "no-speech" || e.error === "aborted") return; // (a silence; or switched off)
+      if (recog === r) micFailed(MIC_ERRORS[e.error] || `Speech recognition stopped: ${e.error}${e.message ? ` (${e.message})` : ""}.`);
     };
     // Browsers stop listening after a silence or a while: start again while it's on.
-    recog.onend = () => { if (listening && recog === r) setTimeout(() => listening && recog === r && startRecog(), 250); };
-    try { recog.start(); } catch { /* (already starting) */ }
+    // If it keeps ending at once without hearing anything, it isn't working.
+    recog.onend = () => {
+      if (!listening || recog !== r) return;
+      quickEnds = !heardAny && Date.now() - started < 1500 ? quickEnds + 1 : 0;
+      if (quickEnds >= 4) return micFailed("Speech recognition keeps stopping straight away in this browser. Use Chrome or Edge.");
+      setTimeout(() => listening && recog === r && startRecog(), 250);
+    };
+    try { recog.start(); } catch (err) { micFailed(`Couldn't start speech recognition: ${err.message}`); }
   }
-  if (!Recognition) {
+  if (!Recognition || !window.isSecureContext) {
     $("micBtn").disabled = true;
-    $("micBtn").title = "Listen needs speech recognition, which this browser doesn't have (try Chrome, Edge or Safari).";
+    $("micBtn").title = !Recognition
+      ? "Listen needs speech recognition, which this browser doesn't have. Use Chrome or Edge."
+      : "Listen needs a secure page: open the console over https, or at localhost on the computer running it.";
   }
   $("micBtn").onclick = () => setListening(!listening);
 
