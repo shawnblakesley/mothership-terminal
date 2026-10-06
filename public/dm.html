@@ -457,10 +457,15 @@
         <h2>Stress &amp; Panic</h2>
         <ul>
           <li>Stress starts at <b>2</b> and climbs with every failure and every horror.</li>
-          <li><b>Panic check:</b> roll <b>d20</b>. <b>Above</b> current Stress, they hold it together. <b>Equal or under</b>, they Panic: look the roll up on the Panic Table.</li>
+          <li><b>Panic check:</b> roll <b>d20</b>. <b>Above</b> current Stress, they hold it together. <b>Equal or under</b>, they Panic: the roll is looked up on the panic table below.</li>
           <li>Call one when something truly awful happens: a crewmate dies, the thing is in the room, the lights go out for good.</li>
           <li>Rest somewhere safe (as you allow) to shed Stress.</li>
         </ul>
+
+        <h2>Panic table <span class="hint" title="What a panic means, for the crew and the characters alike: line 1 is a roll of 1, line 20 a roll of 20. The players see the name on the dice; the agent gets the whole line and plays it out (the crew's Stress and lasting penalties stay yours). It starts as the app's own; replace it with your own, e.g. the Player's Survival Guide's.">?</span></h2>
+        <p class="muted small">One per line, 1 to 20, as <b>Name: what happens</b>. Kept through a restart.</p>
+        <textarea id="panicTable" rows="20" spellcheck="false" aria-label="Panic table, one entry per line from 1 to 20"></textarea>
+        <div class="row"><span id="panicTableNote" class="muted small grow"></span><button id="panicTableReset" class="ghost small">Use the app's table</button></div>
 
         <h2>Harm</h2>
         <ul>

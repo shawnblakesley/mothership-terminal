@@ -20,11 +20,11 @@ export const attitudeLabel = (n) => ATTITUDES[n] || "Neutral";
 const clampAttitude = (n) => Math.max(-3, Math.min(3, Math.round(Number(n) || 0)));
 const clampStress = (n, def = 2) => (Number.isFinite(Number(n)) && n !== null && n !== "" ? Math.max(0, Math.min(20, Math.round(Number(n)))) : def);
 
-// When someone of the cast panics (a d20 at or under their Stress), the number rolled
-// is looked up here: worse the higher it goes, so only the very stressed can roll the
-// worst. (Our own table for the cast, in the spirit of Mothership's; the crew's own
-// Panic Table results are the Warden's to apply.)
-export const CAST_PANIC = [null,
+// The panic table: when anyone panics (a d20 at or under their Stress), the number
+// rolled is looked up here, worse the higher it goes (so only the very stressed can
+// roll the worst). The Warden can replace it with their own (config.panicTable: 20
+// lines, "Name: what happens"); this is the app's own, in the spirit of Mothership's.
+const APP_PANIC = [null,
   { name: "Steels themself", effect: "a surge of adrenaline: for the next few moments they act with sudden, sharp courage." },
   { name: "Shaking hands", effect: "they tremble badly; anything delicate they try goes wrong." },
   { name: "Hears things", effect: "they insist they hear voices or movement nobody else does, and won't let it go." },
@@ -133,6 +133,21 @@ export const castVoice = (member) => ({ engine: "neural", speaker: member?.voice
 
 // The base voice a log line is spoken with: its speaker's (the cast's own), or its voice's.
 // Raise or lower someone's Stress (0-20). Returns [before, after].
+export const DEFAULT_PANIC_TABLE = APP_PANIC.slice(1).map((e) => `${e.name}: ${e.effect}`);
+
+// 20 lines, one per result (a blank one falls back to the app's).
+export function sanitizePanicTable(list) {
+  const lines = Array.isArray(list) ? list : [];
+  return DEFAULT_PANIC_TABLE.map((d, i) => String(lines[i] ?? "").replace(/\s+/g, " ").trim().slice(0, 400) || d);
+}
+
+// Result n (1-20) of the session's table: { name, effect }.
+export function panicEntry(table, n) {
+  const line = sanitizePanicTable(table)[n - 1] || "";
+  const m = /^([^:]{1,60}):\s*(.*)$/.exec(line);
+  return m ? { name: m[1].trim(), effect: m[2].trim() || m[1].trim() } : { name: line.split(" ").slice(0, 4).join(" "), effect: line };
+}
+
 export function shiftStress(member, change) {
   const before = member.stress ?? 2;
   member.stress = clampStress(before + (Math.round(Number(change)) || 0));

@@ -277,8 +277,40 @@
   });
 
   // ------------------------------------------------------------ render
+  // The panic table (Rules tab): 20 lines, saved as you type; the app's own until replaced.
+  let panicTimer = null;
+  function renderPanicTable() {
+    const box = $("panicTable");
+    if (document.activeElement === box || panicTimer) return;
+    const lines = S.config.panicTable || [];
+    box.value = lines.map((l, i) => `${i + 1}. ${l}`).join("\n");
+    $("panicTableNote").textContent = S.defaultPanicTable && lines.join("\n") === S.defaultPanicTable.join("\n") ? "The app's own table." : "Your table.";
+  }
+  const panicLines = (text) => {
+    const out = Array(20).fill("");
+    let next = 0;
+    for (const raw of text.split("\n")) {
+      if (!raw.trim()) continue;
+      const m = /^\s*(\d{1,2})\s*[.):-]\s*(.*)$/.exec(raw); // "14. Name: what happens" (numbered or not)
+      const i = m && Number(m[1]) >= 1 && Number(m[1]) <= 20 ? Number(m[1]) - 1 : next;
+      if (i < 20) out[i] = (m ? m[2] : raw).trim();
+      next = i + 1;
+    }
+    return out;
+  };
+  $("panicTable").addEventListener("input", () => {
+    clearTimeout(panicTimer);
+    panicTimer = setTimeout(() => { panicTimer = null; send({ t: "config", patch: { panicTable: panicLines($("panicTable").value) } }); }, 800);
+  });
+  $("panicTable").addEventListener("blur", () => setTimeout(() => S && renderPanicTable(), 1200));
+  $("panicTableReset").onclick = async () => {
+    if (!(await sure("Use the app's panic table?", "Your table is replaced by the app's own.", "Use it"))) return;
+    send({ t: "config", patch: { panicTable: S.defaultPanicTable } });
+  };
+
   function render() {
     renderAgentPicker();
+    renderPanicTable();
     for (const b of $("mode").children) b.classList.toggle("on", b.dataset.mode === S.config.mode);
     renderLog();
     renderPending();
