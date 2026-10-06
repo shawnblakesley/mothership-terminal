@@ -271,6 +271,8 @@ The agent puts station-wide announcements in a separate broadcast field. If it e
 
 The agent says yes to cool ideas but **never decides whether an uncertain action works**. You do.
 
+**Failing forward.** Whatever you or the dice decide, the agent narrates it so the story moves on. A failure is never "nothing happens": something changes, costs something, or opens a new way. How close the roll was guides how it fails (a near miss often becomes a partial success with a complication; a bad miss doesn't work, but the situation shifts), and a failure usually gets the crew past the obstacle at a price, rather than leaving them all to try and fail at the same thing. These are guides for the agent, with two worked examples in its instructions (a gunfight in a cargo bay, and freeing a crewmate from a jammed cryopod), not hard rules.
+
 - **The agent's side:** when players try something risky, like hacking a door, overriding a lockout, forcing a hatch or bluffing someone, the agent plays it up to the moment of truth and stops there. It never contradicts the players or flatly shuts an idea down.
 - **Your side:** an **⚖ Your call** card appears under the comms log with the stakes (**If it works:** / **If it fails:**, which you can edit) and three buttons: ✓ (it works), ✗ (it fails) and 🎲 (call for a roll). The agent suggests a Stat or Save and whether [+] or [−] fits. ✓ or ✗ has the agent narrate the result by the stakes and make any station changes; 🎲 opens the who-rolls-what form right in the card, under the stakes.
 

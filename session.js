@@ -1045,7 +1045,7 @@ export class Session {
         const verdict = msg.verdict === "success" ? "SUCCEEDS" : "FAILS";
         // The stakes the Warden was shown for this outcome: the narration follows them.
         const stake = msg.verdict === "success" ? oc.on_success : oc.on_failure;
-        this.addLog("warden", `The players' attempt (${oc.attempt || "their last action"}) ${verdict}.${stake ? ` As the stakes said: ${stake}` : ""} Narrate the result in character and apply any station changes.`);
+        this.addLog("warden", `The players' attempt (${oc.attempt || "their last action"}) ${verdict}.${stake ? ` As the stakes said: ${stake}` : ""} Narrate the result in character and apply any station changes.${msg.verdict === "success" ? "" : " Fail forward: even so, the story moves on (see FAIL FORWARD)."}`);
         this.generate();
         break;
       }
@@ -2059,7 +2059,7 @@ export class Session {
     s.outcomeCheck = null;
     const stakes = [oc.on_success && `if it works, ${oc.on_success}`, oc.on_failure && `if it fails, ${oc.on_failure}`].filter(Boolean).join("; ");
     this.soloNoCheck = true;
-    this.addLog("warden", `No Warden is running this game, so you rule on it: decide fairly, by the fiction and the odds, whether "${oc.attempt || "their attempt"}" works${stakes ? ` (the stakes: ${stakes})` : ""}, then narrate what happens.`);
+    this.addLog("warden", `No Warden is running this game, so you rule on it: decide fairly, by the fiction and the odds, whether "${oc.attempt || "their attempt"}" works${stakes ? ` (the stakes: ${stakes})` : ""}, then narrate what happens. If it fails, fail forward: the story still moves on (see FAIL FORWARD).`);
     this.generate();
   }
 
