@@ -113,6 +113,57 @@
       const iv = setInterval(blast, 2200);
       return () => { on = false; clearInterval(iv); };
     },
+    // A horror sting, for a reveal: a hiss swelling up, then a sub-bass hit with a low
+    // boom, a dissonant growling chord that darkens as it fades, and a thin screech
+    // sliding down over it. About 2.5 s. (into: any AudioContext and node, for testing.)
+    sting(into) {
+      if (!into && !this.ok()) return;
+      const ctx = into?.ctx || this.ctx, dest = into?.dest || this.bus();
+      const t0 = into?.at ?? ctx.currentTime, hit = t0 + 0.38;
+      const out = ctx.createGain(); out.gain.value = 0.4; out.connect(dest);
+      const noise = () => {
+        const len = ctx.sampleRate * 2, b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const src = ctx.createBufferSource(); src.buffer = b; return src;
+      };
+      const env = (g, at, peak, attack, decay) => {
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.exponentialRampToValueAtTime(peak, at + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, at + attack + decay);
+      };
+      // 1. the swell: hiss rising into the hit
+      { const n = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+        f.type = "bandpass"; f.Q.value = 1.2;
+        f.frequency.setValueAtTime(400, t0); f.frequency.exponentialRampToValueAtTime(3500, hit);
+        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.18, hit - 0.02); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.05);
+        n.connect(f); f.connect(g); g.connect(out); n.start(t0); n.stop(hit + 0.1); }
+      // 2. the hit: a falling sub-bass thud and a low noise boom
+      { const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = "sine"; o.frequency.setValueAtTime(70, hit); o.frequency.exponentialRampToValueAtTime(28, hit + 1.4);
+        env(g, hit, 0.32, 0.01, 1.5); o.connect(g); g.connect(out); o.start(hit); o.stop(hit + 1.6); }
+      { const n = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+        f.type = "lowpass"; f.frequency.value = 220;
+        env(g, hit, 0.3, 0.005, 0.9); n.connect(f); f.connect(g); g.connect(out); n.start(hit); n.stop(hit + 1); }
+      // 3. the stab: a dissonant cluster (a semitone rub and a tritone), growling, darkening as it dies
+      { const f = ctx.createBiquadFilter(), g = ctx.createGain();
+        f.type = "lowpass"; f.Q.value = 4;
+        f.frequency.setValueAtTime(2400, hit); f.frequency.exponentialRampToValueAtTime(260, hit + 2.2);
+        g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.32, hit + 0.015); g.gain.exponentialRampToValueAtTime(0.16, hit + 0.6); g.gain.exponentialRampToValueAtTime(0.08, hit + 1.6); g.gain.exponentialRampToValueAtTime(0.0001, hit + 2.2);
+        for (const [hz, det] of [[110, -7], [116.5, 6], [155.6, -3], [233, 9], [246.9, -10]]) {
+          const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = hz; o.detune.value = det;
+          o.connect(f); o.start(hit); o.stop(hit + 2.3);
+        }
+        f.connect(g); g.connect(out); }
+      // 4. the screech: a thin, bowed glissando sliding down over the top, with a nervous vibrato
+      { const o = ctx.createOscillator(), lfo = ctx.createOscillator(), depth = ctx.createGain(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(2100, hit + 0.05); o.frequency.exponentialRampToValueAtTime(820, hit + 1.9);
+        lfo.frequency.value = 7.5; depth.gain.value = 28; lfo.connect(depth); depth.connect(o.frequency);
+        f.type = "bandpass"; f.frequency.value = 1500; f.Q.value = 2.5;
+        g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.16, hit + 0.3); g.gain.exponentialRampToValueAtTime(0.09, hit + 1.4); g.gain.exponentialRampToValueAtTime(0.0001, hit + 2.05);
+        o.connect(f); f.connect(g); g.connect(out); o.start(hit); lfo.start(hit); o.stop(hit + 2.05); lfo.stop(hit + 2.05); }
+      return hit + 2.2 - t0; // (how long it lasts)
+    },
     powerDown() {
       if (!this.ok()) return;
       const t = this.ctx.currentTime;
