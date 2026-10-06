@@ -189,7 +189,7 @@ export function defaultGame(keys = {}) {
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -332,6 +332,15 @@ function migrateGame(saved) {
     for (const m of config.cast) m.portrait ||= findCast(DEFAULT_CAST, m.name)?.portrait || "";
     for (const pc of config.crew) pc.portrait ||= DEFAULT_CREW.find((d) => d.id === pc.id && d.name === pc.name)?.portrait || "";
     config.upgrades.push("portraits");
+  }
+  // Once: the intercom's old fixed light blue goes; it takes the screen's colour like
+  // the other voices. The saved story too, or Restart story would bring the blue back.
+  if (!config.upgrades.includes("intercom-colour")) {
+    for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
+      const v = list.find((x) => x.id === "intercom");
+      if (v?.color === "#9fd3ff") v.color = "";
+    }
+    config.upgrades.push("intercom-colour");
   }
   // Once: an original KESTREL-9 story starts the crew with their work order.
   config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];
@@ -2170,10 +2179,13 @@ export class Session {
     this.stopSounds();
     if (snap) {
       // The whole story as it was (settings stay: they're the session's, not the story's).
+      // Pictures stay as they are now: they're how people look, not where the story is.
+      const pics = new Map([...s.config.cast, ...s.config.crew].map((m) => [m.id, m.portrait]));
       Object.assign(s.config, structuredClone(snap.config));
       s.config.voices = sanitizeVoices(s.config.voices);
       s.station = structuredClone(snap.station);
       s.config.cast = sanitizeCast(s.config.cast);
+      for (const m of [...s.config.cast, ...s.config.crew]) if (pics.has(m.id)) m.portrait = pics.get(m.id);
       s.synopsis = structuredClone(snap.synopsis ?? null);
     } else {
       // Played before saves existed: everyone fresh, and the default story's own station.

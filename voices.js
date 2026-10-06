@@ -197,7 +197,8 @@ export function defaultVoices() {
     { id: BUILTIN.broadcast, name: "SYSTEM BROADCAST", style: "boxed", color: "", persona: DEFAULT_PERSONAS.broadcast, ...fromPreset("ethereal") },
     narratorVoice(),
     shipVoice(),
-    { id: "intercom", name: "INTERCOM", style: "label", color: "#9fd3ff", persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom") },
+    { id: "intercom", name: "INTERCOM", style: "label", color: "", // (the screen's own colour)
+      persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom") },
     // The entity: the demonic effects over a slowed human voice.
     { id: "unknown", name: "???", style: "label", color: "#ff5a5a", persona: DEFAULT_PERSONAS.unknown, ...fromPreset("demonic"),
       preset: "custom", voice: { engine: "neural", speaker: "am_onyx", pace: 0.75 } },
