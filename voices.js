@@ -11,9 +11,12 @@ export const BUILTIN = { terminal: "terminal", broadcast: "broadcast", narrator:
 // the web (it loads from there: nothing is copied), the Warden can show them;
 // credit: where the picture is from (the artist, a link), shown with it.
 export const PICTURE_LINK = /^https:\/\/[^\s"'<>()`]{4,600}$/;
-// THE COLD, from Matt Harding's art (linked from his site, not copied).
-const COLD_PICTURE = "https://images.squarespace-cdn.com/content/v1/58d3f460d482e9f596028aac/1503694623654-WL23BVBQK0KZH1XVQBSJ/thingarbook_art_03.jpg?format=2500w";
-const COLD_CREDIT = "Art: Matt Harding, matthardingart.com/thething";
+// THE COLD: "Of the Void" by thienbao (linked, not copied; the artist's DeviantArt
+// account is gone, so the link is to where it's still posted).
+const COLD_PICTURE = "https://vibes1.funnyjunk.com/pictures/The+formless+one+this+is+far+and+away+the+longest_dddc3c_6624090.jpg";
+// (its first picture, Matt Harding's: saved stories with it unchanged move to the new one)
+export const OLD_COLD_PICTURES = ["https://images.squarespace-cdn.com/content/v1/58d3f460d482e9f596028aac/1503694623654-WL23BVBQK0KZH1XVQBSJ/thingarbook_art_03.jpg?format=2500w"];
+const COLD_CREDIT = "Of the Void by thienbao on DeviantArt";
 export const DEFAULT_COLD = { picture: COLD_PICTURE, credit: COLD_CREDIT };
 export const isAdversary = (v) => !!v?.adversary;
 export const shownName = (v) => (v?.adversary && !v.adversary.revealed ? "???" : v?.name || "");

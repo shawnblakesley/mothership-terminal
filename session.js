@@ -3,7 +3,7 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
-import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD } from "./voices.js";
+import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, OLD_COLD_PICTURES } from "./voices.js";
 import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
@@ -189,7 +189,7 @@ export function defaultGame(keys = {}) {
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -363,13 +363,21 @@ function migrateGame(saved) {
     }
     config.upgrades.push("the-cold");
   }
-  // Once: KESTREL-9's THE COLD gets its picture (a link to Matt Harding's art), if it has none.
+  // Once: KESTREL-9's THE COLD gets its picture (a link: voices.js DEFAULT_COLD), if it has none.
   if (!config.upgrades.includes("the-cold-picture")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
       const v = list.find((x) => x.id === "unknown" && x.adversary && !x.adversary.picture);
       if (v && config.stationName === "KESTREL-9") Object.assign(v.adversary, DEFAULT_COLD);
     }
     config.upgrades.push("the-cold-picture");
+  }
+  // Once: THE COLD's first picture (unchanged) becomes "Of the Void".
+  if (!config.upgrades.includes("the-cold-picture-2")) {
+    for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
+      const v = list.find((x) => x.id === "unknown" && OLD_COLD_PICTURES.includes(x.adversary?.picture));
+      if (v) Object.assign(v.adversary, DEFAULT_COLD);
+    }
+    config.upgrades.push("the-cold-picture-2");
   }
   // Once: an original KESTREL-9 story starts the crew with their work order.
   config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];
