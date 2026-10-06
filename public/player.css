@@ -402,6 +402,42 @@ body {
 #hdr .hdr-btn { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; text-shadow: inherit; letter-spacing: inherit; text-transform: uppercase; }
 #hdr .hdr-btn:hover, #hdr .hdr-btn:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
 body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { display: none; }
+/* The crew sheet, in cards (renderFile, renderSide): rounded boxes, values in pills and circles. */
+.cs { display: flex; flex-direction: column; gap: 0.5em; max-width: 30em; }
+.cs-card { border: 2px solid var(--fg); border-radius: 0.6em; padding: 0.45em 0.6em 0.55em; box-shadow: 0 0 8px color-mix(in srgb, var(--fg) 22%, transparent), inset 0 0 10px color-mix(in srgb, var(--fg) 7%, transparent); }
+.cs-title { text-align: center; letter-spacing: 0.14em; margin-bottom: 0.35em; }
+.cs-k { color: var(--dim); font-size: 0.78em; letter-spacing: 0.08em; }
+.cs-head { display: grid; grid-template-columns: 6em 1fr; gap: 0.6em; align-items: start; }
+.cs-facebox { aspect-ratio: 1; border: 2px solid var(--fg); border-radius: 0.4em; overflow: hidden; position: relative; display: grid; place-items: center; }
+.cs-facebox .portrait { width: 100%; height: 100%; outline: 0; box-shadow: none; }
+.cs-noface { color: var(--dim); font-size: 0.7em; }
+.cs-field { margin-bottom: 0.2em; }
+.cs-field .cs-k { display: block; }
+.cs-field b { display: block; font-weight: normal; border: 2px solid var(--fg); border-radius: 0.35em; padding: 0 0.4em; text-align: center; line-height: 1.15; overflow-wrap: anywhere; }
+.cs-vitals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4em; text-align: center; }
+.cs-pill { display: flex; align-items: center; justify-content: space-between; gap: 0.2em; min-height: 1.6em; border: 2px solid var(--fg); border-radius: 999px; padding: 0.05em 0.2em; font-size: 1.15em; white-space: nowrap; }
+.cs-of { color: var(--dim); }
+.cs-step { padding: 0 0.35em; opacity: 0.75; font-size: 1.05em; line-height: 1; }
+.cs-pill > span { flex: 1; text-align: center; }
+.cs-step:hover, .cs-step:focus-visible { opacity: 1; }
+.cs-subs { display: flex; justify-content: space-around; color: var(--dim); font-size: 0.68em; letter-spacing: 0.08em; margin-top: 0.15em; }
+.cs-nums { display: flex; justify-content: space-around; text-align: center; }
+.cs-num { display: flex; flex-direction: column; align-items: center; gap: 0.15em; background: none; border: 0; padding: 0; color: var(--fg); font: inherit; text-shadow: inherit; }
+button.cs-num { cursor: pointer; }
+.cs-circle { width: 2.6em; height: 2.6em; border: 2px solid var(--fg); border-radius: 50%; display: grid; place-items: center; font-size: 1.15em; }
+button.cs-num:hover .cs-circle, button.cs-num:focus-visible .cs-circle { background: var(--fg); color: var(--bg); text-shadow: none; }
+button.cs-num:focus-visible { outline: none; }
+.cs-num .cs-k { font-size: 0.74em; }
+.cs-hint { text-align: center; color: var(--dim); font-size: 0.78em; margin-top: 0.35em; }
+.cs-list > div { border-bottom: 1px dashed var(--dim); padding: 0.05em 0; }
+.cs-list > div:last-child { border: 0; }
+.cs-chips { display: flex; flex-wrap: wrap; gap: 0.3em; }
+.cs-chips span { border: 2px solid var(--fg); border-radius: 999px; padding: 0 0.45em; font-size: 0.85em; }
+.cs-story { display: flex; flex-direction: column; gap: 0.3em; }
+/* (beside the terminal: a little smaller) */
+.cs-compact { font-size: 0.85em; max-width: none; }
+.cs-compact .cs-head { grid-template-columns: 4.6em 1fr; }
+
 .panel { border: 3px double var(--fg); padding: 0.6em 0.9em; margin: 0.2em 0 0.8em; max-width: 52em; }
 .panel[hidden] { display: none; }
 .p-title { margin-bottom: 0.2em; }
@@ -414,7 +450,6 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { displ
 .p-btn:hover, .p-btn:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
 .p-sec { margin-top: 0.45em; }
 .p-text { white-space: pre-wrap; }
-.p-stat { display: inline-block; margin: 0 1.1em 0 0; }
 .p-actions { margin-top: 0.8em; display: flex; gap: 2em; flex-wrap: wrap; }
 
 /* The character sidebar beside the terminal. */
@@ -426,13 +461,7 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { displ
 }
 #side::-webkit-scrollbar { display: none; }
 #side[hidden] { display: none; }
-.s-name { }
 .s-sec { margin-top: 0.7em; }
-.s-grid { display: grid; grid-template-columns: repeat(4, auto 1fr); gap: 0 0.4em; margin-top: 0.15em; }
-.s-k { color: var(--dim); }
-.s-meters > div + div { margin-top: 0.35em; }
-.s-bar { letter-spacing: 0.08em; word-break: break-all; }
-.s-bar.hot { animation: blink 1.2s infinite steps(1); }
 #hdr .hdr-btn.on { text-decoration: underline; }
 
 /* The rules: a plain, readable sheet over the terminal (no glow, no terminal font). */
@@ -460,12 +489,6 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { displ
 @media (max-width: 520px) { .rules-body dl { grid-template-columns: 1fr; } .rules-body dd { margin-bottom: 6px; } }
 
 /* Clickable stats, vitals controls, the self-roll panel. */
-.s-rolls { display: flex; flex-wrap: wrap; gap: 0.1em 0.7em; margin-top: 0.15em; }
-.s-roll .s-k, .p-btn .p-dim { color: var(--dim); }
-.s-roll:hover .s-k, .s-roll:focus-visible .s-k, .p-btn:hover .p-dim, .p-btn:focus-visible .p-dim { color: var(--bg); }
-.v-ctl { white-space: nowrap; }
-.v-ctl .p-btn { opacity: 0.75; }
-.v-ctl .p-btn:hover { opacity: 1; }
 #selfroll .p-btn { margin: 0 0.5em 0.2em 0; }
 #selfroll .p-btn.on { color: var(--fg); }
 #selfroll [hidden] { display: none; }

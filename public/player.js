@@ -568,14 +568,6 @@
     }).join("");
   }
 
-  // A Stat/Save the player can click to roll (if the Warden allows it).
-  const statBtn = (k, v, short) => header.selfRolls && !spectate
-    ? `<button type="button" class="p-btn s-roll" data-check="${k}" title="Roll ${k}">${short ? `<span class="s-k">${k.slice(0, 3).toUpperCase()}</span> ` : `<span class="p-dim">${k.toUpperCase()}</span> `}${v}</button>`
-    : (short ? `<span class="s-k">${k.slice(0, 3).toUpperCase()}</span><span class="s-v">${v}</span>` : `<span class="p-stat"><span class="p-dim">${k.toUpperCase()}</span> ${v}</span>`);
-  // Health/wounds/stress, with -/+ when players track their own.
-  const vitalCtl = (field, shown) => header.vitals && !spectate
-    ? `<span class="v-ctl"><button type="button" class="p-btn" data-vital="${field}" data-d="-1" aria-label="${field} down">[-]</button> ${shown} <button type="button" class="p-btn" data-vital="${field}" data-d="1" aria-label="${field} up">[+]</button></span>`
-    : shown;
   function vitalsChange(field, d) {
     const c = mine();
     if (!c) return;
@@ -592,30 +584,56 @@
     });
   }
 
+  // ---- the crew sheet, in cards (like the Mothership companion app), in the screen's colour.
+  // A Stat or Save in a circle: tap it to roll (when the Warden allows it).
+  const circle = (k, v) => header.selfRolls && !spectate
+    ? `<button type="button" class="cs-num" data-check="${k}" title="Roll ${k}"><span class="cs-circle">${v}</span><span class="cs-k">${k.toUpperCase()}</span></button>`
+    : `<div class="cs-num"><span class="cs-circle">${v}</span><span class="cs-k">${k.toUpperCase()}</span></div>`;
+  // Health, Wounds or Stress in a pill, with [-] / [+] when players track their own.
+  function pill(field, label, now, max, subs) {
+    const ctl = header.vitals && !spectate;
+    const btn = (d) => `<button type="button" class="p-btn cs-step" data-vital="${field}" data-d="${d}" aria-label="${field} ${d > 0 ? "up" : "down"}">${d > 0 ? "+" : "-"}</button>`;
+    return `<div class="cs-vital"><div class="cs-k">${label}</div>
+      <div class="cs-pill">${ctl ? btn(-1) : ""}<span>${now}${max !== undefined ? ` <span class="cs-of">/</span> ${max}` : ""}</span>${ctl ? btn(1) : ""}</div>
+      <div class="cs-subs">${subs.map((x) => `<span>${x}</span>`).join("")}</div></div>`;
+  }
+  const field = (label, value) => value ? `<div class="cs-field"><span class="cs-k">${label}</span><b>${escH(value.toUpperCase())}</b></div>` : "";
+  const sheetHead = (c) => `<div class="cs-card cs-head">
+      <div class="cs-facebox">${portraitHtml(c.portrait, "cs-face") || `<span class="cs-noface">NO PHOTO</span>`}</div>
+      <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns)}${field("CLASS", c.className)}${field("ROLE", c.role)}</div>
+    </div>`;
+  const statusCard = (c) => `<div class="cs-card"><div class="cs-title">STATUS REPORT</div><div class="cs-vitals">
+      ${pill("health", "HEALTH", c.health.current, c.health.max, ["CURRENT", "MAX"])}
+      ${pill("wounds", "WOUNDS", c.wounds.current, c.wounds.max, ["CURRENT", "MAX"])}
+      ${pill("stress", "STRESS", c.stress, undefined, ["CURRENT"])}
+    </div></div>`;
+  const numbersCard = (title, obj, hint = "") => `<div class="cs-card"><div class="cs-title">${title}</div>
+      <div class="cs-nums">${Object.entries(obj).map(([k, v]) => circle(k, v)).join("")}</div>${hint}</div>`;
+  const rollHint = () => (header.selfRolls && !spectate ? '<div class="cs-hint">TAP A STAT OR SAVE TO ROLL IT</div>' : "");
+
   function renderFile() {
     const c = mine();
     if (!c) { $("crewfile-body").innerHTML = '<div class="p-dim">NO CREW FILE SELECTED.</div>'; return; }
-    const row = (obj) => Object.entries(obj).map(([k, v]) => `<span class="p-stat">${statBtn(k, v)}</span>`).join("");
-    $("crewfile-body").innerHTML = `${portraitHtml(c.portrait, "big")}
-      <div class="p-title">■ CREW FILE: ${escH(c.name.toUpperCase())} ■</div>
-      <div class="p-dim">${escH([c.pronouns, c.className, c.role].filter(Boolean).join(" · ").toUpperCase())}</div>
-      <div class="p-sec">CONVICTION: ${escH(c.crime)}</div>
-      <div class="p-sec p-text">${escH(c.backstory)}</div>
-      <div class="p-sec"><span class="p-dim">STATS</span> ${row(c.stats)}</div>
-      <div class="p-sec"><span class="p-dim">SAVES</span> ${row(c.saves)}</div>
-      <div class="p-sec"><span class="p-stat"><span class="p-dim">HEALTH</span> ${vitalCtl("health", `${c.health.current}/${c.health.max}`)}</span><span class="p-stat"><span class="p-dim">WOUNDS</span> ${vitalCtl("wounds", `${c.wounds.current}/${c.wounds.max}`)}</span><span class="p-stat"><span class="p-dim">STRESS</span> ${vitalCtl("stress", c.stress)}</span></div>
-      ${header.selfRolls && !spectate ? '<div class="p-dim p-sec">CLICK A STAT OR SAVE TO ROLL IT.</div>' : ""}
-      <div class="p-sec"><span class="p-dim">SKILLS</span> ${escH(c.skills.join(" · ") || "NONE")}</div>
-      <div class="p-sec"><span class="p-dim">ITEMS</span> ${escH(c.items.join(" · ") || "NOTHING")}</div>
-      ${c.trinket ? `<div class="p-sec"><span class="p-dim">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
-      ${c.patch ? `<div class="p-sec"><span class="p-dim">PATCH</span> ${escH(c.patch)}</div>` : ""}`;
+    $("crewfile-body").innerHTML = `<div class="cs">
+      ${sheetHead(c)}
+      ${statusCard(c)}
+      ${numbersCard("STATS", c.stats, rollHint())}
+      ${numbersCard("SAVES", c.saves)}
+      <div class="cs-card"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((x) => `<div>${escH(x)}</div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
+      <div class="cs-card"><div class="cs-title">ITEMS</div>${c.items.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${escH(x)}</span>`).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
+      <div class="cs-card cs-story">
+        <div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>
+        <div class="p-text">${escH(c.backstory)}</div>
+        ${c.trinket ? `<div><span class="cs-k">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
+        ${c.patch ? `<div><span class="cs-k">PATCH</span> ${escH(c.patch)}</div>` : ""}
+      </div>
+    </div>`;
   }
 
   // ---- the sidebar: the player's sheet beside the terminal (on wide screens).
   let sideOpen = true;
   try { sideOpen = localStorage.getItem("side-open") !== "0"; } catch {}
   const wide = () => matchMedia("(min-width: 900px)").matches;
-  const blocks = (n, max, cap = 20) => "■".repeat(Math.min(n, cap)) + "□".repeat(Math.max(0, Math.min(max, cap) - n));
 
   function renderSide() {
     const c = mine();
@@ -623,22 +641,13 @@
     side.hidden = !c || !sideOpen || !wide() || spectate;
     $("hdr-file").classList.toggle("on", !side.hidden);
     if (side.hidden) return;
-    const grid = (obj) => header.selfRolls && !spectate
-      ? `<div class="s-rolls">${Object.entries(obj).map(([k, v]) => statBtn(k, v, true)).join("")}</div>`
-      : `<div class="s-grid">${Object.entries(obj).map(([k, v]) => statBtn(k, v, true)).join("")}</div>`;
-    side.innerHTML = `${portraitHtml(c.portrait, "side")}
-      <div class="s-name">${escH(c.name.toUpperCase())}</div>
-      <div class="p-dim">${escH([c.className, c.role].filter(Boolean).join(" · ").toUpperCase())}</div>
-      <div class="s-sec"><span class="p-dim">STATS${header.selfRolls && !spectate ? " · CLICK TO ROLL" : ""}</span>${grid(c.stats)}</div>
-      <div class="s-sec"><span class="p-dim">SAVES</span>${grid(c.saves)}</div>
-      <div class="s-sec s-meters">
-        <div><span class="p-dim">HEALTH</span> ${vitalCtl("health", `${c.health.current}/${c.health.max}`)}<div class="s-bar">${blocks(c.health.current, c.health.max)}</div></div>
-        <div><span class="p-dim">WOUNDS</span> ${vitalCtl("wounds", `${c.wounds.current}/${c.wounds.max}`)}<div class="s-bar">${blocks(c.wounds.current, c.wounds.max)}</div></div>
-        <div><span class="p-dim">STRESS</span> ${vitalCtl("stress", c.stress)}<div class="s-bar${c.stress >= 10 ? " hot" : ""}">${blocks(c.stress, Math.max(10, c.stress))}</div></div>
+    side.innerHTML = `<div class="cs cs-compact">
+      ${sheetHead(c)}
+      ${statusCard(c)}
+      ${numbersCard("STATS", c.stats, rollHint())}
+      ${numbersCard("SAVES", c.saves)}
+      <div class="cs-card"><div class="cs-title">ITEMS</div>${c.items.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${escH(x)}</span>`).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
       </div>
-      <div class="s-sec"><span class="p-dim">SKILLS</span><div>${escH(c.skills.join(" · ") || "NONE")}</div></div>
-      <div class="s-sec"><span class="p-dim">ITEMS</span><div>${c.items.length ? c.items.map((x) => `<div>· ${escH(x)}</div>`).join("") : "NOTHING"}</div></div>
-      ${c.trinket ? `<div class="s-sec"><span class="p-dim">TRINKET</span><div>${escH(c.trinket)}</div></div>` : ""}
       <div class="s-sec"><button type="button" class="p-btn" id="side-more">[ FULL FILE ]</button> <button type="button" class="p-btn" id="side-hide">[ HIDE ]</button></div>`;
   }
   addEventListener("resize", () => renderSide());
