@@ -500,7 +500,7 @@
     panel.innerHTML = crewDraft.map((c, i) => {
       const playing = S.claims?.[c.id] || 0;
       return `<details class="pc" data-i="${i}">
-        <summary><span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Connected: playing on ${playing} screen${playing > 1 ? "s" : ""}` : "Not connected: no player has picked them"}">${esc(c.name || "Unnamed")}</span>
+        <summary><button class="pick small" data-pcpic="${i}" title="${c.portrait ? "Change their picture" : "Add a picture: shown on their crew file and beside what they type"}" aria-label="Picture of ${esc(c.name)}">${c.portrait ? `<img src="${esc(portraitUrl(c.portrait))}" alt="">` : `<span>${esc(initials(c.name) || "+")}</span>`}</button>${c.portrait ? `<button class="ghost small edit-only" data-pcnopic="${i}" title="Remove their picture">✕ picture</button>` : ""}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Connected: playing on ${playing} screen${playing > 1 ? "s" : ""}` : "Not connected: no player has picked them"}">${esc(c.name || "Unnamed")}</span>
           <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move their screens to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(no terminal yet)</option>') + S.config.terminals.map((t) =>
@@ -593,13 +593,13 @@
   });
   $("cast").addEventListener("focusout", () => setTimeout(() => S && renderCast(), 1600));
   $("castChannel").addEventListener("change", () => saveCast(true));
-  let picFor = -1;
+  let picFor = null; // { cast: i } or { crew: i }: whose picture is being picked
   $("cast").addEventListener("click", async (e) => {
     const act = e.target.closest("[data-mact]")?.dataset.mact;
     const card = e.target.closest(".castm");
     if (!act || !card) return;
     const i = Number(card.dataset.i), m = castDraft[i];
-    if (act === "pic") { picFor = i; $("portraitFile").value = ""; $("portraitFile").click(); }
+    if (act === "pic") { picFor = { cast: i }; $("portraitFile").value = ""; $("portraitFile").click(); }
     else if (act === "nopic") { m.portrait = ""; saveCast(true); renderCast(true); }
     else if (act === "test") Voice.test({ name: "test", voice: { engine: "neural", speaker: m.voice || "am_michael", pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     else if (act === "del") {
@@ -620,7 +620,7 @@
   // A picture: cropped to a small square here, then uploaded.
   $("portraitFile").addEventListener("change", async () => {
     const file = $("portraitFile").files[0];
-    const m = castDraft[picFor];
+    const m = picFor?.crew !== undefined ? crewDraft[picFor.crew] : castDraft[picFor?.cast];
     if (!file || !m) return;
     try {
       const img = await createImageBitmap(file);
@@ -632,8 +632,8 @@
       const out = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(out.error || `Upload failed (${r.status}).`);
       m.portrait = out.file;
-      saveCast(true);
-      renderCast(true);
+      if (picFor.crew !== undefined) { saveCrew(); renderCrew(true); }
+      else { saveCast(true); renderCast(true); }
     } catch (err) {
       toast(err.message || "That picture couldn't be used.", "error");
     }
@@ -663,6 +663,16 @@
     const id = S.screens?.find((s) => s.characterId === crewId)?.terminal;
     return S.config.terminals.find((t) => t.id === id)?.name || "";
   };
+  // A crew member's picture (the same picker and upload as the characters').
+  $("crew").addEventListener("click", (e) => {
+    const pic = e.target.closest("[data-pcpic]"), off = e.target.closest("[data-pcnopic]");
+    if (!pic && !off) return;
+    e.preventDefault(); // (it's in the card's header: don't open or close the card)
+    if (off) { crewDraft[Number(off.dataset.pcnopic)].portrait = ""; saveCrew(); renderCrew(true); return; }
+    picFor = { crew: Number(pic.dataset.pcpic) };
+    $("portraitFile").value = "";
+    $("portraitFile").click();
+  });
   $("crew").addEventListener("change", (e) => {
     const who = e.target.dataset.move;
     if (who && e.target.value) { send({ t: "moveScreens", character: who, terminal: e.target.value }); e.target.blur(); }

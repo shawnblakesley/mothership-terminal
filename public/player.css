@@ -148,6 +148,12 @@ body {
 .line.has-portrait::before { content: none; }
 .line.has-portrait .lt { flex: 1; min-width: 0; white-space: pre-wrap; }
 .line.style-label .lt::before { content: attr(data-label); opacity: 0.75; }
+.line.player .lt::before { content: attr(data-prompt); }
+/* The crew's portraits on their files: the picker, the full file, the side sheet. */
+.portrait.face { float: left; margin: 0.1em 0.7em 0.2em 0; }
+#crewpick-list li.has-face::after { content: ""; display: block; clear: both; }
+.portrait.big { float: right; width: 7em; height: 7em; margin: 0 0 0.6em 1em; }
+.portrait.side { width: 5.5em; height: 5.5em; margin-bottom: 0.5em; }
 .portrait {
   position: relative; flex: none; width: 2.3em; height: 2.3em; margin-top: 0.05em;
   background: currentColor; overflow: hidden; isolation: isolate;

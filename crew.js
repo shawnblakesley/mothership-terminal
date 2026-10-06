@@ -1,6 +1,7 @@
 // The players' characters (Mothership 1e): up to four crew files a session's
 // players pick from. Each player screen claims one; the Warden sees and edits
 // them all, and the agent knows who is who.
+import { PORTRAIT_FILE } from "./cast.js";
 
 export const MAX_CREW = 4;
 export const CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
@@ -128,6 +129,7 @@ export function sanitizeCrew(list) {
       trinket: str(c.trinket, 160),
       patch: str(c.patch, 80),
       notes: str(c.notes, 1000),
+      portrait: PORTRAIT_FILE.test(c.portrait || "") ? c.portrait : "", // (cast.js: an upload, or one that comes with the app)
     });
     if (out.length >= MAX_CREW) break;
   }

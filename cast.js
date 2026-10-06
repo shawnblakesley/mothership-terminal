@@ -6,12 +6,13 @@
 // The Warden edits the cast; the agent brings new people in and moves them.
 //   { id, name, voice: Kokoro speaker id, notes, room: map room id or "", portrait: file or "" }
 // portrait: an upload (portraits.js), or "kit/<file>.png", one that comes with the
-// app (public/portraits/): from Victor J Merino's Sci-Fi Character Portraits
-// PHASE 2, CC BY-NC 4.0, credited on the players' screens when one is in use.
+// app (public/portraits/): from Victor J Merino's Sci-fi character portraits
+// project, CC BY-NC 4.0, credited on the players' screens when one is in use.
 import { SPEAKERS, COMMS_PRESETS, voiceFor } from "./voices.js";
 
 export const MAX_CAST = 40;
-const PORTRAIT_FILE = /^([a-f0-9]{12}\.(png|jpg|webp|gif)|kit\/[a-z0-9_-]{1,60}\.png)$/;
+// A portrait file: an upload, or one that comes with the app (the crew's use these too).
+export const PORTRAIT_FILE = /^([a-f0-9]{12}\.(png|jpg|webp|gif)|kit\/[a-z0-9_-]{1,60}\.(png|jpg))$/;
 
 const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "someone";
 

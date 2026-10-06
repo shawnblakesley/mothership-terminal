@@ -151,6 +151,9 @@
     div.dataset.id = entry.id;
     if (entry.kind === "player") {
       div.dataset.prompt = `${promptText()} `;
+      // Who typed it, by their crew file's portrait.
+      const pc = entry.by && crew.find((c) => c.name === entry.by);
+      if (pc?.portrait) withPortrait(div, pc.portrait, { prompt: div.dataset.prompt });
       return div;
     }
     if (entry.kind === "roll") {
@@ -172,20 +175,7 @@
     if (label) div.dataset.label = label;
     // Their portrait, to the left of what they say: clear in person, full of static over the intercom.
     const portrait = entry.character && header.portraits?.[entry.character.toLowerCase()];
-    if (portrait) {
-      div.classList.add("has-portrait");
-      const pic = document.createElement("span");
-      pic.className = `portrait${entry.inPerson ? "" : " comms"}`;
-      const img = document.createElement("img");
-      img.src = portrait.startsWith("kit/") ? `portraits/${portrait.slice(4)}` : `api/sessions/${code}/portraits/${portrait}`;
-      img.alt = "";
-      img.onerror = () => pic.remove();
-      pic.append(img);
-      const text = document.createElement("span");
-      text.className = "lt";
-      if (label) text.dataset.label = label;
-      div.append(pic, text);
-    }
+    if (portrait) withPortrait(div, portrait, { comms: !entry.inPerson, label });
     // (In person they're not on the intercom: the screen's own colour, not the intercom's.)
     if (v?.color && !entry.inPerson) {
       div.style.color = v.color;
@@ -193,6 +183,27 @@
       div.style.textShadow = `0 0 2px ${v.color}88, 0 0 9px ${v.color}66`;
     }
     return div;
+  }
+
+  // A portrait's address: one that comes with the app, or one the Warden uploaded.
+  const portraitSrc = (file) => (file.startsWith("kit/") ? `portraits/${file.slice(4)}` : `api/sessions/${code}/portraits/${file}`);
+  // A portrait as HTML (crew files): tinted to the text colour; gone if it won't load.
+  const portraitHtml = (file, cls = "") => (file ? `<span class="portrait ${cls}"><img src="${escH(portraitSrc(file))}" alt="" onerror="this.parentNode.remove()"></span>` : "");
+  // A line with a portrait on its left; its text goes in a span beside it.
+  function withPortrait(div, file, { comms = false, label = "", prompt = "" } = {}) {
+    div.classList.add("has-portrait");
+    const pic = document.createElement("span");
+    pic.className = `portrait${comms ? " comms" : ""}`;
+    const img = document.createElement("img");
+    img.src = portraitSrc(file);
+    img.alt = "";
+    img.onerror = () => pic.remove();
+    pic.append(img);
+    const text = document.createElement("span");
+    text.className = "lt";
+    if (label) text.dataset.label = label;
+    if (prompt) text.dataset.prompt = prompt;
+    div.append(pic, text);
   }
 
   // Where a line's text goes: its text span (beside a portrait), or the line itself.
@@ -543,7 +554,7 @@
   function renderPicker() {
     $("crewpick-list").innerHTML = crew.map((c, i) => {
       const others = (claims[c.id] || 0) - (c.id === myId ? 1 : 0);
-      return `<li><button type="button" class="p-btn pick" data-id="${escH(c.id)}">[${i + 1}] ${escH(c.name.toUpperCase())}</button>
+      return `<li${c.portrait ? ' class="has-face"' : ""}>${portraitHtml(c.portrait, "face")}<button type="button" class="p-btn pick" data-id="${escH(c.id)}">[${i + 1}] ${escH(c.name.toUpperCase())}</button>
         <span class="p-dim"> · ${escH(c.className.toUpperCase())} · ${escH(c.role.toUpperCase())}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>YOU</b>" : ""}</span>
         <div class="p-dim p-crime">${escH(c.crime)}</div></li>`;
     }).join("");
@@ -577,7 +588,7 @@
     const c = mine();
     if (!c) { $("crewfile-body").innerHTML = '<div class="p-dim">NO CREW FILE SELECTED.</div>'; return; }
     const row = (obj) => Object.entries(obj).map(([k, v]) => `<span class="p-stat">${statBtn(k, v)}</span>`).join("");
-    $("crewfile-body").innerHTML = `
+    $("crewfile-body").innerHTML = `${portraitHtml(c.portrait, "big")}
       <div class="p-title">■ CREW FILE: ${escH(c.name.toUpperCase())} ■</div>
       <div class="p-dim">${escH([c.pronouns, c.className, c.role].filter(Boolean).join(" · ").toUpperCase())}</div>
       <div class="p-sec">CONVICTION: ${escH(c.crime)}</div>
@@ -607,7 +618,7 @@
     const grid = (obj) => header.selfRolls && !spectate
       ? `<div class="s-rolls">${Object.entries(obj).map(([k, v]) => statBtn(k, v, true)).join("")}</div>`
       : `<div class="s-grid">${Object.entries(obj).map(([k, v]) => statBtn(k, v, true)).join("")}</div>`;
-    side.innerHTML = `
+    side.innerHTML = `${portraitHtml(c.portrait, "side")}
       <div class="s-name">${escH(c.name.toUpperCase())}</div>
       <div class="p-dim">${escH([c.className, c.role].filter(Boolean).join(" · ").toUpperCase())}</div>
       <div class="s-sec"><span class="p-dim">STATS${header.selfRolls && !spectate ? " · CLICK TO ROLL" : ""}</span>${grid(c.stats)}</div>
