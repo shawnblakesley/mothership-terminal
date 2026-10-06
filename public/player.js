@@ -1273,6 +1273,16 @@
     FX.Sound.beep(520, 0.08, 0.05);
     setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90);
   }
+  // The Warden shows an adversary's picture: full screen, tinted to the screen's colour.
+  function showImage({ title, src, credit = "" }) {
+    const fx = $("planfx");
+    fx.hidden = false;
+    fx.querySelector(".pf-title").textContent = String(title || "").toUpperCase();
+    // (a credit's link stays clickable: everything else in it is text)
+    const link = (t) => escH(t).replace(/(https?:\/\/[^\s<]+|[\w-]+(?:\.[\w-]+)+\/[^\s<]*)/g, (u) => `<a href="${u.startsWith("http") ? u : `https://${u}`}" target="_blank" rel="noopener">${u}</a>`);
+    fx.querySelector(".pf-plan").innerHTML = `<div class="pf-pic"><img src="${escH(src)}" alt=""></div>${credit ? `<div class="pf-credit">${link(credit)}</div>` : ""}`;
+    FX.Sound.beep(180, 0.4, 0.12);
+  }
   $("planfx").addEventListener("click", () => { $("planfx").hidden = true; });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("planfx").hidden) $("planfx").hidden = true; });
 
@@ -1380,6 +1390,7 @@
         case "crew": setCrew(msg.crew, msg.claims); break;
         case "rollResult": showRollResult(msg); break;
         case "roomPlan": showPlan(msg); break;
+        case "showImage": showImage(msg); break;
         case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); $("sr-err").textContent = rbErr.textContent; break;
         case "endEffect": dropCue(msg.id); FX.end(msg.id); break;
         case "sound": Sfx.play(msg.play); break;

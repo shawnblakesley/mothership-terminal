@@ -303,6 +303,7 @@
     renderMap();
     renderCrew();
     renderCast();
+    renderAdversaries();
     renderTerminals();
     renderTerminalsPlay();
     renderConnections();
@@ -350,7 +351,7 @@
       case "system": return { name: who(voiceName("broadcast")), by, c: "var(--warn)" };
       case "entity": {
         const v = S.config.voices.find((x) => x.id === e.entity);
-        return { name: who(v?.name || e.entity), by, c: v?.color || "var(--entity)" };
+        return { name: who(v?.name || e.entity), by: [by, v?.adversary && !v.adversary.revealed ? "seen as ???" : ""].filter(Boolean).join(" · "), c: v?.color || "var(--entity)" };
       }
       default: return null;
     }
@@ -693,6 +694,82 @@
     }
   });
 
+  // ------------------------------------------------------------ adversaries
+  // The threats: voices with an adversary part. "???" to the players until they've
+  // seen one (the agent reveals it then; or tick Revealed); a picture to show them.
+  let advTimer = null, advFor = null;
+  function renderAdversaries() {
+    const panel = $("adversaries");
+    const editing = panel.contains(document.activeElement) && document.activeElement.matches("input:not([type=checkbox]), textarea");
+    const list = S.config.voices.filter((v) => v.adversary);
+    const json = JSON.stringify(list);
+    if (editing || advTimer || panel.dataset.json === json) return;
+    panel.dataset.json = json;
+    const presets = Object.keys(S.voiceOptions.presets);
+    panel.innerHTML = list.map((v) => `<div class="castm advm" data-id="${esc(v.id)}">
+        <button class="pick big" data-aact="pic" title="${v.adversary.picture ? "Change its picture" : "Add a picture you can show the players"}" aria-label="Picture of ${esc(v.name)}">${v.adversary.picture ? `<img src="${esc(`api/sessions/${code}/portraits/${v.adversary.picture}`)}" alt="">` : "<span>+</span>"}</button>
+        <div class="castbody">
+          <div class="row wrap">
+            <input data-a="name" class="edit-only cname" value="${esc(v.name)}" aria-label="Its name">
+            <b class="play-only" style="color: ${esc(v.color || "inherit")}">${esc(v.name)}</b>
+            <label class="small check" title="Have the players seen it? Until then its lines show as ??? and nobody names it. The agent ticks this when they see it.">
+              <input type="checkbox" data-a="revealed" ${v.adversary.revealed ? "checked" : ""}> revealed</label>
+            <span class="pill ${v.adversary.revealed ? "ok" : ""}">${v.adversary.revealed ? "players see its name" : "players see ???"}</span>
+            ${v.adversary.picture ? `<button data-aact="show" class="small" title="Put its picture on every player's screen (seeing it reveals it)">Show players</button>` : ""}
+          </div>
+          <div class="row wrap edit-only small">
+            <select data-a="preset" aria-label="How it sounds">${presets.map((p) => `<option ${p === v.preset ? "selected" : ""}>${p}</option>`).join("")}${v.preset === "custom" ? '<option selected value="custom">custom (Story tab)</option>' : ""}</select>
+            <button data-aact="test" title="Hear it (on this computer only)">▶</button>
+            <input type="color" data-a="color" value="${esc(v.color || "#ff5a5a")}" aria-label="Its colour">
+            ${v.adversary.picture ? '<button data-aact="nopic" class="ghost">Remove picture</button>' : ""}
+            <span class="grow"></span><button data-aact="del" class="ghost" title="Remove ${esc(v.name)}">✕</button>
+          </div>
+          ${v.adversary.picture ? `<input data-a="credit" class="edit-only why" value="${esc(v.adversary.credit || "")}" placeholder="Picture credit, if you want one: the artist, a link (shown with it)" aria-label="Picture credit">` : ""}
+          <textarea data-a="persona" class="edit-only" rows="3" aria-label="What it is" placeholder="What it is, what it wants, how it acts and speaks (the agent reads this)">${esc(v.persona)}</textarea>
+          <div class="play-only small muted">${esc(v.persona.slice(0, 220))}${v.persona.length > 220 ? "…" : ""}</div>
+        </div>
+      </div>`).join("") || '<p class="muted small">No adversaries. Add the story\'s threats here.</p>';
+  }
+  const advPatch = (id, patch) => send({ t: "adversary", id, patch });
+  $("adversaries").addEventListener("input", (e) => {
+    const key = e.target.dataset.a, id = e.target.closest(".advm")?.dataset.id;
+    if (!key || !id) return;
+    if (key === "revealed") return advPatch(id, { revealed: e.target.checked });
+    if (key === "preset" || key === "color") return advPatch(id, { [key]: e.target.value });
+    clearTimeout(advTimer);
+    advTimer = setTimeout(() => { advTimer = null; advPatch(id, { [key]: e.target.value }); }, 600);
+  });
+  $("adversaries").addEventListener("focusout", () => setTimeout(() => S && renderAdversaries(), 1200));
+  $("adversaries").addEventListener("click", async (e) => {
+    const act = e.target.closest("[data-aact]")?.dataset.aact, id = e.target.closest(".advm")?.dataset.id;
+    const v = S.config.voices.find((x) => x.id === id);
+    if (!act || !v) return;
+    if (act === "pic") { advFor = id; $("advFile").value = ""; $("advFile").click(); }
+    else if (act === "nopic") advPatch(id, { picture: "" });
+    else if (act === "show") send({ t: "adversaryShow", id });
+    else if (act === "test") Voice.test(v, $("testText").value || "i can hear you.", `api/sessions/${code}/tts-test`, key);
+    else if (act === "del" && (await sure(`Remove ${v.name}?`, "The adversary and its voice are removed from the story.", "Remove"))) send({ t: "adversaryDel", id });
+  });
+  $("addAdversary").onclick = () => send({ t: "adversaryAdd" });
+  // Its picture: kept as a picture (not line art), shrunk to fit, then uploaded.
+  $("advFile").addEventListener("change", async () => {
+    const file = $("advFile").files[0];
+    if (!file || !advFor) return;
+    try {
+      const img = await createImageBitmap(file);
+      const scale = Math.min(1, 720 / Math.max(img.width, img.height));
+      const cv = Object.assign(document.createElement("canvas"), { width: Math.round(img.width * scale), height: Math.round(img.height * scale) });
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      const blob = await new Promise((res) => cv.toBlob(res, "image/jpeg", 0.82));
+      const r = await fetch(`api/sessions/${code}/portraits`, { method: "POST", headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" }, body: blob });
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(out.error || `Upload failed (${r.status}).`);
+      advPatch(advFor, { picture: out.file });
+    } catch (err) {
+      toast(err.message || "That picture couldn't be used.", "error");
+    }
+  });
+
   // Read-only: what a character can do at a glance. Health, Wounds and Stress
   // stay adjustable (they change in play); the rest is edited with the padlock unlocked.
   const cap = (k) => k[0].toUpperCase() + k.slice(1);
@@ -837,6 +914,7 @@
       <details><summary>Secrets</summary><pre class="bpre">${esc(d.secrets)}</pre></details>
       <details><summary>Computer: ${esc(d.computer.name)}</summary><pre class="bpre">${esc(d.computer.persona)}</pre>${d.standingOrders ? `<div class="small"><b>Standing orders:</b> ${esc(d.standingOrders)}</div>` : ""}</details>
       <details open><summary>Characters</summary>${cast || '<p class="muted">None.</p>'}</details>
+      <details open><summary>Adversaries <span class="muted">(??? to the players until they see them)</span></summary>${(d.adversaries || []).map((a) => `<div class="bcard"><b>${esc(a.name)}</b> <span class="muted small">${esc(a.preset)}</span><div class="small">${esc(a.persona)}</div></div>`).join("") || '<p class="muted">None.</p>'}</details>
       <details><summary>Voices</summary>${voices || '<p class="muted">None.</p>'}</details>
       <details><summary>Terminals</summary><ul class="small">${(d.terminals || []).map((t) => `<li><b>${esc(t.name)}</b> <span class="muted">${esc(t.room)}${t.look?.length ? ` · ${esc(t.look.join(", "))}` : " · clean"}${t.open ? "" : " · not reachable at first"}</span> · ${esc(t.notes)}</li>`).join("")}<li class="muted">+ a portable handheld terminal</li></ul></details>
       <details open><summary>Player characters</summary>${crew || '<p class="muted">None.</p>'}</details>
@@ -980,7 +1058,7 @@
     const json = JSON.stringify(S.config.voices.map((v) => [v.name, v.color]));
     if (panel.dataset.json === json) return;
     panel.dataset.json = json;
-    panel.innerHTML = S.config.voices.map((v) => `<div class="castv"><b style="color: ${esc(v.color || "var(--fg)")}">${esc(v.name)}</b></div>`).join("");
+    panel.innerHTML = S.config.voices.filter((v) => !v.adversary).map((v) => `<div class="castv"><b style="color: ${esc(v.color || "var(--fg)")}">${esc(v.name)}</b></div>`).join("");
   }
 
   // The connection graph: which voices are heard on which system (voice.systems,
@@ -1777,7 +1855,7 @@
     const prev = sel.value || "terminal";
     // The voices, then each character (face to face if they're with players, else over the intercom).
     fillSelect(sel, [
-      ...S.config.voices.map((v) => [v.id, v.id === "terminal" ? `${v.name} (terminal)` : v.name]),
+      ...S.config.voices.map((v) => [v.id, v.id === "terminal" ? `${v.name} (terminal)` : v.adversary && !v.adversary.revealed ? `${v.name} (as ???)` : v.name]),
       ...(S.config.cast || []).map((c) => [`cast:${c.id}`, c.name]),
     ], prev);
     if (!sel.value) sel.value = "terminal";
@@ -1822,7 +1900,7 @@
       voicesDraft = structuredClone(S.config.voices);
     }
     const o = S.voiceOptions;
-    panel.innerHTML = voicesDraft.map((v, i) => `
+    panel.innerHTML = voicesDraft.map((v, i) => v.adversary ? "" : `
       <div class="vcard" data-i="${i}">
         <div class="row">
           <input data-k="name" value="${esc(v.name)}" aria-label="Name" class="vname">

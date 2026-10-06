@@ -269,6 +269,11 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .castbody .where { display: inline-flex; align-items: baseline; gap: 4px; margin-left: auto; }
 .castbody .where select { width: auto; max-width: 200px; padding: 1px 4px; }
 .castbody .pill.ok { color: var(--accent); }
+.castm .pick.big { width: 64px; height: 64px; }
+.advm .check { display: inline-flex; align-items: center; gap: 4px; }
+.advm .check input { width: auto; }
+.advm input[type="color"] { width: 40px; height: 26px; padding: 1px; }
+.advm [data-aact="show"] { padding: 2px 8px; font-size: 12px; }
 .castbody .mood { display: inline-flex; align-items: baseline; gap: 4px; }
 .castbody .mood select { width: auto; padding: 1px 4px; }
 .castbody .mood select.up { color: var(--accent); }

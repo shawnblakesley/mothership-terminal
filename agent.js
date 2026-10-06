@@ -2,7 +2,7 @@
 // the conversation rebuilt from a session's log, the reply schema, and parsing.
 // Pure functions of a session's state; no I/O here.
 import crypto from "crypto";
-import { BUILTIN, SPEAKERS } from "./voices.js";
+import { BUILTIN, SPEAKERS, shownName } from "./voices.js";
 import { channelOf, attitudeLabel } from "./cast.js";
 import { CHECKS } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
@@ -109,7 +109,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "item_changes", "moves", "cast_changes", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "item_changes", "moves", "cast_changes", "reveal", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -186,6 +186,11 @@ function buildSchema(voices) {
             terminal: { type: "string", description: "The terminal's name, from TERMINALS ON THE STATION. Somewhere with no terminal (a corridor, a crawlspace, outside the hull): the portable terminal." },
           },
         },
+      },
+      reveal: {
+        type: "array",
+        description: "Adversaries (by name) the players SEE for the first time in this reply (it shows itself, a camera catches it, they open the door on it): from the next line on, theirs show its name instead of ???. Usually empty.",
+        items: { type: "string" },
       },
       cast_changes: {
         type: "array",
@@ -315,6 +320,7 @@ const REPLY_EXAMPLE = {
   crew_changes: [],
   item_changes: [],
   moves: [],
+  reveal: [],
   cast_changes: [{ name: "Dr. Imre Salk", room: "", notes: "", attitude_change: 1, why: "they promised medicine for Webb", stress_change: 0, panic_check: false }],
   clocks: [],
   handouts: [],
@@ -404,6 +410,10 @@ SPOKEN VOICES (people, announcements, the narrator: everything heard aloud rathe
   - A creature or entity: how THAT thing makes itself known, specific to what it is, never a generic speaker (e.g. a wet clicking deep in the vents, frost creeping across the grille, every screen's text sliding sideways for a moment).
 - The speakers wear down as things get worse: now and then (not every reply) a narrator detail can show it (a dropout mid-word, a buzz that wasn't there before, a grille hanging by one screw). Sparingly: atmosphere, not a habit.
 
+ADVERSARIES (the threats: voices marked ADVERSARY)
+- Until the players actually see an adversary, it has no name: its lines show as ???, and nobody (no voice, no character, no narrator) calls it by its true name. People can only describe what they've noticed (a sound in the vents, "the thing in the bay") or give it a nickname.
+- The moment they see it (it shows itself, a camera catches it, they open the door on it), put its name in reveal, in that same reply. From then on it goes by its name.
+
 THE CAST (the story's people: see THE CAST below, and WHERE THE CAST ARE in the per-turn context)
 - When one of them speaks, set "character" to their name and "voice" to the cast's channel (the intercom: see THE CAST). Switch freely between people, line by line, to stage conversations.
 - WHERE THEY ARE decides how they're heard, and the app does it for you: someone in the same room as a player's terminal talks face to face (clear, in person, and only the players in that room hear it); anyone else comes over the intercom, with its static. So write their words to fit: in person, they're right there and can be seen; elsewhere, they're on the intercom.
@@ -470,10 +480,11 @@ function buildVoices(voices, config) {
     return !nets.length || nets.includes("*") ? "every system" : nets.map((n) => systemName(config, n)).join(", ");
   };
   const blocks = voices.map((v) => {
-    const display = (STYLE_NOTES[v.style] ?? STYLE_NOTES.plain)(v);
+    const display = (STYLE_NOTES[v.style] ?? STYLE_NOTES.plain)({ ...v, name: shownName(v) });
     const role = v.id === BUILTIN.terminal ? "the station computer: answers terminal commands and system queries"
       : v.id === BUILTIN.broadcast ? "announcements over the public-address speakers, heard everywhere on its system"
       : v.id === BUILTIN.narrator ? "the narrator: describes what happens around the players (sights, sounds, people moving and reacting) in one or two short sentences, only when something happens in the scene; never speaks to anyone"
+      : v.adversary ? `an ADVERSARY (a threat), whose true name is ${v.name}. ${v.adversary.revealed ? "REVEALED: the players have seen it and know it by that name." : "UNREVEALED: the players haven't seen it yet, its lines show as ??? and nobody names it (see ADVERSARIES)."}`
       : "another voice";
     const persona = v.persona.trim() || "(No persona set: use your judgment from the name and the lore.)";
     // A Warden-written persona can't close the block early.
@@ -554,7 +565,7 @@ function buildMessages(state) {
   for (const e of state.log.filter((x) => x.kind !== "note" && !x.cut).slice(-HISTORY_ENTRIES)) {
     const role = USER_KINDS.has(e.kind) ? "user" : "assistant";
     let last = turns.at(-1);
-    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], moves: [], cast: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
+    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], moves: [], cast: [], reveal: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
     if (e.kind === "player") last.inputs.push(`[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}] ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
@@ -572,6 +583,7 @@ function buildMessages(state) {
       last.items.push(...(e.itemChanges || []));
       last.moves.push(...(e.moves || []));
       last.cast.push(...(e.castChanges || []));
+      last.reveal.push(...(e.reveals || []));
       last.clocks.push(...(e.clockChanges || []));
       last.handouts.push(...(e.handouts || []));
       last.effects.push(...(e.effects || []));
@@ -588,7 +600,7 @@ function buildMessages(state) {
   return turns.map((t) =>
     t.role === "user"
       ? { role: "user", content: t.inputs.join("\n") }
-      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, moves: t.moves, cast_changes: t.cast, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
+      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, moves: t.moves, reveal: t.reveal, cast_changes: t.cast, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
   );
 }
 
@@ -795,6 +807,7 @@ export function parseReply(text, voices) {
       .filter((m) => m && String(m.for ?? "").trim() && String(m.terminal ?? "").trim())
       .slice(0, 8)
       .map((m) => ({ for: String(m.for).trim().slice(0, 60), terminal: String(m.terminal).trim().slice(0, 60) })),
+    reveal: (Array.isArray(r?.reveal) ? r.reveal : []).map((x) => String(x ?? "").trim().slice(0, 60)).filter(Boolean).slice(0, 5),
     cast_changes: (Array.isArray(r?.cast_changes) ? r.cast_changes : [])
       .filter((c) => c && String(c.name ?? "").trim())
       .slice(0, 12)

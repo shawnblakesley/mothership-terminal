@@ -337,7 +337,16 @@ The story's people (Salk, Okonkwo, Marlowe...) are listed under **Characters** o
 - The map shows each character in their room, along with whoever else the station state lists there.
 - You can **Speak** as any character (pick them in the comms box): face to face or over the intercom, by where they are.
 
-Other voices (the entity, the tug's computer) speak with one voice each.
+Other voices (the tug's computer, a radio) speak with one voice each.
+
+### Adversaries
+
+The story's threats (the creature, the thing in the walls) are under **Adversaries** on the Crew tab, below Characters. KESTREL-9's is **THE COLD**.
+
+- **??? until they see it.** Until the players have seen an adversary, its lines show as `???:` and nobody in the story names it. When they see it, the agent marks it revealed and its lines show its name from then on; you can tick **revealed** yourself too (or untick it). The log shows its true name, with "seen as ???" while it's hidden. Retcon undoes a reveal.
+- **What it is:** its name, notes the agent reads (what it is, what it wants, how it acts and speaks), how it sounds (a preset, with ▶ to hear it), and its colour. Its finer sound settings and which systems hear it are with the other voices (Story tab and Connections).
+- **A picture:** click the square on its card to upload one (kept as a picture, up to 720 px). **Show players** puts it full screen on every player's screen, tinted to their terminal's colour; showing it also reveals it. Add a **picture credit** (the artist, a link) and it's shown under the picture.
+- The Story Builder writes a story's adversaries too.
 
 Speech is generated on the server, with no API key and no per-use cost:
 

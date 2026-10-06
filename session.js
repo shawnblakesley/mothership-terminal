@@ -3,7 +3,7 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
-import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS } from "./voices.js";
+import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset } from "./voices.js";
 import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
@@ -36,7 +36,7 @@ const PLAYER_INPUT_GAP_MS = 1200;
 const WARDEN_ACTIONS = {
   command: "direction", inject: "speak", note: "note", heard: "speech", effect: "effect", soundPlay: "sound", rollRequest: "roll", retcon: "retcon",
   synopsis: "synopsis", roomShow: "room_show", roomDraft: "room_draft", builderSay: "builder_chat", builderDraft: "builder_draft",
-  builderApply: "builder_apply", resetSession: "story_restart",
+  builderApply: "builder_apply", resetSession: "story_restart", adversaryShow: "adversary_show",
 }; // per connection: stops spamming the agent (and the Warden's bill)
 
 const LORE_V3 = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
@@ -189,7 +189,7 @@ export function defaultGame(keys = {}) {
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour"], // one-time additions already made to this story (see migrateGame)
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -342,6 +342,26 @@ function migrateGame(saved) {
       if (v?.color === "#9fd3ff") v.color = "";
     }
     config.upgrades.push("intercom-colour");
+  }
+  // Once: the "???" voice becomes an adversary (the default story's is the organism),
+  // in the saved start too. Its lines show as ??? until the players see it.
+  if (!config.upgrades.includes("adversaries")) {
+    for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
+      for (const v of list) {
+        if (v.adversary || !(v.id === "unknown" || v.name === "???")) continue;
+        v.adversary = { revealed: false, picture: "" };
+        if (v.name === "???" && config.stationName === "KESTREL-9") v.name = "THE COLD";
+      }
+    }
+    config.upgrades.push("adversaries");
+  }
+  // Once: KESTREL-9's monster is THE COLD (it was briefly THE ORGANISM), unless renamed since.
+  if (!config.upgrades.includes("the-cold")) {
+    for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
+      const v = list.find((x) => x.id === "unknown" && x.name === "THE ORGANISM");
+      if (v) v.name = "THE COLD";
+    }
+    config.upgrades.push("the-cold");
   }
   // Once: an original KESTREL-9 story starts the crew with their work order.
   config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];
@@ -612,7 +632,7 @@ export class Session {
       selfRolls: c.playerRolls, // players may roll their own stats/saves
       // What each voice looks like on screen and its effect chain (no personas or base-voice internals).
       // chunked: human voices are spoken one text line at a time (see speechParts).
-      voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: v.name, style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
+      voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: shownName(v), style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
       // The cast's portraits, by lowercase name (lines name who speaks).
       portraits: Object.fromEntries((c.cast || []).filter((m) => m.portrait).map((m) => [m.name.toLowerCase(), m.portrait])),
       portraitCredit: [...(c.cast || []), ...c.crew].some((m) => m.portrait?.startsWith("kit/")), // (the bundled ones need their credit shown)
@@ -887,6 +907,38 @@ export class Session {
         if (this.usesNeural()) warmNeural();
         this.toPlayers({ t: "header", header: this.playerHeader() });
         break;
+      case "adversary": { // the Warden edits one (name, revealed, notes, sound, colour, picture)
+        const v = s.config.voices.find((x) => x.id === msg.id && x.adversary);
+        const p = msg.patch || {};
+        if (!v) break;
+        if (typeof p.name === "string" && p.name.trim()) v.name = p.name.trim().slice(0, 40);
+        if (typeof p.persona === "string") v.persona = p.persona.slice(0, 8000);
+        if (typeof p.color === "string" && /^#[0-9a-f]{6}$/i.test(p.color)) v.color = p.color;
+        if (typeof p.preset === "string" && PRESETS[p.preset]) Object.assign(v, fromPreset(p.preset));
+        if (typeof p.picture === "string") v.adversary.picture = /^[a-f0-9]{12}\.(png|jpg|webp|gif)$/.test(p.picture) ? p.picture : "";
+        if (typeof p.credit === "string") v.adversary.credit = p.credit.replace(/\s+/g, " ").trim().slice(0, 200);
+        if (typeof p.revealed === "boolean" && p.revealed !== v.adversary.revealed) {
+          v.adversary.revealed = p.revealed;
+          this.addLog("note", p.revealed ? `Adversary revealed: the players know ${v.name} by name now.` : `${v.name} is unrevealed again: the players see ??? .`);
+        }
+        s.config.voices = sanitizeVoices(s.config.voices);
+        this.toPlayers({ t: "header", header: this.playerHeader() });
+        break;
+      }
+      case "adversaryAdd":
+        s.config.voices = sanitizeVoices([...s.config.voices, newAdversary()]);
+        break;
+      case "adversaryDel":
+        s.config.voices = s.config.voices.filter((x) => !(x.id === msg.id && x.adversary));
+        break;
+      case "adversaryShow": { // its picture, full screen on the players' screens (seeing it reveals it)
+        const v = s.config.voices.find((x) => x.id === msg.id && x.adversary);
+        if (!v?.adversary.picture) break;
+        this.revealAdversaries([v.id]);
+        this.toPlayers({ t: "showImage", title: v.name, src: `api/sessions/${this.code}/portraits/${v.adversary.picture}`, credit: v.adversary.credit || "" });
+        this.addLog("note", `Showed the players ${v.name}.`);
+        break;
+      }
       case "castPanic": { // the Warden has someone of the cast roll a Panic check, in front of the players
         const member = s.config.cast.find((m) => m.id === msg.id);
         if (member) this.castPanic(member, "warden");
@@ -1332,6 +1384,23 @@ export class Session {
     if (any) this.toPlayers({ t: "header", header: this.playerHeader() }); // (their portraits)
   }
 
+  // Adversaries the players have now seen (by name or id): from here on their lines
+  // show their name, not ???. Returns whether any were new.
+  revealAdversaries(names = []) {
+    const c = this.state.config;
+    let any = false;
+    for (const raw of Array.isArray(names) ? names : []) {
+      const n = String(raw || "").trim().toLowerCase();
+      const v = c.voices.find((x) => x.adversary && !x.adversary.revealed && (x.id === n || x.name.toLowerCase() === n));
+      if (!v) continue;
+      v.adversary.revealed = true;
+      any = true;
+      this.addLog("note", `Adversary revealed: the players have seen ${v.name}, and know it by name from now on.`);
+    }
+    if (any) this.toPlayers({ t: "header", header: this.playerHeader() });
+    return any;
+  }
+
   // Someone of the cast rolls a Panic check, in front of the players (the same dice
   // on their screens as their own rolls): a d20 at or under their Stress and they
   // panic, by CAST_PANIC. Then the agent plays it out (a follow-up reply).
@@ -1707,7 +1776,7 @@ export class Session {
 
   deliver(reply, source) {
     // Remember how things were, so the Warden can retcon this response.
-    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms) };
+    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms) };
     try {
       this.deliverReply(reply, source);
     } finally {
@@ -1731,6 +1800,7 @@ export class Session {
     for (const id of undo.effects) this.endEffect(id);
     s.station = undo.station;
     if (undo.cast) s.config.cast = undo.cast; // (who joined, who moved)
+    for (const [id, revealed] of undo.revealed || []) { const v = s.config.voices.find((x) => x.id === id); if (v?.adversary) v.adversary.revealed = revealed; }
     if (undo.map !== undefined) Object.assign(s.config, { map: undo.map, rooms: undo.rooms });
     // Crew: only their condition goes back (sheet edits made since are kept).
     for (const pc of s.config.crew) {
@@ -1769,7 +1839,7 @@ export class Session {
     // The first entry carries the reply's changes/effects so the agent's history
     // shows that it really changed things (otherwise it learns to leave them empty).
     const mapChanges = this.mapChanges(reply);
-    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], moves: reply?.moves || [], castChanges: reply?.cast_changes || [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
+    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], moves: reply?.moves || [], castChanges: reply?.cast_changes || [], reveals: reply?.reveal || [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
     // Effects on a line fire as it begins. An effect-only beat (no text) fires
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
@@ -1816,6 +1886,7 @@ export class Session {
     }
     for (const c of waiting) this.startEffect(c, "agent", lastEntry ? { atEntry: lastEntry.id, when: "after" } : null);
     if (source === "agent") this.applyCastChanges(reply?.cast_changes, "after"); // (whoever leaves the players' room goes now)
+    if (source === "agent") this.revealAdversaries(reply?.reveal); // (seen now: named from the next line on)
     // Panic checks the agent called for, rolled in front of the players now its lines are out.
     for (const id of this.panics?.splice(0) || []) {
       const member = this.state.config.cast.find((m) => m.id === id);

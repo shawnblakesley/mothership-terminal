@@ -119,6 +119,13 @@ body {
 .pf-title { letter-spacing: 0.2em; text-shadow: 0 0 6px var(--glow); }
 .pf-hint { color: var(--dim); font-size: 0.85em; animation: blink 1.2s infinite steps(1); }
 .pf-plan { width: min(92vw, 900px); display: flex; justify-content: center; filter: drop-shadow(0 0 4px var(--glow)); }
+/* An adversary's picture: grey, multiplied over the screen's colour, with scanlines. */
+.pf-pic { position: relative; background: var(--fg); line-height: 0; box-shadow: 0 0 18px var(--glow); }
+.pf-pic img { height: 70vh; width: auto; max-width: 88vw; object-fit: contain; filter: grayscale(1) contrast(1.15); mix-blend-mode: multiply; } /* (scaled up to fill: small pictures too) */
+.pf-pic::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.3) 2px 3px); }
+.pf-plan:has(.pf-pic) { flex-direction: column; align-items: center; gap: 0.4em; }
+.pf-credit { color: var(--dim); font-size: 0.6em; text-shadow: none; }
+.pf-credit a { color: inherit; }
 .pf-plan .roomplan { width: 100%; max-height: 72vh; color: var(--fg); }
 .roomplan .rp-wall { fill: color-mix(in srgb, currentColor 30%, #000); }
 .roomplan .rp-floor { fill: color-mix(in srgb, currentColor 6%, transparent); stroke: color-mix(in srgb, currentColor 14%, transparent); stroke-width: 0.5; }
