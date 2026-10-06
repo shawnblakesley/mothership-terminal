@@ -294,6 +294,7 @@
     renderCastLists();
     renderMap();
     renderCrew();
+    renderCast();
     renderTerminals();
     renderTerminalsPlay();
     renderConnections();
@@ -444,11 +445,11 @@
   // One editable line of a draft: who says it, and what.
   // A line's effects fire as it begins (between lines of dialogue); untick to drop one.
   const draftLine = (l) => `
-    <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}" data-inperson="${l.inPerson ? 1 : ""}" ${l.inPerson ? 'title="Spoken in person, in the room with the players"' : ""}>
+    <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}">
       <div class="dwho">
         <select aria-label="Voice">${S.config.voices.map((v) => `<option value="${esc(v.id)}" ${v.id === l.voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
         ${sysSelect(l.system)}
-        <input class="dchar" list="chars-${esc(l.voice)}" value="${esc(l.character || "")}" placeholder="speaker" aria-label="Character" title="Who speaks this line (for voices several people share, like the intercom)" ${hasCast(l.voice) || l.character ? "" : "hidden"}>
+        <input class="dchar" list="castNames" value="${esc(l.character || "")}" placeholder="who" aria-label="Character" title="Which character says it: face to face if they're in a room with players, else over the intercom" ${l.voice === S.config.castChannel || l.character ? "" : "hidden"}>
       </div>
       <textarea rows="${Math.min(12, Math.max(2, l.text.split("\n").length))}" placeholder="${l.effects?.length ? "(effect only: no text)" : ""}">${esc(l.text)}</textarea>
       <button data-act="delLine" class="ghost" title="Remove line">✕</button>
@@ -460,13 +461,12 @@
       <input class="dvfor" list="variantTargets" value="${esc(v.for)}" placeholder="for: name, Android, Humans…" aria-label="Variant for">
       <textarea class="dvtext" rows="${Math.min(8, Math.max(1, v.text.split("\n").length))}" aria-label="Their version">${esc(v.text)}</textarea>
       <button data-act="delVar" class="ghost" title="Remove variant">✕</button></div>`;
-  const hasCast = (voiceId) => !!S.config.voices.find((v) => v.id === voiceId)?.characters?.length;
-  // Name suggestions for each voice's speaker box.
+  // Name suggestions: the characters (a draft line's speaker), and who a variant can be for.
   function renderCastLists() {
     // Who a variant can be for: each crew member, their classes, and Humans.
     const targets = [...S.config.crew.map((c) => c.name), ...new Set(S.config.crew.map((c) => c.className)), "Humans"];
-    $("castLists").innerHTML = `<datalist id="variantTargets">${targets.map((t) => `<option value="${esc(t)}">`).join("")}</datalist>` + S.config.voices.map((v) =>
-      `<datalist id="chars-${esc(v.id)}">${(v.characters || []).map((c) => `<option value="${esc(c.name)}">`).join("")}</datalist>`).join("");
+    $("castLists").innerHTML = `<datalist id="variantTargets">${targets.map((t) => `<option value="${esc(t)}">`).join("")}</datalist>` +
+      `<datalist id="castNames">${(S.config.cast || []).map((c) => `<option value="${esc(c.name)}">`).join("")}</datalist>`;
   }
   const steerRow = () => `<input id="steer" placeholder="Steer the rewrite: e.g. 'more evasive', 'deny the door is open', 'glitch mid-sentence'">`;
 
@@ -532,6 +532,113 @@
     for (const i of openCrew) panel.querySelector(`.pc[data-i="${i}"]`)?.setAttribute("open", "");
     $("addCrew").disabled = crewDraft.length >= 4;
   }
+  // ------------------------------------------------------------ characters (the story's people)
+  // Each has a portrait, a human voice, notes for the agent and the room they're in:
+  // in a room with players they talk face to face, anywhere else over the intercom.
+  // The room is set in read-only too (it changes in play).
+  let castDraft = null, castTimer = null, castSentAt = 0;
+  const portraitUrl = (file) => `api/sessions/${code}/portraits/${file}`;
+  const initials = (name) => { const w = name.split(/\s+/).filter(Boolean); return ((w[0]?.[0] || "") + (w.length > 1 ? w.at(-1)[0] : "")).toUpperCase(); };
+  function renderCast(fromDraft = false) {
+    const panel = $("cast");
+    if (!fromDraft) {
+      const editing = panel.contains(document.activeElement) || castTimer !== null || Date.now() - castSentAt < 1500;
+      const json = JSON.stringify([S.config.cast, S.config.castChannel, S.config.map, S.screens, S.config.terminals.map((t) => t.room), S.config.voices.map((v) => [v.id, v.name])]);
+      if ((castDraft && editing) || panel.dataset.json === json) return;
+      panel.dataset.json = json;
+      castDraft = structuredClone(S.config.cast || []);
+    }
+    fillSelect($("castChannel"), S.config.voices.filter((v) => !["terminal", "narrator"].includes(v.id)).map((v) => [v.id, v.name]), S.config.castChannel);
+    const rooms = roomLabels();
+    const withPlayers = new Set((S.screens || []).map((sc) => S.config.terminals.find((t) => t.id === sc.terminal)?.room).filter(Boolean));
+    const speakers = Object.entries(S.voiceOptions.speakers);
+    panel.innerHTML = castDraft.map((m, i) => `<div class="castm" data-i="${i}">
+        <button class="pick" data-mact="pic" title="${m.portrait ? "Change their picture" : "Add a picture: shown beside what they say"}" aria-label="Picture of ${esc(m.name)}">${m.portrait ? `<img src="${esc(portraitUrl(m.portrait))}" alt="">` : `<span>${esc(initials(m.name) || "+")}</span>`}</button>
+        <div class="castbody">
+          <div class="row wrap">
+            <input data-m="name" class="edit-only cname" value="${esc(m.name)}" placeholder="Name" aria-label="Name">
+            <b class="play-only">${esc(m.name)}</b>
+            <label class="small muted where">in <select data-m="room" aria-label="Where ${esc(m.name)} is"><option value="">nowhere on the map</option>${
+              [...rooms].map(([id, label]) => `<option value="${esc(id)}" ${id === m.room ? "selected" : ""}>${esc(label)}</option>`).join("")}${
+              m.room && !rooms.has(m.room) ? `<option value="${esc(m.room)}" selected>${esc(m.room)}</option>` : ""}</select></label>
+            ${withPlayers.has(m.room) ? '<span class="pill ok" title="In a room with players: they talk face to face, and only screens in that room show it">in person</span>' : '<span class="pill" title="Not in a room with any players: heard over the intercom">intercom</span>'}
+          </div>
+          <div class="row wrap edit-only small">
+            <select data-m="voice" aria-label="Their voice"><option value="">(a voice of their own)</option>${speakers.map(([id, label]) => `<option value="${id}" ${id === m.voice ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
+            <button data-mact="test" title="Hear them (on this computer only)">▶</button>
+            ${m.portrait ? '<button data-mact="nopic" class="ghost">Remove picture</button>' : ""}
+            <span class="grow"></span><button data-mact="del" class="ghost" title="Remove ${esc(m.name)}">✕</button>
+          </div>
+          <textarea data-m="notes" class="edit-only" rows="2" placeholder="Who they are, what they want, how they talk (the agent reads this)" aria-label="Notes">${esc(m.notes)}</textarea>
+          ${m.notes ? `<div class="play-only small muted">${esc(m.notes)}</div>` : ""}
+        </div>
+      </div>`).join("") || `<p class="muted small">Nobody yet. The agent brings people in as the story needs them; you can add them here.</p>`;
+  }
+  function saveCast(now = false) {
+    clearTimeout(castTimer);
+    const go = () => {
+      castTimer = null;
+      castSentAt = Date.now();
+      send({ t: "cast", cast: castDraft, channel: $("castChannel").value });
+    };
+    if (now) go();
+    else castTimer = setTimeout(go, 500);
+  }
+  $("cast").addEventListener("input", (e) => {
+    const key = e.target.dataset.m;
+    const card = e.target.closest(".castm");
+    if (!key || !card) return;
+    castDraft[Number(card.dataset.i)][key] = e.target.value;
+    saveCast(e.target.tagName === "SELECT");
+  });
+  $("cast").addEventListener("focusout", () => setTimeout(() => S && renderCast(), 1600));
+  $("castChannel").addEventListener("change", () => saveCast(true));
+  let picFor = -1;
+  $("cast").addEventListener("click", async (e) => {
+    const act = e.target.closest("[data-mact]")?.dataset.mact;
+    const card = e.target.closest(".castm");
+    if (!act || !card) return;
+    const i = Number(card.dataset.i), m = castDraft[i];
+    if (act === "pic") { picFor = i; $("portraitFile").value = ""; $("portraitFile").click(); }
+    else if (act === "nopic") { m.portrait = ""; saveCast(true); renderCast(true); }
+    else if (act === "test") Voice.test({ name: "test", voice: { engine: "neural", speaker: m.voice || "am_michael", pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
+    else if (act === "del") {
+      if (!(await sure(`Remove ${m.name || "this character"}?`, "They leave the story: the agent no longer knows them.", "Remove"))) return;
+      castDraft.splice(castDraft.indexOf(m), 1);
+      saveCast(true);
+      renderCast(true);
+    }
+  });
+  $("addCast").onclick = () => {
+    let n = castDraft.length + 1;
+    while (castDraft.some((c) => c.name === `New character ${n}`)) n++;
+    castDraft.push({ id: "", name: `New character ${n}`, voice: "", notes: "", room: "", portrait: "" });
+    saveCast(true);
+    renderCast(true);
+    $("cast").querySelector(".castm:last-of-type .cname")?.select();
+  };
+  // A picture: cropped to a small square here, then uploaded.
+  $("portraitFile").addEventListener("change", async () => {
+    const file = $("portraitFile").files[0];
+    const m = castDraft[picFor];
+    if (!file || !m) return;
+    try {
+      const img = await createImageBitmap(file);
+      const side = Math.min(img.width, img.height), SIZE = 128;
+      const cv = Object.assign(document.createElement("canvas"), { width: SIZE, height: SIZE });
+      cv.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, SIZE, SIZE);
+      const blob = await new Promise((res) => cv.toBlob(res, "image/png"));
+      const r = await fetch(`api/sessions/${code}/portraits`, { method: "POST", headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" }, body: blob });
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(out.error || `Upload failed (${r.status}).`);
+      m.portrait = out.file;
+      saveCast(true);
+      renderCast(true);
+    } catch (err) {
+      toast(err.message || "That picture couldn't be used.", "error");
+    }
+  });
+
   // Read-only: what a character can do at a glance. Health, Wounds and Stress
   // stay adjustable (they change in play); the rest is edited with the padlock unlocked.
   const cap = (k) => k[0].toUpperCase() + k.slice(1);
@@ -652,9 +759,9 @@
   function renderDraft(d) {
     const el = $("bdraft");
     if (!d) { el.innerHTML = `<div class="muted bempty">The draft appears here: station, lore, secrets, cast, crew and map.</div>`; return; }
-    const cast = d.voices.map((v) => `<div class="bcard"><b>${esc(v.name)}</b> <span class="muted small">${esc(v.preset)}</span>
-        <div class="small">${esc(v.persona)}</div>
-        ${v.characters.length ? `<ul>${v.characters.map((c) => `<li><b>${esc(c.name)}</b> <span class="muted small">${esc(S.voiceOptions.speakers[c.voice] || c.sex)}</span> · ${esc(c.notes)}</li>`).join("")}</ul>` : ""}</div>`).join("");
+    const voices = d.voices.map((v) => `<div class="bcard"><b>${esc(v.name)}</b> <span class="muted small">${esc(v.preset)}</span>
+        <div class="small">${esc(v.persona)}</div></div>`).join("");
+    const cast = (d.cast || []).length ? `<ul class="small">${d.cast.map((c) => `<li><b>${esc(c.name)}</b> <span class="muted">${esc(S.voiceOptions.speakers[c.voice] || c.sex)} · ${esc(c.room || "nowhere on the map")}</span> · ${esc(c.notes)}</li>`).join("")}</ul>` : "";
     const crew = d.crew.map((c) => `<div class="bcard"><b>${esc(c.name)}</b> <span class="muted small">${esc([c.pronouns, c.className, c.role].filter(Boolean).join(" · "))}</span>
         <div class="small">${esc(c.crime)}</div><div class="small muted">${esc(c.backstory)}</div>
         <div class="small mono">${["strength", "speed", "intellect", "combat"].map((k) => `${k.slice(0, 3).toUpperCase()} ${c.stats?.[k]}`).join(" · ")} | ${["sanity", "fear", "body"].map((k) => `${k.slice(0, 3).toUpperCase()} ${c.saves?.[k]}`).join(" · ")} | HP ${c.health_max}</div>
@@ -667,7 +774,8 @@
       <details><summary>Lore <span class="muted">(public)</span></summary><pre class="bpre">${esc(d.lore)}</pre></details>
       <details><summary>Secrets</summary><pre class="bpre">${esc(d.secrets)}</pre></details>
       <details><summary>Computer: ${esc(d.computer.name)}</summary><pre class="bpre">${esc(d.computer.persona)}</pre>${d.standingOrders ? `<div class="small"><b>Standing orders:</b> ${esc(d.standingOrders)}</div>` : ""}</details>
-      <details open><summary>Cast <span class="muted">(voices and characters)</span></summary>${cast || '<p class="muted">None.</p>'}</details>
+      <details open><summary>Characters</summary>${cast || '<p class="muted">None.</p>'}</details>
+      <details><summary>Voices</summary>${voices || '<p class="muted">None.</p>'}</details>
       <details><summary>Terminals</summary><ul class="small">${(d.terminals || []).map((t) => `<li><b>${esc(t.name)}</b> <span class="muted">${esc(t.room)}${t.look?.length ? ` · ${esc(t.look.join(", "))}` : " · clean"}${t.open ? "" : " · not reachable at first"}</span> · ${esc(t.notes)}</li>`).join("")}<li class="muted">+ a portable handheld terminal</li></ul></details>
       <details open><summary>Player characters</summary>${crew || '<p class="muted">None.</p>'}</details>
       <details><summary>Starting documents <span class="muted">(in every player's DOCS)</span></summary>${(d.documents || []).map((x) => `<div class="small"><b>${esc(x.title)}</b></div><pre class="bpre">${esc(x.text)}</pre>`).join("") || '<p class="muted">None.</p>'}</details>`;
@@ -679,7 +787,7 @@
       for (const k of ks.slice(0, -1)) o = o[k] = typeof o[k] === "object" ? o[k] : {};
       o[ks.at(-1)] = /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value;
     }
-    StationMap.draw($("bmap"), st, d.map, { editable: false });
+    StationMap.draw($("bmap"), withCast(st, d.cast), d.map, { editable: false });
   }
 
   $("builderBtn").onclick = () => { builderKey = ""; $("builderDialog").showModal(); renderBuilder(); $("bInput").focus(); };
@@ -804,14 +912,13 @@
       return `<div><b>${esc(t.name)}</b><span class="muted small">${esc(rooms.get(t.room) || (t.room ? t.room : "portable"))}${t.system ? ` · ${esc(t.system)}` : ""}</span>${access}${here.length ? `<span class="here small">${here.map(esc).join(", ")}</span>` : ""}</div>`;
     }).join("") || '<p class="muted small">No terminals.</p>';
   }
-  // Read-only cast: each voice and the people who speak through it.
+  // Read-only: the voices (the characters are on the Crew tab).
   function renderCastPlay() {
     const panel = $("castPlay");
-    const json = JSON.stringify(S.config.voices.map((v) => [v.name, v.characters]));
+    const json = JSON.stringify(S.config.voices.map((v) => [v.name, v.color]));
     if (panel.dataset.json === json) return;
     panel.dataset.json = json;
-    panel.innerHTML = S.config.voices.map((v) => `<div class="castv"><b style="color: ${esc(v.color || "var(--fg)")}">${esc(v.name)}</b>${
-      v.characters?.length ? `<ul>${v.characters.map((c) => `<li><b>${esc(c.name)}</b>${c.notes ? ` <span class="muted">· ${esc(c.notes)}</span>` : ""}</li>`).join("")}</ul>` : ""}</div>`).join("");
+    panel.innerHTML = S.config.voices.map((v) => `<div class="castv"><b style="color: ${esc(v.color || "var(--fg)")}">${esc(v.name)}</b></div>`).join("");
   }
 
   // The connection graph: which voices are heard on which system (voice.systems,
@@ -978,12 +1085,21 @@
   let mapKey = "";
   // Drawing (schematic) or Status (board); remembered on this device.
   let mapView = store.get("mapView") || "draw";
+  // The station state with each character added to their room's occupants (for the map).
+  function withCast(station, cast = S.config.cast) {
+    const st = structuredClone(station || {});
+    const occ = (st.occupants = typeof st.occupants === "object" && st.occupants ? st.occupants : {});
+    const by = {};
+    for (const c of cast || []) if (c.room) (by[c.room] ||= []).push(c.name);
+    for (const [room, names] of Object.entries(by)) occ[room] = [...names, occ[room]].filter(Boolean).join(", ");
+    return st;
+  }
   function renderMap(force = false) {
     const people = playersByRoom();
-    const key = JSON.stringify([S.station, S.config.map, mapView, people]);
+    const key = JSON.stringify([S.station, S.config.map, mapView, people, S.config.cast.map((c) => [c.name, c.room])]);
     if (!force && key === mapKey) return;
     mapKey = key;
-    const show = (el) => (mapView === "status" ? StationMap.render : StationMap.draw)(el, S.station, S.config.map, { people });
+    const show = (el) => (mapView === "status" ? StationMap.render : StationMap.draw)(el, withCast(S.station), S.config.map, { people });
     for (const b of document.querySelectorAll(".mapview button")) b.classList.toggle("on", b.dataset.view === mapView);
     show($("map"));
     if ($("mapDialog").open) show($("mapBig"));
@@ -1097,7 +1213,9 @@
     sel.innerHTML = `<option value="">All players</option>` + S.config.crew.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
     sel.value = [...sel.options].some((o) => o.value === was) ? was : "";
     // Who and what is here.
-    $("roomPlayers").innerHTML = pcs.length ? pcs.map((n) => `<span class="pcchip">${esc(n)}</span>`).join("") : `<span class="muted small">No player characters here.</span>`;
+    const castHere = S.config.cast.filter((c) => c.room === room.id).map((c) => c.name);
+    $("roomPlayers").innerHTML = (pcs.length ? pcs.map((n) => `<span class="pcchip">${esc(n)}</span>`).join("") : `<span class="muted small">No player characters here.</span>`) +
+      (castHere.length ? castHere.map((n) => `<span class="castchip" title="A character (move them on the Crew tab)">${esc(n)}</span>`).join("") : "");
     for (const [id, k] of [["roomOccupants", "occupants"], ["roomContents", "contents"]]) {
       if (document.activeElement !== $(id) && !dirty.has(id)) $(id).value = String(stationAt([k, room.id]) ?? "");
     }
@@ -1398,8 +1516,9 @@
     if (as === "note") send({ t: "note", text });
     else if (as === "command") send({ t: "command", text });
     else {
-      const [voice, character = ""] = $("sendAs").value.split("::");
-      send({ t: "inject", as: voice, character, text, clearPending: true, system: $("sendOn").hidden ? "" : $("sendOn").value });
+      const as = $("sendAs").value, system = $("sendOn").hidden ? "" : $("sendOn").value;
+      if (as.startsWith("cast:")) send({ t: "inject", cast: as.slice(5), text, clearPending: true, system });
+      else send({ t: "inject", as, text, clearPending: true, system });
     }
     $("compose").value = "";
   }
@@ -1506,7 +1625,7 @@
           const fx = JSON.parse(row.dataset.effects || "[]").filter((_, i) => row.querySelector(`[data-leff="${i}"]`)?.checked);
           const variants = [...row.querySelectorAll(".dvar")].map((d) => ({ for: d.querySelector(".dvfor").value.trim(), text: d.querySelector(".dvtext").value }))
             .filter((v) => v.for && v.text.trim());
-          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), inPerson: !!row.dataset.inperson, system: row.querySelector(".dsys")?.value || "", text: row.querySelector(".dwho + textarea").value, effects: fx, variants };
+          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), system: row.querySelector(".dsys")?.value || "", text: row.querySelector(".dwho + textarea").value, effects: fx, variants };
         })
         .filter((l) => l.text.trim() || l.effects.length || l.variants.length), // effect-only beats count
       station_changes: r.station_changes.filter((_, i) => card.querySelector(`[data-chg="${i}"]`)?.checked),
@@ -1529,8 +1648,7 @@
   $("pending").addEventListener("change", (e) => {
     if (!e.target.matches(".dwho select:not(.dsys)")) return;
     const box = e.target.parentElement.querySelector(".dchar");
-    box.setAttribute("list", `chars-${e.target.value}`);
-    box.hidden = !hasCast(e.target.value) && !box.value;
+    box.hidden = e.target.value !== S.config.castChannel && !box.value;
   });
   $("pending").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -1595,11 +1713,11 @@
   function renderSendAs() {
     const sel = $("sendAs");
     const prev = sel.value || "terminal";
-    // Shared voices list each character too ("INTERCOM · Dr. Imre Salk").
-    fillSelect(sel, S.config.voices.flatMap((v) => [
-      [v.id, v.id === "terminal" ? `${v.name} (terminal)` : v.name],
-      ...(v.characters || []).map((c) => [`${v.id}::${c.name}`, `${v.name} · ${c.name}`]),
-    ]), prev);
+    // The voices, then each character (face to face if they're with players, else over the intercom).
+    fillSelect(sel, [
+      ...S.config.voices.map((v) => [v.id, v.id === "terminal" ? `${v.name} (terminal)` : v.name]),
+      ...(S.config.cast || []).map((c) => [`cast:${c.id}`, c.name]),
+    ], prev);
     if (!sel.value) sel.value = "terminal";
     renderSendOn();
     renderComposeMode(); // (names may have changed)
@@ -1679,34 +1797,11 @@
           ${slider("voice.pitch", "Pitch", 0, 99, 1, v.voice.pitch)}
           ${slider("voice.speed", "Words/min", 80, 320, 5, v.voice.speed)}`}
         </div>
-        ${BUILTIN_IDS.includes(v.id) ? "" : castEditor(v)}
         <details class="fxd"><summary>Effects</summary>
           <div class="vgrid">${Object.entries(o.fxParams).map(([k, [min, max]]) =>
             slider(`fx.${k}`, FX_LABELS[k] || k, min, max, (max - min) / 100, v.fx[k])).join("")}</div>
         </details>
       </div>`).join("");
-  }
-
-  // People who speak through this voice, each with their own base voice. The
-  // agent reads the list (with the persona) and picks who speaks each line.
-  function castEditor(v) {
-    const o = S.voiceOptions;
-    const choices = v.voice.engine === "neural"
-      ? Object.entries(o.speakers)
-      : o.variants.filter((x) => /^[mf]\d$/.test(x)).map((x) => [x, x]);
-    const own = v.voice.engine === "neural" ? o.speakers[v.voice.speaker] : v.voice.variant || "default";
-    return `<div class="cast">
-      <div class="row"><span class="grow castlabel">Characters <em>(people who speak through this voice; the agent switches between them)</em></span>
-        <button data-act="addChar" class="ghost">+ Character</button></div>
-      ${(v.characters || []).map((c, j) => `<div class="char" data-j="${j}">
-        <input data-ck="name" value="${esc(c.name)}" placeholder="Name" aria-label="Character name">
-        <select data-ck="voice" aria-label="Their voice"><option value="">same as ${esc(v.name)} (${esc(own)})</option>${choices.map(([id, label]) =>
-          `<option value="${id}" ${id === c.voice ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
-        <button data-act="testChar" title="Hear them (on this computer only)">▶</button>
-        <button data-act="delChar" class="ghost" title="Remove">✕</button>
-        <input data-ck="notes" class="cnotes" value="${esc(c.notes)}" placeholder="Who they are, how they talk (the agent reads this)" aria-label="Notes">
-      </div>`).join("") || `<div class="muted small">Nobody yet. The agent adds people it brings in; you can pick their voices here.</div>`}
-    </div>`;
   }
 
   function slider(key, label, min, max, step, value) {
@@ -1723,12 +1818,6 @@
 
   $("voices").addEventListener("input", (e) => {
     const card = e.target.closest(".vcard");
-    const ck = e.target.dataset.ck;
-    if (card && ck) {
-      const c = voicesDraft[Number(card.dataset.i)].characters[Number(e.target.closest(".char").dataset.j)];
-      c[ck] = e.target.value;
-      return saveVoices();
-    }
     const key = e.target.dataset.k;
     if (!card || !key) return;
     const v = voicesDraft[Number(card.dataset.i)];
@@ -1777,19 +1866,6 @@
     let i = Number(card.dataset.i);
     if (act === "test") {
       Voice.test(voicesDraft[i], $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
-    } else if (act === "addChar") {
-      (voicesDraft[i].characters ||= []).push({ name: "", voice: "", notes: "" });
-      renderVoices(true);
-      $("voices").querySelector(`.vcard[data-i="${i}"] .char:last-of-type [data-ck="name"]`)?.focus();
-    } else if (act === "delChar") {
-      voicesDraft[i].characters.splice(Number(e.target.closest(".char").dataset.j), 1);
-      saveVoices();
-      renderVoices(true);
-    } else if (act === "testChar") {
-      const v = voicesDraft[i];
-      const c = v.characters[Number(e.target.closest(".char").dataset.j)];
-      const base = !c.voice ? v.voice : v.voice.engine === "neural" ? { ...v.voice, speaker: c.voice } : { ...v.voice, variant: c.voice };
-      Voice.test({ ...v, voice: base }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     } else if (act === "del") {
       const v = voicesDraft[i];
       if (!(await sure(`Delete "${v.name}"?`, "The voice and its persona are removed.", "Delete"))) return;

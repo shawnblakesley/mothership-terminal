@@ -9,7 +9,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { synthesize, setCacheDir, warmNeural } from "./tts.js";
-import { sanitizeVoices, speakingVoice, speechParts } from "./voices.js";
+import { sanitizeVoices, speechParts } from "./voices.js";
+import { speakingVoice } from "./cast.js";
+import { setPortraitsDir, savePortrait, portraitPath, portraitType, deleteSessionPortraits, MAX_PORTRAIT_BYTES } from "./portraits.js";
 import { getProvider, looksLikeKey, catalog, offered, fixSelection, LOCAL_KEYS } from "./providers/index.js";
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
 import { setSoundsDir, saveSound, soundPath, deleteSoundFile, deleteSessionSounds, MAX_SOUND_BYTES } from "./sounds.js";
@@ -84,6 +86,7 @@ function deleteSession(code, reason = "warden") {
   clearTimeout(saveTimers.get(code));
   fs.rmSync(path.join(SESSIONS_DIR, `${code}.json`), { force: true });
   deleteSessionSounds(code);
+  deleteSessionPortraits(code);
 }
 
 function loadSessions() {
@@ -256,7 +259,7 @@ router.get("/api/sessions/:code/tts/:id", async (req, res) => {
     const whole = req.query.v === undefined ? entry.text : entry.variants?.[Number(req.query.v)]?.text;
     const text = whole === undefined ? undefined : req.query.part === undefined ? whole : speechParts(whole)[Number(req.query.part)];
     if (text === undefined) return res.status(404).end();
-    const wav = await synthesize(text, speakingVoice(s.state.config.voices, entry));
+    const wav = await synthesize(text, speakingVoice(s.state.config, entry));
     if (!wav) return res.status(204).end();
     res.set("Content-Type", "audio/wav").send(wav);
   } catch (err) {
@@ -308,8 +311,32 @@ router.get("/api/sessions/:code/sounds/:id", (req, res) => {
   res.sendFile(soundPath(s.code, sound), (err) => err && !res.headersSent && res.status(404).end());
 });
 
+// Portraits of the cast (portraits.js): the console uploads a small square; the
+// players' screens show it beside that person's lines.
+router.post("/api/sessions/:code/portraits", express.raw({ type: () => true, limit: MAX_PORTRAIT_BYTES + 1024 }), (req, res) => {
+  noStore(res);
+  const s = wardenOf(req);
+  if (!s) return res.status(403).json({ error: "Not this session's Warden." });
+  if (limited(`portrait-up:${s.code}`, 60, 600_000)) return res.status(429).json({ error: "Too many uploads. Wait a few minutes." });
+  try {
+    res.json({ file: savePortrait(s.code, Buffer.isBuffer(req.body) ? req.body : null) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// The picture itself (file names never change, so it caches).
+router.get("/api/sessions/:code/portraits/:file", (req, res) => {
+  const s = sessions.get(normCode(req.params.code));
+  const file = s && portraitPath(s.code, req.params.file);
+  if (!file) return res.status(404).end();
+  res.set({ "Content-Type": portraitType(req.params.file), "Cache-Control": "private, max-age=604800, immutable" });
+  res.sendFile(file, (err) => err && !res.headersSent && res.status(404).end());
+});
+
 // Upload errors (e.g. too large) as JSON the console can show.
 router.use((err, req, res, next) => {
+  if (err?.type === "entity.too.large" && req.path.endsWith("/portraits")) return res.status(413).json({ error: "That picture is too big." });
   if (err?.type === "entity.too.large") return res.status(413).json({ error: `Sounds can be up to ${MAX_SOUND_BYTES / 1048576} MB each.` });
   next(err);
 });
@@ -396,6 +423,7 @@ process.on("unhandledRejection", (err) => console.error("unhandled:", err));
 
 setCacheDir(path.join(DATA_DIR, "tts-cache"));
 setSoundsDir(path.join(DATA_DIR, "sounds"));
+setPortraitsDir(path.join(DATA_DIR, "portraits"));
 // Every new session has a human-voiced intercom, so load + warm the model now, not on the first line.
 warmNeural();
 loadSessions();

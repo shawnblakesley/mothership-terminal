@@ -3,7 +3,8 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
-import { speechParts, speakingVoice, castCharacter, findCharacter, voiceFor, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines } from "./voices.js";
+import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS } from "./voices.js";
+import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
@@ -27,8 +28,6 @@ const INTROS = {
   broadcast: ["Humming to life, the speakers squawk a broadcast.", "Every speaker in earshot pops, then a tone rings out.", "Overhead speakers crackle on all at once, one of them a beat behind."],
   comms: ["A nearby intercom buzzes to life.", "A speaker grille crackles, half its mesh rusted through.", "Static spits from a speaker close by, then a voice."],
 };
-// Voices that sound like comms (people on a speaker or radio), by their sound preset.
-const COMMS_PRESETS = new Set(["intercom", "radio", "human", "clean"]);
 
 const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
 const MAX_SOCKETS = 40; // per session
@@ -128,11 +127,7 @@ const OLD_DEFAULT_MAPS = [MAP_V2.split("\nLink:")[0], MAP_V2, `${SHIP_DECK}\n${M
 // the lift can go (RESTRICTED and LOCKED: not allowed; FAULT, OFFLINE: broken).
 const ROOM_STATE = {
   lift: { deck_1: "ONLINE", deck_2: "ONLINE", deck_3: "FAULT", deck_4: "RESTRICTED" },
-  occupants: {
-    command_deck: "Administrator Ruth Okonkwo, Comms Officer Juno Adar",
-    med_bay: "Dr. Imre Salk, Carys Webb, Pell Ostrand",
-    reactor_access: "Anton Petrov (hiding), Chief Engineer Hana Marlowe",
-  },
+  occupants: {}, // (the cast's own rooms are theirs: cast.js; this is everyone and everything else)
   contents: {
     cargo_bay_deck3: "The organism, grown into the Deck 3 power trunk",
     reactor_access: "Reactor core (70%); the junction that can cut the Deck 3 trunk",
@@ -187,6 +182,8 @@ export function defaultGame(keys = {}) {
       theme: "green",
       map: DEFAULT_MAP,
       crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
+      cast: defaultCast(), // the story's people, and where they are (cast.js)
+      castChannel: "intercom", // the voice the cast is heard through when not in the players' room
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
       playerTerminals: true, // players may move between terminals themselves
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
@@ -206,21 +203,44 @@ export function defaultGame(keys = {}) {
 }
 
 // Bring saved games from older versions up to date.
-// The default cast joins a voice's characters: existing ones (matched by name)
-// get the default description and voice; the agent's own additions are kept.
+// The default cast joins the story's: existing people (matched by name) get the
+// default description and voice; the agent's own additions are kept.
 function mergeCast(current, defaults) {
   const out = (current || []).map((c) => ({ ...c }));
   for (const d of defaults) {
-    const match = out.find((c) => findCharacter({ characters: [d] }, c.name));
-    if (match) Object.assign(match, { name: d.name, voice: d.voice, notes: match.notes || d.notes });
+    const match = findCast(out, d.name);
+    if (match) Object.assign(match, { name: d.name, voice: d.voice, notes: match.notes || d.notes, room: match.room || d.room });
     else out.push({ ...d });
   }
   return out;
 }
 
+// The cast of a saved story: its own, or (from before the cast was its own thing)
+// the people who spoke through its comms voices, placed by the station's occupants.
+function savedCast(config, station) {
+  if (Array.isArray(config?.cast)) return { cast: sanitizeCast(config.cast), channel: config.castChannel || "" };
+  if (!Array.isArray(config?.voices)) return { cast: defaultCast(), channel: "intercom" }; // (from before voices)
+  const found = castFromVoices(config.voices, station);
+  // (Saved before voices had characters: the default story's intercom had the default cast.)
+  if (!found.cast.length && config.voices.some((v) => v.id === "intercom" && !v.characters)) {
+    const cast = defaultCast().map((c) => ({ ...c, room: "" }));
+    placeByOccupants(cast, station);
+    return { cast, channel: "intercom" };
+  }
+  return found;
+}
+
 function migrateGame(saved) {
   const base = defaultGame();
   const { persona: legacyPersona, ...config } = { ...base.config, ...saved.config };
+  // The cast (before the voices lose their characters below).
+  const found = savedCast(saved.config, saved.station);
+  let cast = found.cast;
+  config.castChannel = found.channel || config.castChannel;
+  if (saved.storyStart?.config && !Array.isArray(saved.storyStart.config.cast)) { // (what Restart story restores, too)
+    const was = savedCast(saved.storyStart.config, saved.storyStart.station);
+    Object.assign(saved.storyStart.config, { cast: was.cast, castChannel: was.channel || config.castChannel });
+  }
   const voices = sanitizeVoices(config.voices ?? defaultVoices()).map((v) => {
     // Unedited copies of an older default persona get the current one.
     if (OLD_DEFAULT_PERSONAS[v.id]?.includes(v.persona)) v = { ...v, persona: DEFAULT_PERSONAS[v.id] };
@@ -243,8 +263,7 @@ function migrateGame(saved) {
   if (config.lore === OLD_DEFAULT_LORE) {
     config.lore = LORE_V1;
     if (OLD_DEFAULT_SECRETS.includes(config.secrets)) config.secrets = SECRETS_V1;
-    const intercom = voices.find((v) => v.id === "intercom");
-    if (intercom) intercom.characters = mergeCast(intercom.characters, defaultVoices().find((v) => v.id === "intercom").characters);
+    cast = mergeCast(cast, DEFAULT_CAST);
   }
   if (config.lore === LORE_V1) { // (before the sealed-airlock start)
     config.lore = LORE_V2;
@@ -253,7 +272,7 @@ function migrateGame(saved) {
   if (config.lore === LORE_V2) { // (before the reactor job and the SECOND CHANCE's departure lock)
     config.lore = LORE_V3;
     if (config.secrets === SECRETS_V2) config.secrets = DEFAULT_SECRETS;
-    const marlowe = voices.find((v) => v.id === "intercom")?.characters?.find((c) => c.notes === OLD_MARLOWE_NOTES);
+    const marlowe = cast.find((c) => c.notes === OLD_MARLOWE_NOTES);
     if (marlowe) marlowe.notes = DEFAULT_MARLOWE_NOTES;
     if (saved.station && !saved.station.second_chance) {
       const { output_pct, ...power } = saved.station.power || {};
@@ -262,6 +281,7 @@ function migrateGame(saved) {
     }
   }
   config.crew = sanitizeCrew(config.crew);
+  config.cast = sanitizeCast(cast);
   config.terminals = upgradeTerminals(sanitizeTerminals(config.terminals));
   // Once, for a KESTREL-9 story from before it: the crew's tug, its own terminal
   // and flight computer (not on the station network). Deleting them later sticks.
@@ -508,14 +528,30 @@ export class Session {
     return nets.length ? nets : [ALL_NET];
   }
   // Where a line can really be said: on `net` if its voice is on that system,
-  // else on one it is on (where the players are, if possible). Someone speaking
-  // in person is in the room, not on a network.
-  routeLine(voiceId, net, inPerson = false) {
-    if (inPerson) return net;
+  // else on one it is on (where the players are, if possible).
+  routeLine(voiceId, net) {
     const ok = this.voiceNets(voiceId);
     if (ok.includes(ALL_NET) || ok.includes(net)) return net;
     const occupied = new Set([...this.sockets].filter((c) => c.role === "player" && c.terminal).map((c) => this.netOfSocket(c)));
     return ok.find((n) => n === this.defaultNet()) ?? ok.find((n) => occupied.has(n)) ?? ok[0];
+  }
+  // The room a player screen is in (its terminal's; "" for a portable one).
+  roomOfSocket(ws) { return this.state.config.terminals.find((t) => t.id === ws.terminal)?.room || ""; }
+  // Does this player screen show this log line? Lines belong to the system they
+  // were said on; someone talking in person is only heard in that room.
+  sees(ws, e) { return shownOn(e.net, this.netOfSocket(ws)) && (!e.room || this.roomOfSocket(ws) === e.room); }
+  // Only the player screens that show this line.
+  toEntry(entry, p) {
+    const data = JSON.stringify(p);
+    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && this.sees(c, entry)) c.send(data);
+  }
+  // How someone of the cast is heard: face to face when a player screen is in
+  // their room (only screens there show it), else over the cast's channel (the intercom).
+  castDelivery(member, asked) {
+    const voice = channelOf(this.state.config);
+    const there = member.room && [...this.sockets].find((x) => x.role === "player" && x.terminal && this.roomOfSocket(x) === member.room);
+    if (there) return { voice, inPerson: true, room: member.room, net: this.netOfSocket(there) };
+    return { voice, inPerson: false, room: "", net: this.routeLine(voice, asked) };
   }
   // Only the player screens on one system (log lines belong to the system they were said on).
   toNet(net, p) {
@@ -533,7 +569,7 @@ export class Session {
     const net = ws ? this.netOfSocket(ws) : "";
     return {
       version: APP_VERSION,
-      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && shownOn(e.net, net)),
+      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net))),
       header: this.playerHeader(),
       effects: this.state.effects.filter((e) => e.net === undefined || shownOn(e.net, net)),
       playing: this.state.playing.filter((p) => p.loop),
@@ -561,6 +597,8 @@ export class Session {
       // What each voice looks like on screen and its effect chain (no personas or base-voice internals).
       // chunked: human voices are spoken one text line at a time (see speechParts).
       voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: v.name, style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
+      // The cast's portraits, by lowercase name (lines name who speaks).
+      portraits: Object.fromEntries((c.cast || []).filter((m) => m.portrait).map((m) => [m.name.toLowerCase(), m.portrait])),
     };
   }
 
@@ -639,7 +677,7 @@ export class Session {
       if (e.queued || (t && t.speakAt > now)) { e.cut = true; cut.push(e.id); continue; }
       if (!t || (t.end ?? Infinity) <= now) continue;
       const voice = SPOKEN_KINDS.has(e.kind) ? voiceFor(c.voices, e) : null;
-      const chunked = voice?.voice.engine === "neural";
+      const chunked = !!e.character || voice?.voice.engine === "neural"; // (the cast always have human voices)
       const keep = (text, parts) => {
         const n = parts.filter((p) => p.at <= now).length;
         return chunked ? `${speechParts(text).slice(0, n).join("\n")} —` : `${text} —`;
@@ -673,9 +711,9 @@ export class Session {
     const c = this.state.config;
     const spoken = c.tts && SPOKEN_KINDS.has(entry.kind);
     const voice = SPOKEN_KINDS.has(entry.kind) ? voiceFor(c.voices, entry) : null;
-    const base = voice ? speakingVoice(c.voices, entry) : null;
-    const rate = voice?.fx?.rate || 1;
-    const chunked = voice?.voice.engine === "neural";
+    const base = voice ? speakingVoice(c, entry) : null;
+    const rate = entry.inPerson ? 1 : voice?.fx?.rate || 1; // (in person: no speaker effects)
+    const chunked = !!entry.character || voice?.voice.engine === "neural";
     const texts = [entry.text, ...(entry.variants || []).map((v) => v.text)];
     const pieces = texts.map((t) => (!t ? [] : chunked ? speechParts(t) : [t]));
     const jobs = pieces.map((ps) => ps.map((p) => (spoken ? synthesize(p, base).catch(() => null) : Promise.resolve(null))));
@@ -703,24 +741,24 @@ export class Session {
         const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!wav, last: i === pieces[v].length - 1 };
         cursors[v] = part.at + dur + PIECE_GAP;
         timing.versions[v].push(part);
-        if (sent && live()) this.toNet(entry.net || "", { t: "part", id: entry.id, v, part: { ...part, wav: wavs[v][i] } });
+        if (sent && live()) this.toEntry(entry, { t: "part", id: entry.id, v, part: { ...part, wav: wavs[v][i] } });
       }
       if (!sent) {
         sent = true;
         if (entry.cut) break;
         entry.timing = timing;
         delete entry.queued;
-        if (live()) this.toNet(entry.net || "", { t: "line", entry: withAudio() });
+        if (live()) this.toEntry(entry, { t: "line", entry: withAudio() });
       }
     }
     if (!sent && !entry.cut) { // nothing to show anyone (shouldn't happen): keep the order, move on
       entry.timing = timing;
       delete entry.queued;
-      if (live()) this.toNet(entry.net || "", { t: "line", entry });
+      if (live()) this.toEntry(entry, { t: "line", entry });
     }
     if (entry.cut || entry.interrupted) return; // (cut off: the timeline already moved on)
     timing.end = Math.max(timing.speakAt, ...cursors.map((x) => x - PIECE_GAP));
-    if (live()) this.toNet(entry.net || "", { t: "lineEnd", id: entry.id, end: timing.end });
+    if (live()) this.toEntry(entry, { t: "lineEnd", id: entry.id, end: timing.end });
     this.playhead = timing.end + LINE_GAP;
   }
 
@@ -831,6 +869,11 @@ export class Session {
         if (this.usesNeural()) warmNeural();
         this.toPlayers({ t: "header", header: this.playerHeader() });
         break;
+      case "cast": // the story's people (cast.js), and the voice they're heard through elsewhere
+        s.config.cast = sanitizeCast(msg.cast);
+        if (s.config.voices.some((v) => v.id === msg.channel)) s.config.castChannel = msg.channel;
+        this.toPlayers({ t: "header", header: this.playerHeader() });
+        break;
       case "station":
         if (msg.station && typeof msg.station === "object" && !Array.isArray(msg.station)) s.station = msg.station;
         // (opening a door can make a terminal reachable: the header carries that)
@@ -865,20 +908,28 @@ export class Session {
       case "inject": {
         let text = String(msg.text || "").trim().slice(0, 4000);
         if (!text) break;
+        // As someone of the cast: in person if they're in a room with players, else over the intercom.
+        if (msg.cast) {
+          const member = s.config.cast.find((m) => m.id === msg.cast);
+          if (!member) break;
+          const d = this.castDelivery(member, netNamed(s.config, msg.system) ?? this.defaultNet());
+          const kind = kindOf(d.voice);
+          this.introduce(d.voice, d.net, { inPerson: d.inPerson });
+          this.addLog(kind, sentenceLines(text), { source: "dm", net: d.net, ...(kind === "entity" ? { entity: d.voice } : {}), character: member.name, ...(d.inPerson ? { inPerson: true, room: d.room } : {}) });
+          if (msg.clearPending) { this.genCounter++; s.pending = null; this.setBusy(false); }
+          break;
+        }
         // "as" is a voice id: the terminal, broadcasts, or any Warden-defined voice.
         const as = msg.as === "system" ? BUILTIN.broadcast : msg.as || BUILTIN.terminal;
         if (this.speaksBySentence(as)) text = sentenceLines(text); // (a sentence per line, like the agent's)
         if (!s.config.voices.some((v) => v.id === as)) break;
         const kind = kindOf(as);
-        // Optionally as one of that voice's characters (e.g. Salk on the intercom).
-        const line = { voice: as, character: String(msg.character || "").slice(0, 60) };
-        this.castCharacters([line]);
         // On a system the Warden picked (when the players are split), else where the players are.
         const asked = netNamed(s.config, msg.system) ?? this.defaultNet();
         const net = this.routeLine(as, asked);
         if (net !== asked) this.send("dm", { t: "toast", level: "info", text: `${s.config.voices.find((v) => v.id === as)?.name} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(s.config, asked)}`}, so it went to ${systemName(s.config, net)}.` });
         this.introduce(as, net);
-        this.addLog(kind, text, { source: "dm", net, ...(kind === "entity" ? { entity: as } : {}), ...(line.character ? { character: line.character } : {}) });
+        this.addLog(kind, text, { source: "dm", net, ...(kind === "entity" ? { entity: as } : {}) });
         if (msg.clearPending) { this.genCounter++; s.pending = null; this.setBusy(false); }
         break;
       }
@@ -1210,7 +1261,7 @@ export class Session {
   pregenerate(lines) {
     if (!this.state.config.tts) return;
     for (const l of lines) {
-      const base = speakingVoice(this.state.config.voices, l);
+      const base = speakingVoice(this.state.config, l);
       if (base.engine !== "neural") continue; // synthetic voices are instant anyway
       for (const text of [l.text, ...(l.variants || []).map((v) => v.text)]) {
         for (const part of speechParts(text)) synthesize(part, base).catch(() => {});
@@ -1218,19 +1269,36 @@ export class Session {
     }
   }
 
-  // Lines name who speaks through a shared voice ("character"). Match each to the
-  // voice's cast (canonical name), and give anyone new a voice of their own.
-  castCharacters(lines) {
-    let added = false;
-    for (const l of lines) {
-      if (!l.character) continue;
-      const v = this.state.config.voices.find((x) => x.id === l.voice);
-      if (!v) { l.character = ""; continue; }
-      const { name, created } = castCharacter(v, l.character);
-      l.character = name;
-      added ||= created;
+  // The agent's cast changes: someone new joins the story, someone moves (room:
+  // a map room id, "none" for nowhere on the map, "" to stay put), new notes.
+  // In two steps around the reply's lines, so it stages naturally: before them,
+  // everything but leaving the players' room (someone walks in, then talks face
+  // to face); after them, the leaving (they say their piece face to face, then go).
+  applyCastChanges(list, step = "before") {
+    const c = this.state.config;
+    const withPlayers = new Set([...this.sockets].filter((x) => x.role === "player" && x.terminal).map((x) => this.roomOfSocket(x)).filter(Boolean));
+    const target = (ch) => { const r = String(ch?.room ?? "").trim().toLowerCase(); return r === "none" ? "" : r.replace(/[^a-z0-9_]/g, "").slice(0, 60); };
+    const leaving = (ch) => {
+      const m = findCast(c.cast, String(ch?.name || ""));
+      return !!m && !!String(ch?.room ?? "").trim() && withPlayers.has(m.room) && target(ch) !== m.room;
+    };
+    let any = false;
+    for (const ch of Array.isArray(list) ? list : []) {
+      if (leaving(ch) !== (step === "after")) continue;
+      const { member, created } = addCast(c.cast, String(ch?.name || "").trim());
+      if (!member) continue;
+      const room = String(ch.room ?? "").trim().toLowerCase();
+      const to = target(ch);
+      const moved = !!room && to !== member.room;
+      if (moved) member.room = to;
+      const notes = String(ch.notes ?? "").trim();
+      if (notes) member.notes = notes.slice(0, 600);
+      if (created) this.addLog("note", `Cast: ${member.name} joins the story${member.room ? ` (in ${member.room})` : ""}.`);
+      else if (moved) this.addLog("note", `Cast: ${member.name} → ${member.room || "nowhere on the map"}.`);
+      else if (notes) this.addLog("note", `Cast: ${member.name}'s notes updated.`);
+      any ||= created || moved || !!notes;
     }
-    if (added) this.touch();
+    if (any) this.toPlayers({ t: "header", header: this.playerHeader() }); // (their portraits)
   }
 
   // One call to the session's model, with a silent retry on malformed output. Returns parsed JSON.
@@ -1590,7 +1658,7 @@ export class Session {
 
   deliver(reply, source) {
     // Remember how things were, so the Warden can retcon this response.
-    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms) };
+    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms) };
     try {
       this.deliverReply(reply, source);
     } finally {
@@ -1613,6 +1681,7 @@ export class Session {
     s.log = s.log.filter((e) => !undo.entries.includes(e.id));
     for (const id of undo.effects) this.endEffect(id);
     s.station = undo.station;
+    if (undo.cast) s.config.cast = undo.cast; // (who joined, who moved)
     if (undo.map !== undefined) Object.assign(s.config, { map: undo.map, rooms: undo.rooms });
     // Crew: only their condition goes back (sheet edits made since are kept).
     for (const pc of s.config.crew) {
@@ -1637,8 +1706,10 @@ export class Session {
       (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), inPerson: !!(l.inPerson ?? l.in_person), system: String(l.system ?? ""), text: String(l.text ?? "").slice(0, 8000), effects: l.effects, variants: l.variants })),
       voices,
     );
-    // The fiction moved them: screens go to their new terminals first, so this reply plays there.
+    // The fiction moved them: screens go to their new terminals first, so this reply
+    // plays there; and the cast to their new rooms (which decides who's in person).
     if (source === "agent") this.applyMoves(reply?.moves);
+    if (source === "agent") this.applyCastChanges(reply?.cast_changes);
     const here = this.defaultNet(); // (lines with no system, or one that doesn't exist, go where the players are)
     // A line's own system only matters while the players are split across systems:
     // all on one (after any moves), every line goes there (or to all, if it says so).
@@ -1649,20 +1720,26 @@ export class Session {
     // The first entry carries the reply's changes/effects so the agent's history
     // shows that it really changed things (otherwise it learns to leave them empty).
     const mapChanges = this.mapChanges(reply);
-    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], moves: reply?.moves || [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
+    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], moves: reply?.moves || [], castChanges: reply?.cast_changes || [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
     // Effects on a line fire as it begins. An effect-only beat (no text) fires
     // before the next line, or after the last one if nothing follows.
     let waiting = [];
     let lastEntry = null;
-    // Who was already in each voice's cast: only they can be in the room in person
-    // (a computer like the tug's can't, even if the agent gives it a speaker).
-    const cast = new Map(voices.map((v) => [v.id, new Set((v.characters || []).map((c) => c.name.toLowerCase()))]));
-    this.castCharacters(lines);
+    const config = this.state.config;
+    const channel = channelOf(config);
     let prev = null; // the voice of the line before
-    for (let { voice, character, inPerson, system, text, effects: lineFx, variants: rawVariants } of lines) {
-      if (voice === BUILTIN.narrator && source === "agent" && this.state.config.narrator === false) continue; // (switched off)
+    for (let { voice, character, system, text, effects: lineFx, variants: rawVariants } of lines) {
+      if (voice === BUILTIN.narrator && source === "agent" && config.narrator === false) continue; // (switched off)
+      // Someone of the cast speaking: their lines are on the cast's channel (someone
+      // new joins the cast). A name on any other voice (a computer, the entity) is dropped.
+      let member = character && voice === channel ? findCast(config.cast, character) : null;
+      if (!member && character && voice === channel) {
+        member = addCast(config.cast, character).member;
+        if (member) this.addLog("note", `Cast: ${member.name} joins the story.`);
+      }
+      character = member?.name || "";
       // People and the narrator a sentence per line, so their voices start sooner.
-      if (this.speaksBySentence(voice)) { text = sentenceLines(text); for (const v of rawVariants || []) v.text = sentenceLines(v.text); }
+      if (member || this.speaksBySentence(voice)) { text = sentenceLines(text); for (const v of rawVariants || []) v.text = sentenceLines(v.text); }
       // Per-player versions of this line, for the crew they name (if the Warden allows them).
       const variants = source === "agent" && !this.state.config.agentVariants ? [] : resolveVariants(rawVariants, this.state.config.crew);
       // Effects from an effect-only beat are marked hold: the next line waits for them.
@@ -1672,20 +1749,24 @@ export class Session {
       // beat: the dialogue pauses for it, then this line appears once it's over.
       for (const c of cues) if (c.type === "blackout") c.hold = true;
       waiting = [];
-      const kind = kindOf(voice);
-      const named = netNamed(this.state.config, system);
+      const named = netNamed(config, system);
       const asked = named === ALL_NET || (split && named !== null) ? named : here;
-      const person = inPerson && !!character && !!cast.get(voice)?.has(character.toLowerCase());
-      const net = this.routeLine(voice, asked, person);
-      if (net !== asked) this.addLog("note", `${voices.find((v) => v.id === voice)?.name || voice} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(this.state.config, asked)}`}: its line went to ${systemName(this.state.config, net)}.`);
-      this.introduce(voice, net, { inPerson: person, done: prev === BUILTIN.narrator }); // (the agent's own intro will do)
+      let net, inPerson = false, room = "";
+      if (member) ({ voice, net, inPerson, room } = this.castDelivery(member, asked)); // (where they are decides how they're heard)
+      else {
+        net = this.routeLine(voice, asked);
+        if (net !== asked) this.addLog("note", `${voices.find((v) => v.id === voice)?.name || voice} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(config, asked)}`}: its line went to ${systemName(config, net)}.`);
+      }
+      const kind = kindOf(voice);
+      this.introduce(voice, net, { inPerson, done: prev === BUILTIN.narrator }); // (the agent's own intro will do)
       prev = voice;
-      const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson && character ? { inPerson: true } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
+      const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson ? { inPerson: true, room } : {}), ...(variants.length ? { variants } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
       lastEntry = entry;
       for (const c of cues) this.startEffect(c, "agent", { atEntry: entry.id, when: "before", hold: c.hold });
     }
     for (const c of waiting) this.startEffect(c, "agent", lastEntry ? { atEntry: lastEntry.id, when: "after" } : null);
+    if (source === "agent") this.applyCastChanges(reply?.cast_changes, "after"); // (whoever leaves the players' room goes now)
     for (const c of changes) {
       setPath(this.state.station, c.path, c.value);
       this.addLog("note", `Station: ${c.path} → ${c.value}`);
@@ -1797,7 +1878,6 @@ export class Session {
         s.pending = { status: "ready", forEntry, reply, model, directives };
         // Make the voices while the Warden reads the draft: an unedited line is
         // then ready to play the moment it's sent.
-        this.castCharacters(reply.lines);
         this.pregenerate(reply.lines.map((l) => ({ ...l, kind: kindOf(l.voice), entity: l.voice })));
       }
     } catch (err) {
@@ -2086,11 +2166,15 @@ export class Session {
       Object.assign(s.config, structuredClone(snap.config));
       s.config.voices = sanitizeVoices(s.config.voices);
       s.station = structuredClone(snap.station);
+      s.config.cast = sanitizeCast(s.config.cast);
       s.synopsis = structuredClone(snap.synopsis ?? null);
     } else {
       // Played before saves existed: everyone fresh, and the default story's own station.
       for (const pc of s.config.crew) freshen(pc);
-      if (s.config.stationName === "KESTREL-9") s.station = structuredClone(DEFAULT_STATION);
+      if (s.config.stationName === "KESTREL-9") {
+        s.station = structuredClone(DEFAULT_STATION);
+        for (const m of s.config.cast) m.room = findCast(DEFAULT_CAST, m.name)?.room ?? m.room; // (back where they started)
+      }
       s.synopsis = null;
     }
     // Every terminal reachable as the story starts it.

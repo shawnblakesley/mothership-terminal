@@ -77,7 +77,7 @@ export function synopsisRequest(state, screens = []) {
   const log = state.log.filter((e) => !e.cut && (e.text || e.variants?.length));
   // Started = something has been typed or said at the terminal (not just Warden notes).
   const started = log.some((e) => e.kind === "player" || ["terminal", "system", "entity"].includes(e.kind));
-  const cast = c.voices.flatMap((v) => (v.characters || []).map((ch) => `- ${ch.name} (via ${v.name})${ch.notes ? `: ${ch.notes}` : ""}`));
+  const cast = (c.cast || []).map((m) => `- ${m.name} (${m.room ? `in ${m.room}` : "nowhere on the map"})${m.notes ? `: ${m.notes}` : ""}`);
   const where = screens.map((s) => `- ${s.character || "a screen with no crew file"}: ${c.terminals.find((t) => t.id === s.terminal)?.name || s.terminal}`);
   const context = [
     `STATION NAME: ${c.stationName}`,

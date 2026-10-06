@@ -377,6 +377,11 @@
         <h2>Player characters <span class="hint" title="Each player picks one on their screen. The agent knows who they are and who typed what.">?</span></h2>
         <div id="crew"></div>
         <div class="row edit-only"><button id="addCrew" class="ghost">+ Add character</button></div>
+        <h2>Characters <span class="hint" title="The story's people. Whoever is in the same room as a player's terminal talks to them face to face: clear, and only screens in that room show it. Anyone else is heard over the intercom, with static. The agent moves them and brings in new people as the story needs; you can too. A picture shows beside what they say.">?</span></h2>
+        <div class="row wrap edit-only"><label class="small muted">Heard elsewhere over <select id="castChannel" title="The voice characters come through when they aren't in a room with players"></select></label></div>
+        <div id="cast"></div>
+        <div class="row edit-only"><button id="addCast" class="ghost">+ Add character</button></div>
+        <input type="file" id="portraitFile" accept="image/*" hidden>
         <h2>Terminals <span class="hint" title="Where each player's screen is. A terminal's look shows on that screen and the agent answers from that place. Players switch with TERM (if allowed in Settings); move anyone from their crew card.">?</span></h2>
         <!-- The station: its name (every screen's header) and the colour of every terminal set to "station's". -->
         <div class="row wrap stationrow">
@@ -392,7 +397,7 @@
 
       <div class="tabpanel" data-tabs="side" data-panel="story">
         <details class="sec play-only" open>
-          <summary><h2>Cast <span class="hint" title="Who can speak, and the people behind each voice. Unlock the padlock to edit them.">?</span></h2></summary>
+          <summary><h2>Voices <span class="hint" title="Who can speak besides the characters (they're on the Crew tab). Unlock the padlock to edit them.">?</span></h2></summary>
           <div id="castPlay"></div>
         </details>
         <details id="voicesPanel" class="sec edit-only" open>

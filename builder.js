@@ -4,7 +4,8 @@
 // in full and the Warden applies it to the session.
 //
 // Two kinds of call: a conversation turn ({ reply, ready }) and a full draft.
-import { BUILTIN, PRESETS, SPEAKERS, defaultVoices, fromPreset, sanitizeVoices, castCharacter } from "./voices.js";
+import { BUILTIN, PRESETS, SPEAKERS, defaultVoices, fromPreset, sanitizeVoices } from "./voices.js";
+import { sanitizeCast, addCast } from "./cast.js";
 import { CLASSES, STATS, SAVES, sanitizeCrew } from "./crew.js";
 import { LOOKS, DEFAULT_TERMINALS, sanitizeTerminals, netKey } from "./terminals.js";
 
@@ -42,13 +43,14 @@ FIELDS
 - map: the layout, one line per deck: "Deck 1 · Command / Comms: room_id=Room Name, other_room=Other Name". Then optional connections: "Link: room_a - room_b (air vents)". Room ids are snake_case and match the station state paths. 2-5 decks, 1-6 rooms each.
 - computer: the station computer's display name (e.g. "HV-CORE") and persona: who it is and how it writes (it prints on a monochrome CRT terminal; casing, tone, length), what it knows, how it treats access levels and hacking attempts. Write the persona as instructions addressed to it ("You are ...").
 - broadcastPersona: the automated public-address voice's persona (announces, never converses).
-- voices: other voices that can speak (at least an intercom-style voice for the living cast; optionally something uncanny). For each: id (snake_case), name (as shown on screen, e.g. "INTERCOM"), preset (sound: intercom/human for people, robotic, ethereal, radio, demonic, whisper, clean), color (#rrggbb or ""), persona (who uses it and how it sounds; for a shared voice like the intercom, the general rules), systems (where it can be heard: [] for the station's own network, a terminal's system name for a separate machine like the players' ship, or ["ALL"] for something in every machine), and characters: the named people who speak through it, each with sex (f/m), a voice (a distinct speaker id from the list; never reuse one within a voice) and notes (who they are, where, what they want, how they talk, and anything the AI must keep in mind).
+- voices: other voices that can speak: always one with id "intercom" (preset intercom), the station intercom the cast are heard over when they aren't in the players' room; optionally others (something uncanny, a ship's computer). For each: id (snake_case), name (as shown on screen, e.g. "INTERCOM"), preset (sound: intercom/human for comms, robotic, ethereal, radio, demonic, whisper, clean), color (#rrggbb or ""), persona (what it is and how it sounds; for the intercom, how people sound over it), and systems (where it can be heard: [] for the station's own network, a terminal's system name for a separate machine like the players' ship, or ["ALL"] for something in every machine).
+- cast: the story's named people the players can meet or hear (not the players' own characters), each with sex (f/m), a voice (a distinct speaker id from the list; never reuse one), room (the map room id where they are when the story starts, or "" for nowhere on the map: missing, hiding somewhere unknown, off-station) and notes (who they are, what they want, how they talk, and anything the AI must keep in mind). Someone in the players' room talks to them face to face; anyone else, over the intercom.
 - terminals: 3-6 physical terminals the players can use, in map rooms (room = a room id from the map), each with a look (any of: ${LOOKS.filter((l) => l !== "portable").join(", ")}; [] for clean), open (can the players reach it at the start?), system and os, and notes (what's there, what happened at it). system is "" for the station's own network; a separate machine that isn't on it (the players' ship, a shuttle, a derelict) gets its own system name, and os the name of its operating system (e.g. "TUG-CORE OS v2.7"), and its screens show only what's said on it. Most terminals are on the station ("" and ""). Make the looks tell the story: clean where they arrive, bloody and cracked where it went wrong. A portable handheld terminal is added automatically.
 - crew: the players' characters (1-4, normally 4), Mothership 1e. className one of ${CLASSES.join(", ")}. Stats ${STATS.join("/")} roughly 20-50 (class strengths higher); Saves ${SAVES.join("/")} roughly 15-40 (Android: Fear 60ish, Sanity lower). Health max 10-20, Wounds max 2 (Android 3), Stress 2. 3-5 skills (e.g. Zero-G, Mechanical Repair, Computers, Chemistry, Firearms, Military Training, Hacking, Piloting, Athletics, Medicine). Give each a role, pronouns, crime or reason they're here (field "crime"; for non-convicts, why they took the job), a 3-5 sentence backstory with a hook, loadout (realistic for why they came), trinket and patch. notes: anything only the Warden should know about them, or "".
 
 - documents: 0-3 starting documents the players begin with, in their DOCS on every screen, if the story has some that fit: what they were handed or carry in (a work order, a mission briefing, a dossier on the target, a ship's manifest, a letter). Each has a title (caps-friendly, e.g. WORK ORDER 4471) and text in Markdown (# headings, **bold**, *italic*, __underline__, ~~crossed out~~, - lists, > quotes, --- dividers), under 200 words, in the voice of whoever wrote it, giving the players clear hooks: what they're here to do, codes and names they'll need, what to look out for. Never the secrets. [] when none fits.
 
-LENGTH (it must fit in one reply): lore and secrets under ~200 words each; each persona under ~150 words; each character note under ~40 words; backstories 3-4 sentences; 15-35 station values; at most ~10 named characters.`;
+LENGTH (it must fit in one reply): lore and secrets under ~200 words each; each persona under ~150 words; each cast note under ~40 words; backstories 3-4 sentences; 15-35 station values; at most ~10 cast.`;
 
 const str = { type: "string" };
 const strDesc = (description) => ({ type: "string", description });
@@ -81,11 +83,11 @@ export const DRAFT_SCHEMA = obj({
       color: str,
       persona: str,
       systems: { type: "array", items: str },
-      characters: {
-        type: "array",
-        items: obj({ name: str, sex: { type: "string", enum: ["f", "m"] }, voice: { type: "string", enum: Object.keys(SPEAKERS) }, notes: str }),
-      },
     }),
+  },
+  cast: {
+    type: "array",
+    items: obj({ name: str, sex: { type: "string", enum: ["f", "m"] }, voice: { type: "string", enum: Object.keys(SPEAKERS) }, room: str, notes: str }),
   },
   documents: { type: "array", items: obj({ title: str, text: str }) },
   terminals: {
@@ -105,7 +107,7 @@ export const DRAFT_SCHEMA = obj({
   },
 });
 
-const SPEAKER_LIST = `SPEAKER VOICES (for characters): ${Object.entries(SPEAKERS).map(([id, d]) => `${id} = ${d}`).join("; ")}.`;
+const SPEAKER_LIST = `SPEAKER VOICES (for the cast): ${Object.entries(SPEAKERS).map(([id, d]) => `${id} = ${d}`).join("; ")}.`;
 
 // The conversation so far, as alternating turns.
 function transcript(b) {
@@ -136,7 +138,7 @@ export function draftRequest(b) {
   };
 }
 
-const summary = (d) => `${d.title}: ${d.pitch}\nStation: ${d.stationName}. Cast: ${d.voices.flatMap((v) => v.characters.map((c) => c.name)).join(", ") || "none"}. Crew: ${d.crew.map((c) => c.name).join(", ")}.`;
+const summary = (d) => `${d.title}: ${d.pitch}\nStation: ${d.stationName}. Cast: ${d.cast.map((c) => c.name).join(", ") || "none"}. Crew: ${d.crew.map((c) => c.name).join(", ")}.`;
 
 // Coerce a model's draft into a safe, complete shape.
 export function normalizeDraft(raw) {
@@ -158,8 +160,10 @@ export function normalizeDraft(raw) {
       id: s(v?.id, 40), name: s(v?.name, 40), preset: PRESET_IDS.includes(v?.preset) ? v.preset : "intercom",
       color: /^#[0-9a-f]{6}$/i.test(v?.color || "") ? v.color : "", persona: s(v?.persona, 8000),
       systems: (Array.isArray(v?.systems) ? v.systems : []).slice(0, 16).map((n) => s(n, 40)).filter(Boolean),
-      characters: (Array.isArray(v?.characters) ? v.characters : []).slice(0, 30).map((c) => ({ name: s(c?.name, 40), sex: c?.sex === "m" ? "m" : "f", voice: SPEAKERS[c?.voice] ? c.voice : "", notes: s(c?.notes, 500) })),
     })).filter((v) => v.name),
+    // (Drafts from before the cast was its own list had it inside the voices.)
+    cast: (Array.isArray(d.cast) ? d.cast : (Array.isArray(d.voices) ? d.voices : []).flatMap((v) => v?.characters || [])).slice(0, 30)
+      .map((c) => ({ name: s(c?.name, 40), sex: c?.sex === "m" ? "m" : "f", voice: SPEAKERS[c?.voice] ? c.voice : "", room: s(c?.room, 60), notes: s(c?.notes, 500) })).filter((c) => c.name),
     crew: (Array.isArray(d.crew) ? d.crew : []).slice(0, 4),
     terminals: (Array.isArray(d.terminals) ? d.terminals : []).slice(0, 10),
     documents: (Array.isArray(d.documents) ? d.documents : []).slice(0, 3).map((x) => ({ title: s(x?.title, 120).trim(), text: s(x?.text, 4000).trim() })).filter((x) => x.title && x.text),
@@ -176,20 +180,20 @@ export function applyDraft(d) {
       id: v.id || v.name, name: v.name, style: "label", color: v.color, persona: v.persona, ...fromPreset(v.preset),
       // System names to net keys ("" the station, "*" everywhere); none: the station.
       systems: (v.systems || []).map((n) => (/^all$/i.test(n) ? "*" : netKey(n) === netKey(d.stationName) ? "" : netKey(n))).filter((n, i, a) => a.indexOf(n) === i),
-      characters: [],
     };
-    // Each character keeps the voice it was given (if it suits the voice's engine), or is cast one.
-    for (const c of v.characters) {
-      if (!c.name) continue;
-      const fits = voice.voice.engine === "neural" && c.voice && !voice.characters.some((x) => x.voice === c.voice);
-      if (fits) voice.characters.push({ name: c.name, voice: c.voice, notes: c.notes });
-      else {
-        castCharacter(voice, `${c.name} (${c.sex})`);
-        voice.characters.at(-1).notes = c.notes;
-      }
-    }
     return voice;
   });
+  // Every story has an intercom for the cast to be heard over (the draft's, or the default one).
+  const idOf = (v) => String(v.id || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40); // (as sanitizeVoices makes it)
+  let channel = others.find((v) => idOf(v) === "intercom") || others.find((v) => v.preset === "intercom");
+  if (!channel) others.unshift((channel = base.find((v) => v.id === "intercom")));
+  // Each person keeps the voice they were given (unless someone already has it), or is cast one.
+  const cast = [];
+  for (const c of d.cast) {
+    const room = c.room.toLowerCase().replace(/[^a-z0-9_]/g, "");
+    if (c.voice && !cast.some((x) => x.voice === c.voice)) cast.push({ name: c.name, voice: c.voice, notes: c.notes, room });
+    else addCast(cast, `${c.name} (${c.sex})`, { room, notes: c.notes });
+  }
   const station = {};
   for (const { path, value } of d.station) {
     const keys = path.split(".").map((k) => k.trim()).filter(Boolean);
@@ -215,6 +219,8 @@ export function applyDraft(d) {
       map: d.map,
       voices: sanitizeVoices([terminal, broadcast, base.find((v) => v.id === BUILTIN.narrator), ...others.filter((v) => v.id !== BUILTIN.narrator)]),
       crew,
+      cast: sanitizeCast(cast),
+      castChannel: idOf(channel),
       // The story's terminals (the players start at the first open one), plus a portable unit.
       terminals: sanitizeTerminals([...d.terminals, DEFAULT_TERMINALS.find((t) => t.portable || t.id === "portable")]),
       // Documents the players start with (in everyone's DOCS; a story restart hands them out again).

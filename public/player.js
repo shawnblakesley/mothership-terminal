@@ -134,6 +134,16 @@
     return header.voices?.[id];
   }
 
+  // The speckle for portraits heard over the intercom (player.css .portrait.comms).
+  try {
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 64;
+    const g = cv.getContext("2d"), px = g.createImageData(64, 64);
+    for (let i = 0; i < px.data.length; i += 4) { const n = Math.random() * 255; px.data.set([n, n, n, Math.random() < 0.55 ? 255 : 0], i); }
+    g.putImageData(px, 0, 0);
+    document.documentElement.style.setProperty("--noise", `url(${cv.toDataURL()})`);
+  } catch { /* (no canvas: plain flicker) */ }
+
   function makeLine(entry) {
     const div = document.createElement("div");
     div.className = `line ${entry.kind}`;
@@ -154,17 +164,38 @@
       return div;
     }
     const v = voiceOf(entry);
-    div.classList.add(`style-${v?.style || (entry.kind === "system" ? "boxed" : "plain")}`);
-    // A shared voice (the intercom) also shows who is speaking: "INTERCOM · SALK: ".
-    if (entry.inPerson && entry.character) div.dataset.label = `${entry.character.toUpperCase()}: `; // in the room with them
-    else if (v?.style === "label") div.dataset.label = `${v.name}${entry.character ? ` · ${entry.character.toUpperCase()}` : ""}: `;
-    if (v?.color) {
+    div.classList.add(`style-${entry.inPerson ? "label" : v?.style || (entry.kind === "system" ? "boxed" : "plain")}`);
+    // Someone of the cast over the intercom shows who is speaking: "INTERCOM · SALK: ".
+    const label = entry.inPerson && entry.character ? `${entry.character.toUpperCase()}: ` // (in the room with them)
+      : v?.style === "label" ? `${v.name}${entry.character ? ` · ${entry.character.toUpperCase()}` : ""}: ` : "";
+    if (label) div.dataset.label = label;
+    // Their portrait, to the left of what they say: clear in person, full of static over the intercom.
+    const portrait = entry.character && header.portraits?.[entry.character.toLowerCase()];
+    if (portrait) {
+      div.classList.add("has-portrait");
+      const pic = document.createElement("span");
+      pic.className = `portrait${entry.inPerson ? "" : " comms"}`;
+      const img = document.createElement("img");
+      img.src = `api/sessions/${code}/portraits/${portrait}`;
+      img.alt = "";
+      img.onerror = () => pic.remove();
+      pic.append(img);
+      const text = document.createElement("span");
+      text.className = "lt";
+      if (label) text.dataset.label = label;
+      div.append(pic, text);
+    }
+    // (In person they're not on the intercom: the screen's own colour, not the intercom's.)
+    if (v?.color && !entry.inPerson) {
       div.style.color = v.color;
       div.style.borderColor = v.color;
       div.style.textShadow = `0 0 2px ${v.color}88, 0 0 9px ${v.color}66`;
     }
     return div;
   }
+
+  // Where a line's text goes: its text span (beside a portrait), or the line itself.
+  const textOf = (div) => div.querySelector(".lt") || div;
 
   // Lines can read differently per character (variants): this screen shows the
   // one for its crew file, if any. Null when the line isn't for this screen at all.
@@ -178,7 +209,7 @@
   // (blank lines ride along with the next), else the whole text. Same split as
   // the server's speechParts.
   function piecesOf(entry) {
-    if (!voiceOf(entry)?.chunked || entry.kind === "roll" || entry.kind === "player") return [entry.text];
+    if (!(voiceOf(entry)?.chunked || entry.character) || entry.kind === "roll" || entry.kind === "player") return [entry.text];
     const out = [];
     let pending = "";
     for (const row of entry.text.split("\n")) {
@@ -193,7 +224,7 @@
   function clipUrl(entry, part) {
     const q = new URLSearchParams();
     if (entry.vi >= 0) q.set("v", entry.vi);
-    if (voiceOf(entry)?.chunked) q.set("part", part);
+    if (voiceOf(entry)?.chunked || entry.character) q.set("part", part);
     const qs = q.toString();
     return `api/sessions/${code}/tts/${entry.id}${qs ? `?${qs}` : ""}`;
   }
@@ -202,7 +233,7 @@
     const entry = forMe(raw);
     if (!entry) return;
     const div = makeLine(entry);
-    div.textContent = entry.text;
+    textOf(div).textContent = entry.text;
     div.classList.add("done");
     linesEl.append(div);
   }
@@ -257,8 +288,8 @@
     // The whole clip always plays: a screen that's a moment late starts it a moment late.
     if (audio) audio.then((buf) => play.gen === lineGen && !play.cut && Voice.playNow(buf, play.entry.inPerson ? {} : voiceOf(play.entry)?.fx)); // (in person: their own voice, no speaker effects)
     // Type it out within the piece's time (all at once if this screen is late).
-    if (late > part.dur * 0.6) { play.div.textContent += text; scrollDown(); }
-    else typeInto(play.div, text, part.dur - Math.max(0, late));
+    if (late > part.dur * 0.6) { textOf(play.div).textContent += text; scrollDown(); }
+    else typeInto(textOf(play.div), text, part.dur - Math.max(0, late));
     if (part.last) setTimeout(() => finishLine(play), Math.max(0, part.dur - Math.max(0, late)));
   }
 
@@ -289,7 +320,7 @@
       const play = plays.get(id);
       if (!play) continue;
       play.cutAt = at;
-      if (play.div) play.div.textContent += " —";
+      if (play.div) textOf(play.div).textContent += " —";
       finishLine(play);
     }
     updateBusy();

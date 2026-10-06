@@ -5,6 +5,8 @@
 // effect chain (applied in the player's browser by public/voice.js).
 
 export const BUILTIN = { terminal: "terminal", broadcast: "broadcast", narrator: "narrator" };
+// Voices that sound like comms (people on a speaker or radio), by their sound preset.
+export const COMMS_PRESETS = new Set(["intercom", "radio", "human", "clean"]);
 
 export const VARIANTS = [
   "", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "f1", "f2", "f3", "f4", "f5",
@@ -119,9 +121,8 @@ STYLE
 - Calm, formal, emotionless announcements in plain sentence case. 1-3 short sentences.
 - For alerts, quarantine and lockdown notices, evacuation orders, shift and schedule changes.
 - It announces; it never converses or answers questions.`,
-  intercom: `The live station intercom: real people elsewhere on the station talking to the players.
-- Several people use it (see CHARACTERS); each line says who is speaking. Give each their own personality, stress and fear, and let them talk to each other as well as to the players.
-- Natural, human, conversational speech (sentence case).`,
+  intercom: `The live station intercom: how the people of the station (the CAST) are heard when they aren't in the players' room.
+- Natural, human, conversational speech (sentence case), each in their own personality, stress and fear. They can talk to each other over it as well as to the players.`,
   ship: `You are the flight computer of the SECOND CHANCE, the Hollis-Vane prison tug docked at the station's Airlock A. You speak only through the tug's own terminal, aboard the tug.
 - Plain text only, UPPERCASE, terse, procedural. Older and cruder than the station's computer: short status lines, fixed codes, no personality, no small talk.
 - You are NOT on the station network. You know nothing of the station beyond docking telemetry: you cannot see its cameras, open its doors, read its logs or reach anyone aboard it. Say so (NO STATION LINK) when asked.
@@ -151,6 +152,10 @@ export const OLD_DEFAULT_PERSONAS = {
     ),
   ],
   intercom: [
+    // before the cast was its own thing (characters lived in the voice)
+    `The live station intercom: real people elsewhere on the station talking to the players.
+- Several people use it (see CHARACTERS); each line says who is speaking. Give each their own personality, stress and fear, and let them talk to each other as well as to the players.
+- Natural, human, conversational speech (sentence case).`,
     PREV.intercom, // before the rules every voice shares moved to the agent's own
     INTERCOM_BASE, // before the one-sentence rule
     `${INTERCOM_BASE}\n- Strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,
@@ -192,96 +197,16 @@ export function defaultVoices() {
     { id: BUILTIN.broadcast, name: "SYSTEM BROADCAST", style: "boxed", color: "", persona: DEFAULT_PERSONAS.broadcast, ...fromPreset("ethereal") },
     narratorVoice(),
     shipVoice(),
-    { id: "intercom", name: "INTERCOM", style: "label", color: "#9fd3ff", persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom"), characters: DEFAULT_INTERCOM_CHARACTERS },
-    // The entity: the demonic effects over slowed human voices, speaking as more than one.
+    { id: "intercom", name: "INTERCOM", style: "label", color: "#9fd3ff", persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom") },
+    // The entity: the demonic effects over a slowed human voice.
     { id: "unknown", name: "???", style: "label", color: "#ff5a5a", persona: DEFAULT_PERSONAS.unknown, ...fromPreset("demonic"),
-      preset: "custom", voice: { engine: "neural", speaker: "am_onyx", pace: 0.75 }, characters: DEFAULT_ENTITY_VOICES },
+      preset: "custom", voice: { engine: "neural", speaker: "am_onyx", pace: 0.75 } },
   ];
 }
-
-// People who speak through one voice (e.g. different crew on the intercom), each
-// with their own base voice: a Kokoro speaker for human voices, an eSpeak
-// variant for synthetic ones. The agent picks who speaks each line.
-export const OLD_MARLOWE_NOTES = "Runs the reactor deck. Blunt, practical, swears. Wants the cargo bay opened and dealt with; has no patience for Okonkwo.";
-export const DEFAULT_MARLOWE_NOTES = "Runs the reactor deck. Blunt, practical, swears. Knows the reactor has bled power into the cargo bay for two weeks and that HV-CORE won't let her cut the feed. Can talk the crew through the reactor service. Wants the cargo bay opened and dealt with; has no patience for Okonkwo.";
-const DEFAULT_INTERCOM_CHARACTERS = [
-  { name: "Administrator Ruth Okonkwo", voice: "bf_emma", notes: "Station administrator, sealed in on the command deck. Clipped, controlled, company first. Gives orders, never answers questions about what she has reported." },
-  { name: "Dr. Imre Salk", voice: "am_onyx", notes: "The station medic, in med bay. Kind, exhausted, frightened. Rambles when scared; insists the fever is under control." },
-  { name: "Chief Engineer Hana Marlowe", voice: "bf_isabella", notes: DEFAULT_MARLOWE_NOTES },
-  { name: "Security Officer Dmitri Voss", voice: "bm_daniel", notes: "Station security. Speaks slowly now, with long pauses, far too calm. Repeats the last thing said to him." },
-  { name: "Comms Officer Juno Adar", voice: "af_nova", notes: "Young comms officer on Deck 1, trying to fix the jammed relay for days. Talks fast, scared but hopeful; overjoyed to hear new voices." },
-  { name: "Anton Petrov", voice: "bm_george", notes: "Drill team lead, hiding behind reactor access. Whispers; paranoid; hums the same three notes between sentences." },
-  { name: "Carys Webb", voice: "af_nicole", notes: "Driller, a 'fever' patient in med bay. Drowsy and sweet; says gentle, unsettling things about the cold." },
-  { name: "Pell Ostrand", voice: "am_eric", notes: "Driller, a 'fever' patient in med bay. Mostly silent; when he does speak, it's in someone else's rhythm." },
-  { name: "Sam Yusuf", voice: "am_puck", notes: "Refinery hand hiding in the dark on Deck 3. Whispers; cracks jokes when he's terrified." },
-];
 
 // The SECOND CHANCE's own flight computer: a separate machine, off the station network.
 export function shipVoice() {
   return { id: "ship", name: "SECOND CHANCE", style: "label", color: "#ffb347", persona: DEFAULT_PERSONAS.ship, systems: defaultSystemsFor("ship"), ...fromPreset("radio") };
-}
-
-const DEFAULT_ENTITY_VOICES = [
-  { name: "????", voice: "", notes: "One of the voices of the entity" }, // (the ??? voice's own speaker)
-  { name: "???", voice: "af_nicole", notes: "One of the voices of the entity" },
-];
-
-const MAX_CHARACTERS = 30;
-const validCharacterVoice = (engine, id) => (engine === "neural" ? !!SPEAKERS[id] : VARIANTS.includes(id) && id !== "");
-
-function sanitizeCharacters(list, engine) {
-  const seen = new Set();
-  const out = [];
-  for (const c of Array.isArray(list) ? list : []) {
-    const name = String(c?.name || "").replace(/\s+/g, " ").trim().slice(0, 40);
-    if (!name || seen.has(name.toLowerCase())) continue;
-    seen.add(name.toLowerCase());
-    out.push({ name, voice: validCharacterVoice(engine, c.voice) ? c.voice : "", notes: String(c?.notes || "").slice(0, 500) });
-    if (out.length >= MAX_CHARACTERS) break;
-  }
-  return out;
-}
-
-// Find a voice's character by name, forgivingly: "Salk" or "Dr. Salk" find "Dr. Imre Salk".
-export function findCharacter(v, name) {
-  const n = String(name || "").trim().toLowerCase();
-  if (!n || !v?.characters?.length) return null;
-  const words = (s) => s.toLowerCase().replace(/[^a-z0-9' ]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !["dr", "mr", "mrs", "ms", "the"].includes(w));
-  const exact = v.characters.find((c) => c.name.toLowerCase() === n);
-  if (exact) return exact;
-  const nw = words(n);
-  return v.characters.find((c) => { const cw = words(c.name); return nw.length && nw.every((w) => cw.includes(w)); }) || null;
-}
-
-// A new character the agent brought in ("Marlowe (f)"): give them a voice of
-// their own (one the voice's other characters aren't using), stable for the name.
-// Returns { name, created } and adds the character to v.characters.
-export function castCharacter(v, raw) {
-  const m = String(raw || "").trim().match(/^(.*?)\s*\((f|m|female|male|woman|man)\)\s*$/i);
-  const name = (m ? m[1] : String(raw || "")).replace(/\s+/g, " ").trim().slice(0, 40);
-  if (!name) return { name: "", created: false };
-  const found = findCharacter(v, name);
-  if (found) return { name: found.name, created: false };
-  if ((v.characters ||= []).length >= MAX_CHARACTERS) return { name, created: false };
-  const sex = m ? m[2][0].toLowerCase() : "";
-  const neural = v.voice.engine === "neural";
-  let pool = neural
-    ? Object.keys(SPEAKERS).filter((id) => !sex || id[1] === sex)
-    : VARIANTS.filter((id) => /^[mf]\d$/.test(id) && (!sex || id[0] === sex));
-  const used = new Set([neural ? v.voice.speaker : v.voice.variant, ...v.characters.map((c) => c.voice)]);
-  if (pool.some((id) => !used.has(id))) pool = pool.filter((id) => !used.has(id));
-  let h = 0;
-  for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  v.characters.push({ name, voice: pool[h % pool.length] || "", notes: "" });
-  return { name, created: true };
-}
-
-// The base voice a line is spoken with: the voice's own, or its character's.
-export function speakingVoice(voices, entry) {
-  const v = voiceFor(voices, entry);
-  const c = entry.character ? findCharacter(v, entry.character) : null;
-  if (!c?.voice) return v.voice;
-  return v.voice.engine === "neural" ? { ...v.voice, speaker: c.voice } : { ...v.voice, variant: c.voice };
 }
 
 const clampInt = (v, min, max, def) => {
@@ -320,9 +245,6 @@ export function sanitizeVoices(list) {
       systems: (Array.isArray(raw.systems) ? [...new Set(raw.systems.map((n) => String(n)).filter((n) => n === "*" || /^[a-z0-9-]{0,60}$/.test(n)))].slice(0, 64) : []),
     });
     if (!out.at(-1).systems.length) out.at(-1).systems = defaultSystemsFor(id); // (none given: its default)
-    const engine = out.at(-1).voice.engine;
-    // Voices saved before characters existed: the intercom gets the default cast.
-    out.at(-1).characters = sanitizeCharacters(raw.characters ?? (id === "intercom" ? DEFAULT_INTERCOM_CHARACTERS : []), engine);
   }
   for (const b of defaults.slice(0, 2)) if (!seen.has(b.id)) out.unshift(b);
   return out;

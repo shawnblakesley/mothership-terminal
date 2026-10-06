@@ -124,7 +124,8 @@ Each player reads their own screen as their own character, so one line can say d
 
 - station name, screen colour, public lore and guarded secrets,
 - the station state and a deck/room layout with connections (previewed as a map),
-- the computer's name and personality, the broadcast voice, and other voices with a named cast, each character with a description and their own speaker voice,
+- the computer's name and personality, the broadcast voice, the intercom and any other voices,
+- the characters (the story's people), each with a description, their own speaker voice and the room they start in,
 - up to four player characters with full sheets and backstories.
 
 Keep talking to change things, then **Redraft**. **Apply to this session** replaces the station, lore, secrets, voices, map and crew, and clears the log; your provider, key, mode and sounds stay. Players stay connected and pick a new crew file. The builder uses the session's model and key; with DeepSeek a draft takes under a minute and costs a fraction of a cent.
@@ -163,7 +164,7 @@ If a player types while lines are still playing, the comms cut off on every scre
 
 The story is saved the moment it's first played: a player types, rolls or changes their sheet; you give a Direction, Speak, write a Note, speak with Listen on, call a roll, hand something out or start a clock; or the agent replies. Until then, set it up as you like.
 
-**Restart story** (⚙) puts it back exactly as it was then: setting, lore, secrets, standing orders, cast and voices (characters the agent added in play are gone), map and floor plans, terminals (reachable as the story starts them), every character sheet, the station state and the synopsis. It clears the log, rolls, rulings, drafts, clocks, effects, playing sounds and shown floor plans, and hands out the starting documents again. Your settings (AI, mode, switches, voice output) and sounds are kept, and players stay connected, as GUEST, at the starting terminal.
+**Restart story** (⚙) puts it back exactly as it was then: setting, lore, secrets, standing orders, characters (where they started; anyone the agent added in play is gone) and voices, map and floor plans, terminals (reachable as the story starts them), every character sheet, the station state and the synopsis. It clears the log, rolls, rulings, drafts, clocks, effects, playing sounds and shown floor plans, and hands out the starting documents again. Your settings (AI, mode, switches, voice output) and sounds are kept, and players stay connected, as GUEST, at the starting terminal.
 
 After a restart the next first move saves the story again, so changes you make in between count.
 
@@ -307,18 +308,29 @@ Sounds play through the players' VOL control. Players who join or reload mid-sce
 
 **The narrator** is part of every adventure: a plain, calm human voice (NARRATOR) that describes what happens around the players, like water dripping, a panel flickering, an explosion below, people moving and reacting. Its lines show as white italic scene description with no name, whatever the terminal's colour. It never speaks to the players or their characters (never "you"), never says what the characters do or feel, keeps it brief (a sentence or two, under 25 words), and is used when something happens, not on every reply. It's heard on every system (it's the room, not a machine). Switch it off under ⚙ (**narrate the scene**); you can still Speak as it yourself. The first time a voice that isn't a screen's computer is heard on a system (once per voice per system, again after Restart story), the narrator brings it in with one line. For comms (the intercom, broadcasts, a radio) that's where it comes from and how worn the speaker is ("A cracked speaker grille by the door spits static, then a voice."); for a creature or entity, something specific to what it is, never a speaker. The agent writes these. If it doesn't (or you Speak as the voice), the app adds a stock line for comms voices; there's no stock line for a creature or entity. As things get worse, the narrator may now and then show the speakers wearing down.
 
-Every line on the players' screen belongs to a voice, and **the agent can speak as any of them**. No voice is the default: the agent answers as whoever would really respond. If the players talk to Salk, Salk answers on the intercom; HV-CORE answers terminal commands. A reply can mix voices, for example Dr. Salk on the intercom, then a station-wide announcement. Two voices are built in: **HV-CORE** (the terminal) and **System Broadcast**. Add any number of others under **Voices, personas & settings**, such as an intercom, a stranger on comms, or the thing in the vents. You can also pick one in the comms box (or Tab to it) and **Speak** as it yourself.
+Every line on the players' screen belongs to a voice, and **the agent can speak as any of them**. No voice is the default: the agent answers as whoever would really respond. If the players talk to Salk, Salk answers (in person or over the intercom, see **Characters** below); HV-CORE answers terminal commands. A reply can mix voices, for example Dr. Salk on the intercom, then a station-wide announcement. Two voices are built in: **HV-CORE** (the terminal) and **System Broadcast**. Add any number of others under **Voices, personas & settings**, such as an intercom, a stranger on comms, or the thing in the vents. You can also pick one in the comms box (or Tab to it) and **Speak** as it yourself.
 
 Each voice has:
 
 - **Persona:** who it is, how it talks and what it knows. The agent reads every voice's persona. HV-CORE's persona is the terminal's main personality.
 
-- **Characters** (for voices several people share, like the intercom): each has a name, their own speaker voice and a short note the agent reads. The agent switches between them line by line ("INTERCOM · SALK:", then "INTERCOM · MARLOWE:"), so it can stage conversations. When it brings in someone new, they're added automatically with a voice of their own, matching whether it wrote them as a woman or a man; change it any time. You can also **Speak** as any character.
 - **On-screen style:** plain text, a `NAME:` label, or boxed, plus an optional colour.
 - **Engine:** **Human** (neural, natural-sounding: 28 US/UK male and female speakers, adjustable pace) or **Synthetic** (eSpeak, with pitch and speed). Human is best for intercoms and people on comms. Synthetic suits machines and monsters.
 - **Effects:** speed/pitch, low and high cut, distortion, robot warble (ring modulation), metallic resonance, chorus, echo, reverb and radio hiss. Presets: **intercom** and **human** (human engine), and robotic, ethereal, radio, demonic, whisper and clean (synthetic).
 
 **▶ Test** plays a voice on your computer only. Lines you send as a voice become part of the agent's history as that voice speaking, so it stays consistent.
+
+### Characters
+
+The story's people (Salk, Okonkwo, Marlowe...) are listed under **Characters** on the **Crew** tab, apart from the voices. Each has a name, a human speaker voice (▶ to hear it), notes the agent reads, the **room** they're in now, and an optional **picture**.
+
+- **Where they are decides how they're heard.** Someone in the same room as a player's terminal talks to them **face to face**: a clear voice with no speaker effects, shown as `SALK:` in the screen's own colour, and only on screens in that room. Anyone else comes **over the intercom** (`INTERCOM · SALK:`), with its static and effects, wherever the intercom reaches. Each card says which (**in person** or **intercom**). **Heard elsewhere over** (unlocked) picks the voice they come through; the intercom by default.
+- **The agent keeps them moving.** It moves people between rooms as the story goes (someone walks in, flees, is dragged off, dies), brings in new people with a voice of their own, and rewrites someone's notes when what's true about them changes. Each change is noted in your log, and **Retcon** undoes it. You can change the room any time, even locked; the rest when unlocked.
+- **Pictures:** click the square at the left of a card to pick an image. It's cropped to a small square and shown to the left of what they say on the players' screens, about two lines tall and tinted to the line's colour. Face to face it's clean; over the intercom it flickers with static and rolling lines. **Remove picture** takes it off. Pictures are kept under `data/portraits/<CODE>/` and deleted with their session.
+- The map shows each character in their room, along with whoever else the station state lists there.
+- You can **Speak** as any character (pick them in the comms box): face to face or over the intercom, by where they are.
+
+Other voices (the entity, the tug's computer) speak with one voice each.
 
 Speech is generated on the server, with no API key and no per-use cost:
 

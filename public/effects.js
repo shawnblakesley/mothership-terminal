@@ -389,7 +389,8 @@
       const glyphs = "▓▒░█▄▀■□◊¥§¤ØÆ#%&@!?/\\|<>{}[]~^*";
       const iv = setInterval(() => {
         const lines = document.querySelectorAll("#lines .line.done");
-        for (const line of lines) {
+        for (const el of lines) {
+          const line = el.querySelector(".lt") || el; // (beside a portrait: just its text)
           if (!line.dataset.orig) line.dataset.orig = line.textContent;
           const orig = line.dataset.orig;
           const p = 0.04 * fx.intensity + Math.random() * 0.05;
@@ -402,7 +403,7 @@
         el: null,
         stop: () => {
           clearInterval(iv);
-          for (const line of document.querySelectorAll("#lines .line[data-orig]")) {
+          for (const line of document.querySelectorAll("#lines .line[data-orig], #lines .line .lt[data-orig]")) {
             line.textContent = line.dataset.orig;
             delete line.dataset.orig;
           }
