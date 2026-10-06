@@ -113,16 +113,16 @@
       const iv = setInterval(blast, 2200);
       return () => { on = false; clearInterval(iv); };
     },
-    // A horror sting, for a reveal: a hiss swelling up, then a sub-bass hit with a low
-    // boom, a dissonant growling chord that darkens as it fades, and a thin screech
-    // sliding down over it. About 2.5 s. (into: any AudioContext and node, for testing.)
+    // A horror sting, for a reveal (about 1 s): a quick hiss swelling up, then a sharp
+    // crack over a sub-bass hit, a bright dissonant chord snapping shut, and a high
+    // screech sliding down. (into: any AudioContext and node, for testing.)
     sting(into) {
       if (!into && !this.ok()) return;
       const ctx = into?.ctx || this.ctx, dest = into?.dest || this.bus();
-      const t0 = into?.at ?? ctx.currentTime, hit = t0 + 0.38;
+      const t0 = into?.at ?? ctx.currentTime, hit = t0 + 0.12;
       const out = ctx.createGain(); out.gain.value = 0.4; out.connect(dest);
       const noise = () => {
-        const len = ctx.sampleRate * 2, b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0);
+        const len = ctx.sampleRate, b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
         const src = ctx.createBufferSource(); src.buffer = b; return src;
       };
@@ -131,38 +131,41 @@
         g.gain.exponentialRampToValueAtTime(peak, at + attack);
         g.gain.exponentialRampToValueAtTime(0.0001, at + attack + decay);
       };
-      // 1. the swell: hiss rising into the hit
+      // 1. the swell: a quick hiss rising into the hit
       { const n = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
-        f.type = "bandpass"; f.Q.value = 1.2;
-        f.frequency.setValueAtTime(400, t0); f.frequency.exponentialRampToValueAtTime(3500, hit);
-        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.18, hit - 0.02); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.05);
-        n.connect(f); f.connect(g); g.connect(out); n.start(t0); n.stop(hit + 0.1); }
-      // 2. the hit: a falling sub-bass thud and a low noise boom
+        f.type = "bandpass"; f.Q.value = 1.5;
+        f.frequency.setValueAtTime(800, t0); f.frequency.exponentialRampToValueAtTime(5000, hit);
+        g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.2, hit - 0.005); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.03);
+        n.connect(f); f.connect(g); g.connect(out); n.start(t0); n.stop(hit + 0.05); }
+      // 2. the hit: a sharp crack on top of a short sub-bass thud and low boom
+      { const n = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+        f.type = "highpass"; f.frequency.value = 2500;
+        env(g, hit, 0.35, 0.002, 0.06); n.connect(f); f.connect(g); g.connect(out); n.start(hit); n.stop(hit + 0.1); }
       { const o = ctx.createOscillator(), g = ctx.createGain();
-        o.type = "sine"; o.frequency.setValueAtTime(70, hit); o.frequency.exponentialRampToValueAtTime(28, hit + 1.4);
-        env(g, hit, 0.32, 0.01, 1.5); o.connect(g); g.connect(out); o.start(hit); o.stop(hit + 1.6); }
+        o.type = "sine"; o.frequency.setValueAtTime(85, hit); o.frequency.exponentialRampToValueAtTime(32, hit + 0.6);
+        env(g, hit, 0.32, 0.004, 0.65); o.connect(g); g.connect(out); o.start(hit); o.stop(hit + 0.7); }
       { const n = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
-        f.type = "lowpass"; f.frequency.value = 220;
-        env(g, hit, 0.3, 0.005, 0.9); n.connect(f); f.connect(g); g.connect(out); n.start(hit); n.stop(hit + 1); }
-      // 3. the stab: a dissonant cluster (a semitone rub and a tritone), growling, darkening as it dies
+        f.type = "lowpass"; f.frequency.value = 260;
+        env(g, hit, 0.28, 0.003, 0.4); n.connect(f); f.connect(g); g.connect(out); n.start(hit); n.stop(hit + 0.45); }
+      // 3. the stab: a bright dissonant cluster (a semitone rub and a tritone), snapping shut
       { const f = ctx.createBiquadFilter(), g = ctx.createGain();
-        f.type = "lowpass"; f.Q.value = 4;
-        f.frequency.setValueAtTime(2400, hit); f.frequency.exponentialRampToValueAtTime(260, hit + 2.2);
-        g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.32, hit + 0.015); g.gain.exponentialRampToValueAtTime(0.16, hit + 0.6); g.gain.exponentialRampToValueAtTime(0.08, hit + 1.6); g.gain.exponentialRampToValueAtTime(0.0001, hit + 2.2);
-        for (const [hz, det] of [[110, -7], [116.5, 6], [155.6, -3], [233, 9], [246.9, -10]]) {
+        f.type = "lowpass"; f.Q.value = 3;
+        f.frequency.setValueAtTime(4200, hit); f.frequency.exponentialRampToValueAtTime(600, hit + 0.85);
+        g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.34, hit + 0.008); g.gain.exponentialRampToValueAtTime(0.13, hit + 0.3); g.gain.exponentialRampToValueAtTime(0.06, hit + 0.72); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.86);
+        for (const [hz, det] of [[110, -7], [116.5, 6], [155.6, -3], [233, 9], [246.9, -10], [329.6, 5]]) {
           const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = hz; o.detune.value = det;
-          o.connect(f); o.start(hit); o.stop(hit + 2.3);
+          o.connect(f); o.start(hit); o.stop(hit + 0.9);
         }
         f.connect(g); g.connect(out); }
-      // 4. the screech: a thin, bowed glissando sliding down over the top, with a nervous vibrato
+      // 4. the screech: high and thin, sliding down fast, with a nervous vibrato
       { const o = ctx.createOscillator(), lfo = ctx.createOscillator(), depth = ctx.createGain(), f = ctx.createBiquadFilter(), g = ctx.createGain();
         o.type = "sawtooth";
-        o.frequency.setValueAtTime(2100, hit + 0.05); o.frequency.exponentialRampToValueAtTime(820, hit + 1.9);
-        lfo.frequency.value = 7.5; depth.gain.value = 28; lfo.connect(depth); depth.connect(o.frequency);
-        f.type = "bandpass"; f.frequency.value = 1500; f.Q.value = 2.5;
-        g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.16, hit + 0.3); g.gain.exponentialRampToValueAtTime(0.09, hit + 1.4); g.gain.exponentialRampToValueAtTime(0.0001, hit + 2.05);
-        o.connect(f); f.connect(g); g.connect(out); o.start(hit); lfo.start(hit); o.stop(hit + 2.05); lfo.stop(hit + 2.05); }
-      return hit + 2.2 - t0; // (how long it lasts)
+        o.frequency.setValueAtTime(2600, hit); o.frequency.exponentialRampToValueAtTime(1100, hit + 0.85);
+        lfo.frequency.value = 9; depth.gain.value = 35; lfo.connect(depth); depth.connect(o.frequency);
+        f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 2.5;
+        g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.16, hit + 0.06); g.gain.exponentialRampToValueAtTime(0.09, hit + 0.55); g.gain.exponentialRampToValueAtTime(0.045, hit + 0.75); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.86);
+        o.connect(f); f.connect(g); g.connect(out); o.start(hit); lfo.start(hit); o.stop(hit + 0.9); lfo.stop(hit + 0.9); }
+      return hit + 0.88 - t0; // (how long it lasts)
     },
     powerDown() {
       if (!this.ok()) return;
