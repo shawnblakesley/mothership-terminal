@@ -165,9 +165,9 @@ body {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.32) 2px 3px);
 }
-/* Over the intercom: dimmer, crawling static, a rolling bar, flicker and jitter. */
+/* Over the intercom: dimmer, crawling static, a rolling bar and flicker (the picture itself holds still). */
 .portrait.comms { animation: p-flicker 2.7s infinite steps(1); }
-.portrait.comms .ink { filter: brightness(0.85) blur(0.4px); animation: p-jitter 0.35s infinite steps(2); }
+.portrait.comms .ink { filter: brightness(0.85) blur(0.4px); }
 .portrait.comms::before {
   content: ""; position: absolute; inset: -32px; z-index: 1; pointer-events: none;
   background-image: var(--noise, none); background-size: 32px 32px; image-rendering: pixelated;
@@ -181,11 +181,10 @@ body {
   animation: p-roll 2.2s linear infinite;
 }
 @keyframes p-noise { 0% { transform: translate(0, 0); } 25% { transform: translate(-11px, 7px); } 50% { transform: translate(9px, -13px); } 75% { transform: translate(-5px, 15px); } }
-@keyframes p-jitter { 0% { transform: translateX(0); } 50% { transform: translateX(1px); } }
 @keyframes p-roll { from { background-position: 0 -60%, 0 0; } to { background-position: 0 160%, 0 0; } }
 @keyframes p-flicker { 0%, 100% { opacity: 0.8; } 7% { opacity: 0.45; } 9% { opacity: 0.85; } 52% { opacity: 0.7; } 54% { opacity: 0.35; } 56% { opacity: 0.8; } }
 @media (prefers-reduced-motion: reduce) {
-  .portrait.comms, .portrait.comms .ink, .portrait.comms::before, .portrait.comms::after { animation: none; }
+  .portrait.comms, .portrait.comms::before, .portrait.comms::after { animation: none; }
 }
 /* The narrator: scene description, set apart from the voices. */
 .line.style-narration { font-style: italic; color: #ecece6 !important; text-shadow: 0 0 2px rgba(236, 236, 230, 0.45), 0 0 9px rgba(236, 236, 230, 0.25) !important; }

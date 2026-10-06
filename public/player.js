@@ -24,11 +24,18 @@
     }, delay);
   });
 
+  // The portrait pack's credit (its licence asks for one): on the start-up screen
+  // only, not during play; and not at all once we know the story uses none of its pictures.
+  function showCredit() {
+    $("credit").hidden = bootEl.classList.contains("gone") || header.portraitCredit === false;
+  }
+
   // Turn on the terminal: unlock audio (needs a key press/click), CRT power-on.
   function powerOn() {
     FX.Sound.unlock();
     FX.Sound.beep(1200, 0.05);
     bootEl.classList.add("gone");
+    showCredit();
     const crtEl = $("crt");
     crtEl.classList.add("power-on");
     crtEl.addEventListener("animationend", () => crtEl.classList.remove("power-on"), { once: true });
@@ -70,6 +77,7 @@
 
   if (spectate) {
     bootEl.classList.add("gone");
+    showCredit();
     form.hidden = true;
     FX.Sound.muted = true;
     document.querySelector(".vol").hidden = true;
@@ -98,7 +106,7 @@
   // ------------------------------------------------------------ header / clock
   function applyHeader(h) {
     header = h;
-    $("credit").hidden = !h.portraitCredit; // (the bundled portraits' licence asks for it)
+    showCredit();
     applyTerminal(); // (with the names: a terminal on another system shows that system's)
     renderSide();
     if (!$("crewfile").hidden) renderFile();
@@ -1294,6 +1302,7 @@
         // The session ended (or expired): back to the code prompt.
         if (spectate) return;
         bootEl.classList.remove("gone");
+        showCredit();
         bootText.textContent = "SESSION TERMINATED.\n\n";
         $("boot-press").hidden = true;
         return askForCode();
