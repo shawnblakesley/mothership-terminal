@@ -599,6 +599,7 @@ export class Session {
       voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: v.name, style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
       // The cast's portraits, by lowercase name (lines name who speaks).
       portraits: Object.fromEntries((c.cast || []).filter((m) => m.portrait).map((m) => [m.name.toLowerCase(), m.portrait])),
+      portraitCredit: (c.cast || []).some((m) => m.portrait.startsWith("kit/")), // (the bundled ones need their credit shown)
     };
   }
 

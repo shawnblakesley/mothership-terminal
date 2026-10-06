@@ -98,6 +98,7 @@
   // ------------------------------------------------------------ header / clock
   function applyHeader(h) {
     header = h;
+    $("credit").hidden = !h.portraitCredit; // (the bundled portraits' licence asks for it)
     applyTerminal(); // (with the names: a terminal on another system shows that system's)
     renderSide();
     if (!$("crewfile").hidden) renderFile();
@@ -176,7 +177,7 @@
       const pic = document.createElement("span");
       pic.className = `portrait${entry.inPerson ? "" : " comms"}`;
       const img = document.createElement("img");
-      img.src = `api/sessions/${code}/portraits/${portrait}`;
+      img.src = portrait.startsWith("kit/") ? `portraits/${portrait.slice(4)}` : `api/sessions/${code}/portraits/${portrait}`;
       img.alt = "";
       img.onerror = () => pic.remove();
       pic.append(img);

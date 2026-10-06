@@ -537,7 +537,7 @@
   // in a room with players they talk face to face, anywhere else over the intercom.
   // The room is set in read-only too (it changes in play).
   let castDraft = null, castTimer = null, castSentAt = 0;
-  const portraitUrl = (file) => `api/sessions/${code}/portraits/${file}`;
+  const portraitUrl = (file) => (file.startsWith("kit/") ? `portraits/${file.slice(4)}` : `api/sessions/${code}/portraits/${file}`);
   const initials = (name) => { const w = name.split(/\s+/).filter(Boolean); return ((w[0]?.[0] || "") + (w.length > 1 ? w.at(-1)[0] : "")).toUpperCase(); };
   function renderCast(fromDraft = false) {
     const panel = $("cast");
