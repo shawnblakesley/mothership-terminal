@@ -147,21 +147,21 @@
       { const n = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
         f.type = "lowpass"; f.frequency.value = 260;
         env(g, hit, 0.28, 0.003, 0.4); n.connect(f); f.connect(g); g.connect(out); n.start(hit); n.stop(hit + 0.45); }
-      // 3. the stab: a bright dissonant cluster (a semitone rub and a tritone), snapping shut
+      // 3. the stab: a bright dissonant cluster (a tritone, and a semitone rub up high), snapping shut
       { const f = ctx.createBiquadFilter(), g = ctx.createGain();
         f.type = "lowpass"; f.Q.value = 3;
         f.frequency.setValueAtTime(4200, hit); f.frequency.exponentialRampToValueAtTime(600, hit + 0.85);
         g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.34, hit + 0.008); g.gain.exponentialRampToValueAtTime(0.13, hit + 0.3); g.gain.exponentialRampToValueAtTime(0.06, hit + 0.72); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.86);
-        for (const [hz, det] of [[110, -7], [116.5, 6], [155.6, -3], [233, 9], [246.9, -10], [329.6, 5]]) {
+        for (const [hz, det] of [[110, -2], [155.6, 2], [233, -2], [246.9, 3], [329.6, -2]]) { // (the semitone rub up high: harsh, not warbling)
           const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = hz; o.detune.value = det;
           o.connect(f); o.start(hit); o.stop(hit + 0.9);
         }
         f.connect(g); g.connect(out); }
-      // 4. the screech: high and thin, sliding down fast, with a nervous vibrato
+      // 4. the screech: high and thin, sliding down fast
       { const o = ctx.createOscillator(), lfo = ctx.createOscillator(), depth = ctx.createGain(), f = ctx.createBiquadFilter(), g = ctx.createGain();
         o.type = "sawtooth";
         o.frequency.setValueAtTime(2600, hit); o.frequency.exponentialRampToValueAtTime(1100, hit + 0.85);
-        lfo.frequency.value = 9; depth.gain.value = 35; lfo.connect(depth); depth.connect(o.frequency);
+        lfo.frequency.value = 6; depth.gain.value = 8; // (a faint tremble, not a warble) lfo.connect(depth); depth.connect(o.frequency);
         f.type = "bandpass"; f.frequency.value = 2000; f.Q.value = 2.5;
         g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.16, hit + 0.06); g.gain.exponentialRampToValueAtTime(0.09, hit + 0.55); g.gain.exponentialRampToValueAtTime(0.045, hit + 0.75); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.86);
         o.connect(f); f.connect(g); g.connect(out); o.start(hit); lfo.start(hit); o.stop(hit + 0.9); lfo.stop(hit + 0.9); }
