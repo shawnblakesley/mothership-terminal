@@ -21,18 +21,18 @@
       <span id="hdr-clock">00:00:00</span>
       <span id="hdr-link" class="link" title="Connection">● LINK</span>
       <span class="sep">//</span>
-      <button id="hdr-term" class="hdr-btn" type="button" title="Which terminal you're at" hidden>TERM</button>
+      <button id="hdr-term" class="hdr-btn" type="button" title="Your terminal" hidden>TERM</button>
       <span class="sep" id="hdr-term-sep" hidden>//</span>
       <button id="hdr-file" class="hdr-btn" type="button" title="Your crew file" hidden>FILE</button>
       <span class="sep" id="hdr-file-sep" hidden>//</span>
-      <button id="hdr-docs" class="hdr-btn" type="button" title="Documents you've been given" hidden>DOCS</button>
+      <button id="hdr-docs" class="hdr-btn" type="button" title="Your documents" hidden>DOCS</button>
       <span class="sep" id="hdr-docs-sep" hidden>//</span>
-      <button id="hdr-pilot" class="hdr-btn" type="button" title="You're the pilot: the AI, the story, inviting others" hidden>PILOT</button>
+      <button id="hdr-pilot" class="hdr-btn" type="button" title="Pilot controls" hidden>PILOT</button>
       <span class="sep" id="hdr-pilot-sep" hidden>//</span>
-      <button id="hdr-rules" class="hdr-btn" type="button" title="How to play: the rules, in plain text">RULES</button>
+      <button id="hdr-rules" class="hdr-btn" type="button" title="How to play">RULES</button>
       <span class="sep">//</span>
       <span class="vol">
-        <button id="vol-mute" type="button" title="Mute / unmute">VOL</button>
+        <button id="vol-mute" type="button" title="Mute">VOL</button>
         <span id="vol-bars" role="slider" tabindex="0" aria-label="Volume" aria-valuemin="0" aria-valuemax="10"></span>
       </span>
     </header>
@@ -172,7 +172,7 @@
       <button type="button" class="dlg-close" aria-label="Close">✕</button>
     </div>
     <form class="rules-body pilotform" id="soloStartForm" autocomplete="off">
-      <p class="lead">The AI builds a story and runs it: every voice, every roll, every consequence. You're the pilot: the AI runs on your key, and you pick the story. Then share the code and everyone joins.</p>
+      <p class="lead">The AI builds and runs the story. You pick the story and provide the API key. Then share the code so others can join.</p>
       <label>AI <select id="ss-provider"></select></label>
       <label id="ss-keyrow">Your API key <a id="ss-keylink" target="_blank" rel="noopener">get one ↗</a>
         <input id="ss-key" type="password" spellcheck="false"></label>
@@ -190,7 +190,7 @@
     </div>
     <div class="rules-body pilotform">
       <h2>Invite</h2>
-      <p>Session code <b id="pl-code"></b>. Others join at this page with the code, or with the link: <button type="button" id="pl-copy" class="ghostbtn">Copy link</button></p>
+      <p>Session code <b id="pl-code"></b>. Others join here with the code or this link: <button type="button" id="pl-copy" class="ghostbtn">Copy link</button></p>
       <h2>The AI</h2>
       <label>Provider <select id="pl-provider"></select></label>
       <label>Model <select id="pl-model"></select></label>
@@ -199,7 +199,7 @@
       <div class="row" id="pl-keyactions"><button type="button" id="pl-keysave">Save key</button><span id="pl-keystatus" class="fine"></span></div>
       <h2>The game</h2>
       <div class="row"><button type="button" id="pl-wrapup">Wrap up the story</button><button type="button" id="pl-newstory">Choose a new story</button><button type="button" id="pl-end" class="dangerbtn">End the game</button></div>
-      <p class="fine">Wrap up ends the story here, with THE END and a recap for everyone. A new story starts over. Ending the game closes it for everyone.</p>
+      <p class="fine">Wrap up: ends the story with a recap. New story: starts over. End the game: closes it for everyone.</p>
     </div>
   </dialog>
 

@@ -28,10 +28,10 @@
   const time = (ts) => new Date(ts).toTimeString().slice(0, 5);
 
   const FX_META = {
-    blood: ["🩸", "Blood"], goo: ["🟢", "Goo"], crack: ["💥", "Crack"],
-    alarm: ["🚨", "Hacker alarm"], redalert: ["🔴", "Red alert"], glitch: ["📺", "Glitch"],
-    static: ["▒", "Static"], blackout: ["⬛", "Blackout"], lockout: ["🔒", "Lockout"],
-    banner: ["📢", "Banner"], corrupt: ["⌧", "Corrupt text"],
+    blood: ["", "Blood"], goo: ["", "Goo"], crack: ["", "Crack"],
+    alarm: ["", "Hacker alarm"], redalert: ["", "Red alert"], glitch: ["", "Glitch"],
+    static: ["", "Static"], blackout: ["", "Blackout"], lockout: ["", "Lockout"],
+    banner: ["", "Banner"], corrupt: ["", "Corrupt text"],
   };
 
   // ------------------------------------------------------------ socket
@@ -48,7 +48,7 @@
       $("conn").textContent = "offline"; $("conn").className = "pill bad";
       if (ev.code === 4003 || ev.code === 4004) {
         store.del(tokenKey(code));
-        return showStart(ev.code === 4004 ? `Session ${code} has ended or expired.` : `This device isn't the Warden for session ${code}. Use its Warden link.`);
+        return showStart(ev.code === 4004 ? `Session ${code} has ended.` : `Not the Warden for ${code}. Use its Warden link.`);
       }
       setTimeout(connect, ev.code === 4029 ? 10000 : 1500);
     };
@@ -75,7 +75,7 @@
         $("docTitle").value = msg.title;
         $("docText").value = msg.text;
         $("docText").rows = Math.min(14, Math.max(4, msg.text.split("\n").length + 1));
-        toast("Handout written: read it over, then hand it out.");
+        toast("Handout drafted. Review it, then hand it out.");
       }
     };
   }
@@ -129,7 +129,7 @@
 
   async function copy(text, what) {
     try { await navigator.clipboard.writeText(text); toast(`${what} copied.`); }
-    catch { ask(`Copy the ${what.toLowerCase()}`, "Your browser blocked copying. Select the text below and copy it.", [], text); }
+    catch { ask(`Copy the ${what.toLowerCase()}`, "Copying was blocked. Copy it from below.", [], text); }
   }
 
   // ------------------------------------------------------------ start screen
@@ -160,7 +160,7 @@
     $("startErr").textContent = error;
     const provs = await loadProviders();
     const sel = $("newProvider");
-    sel.innerHTML = provs.map((p) => `<option value="${esc(p.id)}">${esc(p.label)} · ${p.free ? "no key needed, rate-limited" : p.localKey ? "this computer's key" : `cheapest: ${esc(p.models[0].label)}`}</option>`).join("");
+    sel.innerHTML = provs.map((p) => `<option value="${esc(p.id)}">${esc(p.label)} · ${p.free ? "free, rate-limited" : p.localKey ? "local key" : `cheapest: ${esc(p.models[0].label)}`}</option>`).join("");
     // On this computer with a key in .env: that provider first, nothing to paste.
     const local = provs.find((p) => p.localKey);
     if (local) sel.value = local.id;
@@ -172,7 +172,7 @@
       $("newKeyFields").hidden = free;
       $("newKey").required = !free;
       $("newFreeNote").hidden = !free;
-      $("newFreeNote").textContent = p?.localKey ? `Running on this computer: this game uses the ${p.label} key in your .env file, so there's nothing to paste.` : FREE_NOTE;
+      $("newFreeNote").textContent = p?.localKey ? `Uses the ${p.label} key in your .env file.` : FREE_NOTE;
       $("newKeyNote").hidden = free;
       $("newKey").placeholder = p?.keyHint || "";
       $("keyLink").href = p?.keyUrl || "#";
@@ -196,7 +196,7 @@
 
   $("mine").addEventListener("click", async (e) => {
     const c = e.target.closest("[data-forget]")?.dataset.forget;
-    if (c && await sure(`Forget session ${c}?`, "It keeps running on the server; you'd need its Warden link to get back in on this device.", "Forget")) {
+    if (c && await sure(`Forget session ${c}?`, "It keeps running. You'll need its Warden link to return.", "Forget")) {
       store.del(tokenKey(c));
       showStart();
     }
@@ -236,7 +236,7 @@
       store.set(tokenKey(c), t);
       location.href = `dm?s=${c}`;
     } catch {
-      $("startErr").textContent = "That isn't a Warden link. It looks like …/dm?s=CODE#token=…";
+      $("startErr").textContent = "Not a Warden link. Expected …/dm?s=CODE#token=…";
     }
   });
 
@@ -250,13 +250,13 @@
     const sync = () => {
       const p = S.providers.find((x) => x.id === sel.value);
       $("keyValue").value = "";
-      $("keyValue").placeholder = p.configured ? "•••••••• (set — paste to replace)" : p.keyHint;
+      $("keyValue").placeholder = p.configured ? "•••••••• set, paste to replace" : p.keyHint;
       $("keyLink2").href = p.keyUrl || "#";
       $("keyRemember").checked = !!store.get(`wardenKey:${p.id}`);
       $("keyRemove").hidden = !p.configured;
       $("keyStatus").textContent = p.configured
-        ? "A key is set for this session."
-        : "No key yet. The agent can't reply with this provider until you add one.";
+        ? "Key set."
+        : "No key. The agent can't reply without one.";
     };
     sel.onchange = sync;
     sync();
@@ -343,8 +343,8 @@
         btn.setAttribute("aria-label", d.listening ? "Discord: listening. Stop it" : "Discord: copy the listen command");
         btn.setAttribute("aria-pressed", String(!!d.listening));
         btn.title = d.listening
-          ? `Listening on Discord in ${d.listening.channel} (${d.listening.guild}): what's said there goes into the log. Click to stop it and disconnect the bot.`
-          : "Discord: click to copy the /terminal listen command, then paste it into your voice channel's chat to start listening.";
+          ? `Listening in ${d.listening.channel}. Click to stop.`
+          : "Copy the Discord listen command";
       } else {
         btn.removeAttribute("aria-label");
         btn.title = micTitle;
@@ -357,7 +357,7 @@
   const listenCommand = () => `/terminal listen code:${code}`;
   function copyDiscordCommand() {
     const cmd = listenCommand();
-    navigator.clipboard.writeText(cmd).then(() => toast("Copied. Paste it into your Discord voice channel's chat and send it."), () => copy(cmd, "Command"));
+    navigator.clipboard.writeText(cmd).then(() => toast("Copied. Send it in your voice channel's chat."), () => copy(cmd, "Command"));
   }
 
   // Discord (Settings): the Groq key, and the bot's link to a voice channel.
@@ -366,12 +366,12 @@
     $("discordOff").hidden = !!d.enabled;
     $("discordOn").hidden = !d.enabled;
     if (!d.enabled) return;
-    $("sttKey").placeholder = d.sttKey ? "A Groq key is set (paste another to replace it)" : "Groq API key (gsk_…)";
+    $("sttKey").placeholder = d.sttKey ? "Groq key set, paste to replace" : "Groq API key";
     $("sttRemember").checked = !!store.get("wardenKey:groq");
     $("discordInvite").href = d.invite || "#";
     $("discordInvite").hidden = !d.invite;
     $("discordState").textContent = d.listening
-      ? `Listening in ${d.listening.channel} (${d.listening.guild}).${d.sttKey ? "" : " Add a Groq key, or nothing is written down."}`
+      ? `Listening in ${d.listening.channel} (${d.listening.guild}).${d.sttKey ? "" : " Add a Groq key to transcribe."}`
       : "Not listening.";
     $("discordStop").hidden = !d.listening;
     // Who's who (Discord /player).
@@ -396,7 +396,7 @@
     fillSelect($("effort"), m.efforts.map((e) => [e, e === "off" ? "thinking off" : `effort ${e}`]), effort);
     $("effort").disabled = !m.efforts.length;
     $("keywarn").hidden = p.configured;
-    $("keywarn").textContent = "No LLM key: add one";
+    $("keywarn").textContent = "Add an LLM key";
   }
 
   let lastLogLen = -1;
@@ -437,7 +437,7 @@
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
     log.innerHTML = S.log.map((e) => {
       const sp = speaker(e);
-      const del = `<button class="del" data-del="${e.id}" title="Delete (also removes from agent memory)">✕</button>`;
+      const del = `<button class="del" data-del="${e.id}" title="Delete, also from agent memory">✕</button>`;
       const when = `<span class="time">${time(e.ts)}</span>`;
       // Warden notes: one quiet line each.
       if (!sp) {
@@ -448,11 +448,11 @@
         return `<div class="entry note${fx ? " fx" : ""}"><span class="txt">${txt}</span>${when}${del}</div>`;
       }
       return `
-      <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? `title="${e.retcon ? "Retconned: gone from the players' screens and the agent's memory." : "Cut off by a player before it was said: the players never saw it and the agent doesn't remember it."}"` : ""}>
-        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.net ? `<span class="by" title="${e.net === "*" ? "Sent to every system's screens" : "Said on a separate system: only screens there show it"}">${e.net === "*" ? "to All" : `on ${esc(systemName(e.net))}`}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? `<span class="by">${e.retcon ? "retconned" : "never said (cut off)"}</span>` : ""}${when}</div>
+      <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? `title="${e.retcon ? "Retconned: removed from screens and agent memory" : "Cut off by a player: never shown or remembered"}"` : ""}>
+        <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.net ? `<span class="by" title="${e.net === "*" ? "Sent to every system" : "Shown only on this system"}">${e.net === "*" ? "to All" : `on ${esc(systemName(e.net))}`}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? `<span class="by">${e.retcon ? "retconned" : "cut off"}</span>` : ""}${when}</div>
         <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
       </div>`;
-    }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew to type something…</div>`;
+    }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew.</div>`;
     if (atBottom || S.log.length !== lastLogLen) log.scrollTop = log.scrollHeight;
     lastLogLen = S.log.length;
   }
@@ -489,7 +489,7 @@
     card.className = "card ready";
     card.innerHTML = `
       ${forLine}
-      <div class="label">Draft reply <span class="muted">(edit freely · change who says each line · Ctrl+Enter sends)</span></div>
+      <div class="label">Draft reply <span class="muted">Ctrl+Enter sends</span></div>
       <div id="draftLines">${(r.lines.length ? r.lines : [{ voice: "terminal", text: "" }]).map(draftLine).join("")}</div>
       <div class="row"><button data-act="addLine" class="ghost">+ Line</button></div>
       ${p.directives?.length ? `<div class="note">⚑ Following your command${p.directives.length > 1 ? "s" : ""}: ${p.directives.map(esc).join(" · ")}</div>` : ""}
@@ -499,8 +499,8 @@
         `<li><label><input type="checkbox" data-chg="${i}" checked> ${esc(c.path)} → ${esc(c.value)}</label></li>`).join("")}</ul>` : ""}
       ${r.effects.length ? `<div class="label">Effects</div><ul>${r.effects.map((f, i) =>
         `<li><label><input type="checkbox" data-eff="${i}" ${S.config.agentEffects ? "checked" : ""}> ${FX_META[f.type]?.[0] || ""} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s</label></li>`).join("")}</ul>` : ""}
-      ${r.outcome_check?.needed ? `<div class="note">⚖ Leaves the outcome to you: <b>${esc(r.outcome_check.attempt)}</b>${r.outcome_check.suggested_check !== "none" ? ` · suggests ${esc(checkName(r.outcome_check.suggested_check))}${advMark(r.outcome_check.advantage)}` : ""}. Once it is sent you get It works / It fails / Roll.</div>` : ""}
-      ${r.dm_note ? `<div class="note">🧠 ${esc(r.dm_note)}</div>` : ""}
+      ${r.outcome_check?.needed ? `<div class="note">⚖ Your call: <b>${esc(r.outcome_check.attempt)}</b>${r.outcome_check.suggested_check !== "none" ? ` · suggests ${esc(checkName(r.outcome_check.suggested_check))}${advMark(r.outcome_check.advantage)}` : ""}</div>` : ""}
+      ${r.dm_note ? `<div class="note">Agent note: ${esc(r.dm_note)}</div>` : ""}
       <div class="row"><button data-act="approve" class="primary">Send to players</button><button data-act="discard" class="ghost">Discard</button></div>
       ${steerRow()}
       <div class="row"><button data-act="regen">↻ Regenerate</button></div>`;
@@ -514,7 +514,7 @@
     const want = netKey(system);
     const sel = want === "all" ? "ALL" : names.find((n) => netKey(n) === want) || "";
     const opts = [["", "(where they are)"], ...names.map((n) => [n, n]), ["ALL", "to All"]];
-    return `<select class="dsys" aria-label="System" title="Which system's screens show this line">${opts.map(([v, label]) => `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>`;
+    return `<select class="dsys" aria-label="System" title="System that shows this line">${opts.map(([v, label]) => `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>`;
   };
 
   // One editable line of a draft: who says it, and what.
@@ -524,16 +524,16 @@
       <div class="dwho">
         <select aria-label="Voice">${S.config.voices.map((v) => `<option value="${esc(v.id)}" ${v.id === l.voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
         ${sysSelect(l.system)}
-        <input class="dchar" list="castNames" value="${esc(l.character || "")}" placeholder="who" aria-label="Character" title="Which character says it: face to face if they're in a room with players, else over the intercom" ${l.voice === S.config.castChannel || l.character ? "" : "hidden"}>
+        <input class="dchar" list="castNames" value="${esc(l.character || "")}" placeholder="who" aria-label="Character" title="Speaking character" ${l.voice === S.config.castChannel || l.character ? "" : "hidden"}>
       </div>
-      <textarea rows="${Math.min(12, Math.max(2, l.text.split("\n").length))}" placeholder="${l.effects?.length ? "(effect only: no text)" : ""}">${esc(l.text)}</textarea>
+      <textarea rows="${Math.min(12, Math.max(2, l.text.split("\n").length))}" placeholder="${l.effects?.length ? "effect only" : ""}">${esc(l.text)}</textarea>
       <button data-act="delLine" class="ghost" title="Remove line">✕</button>
       <div class="dvars">${(l.variants || []).map(variantRow).join("")}
-        <button data-act="addVar" class="ghost small" title="A different version of this line for one player, or a class (e.g. Android, Humans)">+ Variant for a player</button></div>
+        <button data-act="addVar" class="ghost small" title="Alternate line for a player or class">+ Variant</button></div>
       ${l.effects?.length ? `<div class="dfx">${l.effects.map((f, i) => `<label class="chip"><input type="checkbox" data-leff="${i}" ${S.config.agentEffects ? "checked" : ""}> ⚡ ${FX_META[f.type]?.[0] || ""} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s <span class="muted">as this line starts</span></label>`).join("")}</div>` : ""}
     </div>`;
   const variantRow = (v) => `<div class="dvar">
-      <input class="dvfor" list="variantTargets" value="${esc(v.for)}" placeholder="for: name, Android, Humans…" aria-label="Variant for">
+      <input class="dvfor" list="variantTargets" value="${esc(v.for)}" placeholder="for: name or class" aria-label="Variant for">
       <textarea class="dvtext" rows="${Math.min(8, Math.max(1, v.text.split("\n").length))}" aria-label="Their version">${esc(v.text)}</textarea>
       <button data-act="delVar" class="ghost" title="Remove variant">✕</button></div>`;
   // Name suggestions: the characters (a draft line's speaker), and who a variant can be for.
@@ -543,7 +543,7 @@
     $("castLists").innerHTML = `<datalist id="variantTargets">${targets.map((t) => `<option value="${esc(t)}">`).join("")}</datalist>` +
       `<datalist id="castNames">${(S.config.cast || []).map((c) => `<option value="${esc(c.name)}">`).join("")}</datalist>`;
   }
-  const steerRow = () => `<input id="steer" placeholder="Steer the rewrite: e.g. 'more evasive', 'deny the door is open', 'glitch mid-sentence'">`;
+  const steerRow = () => `<input id="steer" placeholder="Steer the rewrite">`;
 
   function renderEffects() {
     const list = $("fxActive");
@@ -576,10 +576,10 @@
       const playing = S.claims?.[c.id] || 0;
       const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id); // (who plays them on Discord)
       return `<details class="pc" data-i="${i}">
-        <summary><button class="pick small" data-pcpic="${i}" title="${c.portrait ? "Change their picture" : "Add a picture: shown on their crew file and beside what they type"}" aria-label="Picture of ${esc(c.name)}">${c.portrait ? `<img src="${esc(portraitUrl(c.portrait))}" alt="">` : `<span>${esc(initials(c.name) || "+")}</span>`}</button>${c.portrait ? `<button class="ghost small edit-only" data-pcnopic="${i}" title="Remove their picture">✕ picture</button>` : ""}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Connected: playing on ${playing} screen${playing > 1 ? "s" : ""}` : "Not connected: no player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
+        <summary><button class="pick small" data-pcpic="${i}" title="${c.portrait ? "Change their picture" : "Add a picture"}" aria-label="Picture of ${esc(c.name)}">${c.portrait ? `<img src="${esc(portraitUrl(c.portrait))}" alt="">` : `<span>${esc(initials(c.name) || "+")}</span>`}</button>${c.portrait ? `<button class="ghost small edit-only" data-pcnopic="${i}" title="Remove their picture">✕ picture</button>` : ""}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
           <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
-          ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move their screens to another terminal" aria-label="Move ${esc(c.name)} to">${
-            (whereIs(c.id) ? "" : '<option value="" selected>(no terminal yet)</option>') + S.config.terminals.map((t) =>
+          ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move to another terminal" aria-label="Move ${esc(c.name)} to">${
+            (whereIs(c.id) ? "" : '<option value="" selected>(none yet)</option>') + S.config.terminals.map((t) =>
             `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></span>` : ""}</summary>
         ${pcSheet(c)}
         <div class="pcgrid edit-only">
@@ -592,14 +592,14 @@
           ${num("health.current", c.health.current, "Health")}${num("health.max", c.health.max, "Max health")}
           ${num("wounds.current", c.wounds.current, "Wounds")}${num("wounds.max", c.wounds.max, "Max wounds")}
           ${num("stress", c.stress, "Stress")}${num("startStress", c.startStress, "Starting stress")}
-          ${txt("skills", c.skills.join(", "), "Skills (comma-separated)")}
+          ${txt("skills", c.skills.join(", "), "Skills")}
           ${txt("crime", c.crime, "Conviction", 2)}
           ${txt("backstory", c.backstory, "Backstory", 4)}
           ${txt("loadout", c.loadout, "Starting loadout", 2)}
-          ${txt("items", c.items.join(", "), "Items they carry now (comma-separated)")}
+          ${txt("items", c.items.join(", "), "Items carried")}
           ${txt("trinket", c.trinket, "Trinket")}
           ${txt("patch", c.patch, "Patch")}
-          ${txt("notes", c.notes, "Warden notes (the agent reads these; players don't see them)", 2)}
+          ${txt("notes", c.notes, "Warden notes, hidden from players", 2)}
         </div>
         <div class="row edit-only"><span class="grow"></span><button data-cact="del" class="danger">Remove character</button></div>
       </details>`;
@@ -631,7 +631,7 @@
     const withPlayers = new Set((S.screens || []).map((sc) => S.config.terminals.find((t) => t.id === sc.terminal)?.room).filter(Boolean));
     const speakers = Object.entries(S.voiceOptions.speakers);
     panel.innerHTML = castDraft.map((m, i) => `<div class="castm" data-i="${i}">
-        <button class="pick" data-mact="pic" title="${m.portrait ? "Change their picture" : "Add a picture: shown beside what they say"}" aria-label="Picture of ${esc(m.name)}">${m.portrait ? `<img src="${esc(portraitUrl(m.portrait))}" alt="">` : `<span>${esc(initials(m.name) || "+")}</span>`}</button>
+        <button class="pick" data-mact="pic" title="${m.portrait ? "Change their picture" : "Add a picture"}" aria-label="Picture of ${esc(m.name)}">${m.portrait ? `<img src="${esc(portraitUrl(m.portrait))}" alt="">` : `<span>${esc(initials(m.name) || "+")}</span>`}</button>
         <div class="castbody">
           <div class="row wrap">
             <input data-m="name" class="edit-only cname" value="${esc(m.name)}" placeholder="Name" aria-label="Name">
@@ -639,23 +639,23 @@
             <label class="small muted where">in <select data-m="room" aria-label="Where ${esc(m.name)} is"><option value="">nowhere on the map</option>${
               [...rooms].map(([id, label]) => `<option value="${esc(id)}" ${id === m.room ? "selected" : ""}>${esc(label)}</option>`).join("")}${
               m.room && !rooms.has(m.room) ? `<option value="${esc(m.room)}" selected>${esc(m.room)}</option>` : ""}</select></label>
-            <label class="small muted mood" title="How they feel about the players. The agent plays them by it and moves it as they earn or lose their trust; you can set it too. Players never see it.">feels <select data-m="attitude" data-num aria-label="How ${esc(m.name)} feels about the players" class="att${m.attitude > 0 ? " up" : m.attitude < 0 ? " down" : ""}">${
+            <label class="small muted mood" title="Attitude to players, hidden from them">feels <select data-m="attitude" data-num aria-label="How ${esc(m.name)} feels about the players" class="att${m.attitude > 0 ? " up" : m.attitude < 0 ? " down" : ""}">${
               ATTITUDES.map(([n, label]) => `<option value="${n}" ${n === (m.attitude || 0) ? "selected" : ""}>${label} (${n > 0 ? "+" : ""}${n})</option>`).join("")}</select></label>
-            <label class="small muted stress" title="Their Stress (0-20). The agent raises it when frightening things happen to them; a Panic check is a d20 at or under it.">Stress <input type="number" data-m="stress" data-num min="0" max="20" value="${m.stress ?? 2}" aria-label="${esc(m.name)}'s Stress"></label>
-            <button data-mact="panic" class="small" title="Roll a Panic check for them now, in front of the players: a d20 at or under their Stress and they panic (from shaking hands up to a heart attack). The agent plays it out.">Panic check</button>
-            ${withPlayers.has(m.room) ? '<span class="pill ok" title="In a room with players: they talk face to face, and only screens in that room show it">in person</span>' : '<span class="pill" title="Not in a room with any players: heard over the intercom">intercom</span>'}
+            <label class="small muted stress" title="Stress, 0-20">Stress <input type="number" data-m="stress" data-num min="0" max="20" value="${m.stress ?? 2}" aria-label="${esc(m.name)}'s Stress"></label>
+            <button data-mact="panic" class="small" title="Roll d20: at or under Stress, they panic">Panic check</button>
+            ${withPlayers.has(m.room) ? '<span class="pill ok" title="Face to face with players">in person</span>' : '<span class="pill" title="Heard over the intercom">intercom</span>'}
           </div>
           <div class="row wrap edit-only small">
             <select data-m="voice" aria-label="Their voice"><option value="">(a voice of their own)</option>${speakers.map(([id, label]) => `<option value="${id}" ${id === m.voice ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
-            <button data-mact="test" title="Hear them (on this computer only)">▶</button>
+            <button data-mact="test" title="Preview voice here">▶</button>
             ${m.portrait ? '<button data-mact="nopic" class="ghost">Remove picture</button>' : ""}
             <span class="grow"></span><button data-mact="del" class="ghost" title="Remove ${esc(m.name)}">✕</button>
           </div>
-          <input data-m="why" class="why" value="${esc(m.why || "")}" placeholder="Why they feel that way (the agent keeps this up to date)" aria-label="Why ${esc(m.name)} feels that way">
-          <textarea data-m="notes" class="edit-only" rows="2" placeholder="Who they are, what they want, how they talk (the agent reads this)" aria-label="Notes">${esc(m.notes)}</textarea>
+          <input data-m="why" class="why" value="${esc(m.why || "")}" placeholder="Affinity reason" aria-label="Why ${esc(m.name)} feels that way">
+          <textarea data-m="notes" class="edit-only" rows="2" placeholder="Who they are, how they talk" aria-label="Notes">${esc(m.notes)}</textarea>
           ${m.notes ? `<div class="play-only small muted">${esc(m.notes)}</div>` : ""}
         </div>
-      </div>`).join("") || `<p class="muted small">Nobody yet. The agent brings people in as the story needs them; you can add them here.</p>`;
+      </div>`).join("") || `<p class="muted small">No characters yet. The agent adds them as needed.</p>`;
   }
   function saveCast(now = false) {
     clearTimeout(castTimer);
@@ -687,7 +687,7 @@
     else if (act === "panic") send({ t: "castPanic", id: m.id });
     else if (act === "test") Voice.test({ name: "test", voice: { engine: "neural", speaker: m.voice || "am_michael", pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     else if (act === "del") {
-      if (!(await sure(`Remove ${m.name || "this character"}?`, "They leave the story: the agent no longer knows them.", "Remove"))) return;
+      if (!(await sure(`Remove ${m.name || "this character"}?`, "The agent forgets them.", "Remove"))) return;
       castDraft.splice(castDraft.indexOf(m), 1);
       saveCast(true);
       renderCast(true);
@@ -776,29 +776,29 @@
     panel.dataset.json = json;
     const presets = Object.keys(S.voiceOptions.presets);
     panel.innerHTML = list.map((v) => `<div class="castm advm" data-id="${esc(v.id)}">
-        <button class="pick big" data-aact="pic" title="${v.adversary.picture ? "Change its picture" : "Add a picture you can show the players"}" aria-label="Picture of ${esc(v.name)}">${v.adversary.picture ? `<img src="${esc(advSrc(v.adversary.picture))}" alt="" referrerpolicy="no-referrer">` : "<span>+</span>"}</button>
+        <button class="pick big" data-aact="pic" title="${v.adversary.picture ? "Change its picture" : "Add a picture"}" aria-label="Picture of ${esc(v.name)}">${v.adversary.picture ? `<img src="${esc(advSrc(v.adversary.picture))}" alt="" referrerpolicy="no-referrer">` : "<span>+</span>"}</button>
         <div class="castbody">
           <div class="row wrap">
             <input data-a="name" class="edit-only cname" value="${esc(v.name)}" aria-label="Its name">
             <b class="play-only" style="color: ${esc(v.color || "inherit")}">${esc(v.name)}</b>
-            <label class="small check" title="Have the players seen it? Until then its lines show as ??? and nobody names it. The agent ticks this when they see it.">
+            <label class="small check" title="Seen by players? If not, shown as ???">
               <input type="checkbox" data-a="revealed" ${v.adversary.revealed ? "checked" : ""}> revealed</label>
             <span class="pill ${v.adversary.revealed ? "ok" : ""}">${v.adversary.revealed ? "players see its name" : "players see ???"}</span>
-            ${v.adversary.picture ? `<button data-aact="show" class="small" title="Put its picture on every player's screen (seeing it reveals it)">Show players</button>` : ""}
+            ${v.adversary.picture ? `<button data-aact="show" class="small" title="Show on every screen. Reveals it.">Show players</button>` : ""}
           </div>
           <div class="row wrap edit-only small">
             <select data-a="preset" aria-label="How it sounds">${presets.map((p) => `<option ${p === v.preset ? "selected" : ""}>${p}</option>`).join("")}${v.preset === "custom" ? '<option selected value="custom">custom (Story tab)</option>' : ""}</select>
-            <button data-aact="test" title="Hear it (on this computer only)">▶</button>
+            <button data-aact="test" title="Preview voice here">▶</button>
             <input type="color" data-a="color" value="${esc(v.color || "#ff5a5a")}" aria-label="Its colour">
             ${v.adversary.picture ? '<button data-aact="nopic" class="ghost">Remove picture</button>' : ""}
             <span class="grow"></span><button data-aact="del" class="ghost" title="Remove ${esc(v.name)}">✕</button>
           </div>
-          <input data-a="picture" class="edit-only why" value="${esc(/^https:\/\//.test(v.adversary.picture) ? v.adversary.picture : "")}" placeholder="Or a link to a picture on the web (https://…): it loads from there" aria-label="Picture link">
-          ${v.adversary.picture ? `<input data-a="credit" class="edit-only why" value="${esc(v.adversary.credit || "")}" placeholder="Picture credit, if you want one: the artist, a link (shown with it)" aria-label="Picture credit">` : ""}
-          <textarea data-a="persona" class="edit-only" rows="3" aria-label="What it is" placeholder="What it is, what it wants, how it acts and speaks (the agent reads this)">${esc(v.persona)}</textarea>
+          <input data-a="picture" class="edit-only why" value="${esc(/^https:\/\//.test(v.adversary.picture) ? v.adversary.picture : "")}" placeholder="Or a picture link (https://…)" aria-label="Picture link">
+          ${v.adversary.picture ? `<input data-a="credit" class="edit-only why" value="${esc(v.adversary.credit || "")}" placeholder="Picture credit" aria-label="Picture credit">` : ""}
+          <textarea data-a="persona" class="edit-only" rows="3" aria-label="What it is" placeholder="What it is, how it acts">${esc(v.persona)}</textarea>
           <div class="play-only small advinfo">${esc(v.persona)}</div>
         </div>
-      </div>`).join("") || '<p class="muted small">No adversaries. Add the story\'s threats here.</p>';
+      </div>`).join("") || '<p class="muted small">No adversaries yet.</p>';
   }
   const advPatch = (id, patch) => send({ t: "adversary", id, patch });
   $("adversaries").addEventListener("input", (e) => {
@@ -818,7 +818,7 @@
     else if (act === "nopic") advPatch(id, { picture: "" });
     else if (act === "show") send({ t: "adversaryShow", id });
     else if (act === "test") Voice.test(v, $("testText").value || "i can hear you.", `api/sessions/${code}/tts-test`, key);
-    else if (act === "del" && (await sure(`Remove ${v.name}?`, "The adversary and its voice are removed from the story.", "Remove"))) send({ t: "adversaryDel", id });
+    else if (act === "del" && (await sure(`Remove ${v.name}?`, "Removes it and its voice from the story.", "Remove"))) send({ t: "adversaryDel", id });
   });
   $("addAdversary").onclick = () => send({ t: "adversaryAdd" });
   // Its picture: kept as a picture (not line art), shrunk to fit, then uploaded.
@@ -928,7 +928,7 @@
   $("crew").addEventListener("click", async (e) => {
     if (e.target.closest("[data-cact]")?.dataset.cact !== "del") return;
     const i = Number(e.target.closest(".pc").dataset.i);
-    if (!(await sure(`Remove ${crewDraft[i].name || "this character"}?`, "Their crew file is deleted; a player using it goes back to choosing.", "Remove"))) return;
+    if (!(await sure(`Remove ${crewDraft[i].name || "this character"}?`, "Deletes their crew file. Its player picks again.", "Remove"))) return;
     crewDraft.splice(i, 1);
     openCrew.clear();
     send({ t: "crew", crew: crewDraft });
@@ -955,9 +955,9 @@
     if (key === builderKey) return;
     builderKey = key;
     const msgs = $("bmsgs");
-    const intro = `<div class="bmsg agent"><b>Agent</b><div>Let's build a new scenario. Tell me what you have in mind (a place, a monster, a twist, who the players are), or just say "surprise me". I'll ask questions; when it's ready, press <b>Draft it</b>.</div></div>`;
+    const intro = `<div class="bmsg agent"><b>Agent</b><div>Let's build a scenario. Tell me your idea, or say "surprise me". Press <b>Draft it</b> when ready.</div></div>`;
     msgs.innerHTML = intro + b.messages.map((m) => `<div class="bmsg ${m.role}${m.error ? " err" : ""}"><b>${m.role === "warden" ? "You" : "Agent"}</b><div>${esc(m.text)}</div></div>`).join("")
-      + (busy ? `<div class="bmsg agent"><b>Agent</b><div><span class="spinner"></span>${busy === "draft" ? "Writing the whole scenario… (this can take a minute)" : "Thinking…"}</div></div>` : "");
+      + (busy ? `<div class="bmsg agent"><b>Agent</b><div><span class="spinner"></span>${busy === "draft" ? "Writing the scenario…" : "Thinking…"}</div></div>` : "");
     msgs.scrollTop = msgs.scrollHeight;
     for (const id of ["bSend", "bDraft", "bReset"]) $(id).disabled = !!busy;
     $("bDraft").classList.toggle("primary", !!b.messages.at(-1)?.ready);
@@ -967,7 +967,7 @@
 
   function renderDraft(d) {
     const el = $("bdraft");
-    if (!d) { el.innerHTML = `<div class="muted bempty">The draft appears here: station, lore, secrets, cast, crew and map.</div>`; return; }
+    if (!d) { el.innerHTML = `<div class="muted bempty">The draft appears here.</div>`; return; }
     const voices = d.voices.map((v) => `<div class="bcard"><b>${esc(v.name)}</b> <span class="muted small">${esc(v.preset)}</span>
         <div class="small">${esc(v.persona)}</div></div>`).join("");
     const cast = (d.cast || []).length ? `<ul class="small">${d.cast.map((c) => `<li><b>${esc(c.name)}</b> <span class="muted">${esc(S.voiceOptions.speakers[c.voice] || c.sex)} · ${esc(c.room || "nowhere on the map")}</span> · ${esc(c.notes)}</li>`).join("")}</ul>` : "";
@@ -977,18 +977,18 @@
         <div class="small muted">${esc((c.skills || []).join(", "))}</div></div>`).join("");
     el.innerHTML = `
       <div class="row"><div class="grow"><div class="btitle">${esc(d.title)}</div><div class="muted">${esc(d.stationName)} · ${esc(d.theme)} screen</div></div>
-        <button id="bApply" class="primary">Apply to this session</button></div>
+        <button id="bApply" class="primary">Apply story</button></div>
       <p>${esc(d.pitch)}</p>
       <details open><summary>Map</summary><div id="bmap" class="smap"></div></details>
       <details><summary>Lore <span class="muted">(public)</span></summary><pre class="bpre">${esc(d.lore)}</pre></details>
       <details><summary>Secrets</summary><pre class="bpre">${esc(d.secrets)}</pre></details>
       <details><summary>Computer: ${esc(d.computer.name)}</summary><pre class="bpre">${esc(d.computer.persona)}</pre>${d.standingOrders ? `<div class="small"><b>Standing orders:</b> ${esc(d.standingOrders)}</div>` : ""}</details>
       <details open><summary>Characters</summary>${cast || '<p class="muted">None.</p>'}</details>
-      <details open><summary>Adversaries <span class="muted">(??? to the players until they see them)</span></summary>${(d.adversaries || []).map((a) => `<div class="bcard"><b>${esc(a.name)}</b> <span class="muted small">${esc(a.preset)}</span><div class="small">${esc(a.persona)}</div></div>`).join("") || '<p class="muted">None.</p>'}</details>
+      <details open><summary>Adversaries</summary>${(d.adversaries || []).map((a) => `<div class="bcard"><b>${esc(a.name)}</b> <span class="muted small">${esc(a.preset)}</span><div class="small">${esc(a.persona)}</div></div>`).join("") || '<p class="muted">None.</p>'}</details>
       <details><summary>Voices</summary>${voices || '<p class="muted">None.</p>'}</details>
-      <details><summary>Terminals</summary><ul class="small">${(d.terminals || []).map((t) => `<li><b>${esc(t.name)}</b> <span class="muted">${esc(t.room)}${t.look?.length ? ` · ${esc(t.look.join(", "))}` : " · clean"}${t.open ? "" : " · not reachable at first"}</span> · ${esc(t.notes)}</li>`).join("")}<li class="muted">+ a portable handheld terminal</li></ul></details>
+      <details><summary>Terminals</summary><ul class="small">${(d.terminals || []).map((t) => `<li><b>${esc(t.name)}</b> <span class="muted">${esc(t.room)}${t.look?.length ? ` · ${esc(t.look.join(", "))}` : " · clean"}${t.open ? "" : " · not reachable at first"}</span> · ${esc(t.notes)}</li>`).join("")}<li class="muted">+ a handheld terminal</li></ul></details>
       <details open><summary>Player characters</summary>${crew || '<p class="muted">None.</p>'}</details>
-      <details><summary>Starting documents <span class="muted">(in every player's DOCS)</span></summary>${(d.documents || []).map((x) => `<div class="small"><b>${esc(x.title)}</b></div><pre class="bpre">${esc(x.text)}</pre>`).join("") || '<p class="muted">None.</p>'}</details>`;
+      <details><summary>Starting documents</summary>${(d.documents || []).map((x) => `<div class="small"><b>${esc(x.title)}</b></div><pre class="bpre">${esc(x.text)}</pre>`).join("") || '<p class="muted">None.</p>'}</details>`;
     // Preview the map from the draft's own state and layout.
     const st = {};
     for (const { path, value } of d.station) {
@@ -1011,10 +1011,10 @@
   $("bSend").onclick = builderSend;
   $("bInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); builderSend(); } });
   $("bDraft").onclick = () => send({ t: "builderDraft" });
-  $("bReset").onclick = async () => (await sure("Start over?", "Clears the builder conversation and draft. Your current story isn't touched.", "Start over")) && send({ t: "builderReset" });
+  $("bReset").onclick = async () => (await sure("Start over?", "Clears the builder chat and draft. Your story stays.", "Start over")) && send({ t: "builderReset" });
   $("bdraft").addEventListener("click", async (e) => {
     if (e.target.id !== "bApply") return;
-    if (!(await sure(`Apply "${S.builder.draft.title}"?`, "Replaces the station, lore, secrets, voices, map and crew, and clears the log. Players stay connected and pick a new crew file. Your provider, key, mode and sounds stay.", "Apply story", "primary"))) return;
+    if (!(await sure(`Apply "${S.builder.draft.title}"?`, "Replaces the story and crew, and clears the log. Players pick new crew files.", "Apply story", "primary"))) return;
     send({ t: "builderApply" });
     $("builderDialog").close();
     toast("New story applied.");
@@ -1024,11 +1024,11 @@
   // Three kinds: the prebrief (the setup), the story so far, and the wrap-up after the one-shot.
   const SYN_KINDS = {
     prebrief: { label: "Prebrief", writing: "Writing the prebrief…",
-      empty: "<b>Write it</b> has the agent brief the players before play: who they are, where they are, what they know and what they're here to do, with notes only you see on what's really going on and the obstacles ahead." },
-    sofar: { label: "The story so far", writing: "Writing the story so far from the comms…",
-      empty: "<b>Write it</b> has the agent catch the players up: what has happened, where they are now, what they know and what they could do next, with notes only you see on where the story and the threat stand." },
+      empty: "<b>Write it</b> to brief the players before play, with private notes for you." },
+    sofar: { label: "The story so far", writing: "Writing the story so far…",
+      empty: "<b>Write it</b> to catch the players up, with private notes for you." },
     wrapup: { label: "Wrap-up", writing: "Writing the wrap-up…",
-      empty: "<b>Write it</b> when the one-shot is over: the story of what happened, secrets and all, and what became of each of the crew afterwards, to read them as they go." },
+      empty: "<b>Write it</b> when the one-shot ends: what happened and what became of the crew." },
   };
   // Before play, the prebrief; once it has started, the story so far. (The Warden can pick another.)
   let synKind = null;
@@ -1055,7 +1055,7 @@
     $("synCopy").disabled = mine || !syn?.sections.some((x) => x.audience === "players");
     const body = $("synBody");
     if (mine) { body.innerHTML = `<div class="synempty"><span class="spinner"></span>${SYN_KINDS[kind].writing}</div>`; return; }
-    if (!syn) { body.innerHTML = `<div class="synempty muted">Not written yet. ${SYN_KINDS[kind].empty}${busy ? ` <br><br>(${SYN_KINDS[busy]?.label} is being written; this one can go next.)` : ""}</div>`; return; }
+    if (!syn) { body.innerHTML = `<div class="synempty muted">Not written yet. ${SYN_KINDS[kind].empty}${busy ? ` <br><br>(Writing ${SYN_KINDS[busy]?.label}. This one can go next.)` : ""}</div>`; return; }
     body.innerHTML = syn.sections.map((x) => x.audience === "warden"
       ? `<section class="synsec warden"><div class="synlabel">For the Warden only</div><h3>${esc(x.heading)}</h3><div class="syntext">${esc(x.text)}</div></section>`
       : `<section class="synsec"><h3>${esc(x.heading)}</h3><div class="syntext">${esc(x.text)}</div></section>`).join("");
@@ -1079,8 +1079,8 @@
   $("synWrite").onclick = writeSynopsis;
   $("synCopy").onclick = async () => {
     const text = synopsisOf(shownKind()).sections.filter((x) => x.audience === "players").map((x) => `${x.heading.toUpperCase()}\n${x.text}`).join("\n\n");
-    try { await navigator.clipboard.writeText(text); toast("Player sections copied (no Warden-only notes)."); }
-    catch { toast("Couldn't copy: your browser blocked the clipboard.", "error"); }
+    try { await navigator.clipboard.writeText(text); toast("Player sections copied."); }
+    catch { toast("Copy blocked by the browser.", "error"); }
   };
 
   // ------------------------------------------------------------ terminals
@@ -1108,15 +1108,15 @@
           <button data-tact="del" class="ghost" title="Remove">✕</button></div>
         <div class="row wrap small">
           <label>Room <select data-t="room"><option value="">(none / portable)</option>${rooms.map(([id, label]) => `<option value="${esc(id)}" ${id === t.room ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
-          <label title="A door in the station state: the terminal becomes reachable once it reads OPEN">Opens with <select data-t="requires"><option value="">(nothing)</option>${doorPaths().map((p) => `<option value="${esc(p)}" ${p === t.requires ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
+          <label title="Reachable once this door reads OPEN">Opens with <select data-t="requires"><option value="">(nothing)</option>${doorPaths().map((p) => `<option value="${esc(p)}" ${p === t.requires ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
           <label>Colour <select data-t="theme">${["", "green", "amber", "cyan", "white", "red"].map((x) => `<option value="${x}" ${x === t.theme ? "selected" : ""}>${x || "station's"}</option>`).join("")}</select></label>
         </div>
         <div class="looks">${Object.entries(LOOKS).map(([k, label]) => `<label class="chip"><input type="checkbox" data-look="${k}" ${t.look.includes(k) ? "checked" : ""}> ${label}</label>`).join("")}</div>
         <div class="row wrap small">
-          <label title="Blank: on the station's network. Terminals on another system (e.g. the crew's ship) keep their own log on the players' screens, and show this name instead of the station's.">System <input data-t="system" value="${esc(t.system || "")}" placeholder="the station's" size="14"></label>
-          <label title="What the players' header calls its operating system. Blank: the station's.">OS <input data-t="os" value="${esc(t.os || "")}" placeholder="the station's" size="18"></label>
+          <label title="Blank: station network. Else its own log and name.">System <input data-t="system" value="${esc(t.system || "")}" placeholder="the station's" size="14"></label>
+          <label title="OS name in the header. Blank: the station's.">OS <input data-t="os" value="${esc(t.os || "")}" placeholder="the station's" size="18"></label>
         </div>
-        <input data-t="notes" value="${esc(t.notes)}" placeholder="What's here, what happened at it (the agent reads this)" aria-label="Notes">
+        <input data-t="notes" value="${esc(t.notes)}" placeholder="What's here, what happened" aria-label="Notes">
         ${here.length ? `<div class="muted small">Here now: ${here.map(esc).join(", ")}</div>` : ""}
       </div>`;
     }).join("");
@@ -1165,9 +1165,9 @@
     const json = JSON.stringify([S.config.voices.map((v) => [v.id, v.name, v.systems]), systems]);
     if (panel.dataset.json === json) return;
     panel.dataset.json = json;
-    if (systems.length < 2) { panel.innerHTML = '<p class="muted small">Only one system. Give a terminal its own System (a ship, a shuttle...) to choose which voices reach it.</p>'; return; }
+    if (systems.length < 2) { panel.innerHTML = '<p class="muted small">Only one system. Give a terminal its own System to route voices.</p>'; return; }
     const on = (v, net) => (v.systems || [""]).includes(net);
-    panel.innerHTML = `<table class="conns"><thead><tr><th>Voice</th>${systems.map((s) => `<th>${esc(s.name)}</th>`).join("")}<th title="Heard on every system, now and later">All</th></tr></thead><tbody>${
+    panel.innerHTML = `<table class="conns"><thead><tr><th>Voice</th>${systems.map((s) => `<th>${esc(s.name)}</th>`).join("")}<th title="Every system, including new ones">All</th></tr></thead><tbody>${
       S.config.voices.map((v) => { const all = on(v, "*"); return `<tr data-v="${esc(v.id)}"><td>${esc(v.name)}</td>${
         systems.map((s) => `<td class="${all ? "off" : ""}"><input type="checkbox" data-net="${esc(s.net)}" ${all || on(v, s.net) ? "checked" : ""} ${all ? "disabled" : ""} aria-label="${esc(v.name)} on ${esc(s.name)}"></td>`).join("")
       }<td><input type="checkbox" data-net="*" ${all ? "checked" : ""} aria-label="${esc(v.name)} on every system"></td></tr>`; }).join("")
@@ -1183,7 +1183,7 @@
     if (net === "*") v.systems = e.target.checked ? ["*"] : [...set].length ? [...set] : [""];
     else {
       e.target.checked ? set.add(net) : set.delete(net);
-      if (!set.size) { e.target.checked = true; return toast(`${v.name} needs at least one system (or All).`, "error"); }
+      if (!set.size) { e.target.checked = true; return toast(`${v.name} needs at least one system.`, "error"); }
       v.systems = [...set];
     }
     send({ t: "voices", voices });
@@ -1215,7 +1215,7 @@
   $("terminals").addEventListener("click", async (e) => {
     if (e.target.closest("[data-tact]")?.dataset.tact !== "del") return;
     const i = Number(e.target.closest(".tcard").dataset.i);
-    if (!(await sure(`Remove ${termDraft[i].name}?`, "Players at it stay there until they or you move them.", "Remove"))) return;
+    if (!(await sure(`Remove ${termDraft[i].name}?`, "Players there stay until moved.", "Remove"))) return;
     termDraft.splice(i, 1);
     send({ t: "terminals", terminals: termDraft });
     termSentAt = 0;
@@ -1346,7 +1346,7 @@
     let cur = S.station;
     for (const k of path) cur = cur?.[k];
     const options = StationMap.choicesFor(path).filter((o) => o !== String(cur).toUpperCase());
-    const picked = await ask(path.join(".").replace(/_/g, " ").toUpperCase(), `Now: ${cur}. Pick a value or type one. Players don't see this; the agent does on its next reply.`,
+    const picked = await ask(path.join(".").replace(/_/g, " ").toUpperCase(), `Now: ${cur}. Pick or type a value. Hidden from players.`,
       [["set", "Set", "primary"], ...options.map((o) => [`opt:${o}`, o])], "", { value: cur }); // Set first: Enter in the field means Set
     if (!picked) return;
     const raw = picked === "set" ? $("askCopy").value.trim() : picked.slice(4);
@@ -1432,7 +1432,7 @@
     if (!roomEditing) roomRows = plan ? [...plan.rows] : null;
     const box = $("roomPlan");
     if (busy) box.innerHTML = `<div class="rpempty muted"><span class="spinner"></span>The agent is drawing ${esc(room.label)}…</div>`;
-    else if (!roomRows) box.innerHTML = `<div class="rpempty muted">No floor plan yet. <b>Redraw with agent</b> sketches one, or unlock the padlock to paint it yourself.</div>`;
+    else if (!roomRows) box.innerHTML = `<div class="rpempty muted">No floor plan yet. Use <b>Redraw with agent</b>, or unlock to paint.</div>`;
     else box.innerHTML = RoomPlan.svg(roomRows, { cell: 24, title: room.label, cls: roomEditing ? "editing" : "" });
     $("roomLegend").innerHTML = roomRows ? RoomPlan.legend(roomRows).map(([c, n]) => `<span><b>${esc(c)}</b> ${esc(n)}</span>`).join("") : "";
     setLock($("roomEdit"), roomEditing, "the floor plan");
@@ -1450,7 +1450,7 @@
     // Who and what is here.
     const castHere = S.config.cast.filter((c) => c.room === room.id).map((c) => c.name);
     $("roomPlayers").innerHTML = (pcs.length ? pcs.map((n) => `<span class="pcchip">${esc(n)}</span>`).join("") : `<span class="muted small">No player characters here.</span>`) +
-      (castHere.length ? castHere.map((n) => `<span class="castchip" title="A character (move them on the Crew tab)">${esc(n)}</span>`).join("") : "");
+      (castHere.length ? castHere.map((n) => `<span class="castchip" title="Character, move on the Crew tab">${esc(n)}</span>`).join("") : "");
     for (const [id, k] of [["roomOccupants", "occupants"], ["roomContents", "contents"]]) {
       if (document.activeElement !== $(id) && !dirty.has(id)) $(id).value = String(stationAt([k, room.id]) ?? "");
     }
@@ -1503,13 +1503,13 @@
     renderRoom(true);
   };
   $("roomRedraw").onclick = async () => {
-    if (S.config.rooms?.[room.id] && !(await sure(`Redraw ${room.label}?`, "The agent draws a new floor plan, replacing this one.", "Redraw", "primary"))) return;
+    if (S.config.rooms?.[room.id] && !(await sure(`Redraw ${room.label}?`, "Replaces this floor plan.", "Redraw", "primary"))) return;
     roomEditing = false;
     send({ t: "roomDraft", room: room.id, label: room.label, deck: room.deck });
   };
   $("roomShow").onclick = () => {
     send({ t: "roomShow", room: room.id, label: room.label, pc: $("roomShowTo").value });
-    toast(`Showing ${room.label} to ${$("roomShowTo").selectedOptions[0].text.toLowerCase()} (layout only).`);
+    toast(`Showing ${room.label} layout to ${$("roomShowTo").selectedOptions[0].text.toLowerCase()}.`);
   };
   $("roomHide").onclick = () => send({ t: "roomShow", room: room.id, hide: true, pc: $("roomShowTo").value });
   for (const id of ["roomOccupants", "roomContents"]) $(id).addEventListener("input", () => dirty.add(id));
@@ -1520,7 +1520,7 @@
     dirty.delete("roomOccupants");
     dirty.delete("roomContents");
     send({ t: "station", station: next });
-    toast("Saved. The agent sees it on its next reply.");
+    toast("Saved for the agent's next reply.");
   };
   $("roomValues").addEventListener("click", (e) => {
     const p = e.target.closest("[data-path]")?.dataset.path;
@@ -1569,19 +1569,19 @@
         ? S.sounds.map((s) => `<li data-id="${s.id}">
             <input class="sname" value="${esc(s.name)}" aria-label="Sound name" title="Rename">
             ${volumeControl("svol", s.volume, "Volume")}
-            <button data-sact="play" title="Play once on the players' screens">▶ Once</button>
-            <button data-sact="loop" title="Loop on the players' screens until stopped (ambience, a growl…)">🔁 Loop</button>
-            <button class="ghost" data-sact="del" title="Delete this sound">✕</button>
+            <button data-sact="play" title="Play once for players">▶ Once</button>
+            <button data-sact="loop" title="Loop until stopped">↻ Loop</button>
+            <button class="ghost" data-sact="del" title="Delete sound">✕</button>
           </li>`).join("")
-        : `<li class="none">No sounds yet. Upload growls, attacks, ambience…</li>`;
+        : `<li class="none">No sounds yet.</li>`;
     }
     const playing = S.playing || [];
     const pl = $("soundPlaying");
     if (!pl.contains(document.activeElement)) {
       pl.innerHTML = playing.length
-        ? playing.map((p) => `<li data-pid="${p.pid}"><span>${p.loop ? "🔁" : "▶"}</span>
+        ? playing.map((p) => `<li data-pid="${p.pid}"><span>${p.loop ? "↻" : "▶"}</span>
             <span class="grow">${esc(p.name)}${p.loop ? "" : " · once"}</span>
-            ${p.loop ? volumeControl("pvol", p.volume, "Volume (live)") : ""}
+            ${p.loop ? volumeControl("pvol", p.volume, "Live volume") : ""}
             <button data-stop="${p.pid}">Stop</button></li>`).join("")
         : `<li class="none">Silence</li>`;
     }
@@ -1636,7 +1636,7 @@
     if (!s) return;
     const volume = Number(li.querySelector(".svol").value);
     if (act === "play" || act === "loop") send({ t: "soundPlay", id: s.id, loop: act === "loop", volume });
-    else if (act === "del" && await sure(`Delete "${s.name}"?`, "The sound file is removed from this session (and stops if it's playing).", "Delete")) {
+    else if (act === "del" && await sure(`Delete "${s.name}"?`, "Removes the file and stops it.", "Delete")) {
       const r = await fetch(soundUrl(s.id), { method: "DELETE", headers: { "X-Warden-Token": key } });
       if (!r.ok && r.status !== 404) toast("Couldn't delete that sound.", "error");
     }
@@ -1686,10 +1686,10 @@
     }
     const discordBtn = $("voicesOn").querySelector('[data-on="discord"]');
     discordBtn.disabled = !d.enabled && on !== "discord";
-    discordBtn.title = d.enabled ? "The Discord bot speaks every line in its voice channel, with each voice's effects. While it isn't in one, the terminals speak instead." : "This server has no Discord bot (see Discord)";
+    discordBtn.title = d.enabled ? "Bot speaks in its voice channel, else the terminals" : "No Discord bot on this server";
     $("voicesNote").textContent = on === "discord"
-      ? d.listening ? `Spoken in ${d.listening.channel} on Discord. The terminals stay quiet.` : "The bot isn't in a voice channel (Discord tab), so the terminals speak for now."
-      : on === "screens" ? "Each player's terminal speaks the lines aloud, even with the bot on Discord." : "Nobody hears the voices: lines are only read.";
+      ? d.listening ? `Spoken in ${d.listening.channel} on Discord.` : "Bot not in a voice channel. Terminals speak for now."
+      : on === "screens" ? "Each terminal speaks the lines aloud." : "Voices off. Lines are text only.";
   }
   $("voicesOn").addEventListener("click", (e) => {
     const on = e.target.closest("[data-on]")?.dataset.on;
@@ -1761,9 +1761,9 @@
     for (const [id, mode] of [["sendCommand", "command"], ["sendVoice", "voice"], ["sendNote", "note"]]) $(id).classList.toggle("primary", composeMode === mode);
     $("sendAs").classList.toggle("on", composeMode === "voice");
     const who = $("sendAs").selectedOptions[0]?.text || "a voice";
-    $("compose").placeholder = composeMode === "command" ? "Direction for the agent: it obeys and acts on it now. Players never see it."
-      : composeMode === "note" ? "Note to the agent: what's true now. Private; nothing happens on the players' screens."
-      : `Speak as ${who}: your exact words, on every player's screen.`;
+    $("compose").placeholder = composeMode === "command" ? "Drive agent, not shown to players"
+      : composeMode === "note" ? "Private note to agent"
+      : `Speak as ${who.replace(/ \(terminal\)$/, "")}`;
     $("compose").dataset.mode = composeMode;
   }
 
@@ -1810,7 +1810,7 @@
     $("micBtn").setAttribute("aria-pressed", String(on));
     $("micBtn").textContent = on ? "Listening" : "Listen";
     $("micLive").hidden = !on;
-    micStatus(on ? "Starting the microphone…" : "");
+    micStatus(on ? "Starting mic…" : "");
     if (on) startRecog();
     else recog?.abort();
   }
@@ -1821,11 +1821,11 @@
     setListening(false);
   }
   const MIC_ERRORS = {
-    "not-allowed": "The microphone is blocked for this page: allow it (the icon in the address bar) and press Listen again.",
-    "service-not-allowed": "This browser won't run speech recognition here. Use Chrome or Edge.",
+    "not-allowed": "Microphone blocked. Allow it in the address bar, then Listen again.",
+    "service-not-allowed": "Speech recognition unavailable here. Use Chrome or Edge.",
     "audio-capture": "No microphone found.",
-    network: "This browser can't reach a speech-recognition service (Brave, the Claude app's browser and some other Chromium browsers don't have one). Use Chrome or Edge.",
-    "language-not-supported": `Speech recognition doesn't support your browser's language (${navigator.language}).`,
+    network: "No speech service in this browser. Use Chrome or Edge.",
+    "language-not-supported": `Speech recognition doesn't support ${navigator.language}.`,
   };
   function startRecog() {
     const r = (recog = new Recognition());
@@ -1834,7 +1834,7 @@
     recog.lang = navigator.language || "en-US";
     recog.continuous = true;
     recog.interimResults = true;
-    recog.onaudiostart = () => micStatus("Listening… speak and it's written down.");
+    recog.onaudiostart = () => micStatus("Listening…");
     recog.onresult = (e) => {
       heardAny = true;
       let interim = "";
@@ -1854,16 +1854,16 @@
     recog.onend = () => {
       if (!listening || recog !== r) return;
       quickEnds = !heardAny && Date.now() - started < 1500 ? quickEnds + 1 : 0;
-      if (quickEnds >= 4) return micFailed("Speech recognition keeps stopping straight away in this browser. Use Chrome or Edge.");
+      if (quickEnds >= 4) return micFailed("Speech recognition keeps stopping. Use Chrome or Edge.");
       setTimeout(() => listening && recog === r && startRecog(), 250);
     };
     try { recog.start(); } catch (err) { micFailed(`Couldn't start speech recognition: ${err.message}`); }
   }
   // Without speech recognition (or on an insecure page) Listen says how to get it, instead of starting.
-  const FIREFOX_HOW = "Firefox has speech recognition switched off: open about:config, set media.webspeech.recognition.enable to true, then reload this page.";
+  const FIREFOX_HOW = "In about:config, set media.webspeech.recognition.enable to true, then reload.";
   const micUnavailable = !window.isSecureContext
-    ? "Listen needs a secure page: open the console over https, or at localhost on the computer running it."
-    : !Recognition ? (/firefox/i.test(navigator.userAgent) ? FIREFOX_HOW : "Listen needs speech recognition, which this browser doesn't have. Use Chrome, Edge or Firefox.") : "";
+    ? "Listen needs https or localhost."
+    : !Recognition ? (/firefox/i.test(navigator.userAgent) ? FIREFOX_HOW : "No speech recognition here. Use Chrome, Edge or Firefox.") : "";
   if (micUnavailable) $("micBtn").title = micUnavailable;
   $("micBtn").onclick = () => (discordReady() ? (S.discord.listening ? send({ t: "discordStop" }) : copyDiscordCommand()) : micUnavailable ? toast(micUnavailable, "error") : setListening(!listening));
 
@@ -1939,13 +1939,13 @@
     const since = S.storyStartedAt ? new Date(S.storyStartedAt).toLocaleString() : "";
     const how = await ask("Restart the story?",
       (since
-        ? `Puts the story back exactly as it was when play began (${since}): setting, lore, secrets, cast, map, terminals, characters and station. Anything changed since, by the agent or by you, is undone.`
-        : "The story hasn't been played yet, so there's nothing to undo; everything is cleared and the characters made fresh.")
-      + " Clears the log, rolls, clocks, effects and handouts. Your settings and sounds are kept; players stay connected, as GUEST, at the starting terminal.",
+        ? `Undoes every story change since play began (${since}).`
+        : "Not played yet. Characters are made fresh.")
+      + " Clears the log, rolls, clocks, effects and handouts. Players return to the start.",
       [["default", "Restart", "danger"]]);
     if (how) send({ t: "resetSession" });
   };
-  $("resetAll").onclick = async () => (await sure("Factory reset?", "Everything (lore, personas, voices, secrets, station) goes back to the defaults.", "Factory reset")) && send({ t: "resetAll" });
+  $("resetAll").onclick = async () => (await sure("Factory reset?", "Resets the whole story to the defaults.", "Factory reset")) && send({ t: "resetAll" });
 
   // ------------------------------------------------------------ voices & entities
   const BUILTIN_IDS = ["terminal", "broadcast", "narrator"];
@@ -2021,11 +2021,11 @@
       <div class="vcard" data-i="${i}">
         <div class="row">
           <input data-k="name" value="${esc(v.name)}" aria-label="Name" class="vname">
-          <button data-act="test" title="Hear it (on this computer only)">▶ Test</button>
+          <button data-act="test" title="Preview voice here">▶ Test</button>
           ${BUILTIN_IDS.includes(v.id) ? `<span class="pill">built-in</span>` : `<button data-act="del" class="danger" title="Delete voice">✕</button>`}
         </div>
-        <label class="field"><span>Persona <em>(who this is and how it talks; the agent reads this)</em></span>
-          <textarea data-k="persona" rows="${v.id === "terminal" ? 10 : 4}" placeholder="e.g. Dr. Imre Salk, the station medic. Exhausted, kind, hiding a fever...">${esc(v.persona || "")}</textarea></label>
+        <label class="field"><span>Persona</span>
+          <textarea data-k="persona" rows="${v.id === "terminal" ? 10 : 4}" placeholder="Who this is, how it talks">${esc(v.persona || "")}</textarea></label>
         <div class="vgrid">
           <label>Style
             <select data-k="style">${o.styles.map((st) => `<option value="${st}" ${st === v.style ? "selected" : ""}>${{ plain: "plain text", label: "NAME: label", boxed: "boxed", narration: "narration (italic, no name)" }[st]}</option>`).join("")}</select>
@@ -2172,7 +2172,7 @@
     card.dataset.id = oc.id;
     card.innerHTML = `
       <div class="label">⚖ Your call: the players are attempting</div>
-      ${oc.held ? '<div class="muted small">Nothing has been shown to the players yet; they see PROCESSING until you decide.</div>' : ""}
+      ${oc.held ? '<div class="muted small">Players see PROCESSING until you decide.</div>' : ""}
       <div class="attempt">${esc(oc.attempt || "(something uncertain)")}</div>
       ${oc.suggested_check !== "none" ? `<div class="muted small">Agent suggests: ${esc(checkName(oc.suggested_check))}${advMark(oc.advantage)}</div>` : ""}
       ${oc.why ? `<div class="note">${esc(oc.why)}</div>` : ""}
@@ -2183,7 +2183,7 @@
       <div class="row wrap">
         <button data-oc="success" class="ocbtn ok" title="It works" aria-label="It works">✓</button>
         <button data-oc="failure" class="ocbtn bad" title="It fails" aria-label="It fails">✗</button>
-        <button data-oc="roll" class="ocbtn" title="Call for a roll" aria-label="Call for a roll">🎲</button>
+        <button data-oc="roll" class="ocbtn" title="Call for a roll" aria-label="Call for a roll">Roll</button>
         <span class="grow"></span>
         <button data-oc="dismiss" class="ghost">Dismiss</button>
       </div>
@@ -2285,7 +2285,7 @@
       const plus = skill && hasSkill(c, skill) ? bonus : 0;
       return `${c.name}: ${checkName(check)} ${stat}${plus ? ` + ${plus}` : ""}, roll under ${stat + plus}`;
     };
-    $("rollTarget").innerHTML = pcs.length ? pcs.map((c) => esc(line(c))).join("<br>") : "Add player characters under Crew to call for rolls.";
+    $("rollTarget").innerHTML = pcs.length ? pcs.map((c) => esc(line(c))).join("<br>") : "Add crew to call for rolls.";
     $("rollCall").disabled = !pcs.length || S.roll?.status === "waiting";
   }
   for (const id of ["rollWho", "rollCheck", "rollSkill", "rollSkillLevel"]) $(id).addEventListener("change", rollFormChanged);
@@ -2302,8 +2302,8 @@
       const got = r.results[p.id];
       if (!got) {
         if (r.status !== "waiting") return `<li class="muted">${esc(p.name)}: didn't roll</li>`;
-        const nobody = !S.claims[p.id] ? ` <span class="muted small">(nobody is playing them)</span>` : "";
-        return `<li><span class="spinner"></span>${esc(p.name)}: waiting${nobody} <button data-roll="for" data-pc="${esc(p.id)}" class="ghost" title="Roll their dice from here">🎲 Roll for them</button></li>`;
+        const nobody = !S.claims[p.id] ? ` <span class="muted small">(not played)</span>` : "";
+        return `<li><span class="spinner"></span>${esc(p.name)}: waiting${nobody} <button data-roll="for" data-pc="${esc(p.id)}" class="ghost" title="Roll for them here">Roll for them</button></li>`;
       }
       const res = got.result;
       const dice = `${res.dice.map(show).join(" / ")}${res.dice.length > 1 ? ` → ${show(res.used)}` : ""}`;
@@ -2315,8 +2315,8 @@
     }).join("");
     const narrate = hasKey()
       ? `<span class="muted small">The agent narrates the result.</span>`
-      : `<span class="muted small">No AI key: narrate it with Speak.</span>`;
-    box.innerHTML = `<div>🎲 <b>${esc(label)}</b></div><ul class="rollres">${rows}</ul>
+      : `<span class="muted small">No AI key. Narrate with Speak.</span>`;
+    box.innerHTML = `<div><b>${esc(label)}</b></div><ul class="rollres">${rows}</ul>
       <div class="row">${r.status === "waiting"
         ? `<span class="grow"></span><button data-roll="cancel" class="ghost">${Object.keys(r.results).length ? "Stop waiting" : "Cancel roll"}</button>`
         : `${narrate}<span class="grow"></span><button data-roll="clear" class="ghost">Clear</button>`}</div>`;
@@ -2352,7 +2352,7 @@
     if (to.dataset.key !== key) { to.dataset.key = key; const was = to.value; to.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(""); to.value = opts.some(([v]) => v === was) ? was : ""; }
     const list = (S.handouts || []).slice().reverse();
     const nameOf = (id) => S.config.crew.find((c) => c.id === id)?.name || "everyone";
-    $("docList").innerHTML = list.length ? list.map((h) => `<li title="${esc(h.text.slice(0, 300))}"><span class="grow">${esc(h.title)} <span class="muted">· ${esc(h.to ? nameOf(h.to) : "everyone")}</span></span><button data-doc-again="${esc(h.id)}" class="ghost" title="Show it on their screens again">↻</button><button data-doc-del="${esc(h.id)}" class="ghost" title="Take it back">✕</button></li>`).join("") : '<li class="muted small">None given yet.</li>';
+    $("docList").innerHTML = list.length ? list.map((h) => `<li title="${esc(h.text.slice(0, 300))}"><span class="grow">${esc(h.title)} <span class="muted">· ${esc(h.to ? nameOf(h.to) : "everyone")}</span></span><button data-doc-again="${esc(h.id)}" class="ghost" title="Show again">↻</button><button data-doc-del="${esc(h.id)}" class="ghost" title="Take it back">✕</button></li>`).join("") : '<li class="muted small">None given yet.</li>';
   }
   // The agent writes it from the description in the text box (and the title, if any).
   function handoutWriting(busy) {
@@ -2361,12 +2361,12 @@
   }
   $("docWrite").onclick = () => {
     const title = $("docTitle").value.trim(), brief = $("docText").value.trim();
-    if (!brief && !title) return toast("Describe the document first, e.g. Salk's medical journal, hinting that he's infected.", "error");
+    if (!brief && !title) return toast("Describe the document first.", "error");
     send({ t: "handoutWrite", brief, title });
   };
   $("docSend").onclick = () => {
     const title = $("docTitle").value.trim(), text = $("docText").value.trim();
-    if (!title || !text) return toast("A handout needs a title and some text.", "error");
+    if (!title || !text) return toast("Add a title and text.", "error");
     send({ t: "handout", title, text, to: $("docTo").value });
     $("docTitle").value = $("docText").value = "";
   };
@@ -2383,10 +2383,10 @@
       const s = c.paused ? c.left : Math.max(0, Math.ceil((c.ends - Date.now()) / 1000));
       const id = esc(c.id);
       return `<li class="${c.paused ? "paused" : ""}"><span class="grow">${esc(c.label)}${c.paused ? ' <span class="muted">· paused</span>' : ""}</span><span class="ctime${s <= 30 && !c.paused ? " low" : ""}">${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</span>
-        <button data-clock-pause="${id}" data-pause="${c.paused ? "" : "1"}" class="ghost" title="${c.paused ? "Resume" : "Pause (frozen on every screen)"}">${c.paused ? "▶" : "⏸"}</button>
-        <button data-clock-shift="${id}" data-seconds="-60" class="ghost" title="Advance it: a minute less left">−1m</button>
+        <button data-clock-pause="${id}" data-pause="${c.paused ? "" : "1"}" class="ghost" title="${c.paused ? "Resume" : "Pause on every screen"}">${c.paused ? "Resume" : "Pause"}</button>
+        <button data-clock-shift="${id}" data-seconds="-60" class="ghost" title="A minute less">−1m</button>
         <button data-clock-shift="${id}" data-seconds="60" class="ghost" title="A minute more">+1m</button>
-        <button data-clock="${id}" class="ghost danger" title="Cancel it (nothing happens)">✕</button></li>`;
+        <button data-clock="${id}" class="ghost danger" title="Cancel, nothing happens">✕</button></li>`;
     }).join("") : '<li class="muted small">None running.</li>';
   }
   setInterval(() => S?.clocks?.some((c) => !c.paused) && renderClocks(), 1000);
@@ -2417,7 +2417,7 @@
   $("sttRemember").onchange = (e) => {
     if (!e.target.checked) store.del("wardenKey:groq");
     else if ($("sttKey").value.trim()) store.set("wardenKey:groq", $("sttKey").value.trim());
-    else { e.target.checked = false; toast("Paste the Groq key, tick this, then save it.", "info"); }
+    else { e.target.checked = false; toast("Paste the Groq key first.", "info"); }
   };
   $("discordStop").onclick = () => send({ t: "discordStop" });
   $("discordCopy").onclick = copyDiscordCommand;
@@ -2426,10 +2426,10 @@
   $("keywarn").onclick = openKeyDialog;
   $("sessionCode").onclick = () => copy(playerLink(), "Player link");
   $("copyPlayer").onclick = () => copy(playerLink(), "Player link");
-  $("copyWarden").onclick = async () => (await sure("Copy the Warden link?", "It opens this console on another device. Anyone who has it can run your session (but never sees your API key).", "Copy link", "primary")) && copy(wardenLink(), "Warden link");
+  $("copyWarden").onclick = async () => (await sure("Copy the Warden link?", "Anyone with it can run your session.", "Copy link", "primary")) && copy(wardenLink(), "Warden link");
   $("allSessions").onclick = () => { location.href = "dm"; };
   $("endSession").onclick = async () => {
-    if (!(await sure(`End session ${code}?`, "For everyone: the log, voices and settings are deleted and players are disconnected.", "End session"))) return;
+    if (!(await sure(`End session ${code}?`, "Deletes the log, voices and settings, and disconnects players.", "End session"))) return;
     send({ t: "endSession" });
   };
 
@@ -2440,6 +2440,6 @@
     document.title = `Warden · ${code}`;
     connect();
   } else {
-    showStart(code ? `This device isn't the Warden for session ${code}. Open it with its Warden link.` : "");
+    showStart(code ? `Not the Warden for ${code}. Use its Warden link.` : "");
   }
 })();

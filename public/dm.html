@@ -11,7 +11,7 @@
   <!-- ================= START: create or reopen a session ================= -->
   <main id="start" class="start" hidden>
     <h1>WARDEN CONSOLE</h1>
-    <p class="muted">Run a Mothership session: your players join the station terminal with a code, and an AI voices the station while you steer it.</p>
+    <p class="muted">Players join with a code. An AI voices the station while you steer it.</p>
     <div id="startErr" class="err" role="alert"></div>
 
     <section class="card">
@@ -19,12 +19,12 @@
       <form id="createForm" class="stack">
         <label class="field"><span>AI provider</span><select id="newProvider"></select></label>
         <div id="newKeyFields" class="stack">
-        <label class="field"><span>Your API key <a id="keyLink" target="_blank" rel="noopener">get one ↗</a></span>
+        <label class="field"><span>API key <a id="keyLink" target="_blank" rel="noopener">get one ↗</a></span>
           <input id="newKey" type="password" autocomplete="off" spellcheck="false" required></label>
-        <label class="check"><input type="checkbox" id="newRemember"> Remember this key on this device</label>
+        <label class="check"><input type="checkbox" id="newRemember"> Remember on this device</label>
         </div>
-        <p class="muted small" id="newFreeNote" hidden>No key needed. Free models are slower and less sharp than DeepSeek or Claude, and they're shared: if their limit runs out, replies fail until it resets. You can add your own key under 🔑 Key at any time.</p>
-        <p class="muted small" id="newKeyNote">You bring your own key, and you pay your provider for what the agent uses. DeepSeek Flash costs a fraction of a cent per reply. The key stays in the server's memory for this session only. It is never written to disk or shown to players. If the server restarts, you'll be asked for it again.</p>
+        <p class="muted small" id="newFreeNote" hidden>No key needed. Free models are slower, and replies fail when their shared limit runs out.</p>
+        <p class="muted small" id="newKeyNote">You pay your provider for what the agent uses. The key is kept in server memory only, never shown to players.</p>
         <div class="row"><button class="primary" id="createBtn">Create session</button></div>
       </form>
     </section>
@@ -37,7 +37,7 @@
     <section class="card">
       <h2>Open from another device</h2>
       <form id="linkForm" class="row">
-        <input id="wardenLink" placeholder="Paste a Warden link (Session → Copy Warden link)" autocomplete="off">
+        <input id="wardenLink" placeholder="Paste Warden link" autocomplete="off">
         <button>Open</button>
       </form>
     </section>
@@ -67,14 +67,14 @@
         <button id="copyPlayer">Copy player link</button></div>
       <h3 class="sethead">This console</h3>
       <div class="row wrap">
-        <button id="copyWarden" title="Opens this console on another device. Anyone with it can run your session.">Copy Warden link</button>
+        <button id="copyWarden" title="Anyone with this link can run your session.">Copy Warden link</button>
         <button id="allSessions" class="ghost">All my sessions</button>
       </div>
       <h3 class="sethead">Start over</h3>
       <div class="row wrap">
-        <button id="clearScreen" title="Players' screen goes blank; the agent still remembers">Clear player screen</button>
-        <button id="resetSession" class="danger" title="Wipe log & effects; keep lore/persona">Restart story</button>
-        <button id="resetAll" class="danger" title="Everything back to defaults">Factory reset</button>
+        <button id="clearScreen" title="Blanks player screens; the agent remembers">Clear player screen</button>
+        <button id="resetSession" class="danger" title="Clears log and effects; keeps lore and personas">Restart story</button>
+        <button id="resetAll" class="danger" title="Resets everything to defaults">Factory reset</button>
         <span class="grow"></span>
         <button id="endSession" class="danger" title="Deletes this session for everyone">End session</button>
       </div>
@@ -83,32 +83,32 @@
 
     <div class="tabpanel" data-tabs="settings" data-panel="agent">
       <h3 class="sethead">LLM</h3>
-      <div class="row wrap agent" title="Which AI runs the station. Lists are cheapest-first.">
+      <div class="row wrap agent" title="AI model, cheapest first">
         <select id="provider" aria-label="Provider"></select>
         <select id="model" aria-label="Model"></select>
-        <select id="effort" aria-label="Thinking effort" title="Thinking effort (off/low = fastest & cheapest)"></select>
-        <button id="keyBtn" title="Your API key for this session">🔑 API key…</button>
+        <select id="effort" aria-label="Thinking effort" title="Off or low is fastest and cheapest"></select>
+        <button id="keyBtn" title="Session API key">API key…</button>
       </div>
-      <label class="field talkrow"><span>How much the characters say</span>
+      <label class="field talkrow"><span>Talk length</span>
         <select id="talk">
-          <option value="terse">Terse: a line or two, fragments</option>
-          <option value="brief">Brief: 2-3 short sentences, then let the players react</option>
-          <option value="normal">Normal: a few sentences, no monologues</option>
-          <option value="long">Expansive: longer speeches when it's dramatic</option>
+          <option value="terse">Terse: a line or two</option>
+          <option value="brief">Brief: 2-3 sentences</option>
+          <option value="normal">Normal: a few sentences</option>
+          <option value="long">Expansive: longer speeches</option>
         </select></label>
       <h3 class="sethead">The agent may…</h3>
-      <label class="check"><input type="checkbox" id="narrator"> <span>narrate the scene <em>the NARRATOR describes what happens around the players: dripping water, flickering panels, people moving and reacting; never speaking to them</em></span></label>
-      <label class="check"><input type="checkbox" id="agentEffects"> <span>trigger screen effects <em>alarms, glitches, blackouts, timed between lines</em></span></label>
-      <label class="check"><input type="checkbox" id="agentVariants"> <span>send different versions of a line to different players <em>used rarely, for personal moments</em></span></label>
-      <label class="check"><input type="checkbox" id="checkFirst"> <span>check with you first <em>password attempts and anything that could go either way wait for your call (it works / it fails / roll) before the players see anything</em></span></label>
-      <label class="check"><input type="checkbox" id="agentCrew"> <span>change the crew's health, wounds and stress <em>when the fiction clearly hurts or frightens them</em></span></label>
+      <label class="check"><input type="checkbox" id="narrator"> <span>narrate the scene <em>describes the surroundings, never speaks to players</em></span></label>
+      <label class="check"><input type="checkbox" id="agentEffects"> <span>trigger screen effects <em>alarms, glitches, blackouts</em></span></label>
+      <label class="check"><input type="checkbox" id="agentVariants"> <span>send per-player lines <em>rarely, for personal moments</em></span></label>
+      <label class="check"><input type="checkbox" id="checkFirst"> <span>check with you first <em>uncertain attempts wait for your ruling</em></span></label>
+      <label class="check"><input type="checkbox" id="agentCrew"> <span>change crew health, wounds and stress <em>when the fiction hurts or scares them</em></span></label>
     </div>
 
     <div class="tabpanel" data-tabs="settings" data-panel="players">
       <h3 class="sethead">Players may…</h3>
-      <label class="check"><input type="checkbox" id="playerVitals"> <span>change their own health, wounds and stress <em>for things settled at the table</em></span></label>
-      <label class="check"><input type="checkbox" id="playerRolls"> <span>roll their own stats and saves <em>results appear in your log</em></span></label>
-      <label class="check"><input type="checkbox" id="playerTerminals"> <span>move between terminals <em>to any terminal marked reachable, or the portable unit</em></span></label>
+      <label class="check"><input type="checkbox" id="playerVitals"> <span>change their own health, wounds and stress <em>settled at the table</em></span></label>
+      <label class="check"><input type="checkbox" id="playerRolls"> <span>roll their own stats and saves <em>results show in your log</em></span></label>
+      <label class="check"><input type="checkbox" id="playerTerminals"> <span>move between terminals <em>reachable terminals or the portable unit</em></span></label>
       <h3 class="sethead">Sound</h3>
     <div class="row wrap voicesrow"><span>Voices play</span>
         <div class="seg" id="voicesOn" role="radiogroup" aria-label="Where voices play">
@@ -118,30 +118,30 @@
     </div>
 
     <div class="tabpanel" data-tabs="settings" data-panel="discord" id="discordSet">
-      <p id="discordOff" class="muted small" hidden>A Discord bot can write down what everyone says in your voice channel, into this log. This server doesn't have one set up: whoever runs it adds a bot token as <code>DISCORD_BOT_TOKEN</code> (see the README) and restarts it.</p>
+      <p id="discordOff" class="muted small" hidden>No Discord bot on this server. The host sets <code>DISCORD_BOT_TOKEN</code> and restarts it.</p>
       <div id="discordOn" class="stack">
-        <p class="muted small">A bot in your Discord voice channel writes down what everyone says, by name, into this log for the agent: yours as things that happened, the players' as table talk. Players never see it. Speech-to-text runs on your own Groq key.</p>
+        <p class="muted small">A bot transcribes your voice channel into this log for the agent, using your Groq key. Players never see it.</p>
         <h3 class="sethead">Groq key</h3>
         <div class="row wrap">
-          <input id="sttKey" class="grow" type="password" autocomplete="off" spellcheck="false" placeholder="Groq API key (gsk_…)" aria-label="Groq API key">
+          <input id="sttKey" class="grow" type="password" autocomplete="off" spellcheck="false" placeholder="Groq API key" aria-label="Groq API key">
           <button id="sttKeySave">Save key</button>
           <a href="https://console.groq.com/keys" target="_blank" rel="noopener">get one ↗</a>
         </div>
-        <label class="check"><input type="checkbox" id="sttRemember"> <span>Remember the Groq key on this device</span></label>
+        <label class="check"><input type="checkbox" id="sttRemember"> <span>Remember on this device</span></label>
         <h3 class="sethead">Who's who</h3>
         <ul id="discordRoster" class="roster small"></ul>
-        <p class="muted small">Whoever runs <code>/terminal listen</code> is the Warden. In Discord, each player picks their character with <code>/terminal player character:&lt;name&gt;</code>. The Warden can set it for anyone (add <code>user:@someone</code>), move a character someone already has, or hand on the Warden role (character <b>Warden</b>). <b>Nobody</b> takes a character away. Anyone without one goes in under their Discord name.</p>
-        <p class="muted small">To have the characters speak in the voice channel instead of on the terminals: Players tab, <b>Voices play: Discord preferred</b>.</p>
+        <p class="muted small">Whoever runs <code>/terminal listen</code> is the Warden. Players pick a character with <code>/terminal player character:&lt;name&gt;</code>; the Warden can add <code>user:@someone</code>. <b>Warden</b> hands on the role, <b>Nobody</b> clears one. Others use their Discord name.</p>
+        <p class="muted small">To voice characters in Discord: Players tab, <b>Voices play: Discord preferred</b>.</p>
         <h3 class="sethead">Voice channel</h3>
         <div class="row wrap">
           <span id="discordState" class="grow small"></span>
-          <a id="discordInvite" target="_blank" rel="noopener" title="Add the bot to your Discord server (once)">Add the bot to a server ↗</a>
+          <a id="discordInvite" target="_blank" rel="noopener" title="One-time setup">Add bot to server ↗</a>
           <button id="discordStop" class="danger" hidden>Stop listening</button>
         </div>
         <div id="discordCode" class="stack">
-          <p class="small">In Discord, join the voice channel, then paste this into the chat and send it.</p>
+          <p class="small">Join the voice channel, then send this in Discord chat.</p>
           <div class="row">
-            <input id="discordCmd" class="grow mono" readonly aria-label="The Discord command">
+            <input id="discordCmd" class="grow mono" readonly aria-label="Discord command">
             <button id="discordCopy" class="primary">Copy</button>
           </div>
         </div>
@@ -153,16 +153,16 @@
   <dialog id="builderDialog" class="builderdlg">
     <div class="row">
       <h2 class="grow">Story builder</h2>
-      <span class="muted small">Talk it through with the agent, press <b>Draft it</b>, review, then apply. Uses this session's model and key.</span>
+      <span class="muted small">Talk it through, press <b>Draft it</b>, review, apply.</span>
       <button id="builderClose" class="ghost" aria-label="Close">✕</button>
     </div>
     <div class="bgrid">
       <section class="bchat">
         <div id="bmsgs" class="bmsgs"></div>
-        <textarea id="bInput" rows="3" placeholder="e.g. A derelict research ship found drifting near a gas giant. The players are salvagers… (Ctrl+Enter sends)"></textarea>
+        <textarea id="bInput" rows="3" placeholder="Describe the scenario"></textarea>
         <div class="row wrap">
           <button id="bSend" class="primary">Send</button>
-          <button id="bDraft" title="Write the whole scenario from the conversation so far">Draft it</button>
+          <button id="bDraft" title="Write the scenario from this chat">Draft it</button>
           <span class="grow"></span>
           <button id="bReset" class="ghost">Start over</button>
         </div>
@@ -176,11 +176,11 @@
   <dialog id="portraitDialog" class="portraitdlg">
     <div class="row wrap">
       <h2 class="grow" id="portraitTitle">Picture</h2>
-      <button id="portraitUpload" title="Use a picture of your own: it's cropped to a square">Upload your own…</button>
+      <button id="portraitUpload" title="Cropped to a square">Upload your own…</button>
       <button id="portraitNone" class="ghost">No picture</button>
       <button id="portraitClose" class="ghost" aria-label="Close">✕</button>
     </div>
-    <p class="muted small">Or pick one from <a href="https://ashen-victor.itch.io/sci-fi-character-portraits-poject" target="_blank" rel="noopener">Sci-fi character portraits project</a> by Victor J Merino (CC BY-NC 4.0; the players' screens credit it while one is in use).</p>
+    <p class="muted small">Or pick one from <a href="https://ashen-victor.itch.io/sci-fi-character-portraits-poject" target="_blank" rel="noopener">Sci-fi character portraits project</a> by Victor J Merino (CC BY-NC 4.0, credited on player screens).</p>
     <div id="portraitGrid" class="portraitgrid"></div>
   </dialog>
 
@@ -188,11 +188,11 @@
     <div class="row wrap">
       <h2>Synopsis</h2>
       <div class="seg" id="synKinds" role="tablist" aria-label="Which synopsis">
-        <button data-kind="prebrief" role="tab" title="Before play: who they are, where they are, what they know, their job">Prebrief</button><button data-kind="sofar" role="tab" title="During play: what has happened, where they are now, what's next">Story so far</button><button data-kind="wrapup" role="tab" title="After the one-shot: what happened, and what became of each of them afterwards">Wrap-up</button>
+        <button data-kind="prebrief" role="tab" title="Before play: who, where, and the job">Prebrief</button><button data-kind="sofar" role="tab" title="During play: events and what's next">Story so far</button><button data-kind="wrapup" role="tab" title="After play: what became of everyone">Wrap-up</button>
       </div>
       <span id="synStatus" class="muted small grow"></span>
-      <button id="synWrite" title="Have the agent write it from the story and the comms so far. Uses this session's model and key.">↻ Write it</button>
-      <button id="synCopy" title="Copy the player sections only, without the Warden-only notes">Copy for players</button>
+      <button id="synWrite" title="Agent writes it from the story so far">↻ Write it</button>
+      <button id="synCopy" title="Copies without Warden-only notes">Copy for players</button>
       <button id="synClose" class="ghost" aria-label="Close">✕</button>
     </div>
     <div id="synBody" class="synbody"></div>
@@ -202,7 +202,7 @@
   <dialog id="mapDialog" class="mapdlg">
     <div class="row">
       <h2 class="grow" id="mapTitle">Station map</h2>
-      <span class="muted small">Click a door, light, camera or value to change it. The agent sees changes on its next reply.</span>
+      <span class="muted small">Click a door, light, camera or value to change it.</span>
       <span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">Drawing</button><button data-view="status">Status</button></span>
       <button id="mapClose" class="ghost" aria-label="Close">✕</button>
     </div>
@@ -224,12 +224,12 @@
     <div class="roomgrid">
       <section class="roomplanbox">
         <div class="row wrap">
-          <button id="roomEdit" class="lockbtn" title="Unlock to paint tiles on the floor plan; lock again when done"></button>
-          <button id="roomRedraw" class="ghost" title="Have the agent draw this room again (uses the session's model and key)">↻ Redraw with agent</button>
+          <button id="roomEdit" class="lockbtn" title="Unlock to paint tiles"></button>
+          <button id="roomRedraw" class="ghost" title="Agent redraws this room">↻ Redraw with agent</button>
           <span class="grow"></span>
           <select id="roomShowTo" aria-label="Show to" title="Who sees the layout"></select>
-          <button id="roomShow" class="primary" title="Put this floor plan on the players' screens: the layout only, never who or what is in the room">Show players</button>
-          <button id="roomHide" class="ghost" title="Take it off their screens">Hide</button>
+          <button id="roomShow" class="primary" title="Layout only, never who or what is inside">Show players</button>
+          <button id="roomHide" class="ghost" title="Remove from player screens">Hide</button>
         </div>
         <div id="roomTools" class="rptools" hidden></div>
         <div id="roomPlan"></div>
@@ -238,8 +238,8 @@
       <section class="roomside">
         <h2>Here now</h2>
         <div id="roomPlayers" class="chips"></div>
-        <label class="field"><span>Who else (the agent keeps this current)</span><textarea id="roomOccupants" rows="2" placeholder="Nobody. Names, comma separated."></textarea></label>
-        <label class="field"><span>What's here</span><textarea id="roomContents" rows="2" placeholder="Nothing notable. Comma separated."></textarea></label>
+        <label class="field"><span>Who else</span><textarea id="roomOccupants" rows="2" placeholder="Names, comma separated"></textarea></label>
+        <label class="field"><span>What's here</span><textarea id="roomContents" rows="2" placeholder="Items, comma separated"></textarea></label>
         <div class="row"><span class="grow"></span><button id="roomSaveWho">Save</button></div>
         <h2>Room state</h2>
         <div id="roomValues" class="chips"></div>
@@ -255,7 +255,7 @@
       <label class="field"><span>Provider</span><select id="keyProvider"></select></label>
       <label class="field"><span>API key <a id="keyLink2" target="_blank" rel="noopener">get one ↗</a></span>
         <input id="keyValue" type="password" autocomplete="off" spellcheck="false"></label>
-      <label class="check"><input type="checkbox" id="keyRemember"> Remember this key on this device</label>
+      <label class="check"><input type="checkbox" id="keyRemember"> Remember on this device</label>
       <p class="muted small" id="keyStatus"></p>
       <div class="row">
         <button value="save" class="primary">Save key</button>
@@ -271,15 +271,15 @@
   <header class="top">
     <h1>WARDEN CONSOLE</h1>
     <span id="conn" class="pill bad">offline</span>
-    <button id="sessionCode" class="code" title="Session code: click to copy the player link">------</button>
+    <button id="sessionCode" class="code" title="Click to copy player link">------</button>
     <span class="grow"></span>
     <span id="keywarn" class="pill bad" hidden></span>
-    <button id="synopsisBtn" class="ghost" data-short="Brief" title="A briefing to share with the players (who they are, where, what they know, what they're here to do), with notes for you on the story beats and next steps">Synopsis</button>
-    <button id="builderBtn" class="ghost" data-short="Build" title="Create a brand-new station, cast and crew with the agent">Story Builder</button>
-    <button id="settingsBtn" class="ghost" aria-label="Settings" title="Settings: AI model and key, joining, what the agent and players may do, and the session">⚙</button>
+    <button id="synopsisBtn" class="ghost" data-short="Brief" title="Player briefing with Warden notes">Synopsis</button>
+    <button id="builderBtn" class="ghost" data-short="Build" title="Build a new scenario with the agent">Story Builder</button>
+    <button id="settingsBtn" class="ghost" aria-label="Settings" title="Settings">⚙</button>
     <div class="seg" id="mode" role="radiogroup" aria-label="Response mode">
       <button data-mode="auto" title="Agent replies go straight to players">Auto</button>
-      <button data-mode="review" title="You approve/edit every agent reply">Review</button>
+      <button data-mode="review" title="You approve every agent reply">Review</button>
     </div>
   </header>
 
@@ -300,19 +300,19 @@
         <textarea id="compose" rows="3"></textarea>
         <div id="castLists" hidden></div>
         <div class="row wrap">
-          <button id="sendCommand" title="Direction: the agent must obey and acts on it right away. Players never see it.">Direction</button>
-          <button id="sendNote" title="Note (Ctrl+Enter): private, between you and the agent. Tell it what changed ('Voss is dead', 'the cargo door is now open'). It updates the station state and replies here. Players see nothing.">Note</button>
+          <button id="sendCommand" title="Drive agent, not shown to players">Direction</button>
+          <button id="sendNote" title="Private note to the agent (Ctrl+Enter)">Note</button>
           <span class="sendas grow">
-            <select id="sendAs" aria-label="Who speaks" title="Which voice or character says it. Add voices under Story."></select>
-            <select id="sendOn" aria-label="Which system" title="The players are on different systems: which one's screens show it" hidden></select>
-            <button id="sendVoice" title="Speak: your exact words on the players' screens, in that voice">Speak</button>
+            <select id="sendAs" aria-label="Who speaks" title="Who says it"></select>
+            <select id="sendOn" aria-label="Which system" title="Which system shows it" hidden></select>
+            <button id="sendVoice" title="Your exact words, in that voice">Speak</button>
           </span>
         </div>
         <div id="micLive" class="miclive" hidden aria-live="polite"></div>
         <div class="row keyrow">
-          <button id="micBtn" class="ghost small" aria-pressed="false" title="Listen: what you say aloud at the table is written down (speech-to-text) and goes to the agent with its next prompt, as things that happened. It shows in the log as you speak and can't be edited. Players never see it.">Listen</button>
+          <button id="micBtn" class="ghost small" aria-pressed="false" title="Transcribe table talk for the agent, not shown to players">Listen</button>
           <span class="muted small keyhint grow">Tab switches · Enter sends · Shift+Enter new line · Ctrl+Enter note</span>
-          <button id="retcon" class="ghost small" title="Undo the agent's last response: its lines are removed from the players' screens, this log and the agent's memory, and its station and crew changes and effects are reverted">↶ Retcon last response</button>
+          <button id="retcon" class="ghost small" title="Undo the agent's last response and its changes">↶ Retcon last response</button>
         </div>
       </div>
     </section>
@@ -324,27 +324,27 @@
         <div class="tabs seg" data-tabs="side" role="tablist">
           <button data-tab="actions">Actions</button><button data-tab="map">Map</button><button data-tab="crew">Crew</button><button data-tab="story">Story</button><button data-tab="rules">Rules</button>
         </div>
-        <button id="editMode" class="ghost editmode lockbtn" aria-pressed="false" title="Unlock to edit the setup: characters, terminals, connections, voices, lore. Locked: just what you need to run the game."></button>
+        <button id="editMode" class="ghost editmode lockbtn" aria-pressed="false" title="Unlock to edit the setup"></button>
       </div>
       <!-- The next response, rolls, effects and sounds. -->
       <div class="tabpanel" data-tabs="side" data-panel="actions">
-        <p id="noKeyNote" class="muted small" hidden>No AI key, so the agent is quiet: reply with Speak, or add a key under ⚙.</p>
+        <p id="noKeyNote" class="muted small" hidden>No AI key. Use Speak, or add a key in Settings.</p>
 
-        <h2>Roll <span class="hint" title="Call for a roll from one character or all of them. Each rolls on their own screen against their own sheet.">?</span></h2>
+        <h2>Roll <span class="hint" title="Each character rolls on their own screen.">?</span></h2>
         <div class="stack">
         <div class="card stack" id="rollCard">
-          <p id="rollAway" class="muted small" hidden>The roll form is open in ⚖ Your call, beside the log.</p>
+          <p id="rollAway" class="muted small" hidden>Roll form is open in ⚖ Your call.</p>
           <!-- The form also opens inside ⚖ Your call (its 🎲), and comes back here after. -->
           <div id="rollForm" class="stack">
           <div class="rollgrid">
             <label>Who rolls
-              <select id="rollWho" title="Each rolls on their own screen against their own sheet"></select>
+              <select id="rollWho" title="Rolls against their own sheet"></select>
             </label>
             <label>Check
               <select id="rollCheck"></select>
             </label>
             <label class="rollskill">Skill
-              <select id="rollSkill" title="From their sheet. With everyone rolling, only those who have it get the bonus."></select>
+              <select id="rollSkill" title="Bonus only for those who have it"></select>
             </label>
             <label class="rollskill">Skill level
               <select id="rollSkillLevel">
@@ -361,31 +361,31 @@
               </select>
             </label>
             <label>What for
-              <input id="rollReason" placeholder="e.g. bypass the cargo bay lock">
+              <input id="rollReason" placeholder="bypass a lock">
             </label>
           </div>
           <div id="rollTarget" class="muted small"></div>
-          <div class="row"><button id="rollCall" class="primary" title="Stats and Saves: d100 under Stat + Skill, doubles crit, a failure adds 1 Stress. Panic: d20 above current Stress, or they Panic.">🎲 Call for roll</button></div>
+          <div class="row"><button id="rollCall" class="primary" title="Checks: d100 under target. Panic: d20 over Stress.">Call for roll</button></div>
           </div>
         </div>
         </div>
 
-        <h2>Handouts <span class="hint" title="Documents in the players' hands: a log, a memo, a manifest, a diary page. It pops up on their screens and stays under DOCS. The agent can hand them out too.">?</span></h2>
+        <h2>Handouts <span class="hint" title="Documents that pop up on player screens and stay under DOCS.">?</span></h2>
         <div class="card stack">
-          <input id="docTitle" placeholder="Title, e.g. MEDICAL LOG: DR. SALK, DAY 19" maxlength="120">
-          <textarea id="docText" rows="4" placeholder="The document's text, or describe it and press Write it (e.g. Salk's medical journal, hinting that he's infected)"></textarea>
+          <input id="docTitle" placeholder="Title" maxlength="120">
+          <textarea id="docText" rows="4" placeholder="Text, or describe it and press Write it"></textarea>
           <div class="row wrap"><label class="small muted">To <select id="docTo"></select></label><span class="grow"></span>
-            <button id="docWrite" title="The agent writes the document from your description (and the title, if you gave one), from the story so far. You can edit it before handing it out.">Write it</button>
-            <button id="docSend">📄 Hand it out</button></div>
+            <button id="docWrite" title="Agent writes it from your description">Write it</button>
+            <button id="docSend">Hand it out</button></div>
           <ul id="docList" class="fxlist"></ul>
         </div>
 
-        <h2>Clocks <span class="hint" title="Countdowns on every player's screen: a breach, oxygen running out, a self-destruct. The agent can start and stop them too. When one runs out, the agent makes it happen.">?</span></h2>
+        <h2>Clocks <span class="hint" title="Countdowns on player screens. The agent acts when one runs out.">?</span></h2>
         <div class="card stack">
           <div class="row wrap clockform">
-            <input id="clockLabel" placeholder="e.g. REACTOR BREACH" aria-label="Clock name" maxlength="40">
+            <input id="clockLabel" placeholder="Clock name" aria-label="Clock name" maxlength="40">
             <label class="small muted"><input id="clockMins" type="number" min="0.5" max="120" step="0.5" value="5" aria-label="Minutes"> min</label>
-            <button id="clockStart">⏱ Start</button>
+            <button id="clockStart">Start</button>
           </div>
           <ul id="clockList" class="fxlist"></ul>
         </div>
@@ -393,8 +393,8 @@
         <h2>Effects <span class="hint" title="Screen effects on every player's screen.">?</span></h2>
         <div class="stack">
         <div class="fxopts">
-          <label>Caption <input id="fxText" placeholder="optional text (alarm, banner, lockout, blackout)"></label>
-          <label>Seconds <input id="fxSecs" type="number" min="0" placeholder="until cleared" title="Leave blank (or 0) to keep it on until you clear it"></label>
+          <label>Caption <input id="fxText" placeholder="Optional text"></label>
+          <label>Seconds <input id="fxSecs" type="number" min="0" placeholder="until cleared" title="Blank or 0 lasts until cleared"></label>
           <label>Intensity
             <select id="fxIntensity"><option value="1">Low</option><option value="2" selected>Med</option><option value="3">High</option></select>
           </label>
@@ -407,18 +407,18 @@
         <ul id="fxActive" class="fxlist"></ul>
         </div>
 
-        <h2>Sounds <span class="hint" title="Your own audio (growls, attacks, ambience), played on every player's screen.">?</span></h2>
+        <h2>Sounds <span class="hint" title="Your own audio, played on every player's screen.">?</span></h2>
         <div class="stack">
         <!-- The Warden's own audio: monster growls, attacks, ambience. Plays on every player screen. -->
         <div id="soundDrop" class="drop">
           <input type="file" id="soundFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.webm" multiple hidden>
-          <button id="soundUpload">⬆ Upload sounds</button>
-          <span class="muted small">or drop files here (MP3, WAV, OGG · 10 MB)</span>
+          <button id="soundUpload">Upload sounds</button>
+          <span class="muted small">or drop audio files, 10 MB max</span>
         </div>
         <ul id="soundList" class="soundlist"></ul>
         <div class="row">
           <h3 class="grow">Playing</h3>
-          <button id="soundStopAll" class="danger">Stop all sounds</button>
+          <button id="soundStopAll" class="danger">Stop all</button>
         </div>
         <ul id="soundPlaying" class="fxlist"></ul>
         </div>
@@ -430,26 +430,26 @@
           <span class="grow"></span><button id="mapExpand" class="ghost" title="Open the full map">⤢ Expand</button></div>
         <div id="map" class="smap compact"></div>
       <details class="edit-only">
-        <summary>Station state <span class="muted">(the agent reads &amp; edits this)</span></summary>
+        <summary>Station state <span class="muted">(agent-editable)</span></summary>
         <textarea id="station" class="code" rows="14" spellcheck="false"></textarea>
         <div class="row"><span id="stationErr" class="err"></span><span class="grow"></span><button id="stationSave">Save state</button></div>
       </details>
       </div>
 
       <div class="tabpanel" data-tabs="side" data-panel="crew">
-        <h2>Player characters <span class="hint" title="Each player picks one on their screen. The agent knows who they are and who typed what.">?</span></h2>
+        <h2>Player characters <span class="hint" title="Each player picks one on their screen.">?</span></h2>
         <div id="crew"></div>
         <div class="row edit-only"><button id="addCrew" class="ghost">+ Add character</button></div>
-        <h2>Characters <span class="hint" title="The story's people. Whoever is in the same room as a player's terminal talks to them face to face: clear, and only screens in that room show it. Anyone else is heard over the intercom, with static. The agent moves them and brings in new people as the story needs; you can too. A picture shows beside what they say.">?</span></h2>
-        <div class="row wrap edit-only"><label class="small muted">Heard elsewhere over <select id="castChannel" title="The voice characters come through when they aren't in a room with players"></select></label></div>
+        <h2>Characters <span class="hint" title="The story's people: face to face in the room, otherwise over the intercom.">?</span></h2>
+        <div class="row wrap edit-only"><label class="small muted">Heard elsewhere over <select id="castChannel" title="Voice used outside the players' room"></select></label></div>
         <div id="cast"></div>
         <div class="row edit-only"><button id="addCast" class="ghost">+ Add character</button></div>
         <input type="file" id="portraitFile" accept="image/*" hidden>
-        <h2>Adversaries <span class="hint" title="The story's threats: the creature, the thing in the walls. Until the players see one, its lines show as ??? and nobody names it; the agent reveals it when they do (or tick revealed). Give one a picture to show the players when it's time.">?</span></h2>
+        <h2>Adversaries <span class="hint" title="The story's threats. Shown as ??? until revealed.">?</span></h2>
         <div id="adversaries"></div>
         <div class="row edit-only"><button id="addAdversary" class="ghost">+ Add adversary</button></div>
         <input type="file" id="advFile" accept="image/*" hidden>
-        <h2>Terminals <span class="hint" title="Where each player's screen is. A terminal's look shows on that screen and the agent answers from that place. Players switch with TERM (if allowed in Settings); move anyone from their crew card.">?</span></h2>
+        <h2>Terminals <span class="hint" title="Where each player's screen is. Players switch with TERM if allowed.">?</span></h2>
         <!-- The station: its name (every screen's header) and the colour of every terminal set to "station's". -->
         <div class="row wrap stationrow">
           <label class="small muted">Station name <input id="stationName"></label>
@@ -458,31 +458,31 @@
         <div id="terminals" class="edit-only"></div>
         <div id="terminalsPlay" class="play-only"></div>
         <div class="row edit-only"><button id="addTerminal" class="ghost">+ Add terminal</button></div>
-        <h2 class="edit-only">Connections <span class="hint" title="Which voices can be heard on which system. A voice can only speak on a system it's connected to: the agent is told, and a line sent anywhere else is moved to one it's on. People talking in person, in the room, aren't on any system. Give a terminal a System to add one.">?</span></h2>
+        <h2 class="edit-only">Connections <span class="hint" title="Which voices can speak on which system.">?</span></h2>
         <div id="connections" class="edit-only"></div>
       </div>
 
       <div class="tabpanel" data-tabs="side" data-panel="story">
         <details class="sec play-only" open>
-          <summary><h2>Voices <span class="hint" title="Who can speak besides the characters (they're on the Crew tab). Unlock the padlock to edit them.">?</span></h2></summary>
+          <summary><h2>Voices <span class="hint" title="Speakers besides the characters. Unlock to edit.">?</span></h2></summary>
           <div id="castPlay"></div>
         </details>
         <details id="voicesPanel" class="sec edit-only" open>
-          <summary><h2>Voices &amp; personas <span class="hint" title="Every line is said by a voice; each persona tells the agent who it is and how it talks.">?</span></h2></summary>
+          <summary><h2>Voices &amp; personas <span class="hint" title="Each persona tells the agent who it is and how it talks.">?</span></h2></summary>
           <input id="testText" placeholder="Test line" value="Attention. This is a test of the station voice system.">
           <div id="voices"></div>
           <div class="row"><button id="addVoice" class="ghost">+ Add voice</button></div>
         </details>
 
       <details class="sec" open>
-        <summary><h2>Standing orders <span class="hint" title="Persistent steering: the agent follows these on every reply.">?</span></h2></summary>
-        <textarea id="standingOrders" rows="4" placeholder="e.g. The computer is slowly being taken over by the organism. Occasionally slip in words like HUNGRY or WARM."></textarea>
+        <summary><h2>Standing orders <span class="hint" title="The agent follows these on every reply.">?</span></h2></summary>
+        <textarea id="standingOrders" rows="4" placeholder="Orders for every reply"></textarea>
       </details>
 
       <details class="sec" open>
-        <summary><h2>Lore &amp; secrets <span class="hint" title="Lore is public knowledge in the station's systems; secrets are what the computer knows and guards by access level.">?</span></h2></summary>
-        <label class="field"><span>Station lore (public)</span><textarea id="lore" rows="7"></textarea></label>
-        <label class="field"><span>Secrets (computer knows, guards by access level)</span><textarea id="secrets" rows="7"></textarea></label>
+        <summary><h2>Lore &amp; secrets <span class="hint" title="Lore is public; secrets are guarded by access level.">?</span></h2></summary>
+        <label class="field"><span>Public lore</span><textarea id="lore" rows="7"></textarea></label>
+        <label class="field"><span>Secrets</span><textarea id="secrets" rows="7"></textarea></label>
       </details>
       </div>
 
@@ -517,7 +517,7 @@
           <li>Rest somewhere safe (as you allow) to shed Stress.</li>
         </ul>
 
-        <h2>Panic table <span class="hint" title="Every panic is looked up here, the crew's and the characters' alike. The players see the name on the dice; the agent gets the whole entry and shows it in the fiction. For the crew, the mechanics (Stress, Conditions, Minimum Stress) are yours to apply.">?</span></h2>
+        <h2>Panic table <span class="hint" title="Used for every panic. Apply crew mechanics yourself.">?</span></h2>
         <p class="muted small">Mothership 1e's Panic Table (Tuesday Knight Games), in brief. d20 at or under Stress:</p>
         <ol id="panicTable" class="panictable"></ol>
 
@@ -544,9 +544,9 @@
 
         <h2>In this app</h2>
         <ul>
-          <li><b>Actions → Roll</b> calls a check, save or Panic check for one character or everyone; each rolls on their own screen against their own sheet, and failures add Stress by themselves.</li>
-          <li><b>⚖ Your call</b> means the agent saw an uncertain attempt and is waiting for you: it shows the stakes (what happens if it works, and if it fails), then you say it works, it fails, or roll. Tell the players the stakes before they roll; the agent narrates by them.</li>
-          <li>The agent can change Health, Wounds and Stress (Settings decides); you can always fix them on the Crew tab.</li>
+          <li><b>Actions → Roll</b> calls a check, save or Panic check. Each player rolls on their own screen; failures add Stress automatically.</li>
+          <li><b>⚖ Your call</b>: the agent is waiting on an uncertain attempt. It shows the stakes; you say it works, fails, or roll.</li>
+          <li>The agent can change Health, Wounds and Stress if Settings allow. Fix them on the Crew tab.</li>
         </ul>
       </div>
     </section>

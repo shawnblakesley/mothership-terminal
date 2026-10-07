@@ -753,7 +753,7 @@ export class Session {
     const s = this.state;
     const oc = { needed: true, attempt: String(raw.attempt || "").slice(0, 140), suggested_check: CHECKS[raw.suggested_check] || raw.suggested_check === PANIC ? raw.suggested_check : "none", advantage: ["advantage", "disadvantage"].includes(raw.advantage) ? raw.advantage : "none", why: String(raw.why || "").slice(0, 300), on_success: String(raw.on_success || "").slice(0, 200), on_failure: String(raw.on_failure || "").slice(0, 200) };
     s.outcomeCheck = { ...oc, id: Date.now().toString(36), at: Date.now(), held: true };
-    this.addLog("note", `⚖ Your call first (nothing shown to players yet): ${oc.attempt || "(unspecified)"}${oc.suggested_check !== "none" ? ` · suggests ${CHECKS[oc.suggested_check].label}${oc.advantage === "advantage" ? " [+]" : oc.advantage === "disadvantage" ? " [-]" : ""}` : ""}`);
+    this.addLog("note", `⚖ Your call (players see nothing yet): ${oc.attempt || "(unspecified)"}${oc.suggested_check !== "none" ? ` · suggests ${CHECKS[oc.suggested_check].label}${oc.advantage === "advantage" ? " [+]" : oc.advantage === "disadvantage" ? " [-]" : ""}` : ""}`);
     if (note) this.addLog("note", `Agent: ${note}`);
     s.pending = null;
     this.setBusy(true); // players see PROCESSING meanwhile
@@ -796,7 +796,7 @@ export class Session {
     this.playhead = Math.max(now, elsewhere);
     this.toPlayers({ t: "interrupt", at: now, cut, trimmed }); // (other systems' screens don't have these lines)
     discordCut(this.code); // (and the bot stops talking)
-    this.addLog("note", `Comms cut off by a player${cut.length ? `: ${cut.length} line${cut.length > 1 ? "s" : ""} never said` : ""}.`);
+    this.addLog("note", `A player cut off comms${cut.length ? `: ${cut.length} line${cut.length > 1 ? "s" : ""} unsaid` : ""}.`);
   }
 
   // ---------------------------------------------------------------- shared timeline
@@ -971,7 +971,7 @@ export class Session {
         if (!key) delete this.keys[p.id];
         else if (looksLikeKey(p.id, key)) this.keys[p.id] = key;
         else {
-          this.send("dm", { t: "toast", level: "error", text: `That doesn't look like a ${p.label} key (expected ${p.keyHint}).` });
+          this.send("dm", { t: "toast", level: "error", text: `Not a valid ${p.label} key (expected ${p.keyHint}).` });
           return;
         }
         // First key in: point the session at that provider's cheapest model.
@@ -995,7 +995,7 @@ export class Session {
         if (typeof p.credit === "string") v.adversary.credit = p.credit.replace(/\s+/g, " ").trim().slice(0, 200);
         if (typeof p.revealed === "boolean" && p.revealed !== v.adversary.revealed) {
           v.adversary.revealed = p.revealed;
-          this.addLog("note", p.revealed ? `Adversary revealed: the players know ${v.name} by name now.` : `${v.name} is unrevealed again: the players see ??? .`);
+          this.addLog("note", p.revealed ? `Adversary revealed: players now know ${v.name} by name.` : `${v.name} hidden again: players see ???.`);
         }
         s.config.voices = sanitizeVoices(s.config.voices);
         this.toPlayers({ t: "header", header: this.playerHeader() });
@@ -1079,7 +1079,7 @@ export class Session {
         // On a system the Warden picked (when the players are split), else where the players are.
         const asked = netNamed(s.config, msg.system) ?? this.defaultNet();
         const net = this.routeLine(as, asked);
-        if (net !== asked) this.send("dm", { t: "toast", level: "info", text: `${s.config.voices.find((v) => v.id === as)?.name} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(s.config, asked)}`}, so it went to ${systemName(s.config, net)}.` });
+        if (net !== asked) this.send("dm", { t: "toast", level: "info", text: `${s.config.voices.find((v) => v.id === as)?.name} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(s.config, asked)}`}. Sent to ${systemName(s.config, net)}.` });
         this.introduce(as, net);
         this.addLog(kind, text, { source: "dm", net, ...(kind === "entity" ? { entity: as } : {}) });
         if (msg.clearPending) { this.genCounter++; s.pending = null; this.setBusy(false); }
@@ -1093,7 +1093,7 @@ export class Session {
         const key = String(msg.key || "").trim();
         rememberSecret(key);
         if (key && !/^gsk_[A-Za-z0-9]{20,}$/.test(key)) {
-          this.send("dm", { t: "toast", level: "error", text: "That doesn't look like a Groq key (expected gsk_…)." });
+          this.send("dm", { t: "toast", level: "error", text: "Not a valid Groq key (expected gsk_…)." });
           return;
         }
         this.sttKey = key;
@@ -1473,7 +1473,7 @@ export class Session {
     const v = c.voices.find((x) => x.adversary && !x.adversary.revealed && (x.id === n || x.name.toLowerCase() === n || (n === "???" && x.adversary)));
     if (!v) return null;
     v.adversary.revealed = true;
-    this.addLog("note", `Adversary revealed: the players see ${v.name}${v.adversary.picture ? " (its picture goes up as the line plays)" : ""}.`);
+    this.addLog("note", `Adversary revealed: players see ${v.name}.`);
     this.toPlayers({ t: "header", header: this.playerHeader() });
     const pic = v.adversary.picture;
     return { id: v.id, name: v.name, ...(pic ? { src: PICTURE_LINK.test(pic) ? pic : `api/sessions/${this.code}/portraits/${pic}`, credit: v.adversary.credit || "" } : {}) };
@@ -1490,7 +1490,7 @@ export class Session {
       if (!v) continue;
       v.adversary.revealed = true;
       any = true;
-      this.addLog("note", `Adversary revealed: the players have seen ${v.name}, and know it by name from now on.`);
+      this.addLog("note", `Adversary revealed: players now know ${v.name} by name.`);
     }
     if (any) this.toPlayers({ t: "header", header: this.playerHeader() });
     return any;
@@ -1520,7 +1520,7 @@ export class Session {
       const day = new Date().toISOString().slice(0, 10);
       if (this.freeCalls.day !== day) this.freeCalls = { day, count: 0 };
       if (this.freeCalls.count >= FREE_CALLS_PER_DAY) {
-        throw new Error(`This session has used its ${FREE_CALLS_PER_DAY} free replies for today. Add your own DeepSeek or Claude key under 🔑 Key to keep going.`);
+        throw new Error(`Used all ${FREE_CALLS_PER_DAY} free replies for today. Add a DeepSeek or Claude API key in Settings → Agent to continue.`);
       }
       this.freeCalls.count++;
     }
@@ -1541,7 +1541,7 @@ export class Session {
     const provider = getProvider(s.config.provider);
     if (!provider) throw new Error(`Unknown provider "${s.config.provider}".`);
     const apiKey = keyFor(s.config.provider, this.keys);
-    if (!apiKey) throw new Error("No LLM API key for this session. Add one under ⚙ Settings → LLM.");
+    if (!apiKey) throw new Error("No API key. Add one in Settings → Agent.");
     for (let attempt = 1; ; attempt++) {
       const text = await this.callModel(provider, { apiKey, model: s.config.model, effort: s.config.effort, ...request }, kind);
       try {
@@ -1646,7 +1646,7 @@ export class Session {
       const provider = getProvider(s.config.provider);
       if (!provider) throw new Error(`Unknown provider "${s.config.provider}".`);
       const apiKey = keyFor(s.config.provider, this.keys);
-      if (!apiKey) throw new Error("No LLM API key for this session, so the agent can't read notes. Add one under ⚙ Settings → LLM.");
+      if (!apiKey) throw new Error("No API key, so the agent can't read notes. Add one in Settings → Agent.");
       const request = { apiKey, model: s.config.model, effort: s.config.effort, ...buildRequest(s, "", { aside: true }) };
       let reply;
       for (let attempt = 1; ; attempt++) {
@@ -1904,7 +1904,7 @@ export class Session {
     }
     s.outcomeCheck = undo.outcome;
     this.playhead = 0;
-    this.addLog("note", "↶ Retconned the agent's last response.");
+    this.addLog("note", "↶ Retconned the agent's last reply.");
     this.initPlayers();
     this.crewChanged();
   }
@@ -2059,7 +2059,7 @@ export class Session {
       const provider = getProvider(providerId);
       if (!provider) throw new Error(`Unknown provider "${providerId}".`);
       const apiKey = keyFor(providerId, this.keys);
-      if (!apiKey) throw new Error("No LLM API key for this session. Add one under ⚙ Settings → LLM.");
+      if (!apiKey) throw new Error("No API key. Add one in Settings → Agent.");
       // Check first: answering a player who is attempting something uncertain
       // waits for the Warden's ruling, so nothing is shown before it.
       const latest = s.log.findLast((e) => ["player", "warden", "roll", "aside"].includes(e.kind));
@@ -2152,7 +2152,7 @@ export class Session {
       if (!fresh.length) throw new Error("no stories came back");
       x.pitches = [KESTREL_PITCH, ...fresh];
     } catch (err) {
-      x.error = `Couldn't come up with stories (${err?.message || err}). Try again, or play KESTREL-9.`;
+      x.error = `Couldn't get stories: ${err?.message || err}. Try again, or play KESTREL-9.`;
     }
     x.busy = "";
     this.soloChanged();
@@ -2203,7 +2203,7 @@ export class Session {
       Object.assign(this.state.config, { mode: "auto", checkFirst: true });
     } catch (err) {
       x.phase = "pick";
-      x.error = `Couldn't build "${p.title}" (${err?.message || err}). Try again, or pick another.`;
+      x.error = `Couldn't build "${p.title}": ${err?.message || err}. Try again, or pick another.`;
     }
     x.busy = "";
     this.soloChanged();
@@ -2430,7 +2430,7 @@ export class Session {
     this.state.handouts.push(h);
     if (this.state.handouts.length > 60) this.state.handouts.shift();
     const who = h.to ? this.state.config.crew.find((c) => c.id === h.to)?.name : "everyone";
-    this.addLog("note", `📄 Handout${source === "agent" ? " from the agent" : ""} to ${who}: ${h.title}`);
+    this.addLog("note", `Handout${source === "agent" ? " from the agent" : ""} to ${who}: ${h.title}`);
     this.showHandout(h);
     this.touch();
   }

@@ -819,10 +819,10 @@
     $("ss-key").value = remembered || "";
     $("ss-remember").checked = !!remembered;
     $("ss-note").innerHTML = p?.localKey
-      ? `Running on this computer: the game uses the ${escH(p.label)} key in your .env file, so there's nothing to paste.`
+      ? `Uses the ${escH(p.label)} key in your .env file. Nothing to paste.`
       : free
-      ? "<b>Heads up:</b> the free model is shared, slow (a reply can take a minute or more) and writes thinner stories, and if its limit runs out the game stops answering. For a much better game, use DeepSeek: a fraction of a cent per reply. You can switch any time under PILOT."
-      : "Your key stays in the server's memory for this game only; it is never saved or shown to anyone. You pay your provider for what the AI uses (a fraction of a cent per reply on the cheap models).";
+      ? "<b>Note:</b> the free model is shared and slow, writes thinner stories, and stops answering if its limit runs out. DeepSeek is much better, at a fraction of a cent per reply. Switch any time under PILOT."
+      : "Your key is kept in server memory for this game only, never saved or shown. Your provider bills you for usage (a fraction of a cent per reply on cheap models).";
   }
   $("solo-start").onclick = openSoloStart;
   $("ss-provider").onchange = syncSoloStart;
@@ -928,8 +928,8 @@
     fill($("pl-effort"), m.efforts.map((e) => [e, e === "off" ? "off (fastest)" : e]), config.effort);
     $("pl-effortrow").hidden = !m.efforts.length;
     $("pl-keyrow").hidden = $("pl-keyactions").hidden = !!p.free;
-    $("pl-key").placeholder = p.configured ? "•••••••• (set; paste to replace)" : p.keyHint;
-    $("pl-keystatus").textContent = p.configured ? "A key is set for this game." : "No key yet: the AI can't answer on this provider until you add one.";
+    $("pl-key").placeholder = p.configured ? "•••••••• (paste to replace)" : p.keyHint;
+    $("pl-keystatus").textContent = p.configured ? "A key is set for this game." : "No key yet. Add one so the AI can answer.";
   }
   $("hdr-pilot").onclick = () => { renderPilot(); $("pilotDlg").showModal(); };
   const pilotSend = (msg) => ws?.readyState === 1 && ws.send(JSON.stringify(msg));
