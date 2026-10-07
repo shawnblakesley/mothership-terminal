@@ -14,7 +14,7 @@ import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap } from
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
-import { linkCode, discordStatus, stopListening, codeValid } from "./discordbot.js";
+import { linkCode, discordStatus, stopListening, codeValid, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
@@ -180,6 +180,7 @@ export function defaultGame(keys = {}) {
       playerVitals: true, // players may change their own health, wounds and stress
       playerRolls: true, // players may roll their own stats and saves
       tts: true,
+      discordTalk: false, // the Discord bot speaks every spoken line in its voice channel too (discordbot.js)
       voices: defaultVoices().map((v) => ({ ...v, systems: ["*"] })), // (the default story: every voice reaches every system, the tug's too)
       theme: "green",
       map: DEFAULT_MAP,
@@ -453,7 +454,7 @@ const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew do
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
 // The session's settings, not part of the story (a restart keeps them as they are).
-const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "upgrades"]);
+const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
 // The Warden's moves that play the story (the first one saves it; see storyBegins).
 const STORY_ACTIONS = new Set(["command", "inject", "note", "heard", "rollRequest", "rollFor", "generate", "approve", "outcome", "handout", "clockStart"]);
 // A crew member named by the agent ("" for none, or no match).
@@ -610,6 +611,11 @@ export class Session {
   // were said on; someone talking in person is only heard in that room.
   sees(ws, e) { return shownOn(e.net, this.netOfSocket(ws)) && (!e.room || this.roomOfSocket(ws) === e.room); }
   // Only the player screens that show this line.
+  // Is a line on some player screen? (With none connected, everyone's on Discord.)
+  seenByAnyone(entry) {
+    const screens = [...this.sockets].filter((c) => c.role === "player");
+    return !screens.length || screens.some((c) => this.sees(c, entry));
+  }
   toEntry(entry, p) {
     const data = JSON.stringify(p);
     for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && this.sees(c, entry)) c.send(data);
@@ -767,6 +773,7 @@ export class Session {
     for (const fx of [...this.state.effects]) if (fx.atEntry && cut.includes(fx.atEntry)) this.endEffect(fx.id); // never fires
     this.playhead = Math.max(now, elsewhere);
     this.toPlayers({ t: "interrupt", at: now, cut, trimmed }); // (other systems' screens don't have these lines)
+    discordCut(this.code); // (and the bot stops talking)
     this.addLog("note", `Comms cut off by a player${cut.length ? `: ${cut.length} line${cut.length > 1 ? "s" : ""} never said` : ""}.`);
   }
 
@@ -783,7 +790,10 @@ export class Session {
   async scheduleLine(entry) {
     const LEAD = 700, PIECE_GAP = 250, LINE_GAP = 150; // LEAD: time for every screen to decode the first clip
     const c = this.state.config;
-    const spoken = c.tts && SPOKEN_KINDS.has(entry.kind);
+    // Discord: the bot speaks the line in its channel too (the main text, not per-player
+    // versions), when someone can see it, with the voice's effects (in person: none).
+    const talk = !!c.discordTalk && SPOKEN_KINDS.has(entry.kind) && discordLinked(this.code) && this.seenByAnyone(entry);
+    const spoken = (c.tts || talk) && SPOKEN_KINDS.has(entry.kind);
     const voice = SPOKEN_KINDS.has(entry.kind) ? voiceFor(c.voices, entry) : null;
     const base = voice ? speakingVoice(c, entry) : null;
     const rate = entry.inPerson ? 1 : voice?.fx?.rate || 1; // (in person: no speaker effects)
@@ -809,10 +819,11 @@ export class Session {
       for (let v = 0; v < texts.length; v++) {
         if (i >= pieces[v].length) continue;
         const wav = await jobs[v][i];
-        if (wav) wavs[v][i] = wav.toString("base64");
+        if (wav && c.tts) wavs[v][i] = wav.toString("base64"); // (screens that don't speak just get the timing)
         // Unspoken text gets reading time instead.
         const dur = wav ? Math.round((wavSeconds(wav) / rate) * 1000) : Math.min(6000, 400 + pieces[v][i].length * 18);
-        const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!wav, last: i === pieces[v].length - 1 };
+        const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!wav && c.tts, last: i === pieces[v].length - 1 };
+        if (talk && v === 0 && wav && live()) discordSay(this.code, wav, entry.inPerson ? {} : voice?.fx || {}, part.at);
         cursors[v] = part.at + dur + PIECE_GAP;
         timing.versions[v].push(part);
         if (sent && live()) this.toEntry(entry, { t: "part", id: entry.id, v, part: { ...part, wav: wavs[v][i] } });
@@ -911,10 +922,12 @@ export class Session {
     if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
+        s.config.discordTalk = !!s.config.discordTalk;
+        if ("discordTalk" in msg.patch) setDiscordTalk(this.code, s.config.discordTalk);
         // Switching provider snaps to its cheapest model; invalid efforts snap to the cheapest valid one.
         if ("provider" in msg.patch && !("model" in msg.patch)) Object.assign(s.config, { model: "", effort: "" });
         else if ("model" in msg.patch && !("effort" in msg.patch)) s.config.effort = "";

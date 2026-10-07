@@ -11,10 +11,16 @@
 //
 // Speech-to-text: each speaker's audio, cut at pauses, goes to Groq's Whisper on
 // the session's own Groq key (memory only, like its LLM key).
+//
+// Talking back (the session's "discordTalk" setting): every line the players'
+// screens would speak is spoken in the channel too, at the same moment, with its
+// voice's effects rendered on the server (voicefx.js).
 import { Client, GatewayIntentBits, Events, MessageFlags } from "discord.js";
-import { joinVoiceChannel, EndBehaviorType, VoiceConnectionStatus, entersState } from "@discordjs/voice";
+import { joinVoiceChannel, EndBehaviorType, VoiceConnectionStatus, entersState, createAudioPlayer, createAudioResource, StreamType, NoSubscriberBehavior, AudioPlayerStatus } from "@discordjs/voice";
 import prism from "prism-media";
 import crypto from "crypto";
+import { Readable } from "stream";
+import { renderVoice } from "./voicefx.js";
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN || "";
 export const discordEnabled = !!TOKEN;
@@ -71,12 +77,92 @@ function leave(guildId, why = "") {
   if (!l) return;
   links.delete(guildId);
   clearTimeout(l.emptyTimer);
+  l.mixer?.cut();
+  try { l.player?.stop(true); } catch {}
   try { l.connection.destroy(); } catch {}
   const s = getSession(l.session);
   if (s) {
     if (why) s.send("dm", { t: "toast", level: "info", text: why });
     s.syncDm();
   }
+}
+
+// ---------------------------------------------------------------- talking back
+
+// The channel's voice: clips (48 kHz stereo 16-bit) placed on the wall clock, mixed
+// 20 ms at a time, so a reverb tail can ring on under the next line. It ends once
+// the last clip has played; the next line starts a new one.
+const FRAME = 960; // samples per 20 ms
+class Mixer extends Readable {
+  constructor() {
+    super();
+    this.clips = [];
+    this.pos = 0; // samples handed to Discord so far
+    this.start = Date.now();
+  }
+  add(pcm, at) {
+    const from = Math.max(this.pos, Math.round((at - this.start) * 48)); // (late: right away)
+    this.clips.push({ data: new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length / 2), from });
+  }
+  cut() { this.clips = []; }
+  _read() {
+    if (!this.clips.length) { this.ended = true; return this.push(null); }
+    const mix = new Float32Array(FRAME * 2), end = this.pos + FRAME;
+    for (const c of this.clips) {
+      const a = Math.max(this.pos, c.from), b = Math.min(end, c.from + c.data.length / 2);
+      for (let t = a; t < b; t++) {
+        const o = (t - c.from) * 2, m = (t - this.pos) * 2;
+        mix[m] += c.data[o];
+        mix[m + 1] += c.data[o + 1];
+      }
+    }
+    this.clips = this.clips.filter((c) => c.from + c.data.length / 2 > end);
+    this.pos = end;
+    const out = Buffer.alloc(FRAME * 4);
+    for (let k = 0; k < FRAME * 2; k++) out.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(mix[k]))), k * 2);
+    this.push(out);
+  }
+}
+
+const linkOf = (sessionCode) => [...links.values()].find((l) => l.session === sessionCode);
+
+// Is the bot in a voice channel for this session?
+export const discordLinked = (sessionCode) => !!linkOf(sessionCode);
+
+// Speak a clip (a dry WAV, as tts.js makes it) in the channel at `at` (ms, server
+// clock), through the voice's effects.
+export async function discordSay(sessionCode, wav, fx, at) {
+  const pcm = await renderVoice(wav, fx).catch(() => null);
+  const l = linkOf(sessionCode);
+  if (!pcm || !l || !l.talk) return;
+  if (!l.player) {
+    l.player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
+    l.connection.subscribe(l.player);
+    l.player.on("error", (err) => console.warn(`[discord] speaking failed: ${err.message}`));
+    l.player.on(AudioPlayerStatus.Idle, () => { if (l.mixer?.ended) l.mixer = null; });
+  }
+  if (l.mixer && !l.mixer.ended) return l.mixer.add(pcm, at);
+  l.mixer = new Mixer();
+  l.mixer.add(pcm, at); // (before it starts: it ends when it has nothing)
+  l.player.play(createAudioResource(l.mixer, { inputType: StreamType.Raw }));
+}
+
+// A player cut the comms off: stop speaking now (as the screens do).
+export function discordCut(sessionCode) {
+  const l = linkOf(sessionCode);
+  if (!l?.mixer) return;
+  l.mixer.cut();
+  l.mixer = null;
+  try { l.player?.stop(true); } catch {} // (what's already queued for Discord, too)
+}
+
+// Talking back on or off: the bot unmutes itself to speak.
+export function setDiscordTalk(sessionCode, on) {
+  const l = linkOf(sessionCode);
+  if (!l || l.talk === !!on) return;
+  l.talk = !!on;
+  if (!on) discordCut(sessionCode);
+  try { l.connection.rejoin({ ...l.connection.joinConfig, selfMute: !on }); } catch {}
 }
 
 // ---------------------------------------------------------------- audio
@@ -211,8 +297,9 @@ async function onListen(i) {
 
   leave(i.guildId); // (one channel per server)
   stopListening(ticket.session); // (and one channel per session)
-  const connection = joinVoiceChannel({ channelId: channel.id, guildId: i.guildId, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false, selfMute: true });
-  const link = { session: ticket.session, guildName: i.guild.name, channelId: channel.id, channelName: channel.name, wardenId: i.user.id, wardenName: i.member?.displayName || i.user.username, connection, chain: Promise.resolve(), names: new Map(), emptyTimer: null };
+  const talk = !!session.state.config.discordTalk; // (it unmutes to speak the characters' lines)
+  const connection = joinVoiceChannel({ channelId: channel.id, guildId: i.guildId, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false, selfMute: !talk });
+  const link = { session: ticket.session, guildName: i.guild.name, channelId: channel.id, channelName: channel.name, wardenId: i.user.id, wardenName: i.member?.displayName || i.user.username, connection, talk, player: null, mixer: null, chain: Promise.resolve(), names: new Map(), emptyTimer: null };
   links.set(i.guildId, link);
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 20_000);

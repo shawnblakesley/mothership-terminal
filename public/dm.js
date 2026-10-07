@@ -1652,7 +1652,7 @@
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
   // On/off features in the Settings window (config keys of the same name).
-  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals", "tts"];
+  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals", "tts", "discordTalk"];
 
   function renderConfig() {
     const c = S.config;
