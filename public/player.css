@@ -1,9 +1,16 @@
+/* VT323 has no blocks, shapes, arrows or most symbols (■ ● ▓ → Δ ...), and what the browser
+   borrows for them is wider: a [■] was half a character wider than a [ ], and lines shifted.
+   These stand in for just those characters, shrunk so each is one VT323 character wide
+   (0.4em): the first monospace font this machine has, scaled by 0.4 / its own advance. */
+@font-face { font-family: "VT323 Cells"; src: local("Consolas"); size-adjust: 72.727%; unicode-range: U+0394, U+039E, U+03A8, U+2190-22FF, U+2580-25FF, U+26A0; }
+@font-face { font-family: "VT323 Cells 2"; src: local("Menlo"), local("Menlo-Regular"), local("DejaVu Sans Mono"), local("DejaVuSansMono"); size-adjust: 66.445%; unicode-range: U+0394, U+039E, U+03A8, U+2190-22FF, U+2580-25FF, U+26A0; }
+@font-face { font-family: "VT323 Cells 3"; src: local("Courier New"), local("CourierNewPSMT"); size-adjust: 66.667%; unicode-range: U+0394, U+039E, U+03A8, U+2190-22FF, U+2580-25FF, U+26A0; }
 :root {
   --bg: #050805;
   --fg: #3bff7a;
   --dim: #1d8a43;
   --glow: rgba(59, 255, 122, 0.55);
-  --font: "VT323", "Consolas", monospace;
+  --font: "VT323", "VT323 Cells", "VT323 Cells 2", "VT323 Cells 3", "Consolas", monospace;
 }
 body.theme-amber { --fg: #ffb22e; --dim: #9a6a14; --glow: rgba(255, 178, 46, 0.5); --bg: #0a0702; }
 body.theme-cyan  { --fg: #5ef2ff; --dim: #2a8a94; --glow: rgba(94, 242, 255, 0.5); --bg: #02080a; }
