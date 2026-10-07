@@ -620,10 +620,25 @@
     const c = mine();
     if (!c) { $("crewfile-body").innerHTML = '<div class="p-dim">NO CREW FILE SELECTED.</div>'; return; }
     $("crewfile-body").innerHTML = `<div class="cs cs-full">${sheetCards(c)}</div>`;
+    fitChips($("crewfile-body"));
   }
   // A document they hold, among their items: a file you can open.
   const FILE_ICON = '<svg class="cs-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
-  const docChip = (d) => `<button type="button" class="cs-doc" data-doc="${escH(d.id)}" title="Open">${FILE_ICON}${escH(d.title.toUpperCase())}</button>`;
+  const docChip = (d) => `<button type="button" class="cs-doc" data-doc="${escH(d.id)}" title="Open">${FILE_ICON}${chipText(d.title.toUpperCase())}</button>`;
+  // A pill's text: one line; too long for the pill, it fades at the end and scrolls across on hover (fitChips).
+  const chipText = (t) => `<span class="cs-cw"><span class="cs-ct">${escH(t)}</span></span>`;
+  function fitChips(root) {
+    requestAnimationFrame(() => {
+      for (const cw of root.querySelectorAll(".cs-cw")) {
+        const over = cw.firstElementChild.scrollWidth - cw.clientWidth;
+        cw.classList.toggle("long", over > 1);
+        if (over > 1) {
+          cw.style.setProperty("--shift", `${-(over + 6)}px`);
+          cw.style.setProperty("--dur", `${Math.max(2.5, (over + 6) / 28 + 1.5).toFixed(1)}s`);
+        }
+      }
+    });
+  }
   // Everything on their sheet, in cards (the full file and the side sheet alike).
   const sheetCards = (c) => `
       ${sheetHead(c)}
@@ -631,7 +646,7 @@
       ${numbersCard("STATS", c.stats, rollHint())}
       ${numbersCard("SAVES", c.saves)}
       <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((x) => `<div>${escH(x)}</div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
-      <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length || docs.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${escH(x)}</span>`).join("")}${docs.map(docChip).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
+      <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length || docs.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${chipText(x)}</span>`).join("")}${docs.map(docChip).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
       <div class="cs-card cs-story">
         ${c.crime ? `<div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>` : ""}
         ${c.backstory ? `<div class="p-text">${escH(c.backstory)}</div>` : ""}
@@ -654,6 +669,7 @@
     // (the buttons stay at the bottom of the panel, whatever is scrolled above them)
     side.innerHTML = `<div class="cs cs-compact">${sheetCards(c)}</div>
       <div class="s-foot"><button type="button" class="p-btn" id="side-change">[ CHANGE CHARACTER ]</button> <button type="button" class="p-btn" id="side-hide">[ HIDE ]</button></div>`;
+    fitChips(side);
   }
   addEventListener("resize", () => renderSide());
   $("side").addEventListener("click", (e) => {

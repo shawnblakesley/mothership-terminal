@@ -481,11 +481,21 @@ button.cs-num:focus-visible { outline: none; }
 .cs-list > div { border-bottom: 1px dashed var(--dim); padding: 0.05em 0; }
 .cs-list > div:last-child { border: 0; }
 .cs-chips { display: flex; flex-wrap: wrap; gap: 0.3em; }
-.cs-chips span, .cs-chips .cs-doc { border: 2px solid var(--fg); border-radius: 999px; padding: 2px calc(0.45em + 2px); font-size: 0.85em; }
+.cs-chips > span, .cs-chips > .cs-doc { border: 2px solid var(--fg); border-radius: 999px; padding: 2px calc(0.45em + 2px); font-size: 0.85em; }
 /* A document among the items: it opens. */
 .cs-chips .cs-doc { display: inline-flex; align-items: center; gap: 0.3em; background: none; color: inherit; font-family: inherit; text-shadow: inherit; line-height: inherit; cursor: pointer; }
 .cs-chips .cs-doc:hover, .cs-chips .cs-doc:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
 .cs-chips .cs-file { width: 1em; height: 1em; flex: none; }
+/* One line, always: a pill too long for the card shrinks to fit, its text fading at the end,
+   and on hover the text slides across to show the rest (and back). */
+.cs-chips > * { max-width: 100%; min-width: 0; display: inline-flex; align-items: center; }
+.cs-cw { display: flex; min-width: 0; overflow: hidden; white-space: nowrap; } /* (flex: no text baseline adding height) */
+.cs-ct { display: inline-block; white-space: nowrap; }
+.cs-cw.long { -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent); mask-image: linear-gradient(90deg, #000 82%, transparent); }
+.cs-chips > :hover .cs-cw.long, .cs-chips > :focus-visible .cs-cw.long { -webkit-mask-image: none; mask-image: none; }
+.cs-chips > :hover .cs-cw.long .cs-ct, .cs-chips > :focus-visible .cs-cw.long .cs-ct { animation: csMarquee var(--dur, 4s) ease-in-out infinite alternate; }
+@keyframes csMarquee { 0%, 12% { transform: translateX(0); } 88%, 100% { transform: translateX(var(--shift, 0)); } }
+@media (prefers-reduced-motion: reduce) { .cs-chips > :hover .cs-cw.long .cs-ct { animation: none; } }
 .cs-story { display: flex; flex-direction: column; gap: 0.3em; }
 /* The full sheet fills the panel; with room for it, the cards pair up side by side
    (by the space the sheet has, not the window's: a container query). */
