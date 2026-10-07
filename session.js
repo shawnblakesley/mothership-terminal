@@ -1092,7 +1092,7 @@ export class Session {
         break;
       }
       case "discordStop":
-        stopListening(this.code);
+        stopListening(this.code, "Discord: stopped. The bot left the voice channel.");
         break;
       case "note": {
         // A private note to the agent: it updates what's true, without the players seeing anything.

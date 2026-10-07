@@ -327,7 +327,8 @@
   const discordReady = () => !!(S?.discord?.enabled && S.discord.sttKey);
 
   // With Discord ready, Listen becomes the Discord button: it copies the /terminal listen
-  // command (with the session's code), and pulses while the bot is listening.
+  // command (with the session's code), and pulses while the bot is listening; then a
+  // click stops it (the bot leaves the channel).
   let micMode = "", micTitle = null;
   function renderDiscordButton() {
     const d = S.discord || {}, btn = $("micBtn"), on = discordReady();
@@ -339,10 +340,10 @@
       btn.classList.toggle("discord", on);
       if (on) {
         btn.innerHTML = DISCORD_ICON;
-        btn.setAttribute("aria-label", d.listening ? "Discord: listening. Copy the listen command" : "Discord: copy the listen command");
+        btn.setAttribute("aria-label", d.listening ? "Discord: listening. Stop it" : "Discord: copy the listen command");
         btn.setAttribute("aria-pressed", String(!!d.listening));
         btn.title = d.listening
-          ? `Listening on Discord in ${d.listening.channel} (${d.listening.guild}): what's said there goes into the log. Click to copy the /terminal listen command (to move it to another channel).`
+          ? `Listening on Discord in ${d.listening.channel} (${d.listening.guild}): what's said there goes into the log. Click to stop it and disconnect the bot.`
           : "Discord: click to copy the /terminal listen command, then paste it into your voice channel's chat to start listening.";
       } else {
         btn.removeAttribute("aria-label");
@@ -1839,7 +1840,7 @@
     ? "Listen needs a secure page: open the console over https, or at localhost on the computer running it."
     : !Recognition ? (/firefox/i.test(navigator.userAgent) ? FIREFOX_HOW : "Listen needs speech recognition, which this browser doesn't have. Use Chrome, Edge or Firefox.") : "";
   if (micUnavailable) $("micBtn").title = micUnavailable;
-  $("micBtn").onclick = () => (discordReady() ? copyDiscordCommand() : micUnavailable ? toast(micUnavailable, "error") : setListening(!listening));
+  $("micBtn").onclick = () => (discordReady() ? (S.discord.listening ? send({ t: "discordStop" }) : copyDiscordCommand()) : micUnavailable ? toast(micUnavailable, "error") : setListening(!listening));
 
   $("log").addEventListener("click", (e) => {
     const id = e.target.closest("[data-del]")?.dataset.del;

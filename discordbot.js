@@ -49,8 +49,8 @@ export function discordStatus(sessionCode) {
   return { invite: inviteUrl, listening: link ? { guild: link.guildName, channel: link.channelName, warden: link.wardenName } : null };
 }
 
-export function stopListening(sessionCode) {
-  for (const [guildId, l] of links) if (l.session === sessionCode) leave(guildId);
+export function stopListening(sessionCode, why = "") {
+  for (const [guildId, l] of links) if (l.session === sessionCode) leave(guildId, why);
 }
 
 function leave(guildId, why = "") {
