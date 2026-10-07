@@ -432,6 +432,11 @@ body {
 #crt.corrupting #lines, #crt.corrupting #hdr {
   text-shadow: var(--cx, 0) 0 rgba(255,30,90,0.7), calc(var(--cx, 0) * -1) 0 rgba(30,220,255,0.7), 0 0 6px var(--glow);
 }
+/* The character sheet's picture, glitching: jolted, torn into slices, wrong colours, a tearing band. */
+#crt .cr-img { position: relative; }
+#crt .cr-img > * { transform: translateX(var(--fx, 0)); clip-path: inset(var(--ct, 0) 0 var(--cb, 0) 0); filter: hue-rotate(var(--fh, 0deg)) saturate(2.6) contrast(1.5); }
+#crt .cr-img.cr-img-inv > * { filter: invert(1) hue-rotate(var(--fh, 0deg)) contrast(1.8); }
+#crt .cr-img::after { content: ""; position: absolute; left: -4%; right: -4%; top: var(--bt, 50%); height: var(--bh, 4%); background: var(--fg); mix-blend-mode: difference; pointer-events: none; }
 .fx-corrupt { pointer-events: none; }
 .fx-corrupt i { position: absolute; left: 0; right: 0; opacity: 0.55; }
 .fx-corrupt .b-inv { backdrop-filter: invert(1) hue-rotate(180deg); }

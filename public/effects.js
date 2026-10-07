@@ -889,7 +889,9 @@
   // The screen's text decays (part of the glitch): characters turn to junk in sick
   // colours, words rot in runs, letters sprout stacked marks, lines lurch sideways,
   // the colours split, and bands of the screen invert and shift hue. It reaches the
-  // header too (not the clock or the buttons). Everything is put back when it ends.
+  // header too (not the clock or the buttons), and the player's own character sheet
+  // (the side sheet and the full file): every bit of its text, and its picture,
+  // which jolts, tears, shifts colour and inverts. Everything is put back when it ends.
   function corruptText(fx) {
     const glyphs = "▓▒░█▄▀■□◊¥§¤ØÆ#%&@!?/\\|<>{}[]~^*ΞΨΔ∑∂∆≡≠∞";
     const tints = ["cr-red", "cr-mag", "cr-cyan", "cr-white", "cr-inv", "cr-dim"];
@@ -918,7 +920,41 @@
       }
       return out;
     };
+    // The character sheet: each bit of its text is wrapped once (so it can rot in place
+    // without the sheet being redrawn: its picture never reloads, its buttons still work).
+    const SHEET = "#side .cs-card, #crewfile-body .cs-card";
+    const sheetText = () => {
+      for (const card of document.querySelectorAll(SHEET)) {
+        if (card.dataset.crWrapped) continue;
+        card.dataset.crWrapped = "1";
+        const walk = document.createTreeWalker(card, NodeFilter.SHOW_TEXT), nodes = [];
+        while (walk.nextNode()) if (walk.currentNode.data.trim()) nodes.push(walk.currentNode);
+        for (const n of nodes) {
+          const s = document.createElement("span");
+          s.className = "cr-t"; s.dataset.t = n.data; s.textContent = n.data;
+          n.replaceWith(s);
+        }
+      }
+      return document.querySelectorAll("#side .cr-t, #crewfile-body .cr-t");
+    };
     const iv = setInterval(() => {
+      for (const t of sheetText()) t.innerHTML = rot(t.dataset.t);
+      for (const card of document.querySelectorAll(SHEET)) {
+        if (Math.random() < 0.05 * k) card.style.setProperty("--cs", `${rand(-10, 10) * k}px`), card.classList.add("cr-shift");
+        else card.classList.remove("cr-shift");
+      }
+      // Their picture: jolted, torn into slices, the wrong colours, now and then inverted.
+      for (const box of document.querySelectorAll("#side .cs-facebox, #crewfile-body .cs-facebox")) {
+        box.classList.add("cr-img");
+        box.classList.toggle("cr-img-inv", Math.random() < 0.18);
+        const torn = Math.random() < 0.55, top = rand(0, 70);
+        box.style.setProperty("--fh", `${(rand(-180, 180) * Math.min(1, k / 2)) | 0}deg`);
+        box.style.setProperty("--fx", `${(rand(-6, 6) * k).toFixed(1)}px`);
+        box.style.setProperty("--ct", torn ? `${top.toFixed(0)}%` : "0%");
+        box.style.setProperty("--cb", torn ? `${Math.max(0, 100 - top - rand(12, 55)).toFixed(0)}%` : "0%");
+        box.style.setProperty("--bt", `${rand(0, 92).toFixed(0)}%`);
+        box.style.setProperty("--bh", `${rand(2, 14).toFixed(0)}%`);
+      }
       for (const t of targets()) {
         if (t.dataset.orig === undefined) t.dataset.orig = t.textContent;
         t.innerHTML = rot(t.dataset.orig);
@@ -945,6 +981,12 @@
           delete t.dataset.orig;
         }
         for (const l of document.querySelectorAll("#crt .cr-shift")) l.classList.remove("cr-shift");
+        for (const t of document.querySelectorAll("#crt .cr-t")) t.replaceWith(document.createTextNode(t.dataset.t));
+        for (const card of document.querySelectorAll("#crt [data-cr-wrapped]")) delete card.dataset.crWrapped;
+        for (const box of document.querySelectorAll("#crt .cr-img")) {
+          box.classList.remove("cr-img", "cr-img-inv");
+          for (const p of ["--fh", "--fx", "--ct", "--cb", "--bt", "--bh"]) box.style.removeProperty(p);
+        }
         bands.innerHTML = "";
       },
     };
