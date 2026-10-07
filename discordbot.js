@@ -14,7 +14,7 @@
 // Talking back (the session's "discordTalk" setting): every line the players'
 // screens would speak is spoken in the channel too, at the same moment, with its
 // voice's effects rendered on the server (voicefx.js).
-import { Client, GatewayIntentBits, Events, MessageFlags } from "discord.js";
+import { Client, GatewayIntentBits, Events, MessageFlags, ActivityType } from "discord.js";
 import { joinVoiceChannel, EndBehaviorType, VoiceConnectionStatus, entersState, createAudioPlayer, createAudioResource, StreamType, NoSubscriberBehavior, AudioPlayerStatus } from "@discordjs/voice";
 import prism from "prism-media";
 import { Readable } from "stream";
@@ -53,10 +53,21 @@ export function stopListening(sessionCode, why = "") {
   for (const [guildId, l] of links) if (l.session === sessionCode) leave(guildId, why);
 }
 
+// What the bot shows under its name: listening to the comms while it's in a voice
+// channel (how many, never which: one bot serves everyone's games), else waiting.
+function showPresence() {
+  if (!client?.user) return;
+  const n = links.size;
+  client.user.setPresence(n
+    ? { status: "online", activities: [{ type: ActivityType.Listening, name: "the comms", state: n === 1 ? "1 crew on the line" : `${n} crews on the line` }] }
+    : { status: "idle", activities: [{ type: ActivityType.Watching, name: "the station", state: "/terminal listen to open a channel" }] });
+}
+
 function leave(guildId, why = "") {
   const l = links.get(guildId);
   if (!l) return;
   links.delete(guildId);
+  showPresence();
   clearTimeout(l.emptyTimer);
   l.mixer?.cut();
   try { l.player?.stop(true); } catch {}
@@ -291,6 +302,7 @@ async function onListen(i) {
   const connection = joinVoiceChannel({ channelId: channel.id, guildId: i.guildId, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false, selfMute: !talk });
   const link = { session: code, guildName: i.guild.name, channelId: channel.id, channelName: channel.name, wardenId: i.user.id, wardenName: i.member?.displayName || i.user.username, connection, talk, player: null, mixer: null, chain: Promise.resolve(), names: new Map(), emptyTimer: null };
   links.set(i.guildId, link);
+  showPresence();
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
   } catch {
@@ -423,6 +435,7 @@ export function startDiscord(lookup) {
     } catch (err) {
       console.warn(`  ! Discord: couldn't register /terminal: ${err.message}`);
     }
+    showPresence();
     console.log(`  Discord bot online as ${c.user.tag}. Invite it: ${inviteUrl}`);
   });
   client.on(Events.InteractionCreate, async (i) => {
