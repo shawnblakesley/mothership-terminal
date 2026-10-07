@@ -172,7 +172,11 @@ body {
 /* The crew's portraits on their files: the picker, the full file, the side sheet. */
 .portrait.face { float: left; margin: 0.1em 0.7em 0.2em 0; }
 #crewpick-list li.has-face::after { content: ""; display: block; clear: both; }
-#crewpick-list li.current { outline: 1px solid var(--fg); outline-offset: 0.3em; }
+#crewpick-list li.current { outline: 1px solid var(--fg); outline-offset: 0.15em; }
+/* A whole row is the button: hovered (or its button focused), it all inverts, picture too. */
+#crewpick-list li { padding: 0.25em 0.4em; cursor: pointer; }
+#crewpick-list li:hover, #crewpick-list li:has(.pick:focus-visible) { background: var(--fg); color: var(--bg); text-shadow: none; }
+#crewpick-list li:hover :is(.pick, .p-dim, b), #crewpick-list li:has(.pick:focus-visible) :is(.pick, .p-dim, b) { background: none; color: inherit; text-shadow: none; }
 .portrait.big { float: right; width: 7em; height: 7em; margin: 0 0 0.6em 1em; }
 .portrait.side { width: 5.5em; height: 5.5em; margin-bottom: 0.5em; }
 .portrait {

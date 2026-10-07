@@ -566,7 +566,7 @@
     $("crewpick-list").innerHTML = crew.map((c, i) => {
       const others = (claims[c.id] || 0) - (c.id === myId ? 1 : 0);
       const cls = [c.portrait && "has-face", c.id === myId && "current"].filter(Boolean).join(" ");
-      return `<li${cls ? ` class="${cls}"` : ""}>${portraitHtml(c.portrait, "face")}<button type="button" class="p-btn pick" data-id="${escH(c.id)}">[${i + 1}] ${escH(c.name.toUpperCase())}</button>
+      return `<li${cls ? ` class="${cls}"` : ""} data-id="${escH(c.id)}">${portraitHtml(c.portrait, "face")}<button type="button" class="p-btn pick" data-id="${escH(c.id)}">[${i + 1}] ${escH(c.name.toUpperCase())}</button>
         <span class="p-dim"> · ${escH(c.className.toUpperCase())} · ${escH(c.role.toUpperCase())}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>CURRENT FILE</b>" : ""}</span>
         <div class="p-dim p-crime">${escH(c.crime)}</div></li>`;
     }).join("");
