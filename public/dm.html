@@ -131,7 +131,13 @@
           <button id="discordLink" title="A one-time code that links a Discord voice channel to this session">Get a link code</button>
           <button id="discordStop" class="danger" hidden>Stop listening</button>
         </div>
-        <p id="discordCode" class="small" hidden></p>
+        <div id="discordCode" class="stack" hidden>
+          <p class="small">In Discord, join the voice channel, then paste this into the chat and send it. It works once, for 15 minutes.</p>
+          <div class="row">
+            <input id="discordCmd" class="grow mono" readonly aria-label="The Discord command">
+            <button id="discordCopy" class="primary">Copy</button>
+          </div>
+        </div>
       </div>
     </div>
   </dialog>

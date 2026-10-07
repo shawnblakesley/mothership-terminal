@@ -335,7 +335,7 @@
     $("discordStop").hidden = !d.listening;
     $("discordLink").hidden = !!d.listening;
     $("discordCode").hidden = !d.code || !!d.listening;
-    $("discordCode").innerHTML = d.code ? `In Discord, join the voice channel and type <code>/terminal listen code:${esc(d.code)}</code> (works once, for 15 minutes).` : "";
+    $("discordCmd").value = d.code ? `/terminal listen code:${d.code}` : "";
   }
 
   function fillSelect(sel, options, value) {
@@ -2330,6 +2330,8 @@
   };
   $("discordLink").onclick = () => send({ t: "discordLink" });
   $("discordStop").onclick = () => send({ t: "discordStop" });
+  $("discordCopy").onclick = () => copy($("discordCmd").value, "Command");
+  $("discordCmd").onfocus = (e) => e.target.select();
   $("keyBtn").onclick = openKeyDialog;
   $("keywarn").onclick = openKeyDialog;
   $("sessionCode").onclick = () => copy(playerLink(), "Player link");
