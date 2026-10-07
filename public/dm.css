@@ -502,7 +502,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .settingsdlg .fxopts { grid-template-columns: 1.4fr 1fr; margin-top: 10px; }
 .sethead { margin: 14px 0 0; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.12em; }
 .settingsdlg .check { align-items: flex-start; margin: 8px 0 0; }
-.settingsdlg .check input { margin-top: 3px; }
+.settingsdlg .check input { margin-top: 5px; } /* (centred on the lowercase letters of the first line, not the line box: it looked high) */
 .settingsdlg .check em { display: block; font-style: normal; font-size: 12px; color: var(--muted); }
 
 /* ---- terminals ---- */
