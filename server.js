@@ -173,6 +173,8 @@ const noStore = (res) => res.set("Cache-Control", "no-store");
 
 router.get("/", (_req, res) => { track("PageView", { Page: "player" }); noStore(res).sendFile(path.join(pub, "player.html")); });
 router.get("/dm", (_req, res) => { track("PageView", { Page: "warden" }); noStore(res).sendFile(path.join(pub, "dm.html")); });
+// The Warden's stream page: the player screen, showing everything (player.js: stream).
+router.get("/stream", (_req, res) => { track("PageView", { Page: "stream" }); noStore(res).sendFile(path.join(pub, "player.html")); });
 // "you" = the address rate limits use for this request (checks proxy setup).
 router.get("/healthz", (req, res) => res.json({ ok: true, sessions: sessions.size, you: clientIp(req) }));
 // Revalidate on every load (cheap with ETags) so players never run stale code after a deploy.
@@ -390,11 +392,13 @@ wss.on("connection", (ws, req) => {
   const session = sessions.get(normCode(url.searchParams.get("s")));
   if (!session) return ws.close(4004, "no such session");
   const wantsDm = url.searchParams.get("role") === "dm";
+  // The Warden's stream page shows the Warden's log: it signs in like the console.
+  const wantsStream = !wantsDm && url.searchParams.has("stream");
 
   let joined = false;
-  if (!wantsDm) joined = session.attach(ws, "player", { terminal: url.searchParams.get("term") || "" });
+  if (!wantsDm && !wantsStream) joined = session.attach(ws, "player", { terminal: url.searchParams.get("term") || "" });
   if (joined) track("PlayerJoined");
-  const authTimer = wantsDm ? setTimeout(() => !joined && ws.close(4001, "auth timeout"), 10_000) : null;
+  const authTimer = wantsDm || wantsStream ? setTimeout(() => !joined && ws.close(4001, "auth timeout"), 10_000) : null;
 
   ws.on("message", (raw) => {
     if (limited(`msg:${ip}`, 240, 60_000)) return;
@@ -402,11 +406,11 @@ wss.on("connection", (ws, req) => {
     try { msg = JSON.parse(raw); } catch { return; }
     try {
       if (!joined) {
-        // Warden handshake: { t: "auth", token }
-        if (msg.t !== "auth" || limited(`auth:${ip}`, 20, 600_000) || !session.checkToken(msg.token)) return ws.close(4003, "forbidden");
+        // Warden handshake (the console, or its stream page): { t: "auth", token }
+        if (msg.t !== "auth" || limited(`auth:${ip}`, 20, 600_000) || !(wantsStream ? session.checkStreamKey(msg.token) : session.checkToken(msg.token))) return ws.close(4003, "forbidden");
         clearTimeout(authTimer);
-        joined = session.attach(ws, "dm");
-        if (joined) track("WardenJoined");
+        joined = wantsStream ? session.attach(ws, "player", { stream: true }) : session.attach(ws, "dm");
+        if (joined) track(wantsStream ? "StreamJoined" : "WardenJoined");
         return;
       }
       if (ws.role === "dm") session.handleDm(msg);

@@ -449,6 +449,7 @@ function migrateGame(saved) {
     localKeys: !!saved.localKeys, // started on the server's own computer: may use its .env keys (providers/index.js)
     // Who plays whom on Discord (discordbot.js /player): Discord user id -> { crew: crew id, name: their Discord name }.
     discordPlayers: saved.discordPlayers && typeof saved.discordPlayers === "object" ? saved.discordPlayers : {},
+    streamKey: typeof saved.streamKey === "string" ? saved.streamKey : "", // the stream page's (Session.streamKey)
     clocks: Array.isArray(saved.clocks) ? saved.clocks : [], // countdowns on the players' screens (see "clocks")
     // The story as it was when play began (see "the story's start"): what Restart story restores.
     storyStart: saved.storyStart && saved.storyStart.config ? saved.storyStart : null,
@@ -548,6 +549,15 @@ export class Session {
   checkToken(token) {
     return !!token && sameHash(hashToken(token), this.tokenHash);
   }
+  // The stream page's key: it only watches (it can't run the session, so a link to it
+  // in streaming software gives nothing more away). Made when first asked for.
+  streamKey() {
+    if (!this.state.streamKey) { this.state.streamKey = crypto.randomBytes(12).toString("hex"); this.touch(); }
+    return this.state.streamKey;
+  }
+  checkStreamKey(key) {
+    return !!key && sameHash(hashToken(key), hashToken(this.streamKey()));
+  }
 
   touch() {
     this.lastActive = Date.now();
@@ -565,6 +575,8 @@ export class Session {
 
   // ---------------------------------------------------------------- sockets
   // hint.terminal: where a returning player screen was, so its first view is that system's log.
+  // hint.stream: the Warden's stream page (for showing the game on a stream): a player
+  // screen at no terminal that sees everything, the Warden's log too, and plays no part.
   attach(ws, role, hint = {}) {
     if (this.sockets.size >= MAX_SOCKETS) {
       ws.close(4029, "session full");
@@ -574,7 +586,8 @@ export class Session {
     ws.lastInput = 0;
     this.sockets.add(ws);
     ws.character = null; // the crew file this player screen has claimed (crew.js)
-    const t = role === "player" && this.state.config.terminals.find((x) => x.id === hint.terminal);
+    ws.stream = role === "player" && !!hint.stream;
+    const t = role === "player" && !ws.stream && this.state.config.terminals.find((x) => x.id === hint.terminal);
     if (t && reachable(t, this.state.station)) ws.terminal = t.id;
     ws.on("close", () => {
       this.sockets.delete(ws);
@@ -618,7 +631,7 @@ export class Session {
   roomOfSocket(ws) { return this.state.config.terminals.find((t) => t.id === ws.terminal)?.room || ""; }
   // Does this player screen show this log line? Lines belong to the system they
   // were said on; someone talking in person is only heard in that room.
-  sees(ws, e) { return shownOn(e.net, this.netOfSocket(ws)) && (!e.room || this.roomOfSocket(ws) === e.room); }
+  sees(ws, e) { return ws.stream || (shownOn(e.net, this.netOfSocket(ws)) && (!e.room || this.roomOfSocket(ws) === e.room)); }
   // Only the player screens that show this line.
   // Do the players' screens speak? When voices are set to play on the screens; or on
   // Discord while the bot isn't in a voice channel (so nothing goes unsaid).
@@ -635,7 +648,7 @@ export class Session {
 
   // Is a line on some player screen? (With none connected, everyone's on Discord.)
   seenByAnyone(entry) {
-    const screens = [...this.sockets].filter((c) => c.role === "player");
+    const screens = [...this.sockets].filter((c) => c.role === "player" && !c.stream);
     return !screens.length || screens.some((c) => this.sees(c, entry));
   }
   toEntry(entry, p) {
@@ -653,26 +666,57 @@ export class Session {
   // Only the player screens on one system (log lines belong to the system they were said on).
   toNet(net, p) {
     const data = JSON.stringify(p);
-    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && shownOn(net, this.netOfSocket(c))) c.send(data);
+    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && (c.stream || shownOn(net, this.netOfSocket(c)))) c.send(data);
   }
   // Every player screen redrawn, each with its own system's log.
   initPlayers() {
     for (const c of this.sockets) if (c.role === "player" && c.readyState === 1) c.send(JSON.stringify({ t: "init", ...this.playerView(c) }));
   }
-  syncDm() { this.send("dm", { t: "state", state: this.dmView() }); }
+  syncDm() {
+    this.send("dm", { t: "state", state: this.dmView() });
+    this.syncStreams();
+  }
 
-  // For one player screen: only the log of the system it's on.
+  // The stream pages: the Warden's own entries (notes, asides, table talk), new or
+  // changed since each was last told. (Deleted ones go with a fresh init: initPlayers.)
+  syncStreams() {
+    for (const ws of this.sockets) {
+      if (!ws.stream || ws.readyState !== 1) continue;
+      const add = [], update = [];
+      for (const e of this.state.log) {
+        if (!PRIVATE_KINDS.has(e.kind)) continue;
+        const was = ws.sent.get(e.id);
+        if (was === undefined) add.push(e);
+        else if (was !== e.text) update.push({ id: e.id, text: e.text });
+        ws.sent.set(e.id, e.text);
+      }
+      if (add.length || update.length) ws.send(JSON.stringify({ t: "wardenLog", add, update }));
+    }
+  }
+  queueStreamSync() {
+    if (this.streamSyncQueued) return;
+    this.streamSyncQueued = true;
+    setImmediate(() => { this.streamSyncQueued = false; this.syncStreams(); });
+  }
+
+  // For one player screen: only the log of the system it's on. (A stream page: all of
+  // it, the Warden's entries too.)
   playerView(ws) {
     const net = ws ? this.netOfSocket(ws) : "";
+    const log = ws?.stream
+      ? this.state.log.filter((e) => !e.queued && !e.cut)
+      : this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net)));
+    if (ws?.stream) ws.sent = new Map(log.filter((e) => PRIVATE_KINDS.has(e.kind)).map((e) => [e.id, e.text]));
     return {
       version: APP_VERSION,
-      log: this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net))),
+      log,
       header: this.playerHeader(),
-      effects: this.state.effects.filter((e) => e.net === undefined || shownOn(e.net, net)),
+      effects: this.state.effects.filter((e) => e.net === undefined || ws?.stream || shownOn(e.net, net)),
       playing: this.state.playing.filter((p) => p.loop),
       crew: this.state.config.crew,
+      played: this.played(),
       clocks: this.publicClocks(),
-      handouts: this.handoutsFor(ws),
+      handouts: ws?.stream ? [] : this.handoutsFor(ws),
       solo: this.soloView(), // a game without a Warden: choosing a story, building it, or playing
       claims: this.claims(),
       busy: !!this.state.pending,
@@ -715,6 +759,7 @@ export class Session {
       roomBusy: this.roomBusy,
       synopsisBusy: this.synopsisBusy,
       code: this.code,
+      streamKey: this.streamKey(),
       providers: catalog(this.keys),
       discord: this.discordView(),
       allEffects: ALL_EFFECTS,
@@ -737,6 +782,7 @@ export class Session {
     if (this.state.log.length > MAX_LOG) this.state.log.splice(0, this.state.log.length - MAX_LOG);
     if (SPOKEN_KINDS.has(kind)) this.pregenerate([entry]);
     if (kind === "player") this.toNet(entry.net || "", { t: "line", entry }); // what they typed: at once
+    else if (PRIVATE_KINDS.has(kind)) this.queueStreamSync(); // (the stream pages show the Warden's log too)
     else if (!PRIVATE_KINDS.has(kind)) {
       entry.queued = true; // not on players' screens until it's scheduled
       this.lineChain = this.lineChain.then(() => this.scheduleLine(entry)).catch((err) => console.error(`[${this.code}] line schedule failed:`, err));
@@ -881,8 +927,16 @@ export class Session {
     return out;
   }
 
+  // Who is playing which crew member: at a screen, or (named) on Discord. [{ id, by }]
+  played() {
+    const out = new Map();
+    for (const ws of this.sockets) if (ws.role === "player" && ws.character && !out.has(ws.character)) out.set(ws.character, "");
+    for (const p of Object.values(this.state.discordPlayers || {})) if (p.crew) out.set(p.crew, p.name || "");
+    return this.state.config.crew.filter((c) => out.has(c.id)).map((c) => ({ id: c.id, by: out.get(c.id) }));
+  }
+
   crewChanged() {
-    this.toPlayers({ t: "crew", crew: this.state.config.crew, claims: this.claims() });
+    this.toPlayers({ t: "crew", crew: this.state.config.crew, claims: this.claims(), played: this.played() });
     this.syncDm();
     // No Warden: the story opens once someone has taken a crew file.
     const x = this.state.solo;
@@ -894,6 +948,7 @@ export class Session {
   }
 
   handlePlayer(ws, msg) {
+    if (ws.stream && msg.t !== "ping") return; // (a stream page only watches)
     // A game without a Warden: its pilot (holding the session's token) runs the AI.
     if (msg.t === "pilot") return this.pilotAuth(ws, msg.token);
     if (String(msg.t).startsWith("pilot")) return ws.pilot && this.handlePilot(ws, msg);
@@ -1338,7 +1393,7 @@ export class Session {
         this.stopSounds();
         // The sound library is kept (its files are the Warden's uploads).
         this.clearClocks();
-        this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], localKeys: s.localKeys };
+        this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], localKeys: s.localKeys, streamKey: s.streamKey };
         this.initPlayers();
         break;
       default:
@@ -2172,7 +2227,7 @@ export class Session {
       for (const e of [...s.effects]) this.endEffect(e.id);
       this.stopSounds();
       this.clearClocks();
-      this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], solo: x, localKeys: s.localKeys };
+      this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], solo: x, localKeys: s.localKeys, streamKey: s.streamKey };
       Object.assign(this.state.config, keep, { mode: "auto", checkFirst: true });
       for (const ws of this.sockets) if (ws.role === "player") ws.character = null;
       x.phase = "play";
@@ -2586,7 +2641,7 @@ export class Session {
     for (const [u, p] of Object.entries(map)) if (u === userId || (crewId && p.crew === crewId)) delete map[u];
     if (crewId) map[userId] = { crew: crewId, name: String(name).slice(0, 40) };
     this.touch();
-    this.syncDm();
+    this.crewChanged();
   }
 
   // Words Whisper should spell right: the station, the crew, the cast.

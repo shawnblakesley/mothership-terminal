@@ -102,6 +102,8 @@
 
   // Player link for this session (relative to this page, so it works under /mothership/).
   const playerLink = () => new URL(`./?s=${code}`, location.href).href;
+  // The stream page (player.js: stream): it signs in with its own key, which only watches.
+  const streamLink = () => `${new URL(`stream?s=${code}`, new URL("./", location.href)).href}#key=${S?.streamKey || ""}`;
   const wardenLink = () => `${new URL(`dm?s=${code}`, new URL("./", location.href)).href}#token=${key}`;
 
   // In-page confirmation: ask(title, text, [[value, label, class?], ...]) resolves
@@ -2439,6 +2441,8 @@
   $("sessionCode").onclick = () => copy(playerLink(), "Player link");
   $("copyPlayer").onclick = () => copy(playerLink(), "Player link");
   $("copyWarden").onclick = async () => (await sure("Copy the Warden link?", "Anyone with it can run your session.", "Copy link", "primary")) && copy(wardenLink(), "Warden link");
+  $("openStream").onclick = () => S?.streamKey && window.open(streamLink(), "_blank", "noopener");
+  $("copyStream").onclick = () => S?.streamKey && copy(streamLink(), "Stream link");
   $("allSessions").onclick = () => { location.href = "dm"; };
   $("endSession").onclick = async () => {
     if (!(await sure(`End session ${code}?`, "Deletes the log, voices and settings, and disconnects players.", "End session"))) return;

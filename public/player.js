@@ -1,6 +1,11 @@
 (() => {
   const params = new URLSearchParams(location.search);
-  const spectate = params.has("spectate");
+  // The Warden's stream page (…/stream?s=CODE#key=…): this screen, watching from no
+  // terminal, with everything in the Warden's log on it (their notes and asides too, as
+  // terminal lines), and the crew being played along the bottom beside the Warden's camera.
+  const stream = /\/stream$/.test(location.pathname);
+  const streamKey = new URLSearchParams(location.hash.slice(1)).get("key") || "";
+  const spectate = params.has("spectate") || stream;
   const normCode = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   let code = normCode(params.get("s"));
 
@@ -82,7 +87,13 @@
     }
   });
 
-  if (spectate) {
+  if (stream) {
+    document.body.classList.add("stream");
+    form.hidden = true;
+    $("hdr-rules").hidden = $("hdr-rules").nextElementSibling.hidden = true;
+    $("castbar").hidden = false;
+    powerOn(); // (streaming software plays sound without a click; a browser tab wakes on the first one)
+  } else if (spectate) {
     bootEl.classList.add("gone");
     showCredit();
     form.hidden = true;
@@ -158,7 +169,15 @@
     div.className = `line ${entry.kind}`;
     div.dataset.id = entry.id;
     if (entry.kind === "player") {
-      div.dataset.prompt = `${promptText()} `;
+      // (on the stream: who typed it, and on which system)
+      if (stream) whereTag(entry); // (its prompt says where)
+      div.dataset.prompt = stream ? `${entry.by ? shortName({ name: entry.by }) : "CREW"}@${sysOf(entry.net) || header.stationName}> ` : `${promptText()} `;
+      return div;
+    }
+    if (META[entry.kind]) { // (the Warden's own entries, on the stream)
+      div.classList.add("meta", "style-label");
+      div.dataset.kind = entry.kind;
+      div.dataset.label = `${META[entry.kind](entry)}: `;
       return div;
     }
     if (entry.kind === "roll") {
@@ -175,8 +194,11 @@
     const v = voiceOf(entry);
     div.classList.add(`style-${entry.inPerson ? "label" : v?.style || (entry.kind === "system" ? "boxed" : "plain")}`);
     // Someone of the cast over the intercom shows who is speaking: "INTERCOM · SALK: ".
-    const label = entry.inPerson && entry.character ? `${entry.character.toUpperCase()}: ` // (in the room with them)
+    let label = entry.inPerson && entry.character ? `${entry.character.toUpperCase()}: ` // (in the room with them)
       : v?.style === "label" ? `${entry.shownAs || v.name}${entry.character ? ` · ${entry.character.toUpperCase()}` : ""}: ` : ""; // (an adversary: the name its line was said under)
+    // The stream shows every system's lines: where they're on, when that changes. (Not the narrator's: the scene's on no system.)
+    const where = stream && v?.style !== "narration" && whereTag(entry);
+    if (where) { label = `[${where}] ${label}`; div.classList.add("style-label"); }
     if (label) div.dataset.label = label;
     // Their portrait, to the left of what they say: clear in person, full of static over the intercom.
     const portrait = entry.character && header.portraits?.[entry.character.toLowerCase()];
@@ -217,9 +239,58 @@
   // Where a line's text goes: its text span (beside a portrait), or the line itself.
   const textOf = (div) => div.querySelector(".lt") || div;
 
+  // ---- the stream page: the Warden's log, as terminal lines
+  // The system a line was said on, by name: "" for the station's own network.
+  const netKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const sysOf = (net) => (!net ? "" : net === "*" ? "ALL SYSTEMS" : terminals().find((t) => t.system && netKey(t.system) === net)?.system || "");
+  // The system a line is on, when it's not the one the line before was on (else "").
+  let lastWhere = "";
+  function whereTag(entry) {
+    const name = sysOf(entry.net) || header.stationName;
+    if (name === lastWhere) return "";
+    lastWhere = name;
+    return name;
+  }
+  // The Warden's own entries (session.js PRIVATE_KINDS): their label.
+  const META = {
+    note: () => "LOG",
+    warden: () => "WARDEN > CORE",
+    aside: () => "WARDEN NOTE",
+    aside_reply: () => "CORE > WARDEN",
+    heard: () => "WARDEN (VOICE)",
+    table: (e) => `COMMS · ${e.playing ? `${e.playing} (${e.speaker || "CREW"})` : e.speaker || "CREW"}`.toUpperCase(),
+  };
+  // A note's text, as the terminal puts it: "Agent triggered effect: blackout (2s) before line #13" -> "EFFECT: BLACKOUT (2S)".
+  function metaText(e) {
+    const fx = /^Agent triggered effect: (.*?)(?: (before|after) line #\d+)?$/.exec(e.text || "");
+    if (fx) return `EFFECT: ${fx[1]}${fx[2] === "after" ? " (AFTER THE LINE)" : ""}`;
+    return String(e.text || "").replace(/^[\u2696\u26A1]\uFE0F?\s*/u, ""); // (no symbols)
+  }
+  // The per-player versions of a line, under it: "↳ ROOK: ..."
+  function addVariants(div, entry) {
+    for (const v of entry.variants || []) {
+      const el = document.createElement("div");
+      el.className = "var";
+      el.textContent = `\u21B3 ${v.to.map((id) => shortName(crew.find((c) => c.id === id) || { name: id })).join(", ")}: ${v.text}`;
+      div.append(el);
+    }
+  }
+  function onWardenLog({ add, update }) {
+    for (const e of add) renderInstant(e);
+    for (const u of update) {
+      const div = linesEl.querySelector(`[data-id="${u.id}"]`);
+      if (div?.dataset.kind) textOf(div).textContent = metaText(u);
+    }
+    scrollDown();
+  }
+
   // Lines can read differently per character (variants): this screen shows the
   // one for its crew file, if any. Null when the line isn't for this screen at all.
   function forMe(entry) {
+    if (stream) {
+      if (META[entry.kind]) return { ...entry, text: metaText(entry) };
+      return entry.text || entry.variants?.length || entry.kind === "player" ? entry : null; // (the main text; the versions go under it)
+    }
     const vi = (entry.variants || []).findIndex((v) => myId && v.to.includes(myId));
     if (vi >= 0) return { ...entry, text: entry.variants[vi].text, vi };
     return entry.text || entry.kind === "player" ? entry : null;
@@ -254,6 +325,7 @@
     if (!entry) return;
     const div = makeLine(entry);
     textOf(div).textContent = entry.text;
+    if (stream) addVariants(div, entry);
     div.classList.add("done");
     linesEl.append(div);
   }
@@ -270,7 +342,7 @@
     }
     if (plays.has(raw.id) || linesEl.querySelector(`[data-id="${raw.id}"]`)) return;
     const entry = forMe(raw); // null: not for this screen (it still keeps its place for effects)
-    const v = !entry ? -1 : entry.vi >= 0 ? entry.vi + 1 : 0;
+    const v = !entry || (stream && !raw.text) ? -1 : entry.vi >= 0 ? entry.vi + 1 : 0; // (the stream: the main text, if there is one)
     const play = { gen: lineGen, raw, entry, v, pieces: entry ? piecesOf(entry) : [], div: null, finished: false };
     plays.set(raw.id, play);
     cueState.set(raw.id, "queued");
@@ -317,6 +389,11 @@
   function finishLine(play) {
     if (play.finished || play.gen !== lineGen) return;
     play.finished = true;
+    if (stream && play.entry?.variants?.length) {
+      if (!play.div) { play.div = makeLine(play.entry); linesEl.append(play.div); }
+      addVariants(play.div, play.entry);
+      scrollDown();
+    }
     if (play.div) {
       play.div.classList.remove("typing");
       play.div.classList.add("done");
@@ -533,6 +610,7 @@
   // The players' characters. Each screen claims one (remembered per session on
   // this device); FILE in the header shows its sheet.
   let crew = [], claims = {}, myId = null;
+  let played = []; // who is playing whom (at a screen, or on Discord): [{ id, by }]
   const crewKey = () => `crew:${code}`;
   const mine = () => crew.find((c) => c.id === myId) || null;
   const watching = () => !spectate && crew.length > 0 && !mine();
@@ -550,9 +628,11 @@
     renderSide(); // (out of the way while choosing a character)
   }
 
-  function setCrew(list, taken) {
+  function setCrew(list, taken, playedBy) {
     crew = list || [];
     claims = taken || {};
+    played = playedBy || [];
+    renderCastbar();
     if (myId && !mine()) {
       // Their file was removed (or a new story began): choose again.
       myId = null;
@@ -569,6 +649,22 @@
     if (!$("crewfile").hidden) renderFile();
     renderSide();
   }
+  // The stream page's corner: the crew being played, each with their portrait and condition,
+  // and a frame for the Warden's camera (their streaming software puts the camera over it).
+  function renderCastbar() {
+    if (!stream) return;
+    const pcs = played.map((p) => ({ ...p, c: crew.find((c) => c.id === p.id) })).filter((p) => p.c);
+    $("cb-crew").innerHTML = pcs.map(({ c, by }) => {
+      const wounds = Array.from({ length: c.wounds.max }, (_, i) => `<i class="${i < c.wounds.current ? "on" : ""}"></i>`).join("");
+      return `<div class="cb-pc">
+        <div class="cb-face">${portraitHtml(c.portrait, "cb-portrait") || '<span class="cb-noface">NO PHOTO</span>'}</div>
+        <div class="cb-name"><span>${escH(shortName(c))}</span><span class="cb-wounds" title="Wounds">${wounds}</span></div>
+        <div class="cb-vit"><span>HP ${c.health.current}/${c.health.max}</span><span>STRESS ${c.stress}</span></div>
+        ${by ? `<div class="cb-by">${escH(by.toUpperCase())}</div>` : ""}
+      </div>`;
+    }).join("");
+  }
+
   // A nickname in quotes ("Rook", 'Beck') if there is one, else the first name.
   const shortName = (c) => (c.name.match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || c.name.split(" ")[0]).toUpperCase();
 
@@ -1392,6 +1488,8 @@
   // The socket lives next to this page (works under any mount point, e.g. /mothership/).
   function socketUrl() {
     const u = new URL(`ws?s=${encodeURIComponent(code)}`, location.href);
+    u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    if (stream) { u.searchParams.set("stream", "1"); return u; } // (no terminal: it sees them all)
     // Where this screen was, so the server starts it on that system's log.
     let term = termId;
     try { term ||= localStorage.getItem(termKey()); } catch {}
@@ -1415,6 +1513,7 @@
     ws = new WebSocket(socketUrl());
     ws.onopen = () => {
       $("hdr-link").classList.remove("down");
+      if (stream) ws.send(JSON.stringify({ t: "auth", token: streamKey }));
       const token = ls.get(pilotKey());
       if (token) ws.send(JSON.stringify({ t: "pilot", token }));
       // Sync this screen's clock with the server's (a few tries; the quickest wins).
@@ -1423,6 +1522,11 @@
     };
     ws.onclose = (ev) => {
       $("hdr-link").classList.add("down");
+      if (stream && ev.code === 4003) { // (an old link: the console has the current one)
+        bootEl.classList.remove("gone");
+        bootText.textContent = "STREAM LINK NOT RECOGNISED.\nCOPY IT AGAIN FROM THE WARDEN CONSOLE: SETTINGS > SESSION.\n";
+        return;
+      }
       if (ev.code === 4004) {
         // The session ended (or expired): back to the code prompt.
         if (spectate) return;
@@ -1443,10 +1547,11 @@
           plays.clear();
           Voice.stop();
           linesEl.innerHTML = "";
+          lastWhere = "";
           cueState.clear();
           heldCues.clear();
           // Our crew file first: lines can read differently for it.
-          setCrew(msg.crew, msg.claims);
+          setCrew(msg.crew, msg.claims, msg.played);
           if (mine()) ws.send(JSON.stringify({ t: "claim", id: myId }));
           // Past lines appear at once; any still playing join the schedule in step.
           for (const e of msg.log) {
@@ -1488,7 +1593,8 @@
         case "busy": busy = msg.busy; updateBusy(); break;
         case "effect": onEffect(msg.effect); break;
         case "roll": showRoll(msg.roll); break;
-        case "crew": setCrew(msg.crew, msg.claims); break;
+        case "crew": setCrew(msg.crew, msg.claims, msg.played); break;
+        case "wardenLog": onWardenLog(msg); break;
         case "rollResult": showRollResult(msg); break;
         case "roomPlan": showPlan(msg); break;
         case "showImage": showImage(msg); break;
@@ -1500,5 +1606,5 @@
       }
     };
   }
-  if (spectate) connect();
+  if (spectate) connect(); // (the stream page too)
 })();

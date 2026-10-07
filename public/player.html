@@ -137,6 +137,11 @@
     <!-- An adversary the players have just seen: its picture beside the terminal (full screen on narrow ones). -->
     <aside id="reveal" hidden aria-live="assertive"><div class="rv-title"></div><div class="rv-pic"></div><div class="rv-credit"></div><button type="button" class="p-btn rv-close">[ CLOSE ]</button></aside>
     </div>
+    <!-- The stream page (player.js: stream): the crew being played, then a frame for the Warden's camera. -->
+    <div id="castbar" hidden>
+      <div id="cb-crew"></div>
+      <div class="cb-cam" aria-label="Camera"><div class="cb-camframe"></div><div class="cb-name"><span class="cb-rec">&#9679; REC</span><span>WARDEN</span></div></div>
+    </div>
   </div>
   <div id="fx"></div>
   <div id="rollfx" class="rollfx" hidden aria-live="assertive"><div class="rf-dice"></div><div class="rf-out"></div></div>
