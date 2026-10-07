@@ -409,6 +409,8 @@ body {
   background: #b00000; color: #fff; text-shadow: none; text-align: center; padding: 4px; white-space: nowrap; overflow: hidden;
 }
 
+/* (what is on the glass itself stays when the power goes: blood, goo, cracks and ice sit above the blackout) */
+.fx-blood, .fx-goo, .fx-crack, .fx-ice { z-index: 61; }
 .fx-blackout { background: #000; z-index: 60; display: flex; align-items: flex-end; padding: 24px; }
 .fx-blackout .aux { color: #400; text-shadow: none; animation: blink 2s infinite steps(1); }
 .fx-blackout.restoring { animation: restore 1.6s forwards steps(8); }

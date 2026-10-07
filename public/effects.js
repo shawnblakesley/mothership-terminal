@@ -87,7 +87,9 @@
       f.type = "bandpass"; f.frequency.value = 2500; f.Q.value = 0.6;
       const g = this.out(gain);
       src.connect(f); f.connect(g); src.start();
-      return () => { try { src.stop(); } catch {} g.disconnect(); };
+      const stop = () => { try { src.stop(); } catch {} g.disconnect(); };
+      stop.level = (v) => g.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02); // (turn it down or up while it runs)
+      return stop;
     },
     siren() {
       if (!this.ok()) return () => {};
@@ -828,7 +830,7 @@
         root.style.setProperty("--gx", `${rand(-8, 8) * fx.intensity}px`);
         root.style.setProperty("--gy", `${rand(-3, 3) * fx.intensity}px`);
         root.style.setProperty("--gs", `${rand(0, 100)}%`);
-        if (Math.random() < 0.25) Sound.burst(0.06, 0.15, 4000);
+        if (Math.random() < 0.25 && !has("blackout")) Sound.burst(0.06, 0.15, 4000); // (no power, no crackle)
       }, 90);
       const text = corruptText(fx);
       return {
@@ -858,7 +860,11 @@
       step();
       layer().append(c);
       const stopNoise = Sound.noiseLoop(0.02 * fx.intensity);
-      return { el: c, stop: () => { cancelAnimationFrame(raf); stopNoise(); } };
+      // (silent while the power is out, back when it returns)
+      const power = () => stopNoise.level?.(has("blackout") ? 0 : 0.02 * fx.intensity);
+      power();
+      document.addEventListener("fxchange", power);
+      return { el: c, stop: () => { cancelAnimationFrame(raf); stopNoise(); document.removeEventListener("fxchange", power); } };
     },
 
     blackout(fx) {
@@ -969,7 +975,7 @@
       // Bands of the screen tear: inverted, or the wrong colours.
       bands.innerHTML = Array.from({ length: Math.random() < 0.35 ? 0 : 1 + ((Math.random() * 2 * k) | 0) }, () =>
         `<i class="${["b-inv", "b-hue", "b-sat"][(Math.random() * 3) | 0]}" style="top:${rand(0, 98).toFixed(1)}%;height:${rand(2, 6 + 10 * k).toFixed(0)}px"></i>`).join("");
-      if (Math.random() < 0.15) Sound.burst(0.05, 0.12, 3000);
+      if (Math.random() < 0.15 && !has("blackout")) Sound.burst(0.05, 0.12, 3000);
     }, 110);
     return {
       el: bands,
