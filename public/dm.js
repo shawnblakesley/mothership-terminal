@@ -67,7 +67,7 @@
           autoKeySent = true;
           send({ t: "apiKey", provider: p.id, key: remembered });
         }
-        const groq = S.discord && !S.discord.sttKey && store.get("wardenKey:groq");
+        const groq = S.discord?.enabled && !S.discord.sttKey && store.get("wardenKey:groq");
         if (groq && !autoSttSent) { autoSttSent = true; send({ t: "sttKey", key: groq }); }
       } else if (msg.t === "toast") toast(msg.text, msg.level);
       else if (msg.t === "handoutWriting") handoutWriting(msg.busy);
@@ -321,9 +321,10 @@
 
   // Discord (Settings): the Groq key, and the bot's link to a voice channel.
   function renderDiscord() {
-    const d = S.discord;
-    $("discordSet").hidden = !d;
-    if (!d) return;
+    const d = S.discord || {};
+    $("discordOff").hidden = !!d.enabled;
+    $("discordOn").hidden = !d.enabled;
+    if (!d.enabled) return;
     $("sttKey").placeholder = d.sttKey ? "A Groq key is set (paste another to replace it)" : "Groq API key (gsk_…)";
     $("sttRemember").checked = !!store.get("wardenKey:groq");
     $("discordInvite").href = d.invite || "#";

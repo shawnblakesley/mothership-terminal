@@ -2522,11 +2522,12 @@ export class Session {
     this.syncDm();
   }
 
-  // Discord, for the Warden console (null when the server has no bot).
+  // Discord, for the Warden console (enabled: false when the server has no bot).
   discordView() {
     const d = discordStatus(this.code);
-    if (d?.listening) this.discordCode = ""; // (used)
-    return d && { ...d, sttKey: !!this.sttKey, code: this.discordCode };
+    if (!d) return { enabled: false };
+    if (d.listening) this.discordCode = ""; // (used)
+    return { enabled: true, ...d, sttKey: !!this.sttKey, code: this.discordCode };
   }
 
   // Words Whisper should spell right: the station, the crew, the cast.

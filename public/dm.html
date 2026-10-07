@@ -74,8 +74,10 @@
         <option value="normal">Normal: a few sentences, no monologues</option>
         <option value="long">Expansive: longer speeches when it's dramatic</option>
       </select></label>
-    <div id="discordSet" hidden>
+    <div id="discordSet">
       <h3 class="sethead">Discord</h3>
+      <p id="discordOff" class="muted small" hidden>A Discord bot can write down what everyone says in your voice channel, into this log. This server doesn't have one set up: whoever runs it adds a bot token as <code>DISCORD_BOT_TOKEN</code> (see the README) and restarts it.</p>
+      <div id="discordOn">
       <p class="muted small">A bot in your Discord voice channel writes down what everyone says, by name, into this log for the agent: yours as things that happened, the players' as table talk. Players never see it. Speech-to-text runs on your own Groq key.</p>
       <div class="row wrap">
         <input id="sttKey" class="grow" type="password" autocomplete="off" spellcheck="false" placeholder="Groq API key (gsk_…)" aria-label="Groq API key">
@@ -90,6 +92,7 @@
         <button id="discordStop" class="danger" hidden>Stop listening</button>
       </div>
       <p id="discordCode" class="small" hidden></p>
+      </div>
     </div>
     <h3 class="sethead">The agent may…</h3>
     <label class="check"><input type="checkbox" id="narrator"> <span>narrate the scene <em>the NARRATOR describes what happens around the players: dripping water, flickering panels, people moving and reacting; never speaking to them</em></span></label>
