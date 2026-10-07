@@ -676,7 +676,7 @@
   }
   addEventListener("resize", () => renderSide());
   $("side").addEventListener("click", (e) => {
-    if (e.target.id === "side-change") $("crewfile-change").click(); // (the crew picker, as from the full file)
+    if (e.target.id === "side-change") toPicker(); // (the crew picker, as from the full file)
     if (e.target.id === "side-hide") setSide(false);
   });
   function setSide(open) {
