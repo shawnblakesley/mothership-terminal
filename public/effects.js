@@ -889,7 +889,7 @@
   // The screen's text decays (part of the glitch): characters turn to junk in sick
   // colours, words rot in runs, letters sprout stacked marks, lines lurch sideways,
   // the colours split, and bands of the screen invert and shift hue. It reaches the
-  // header too (not the clock or the buttons), the crew file's BACK / SELECT, and the player's own character sheet
+  // header too (not the clock or the buttons), the character buttons (crew file and side sheet), and the player's own character sheet
   // (the side sheet and the full file): every bit of its text, and its picture,
   // which jolts, tears, shifts colour and inverts. Everything is put back when it ends.
   function corruptText(fx) {
@@ -903,8 +903,8 @@
     layer().append(bands);
     const targets = () => [
       ...[...document.querySelectorAll("#lines .line.done")].map((l) => l.querySelector(".lt") || l), // (beside a portrait: just its text)
-      ...["hdr-station", "hdr-os", "hdr-access", "crewfile-close", "crewfile-change"].map((id) => document.getElementById(id)).filter(Boolean),
-      ...document.querySelectorAll("#reveal:not([hidden]) .rv-title"),
+      ...["hdr-station", "hdr-os", "hdr-access", "crewfile-close", "crewfile-change", "side-change", "side-hide"].map((id) => document.getElementById(id)).filter(Boolean),
+      ...document.querySelectorAll("#reveal:not([hidden]) .rv-title, #reveal:not([hidden]) .rv-close"),
     ];
     const rot = (orig) => {
       const p = 0.05 * k + Math.random() * 0.06;
