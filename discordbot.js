@@ -468,6 +468,11 @@ export function startDiscord(lookup) {
     if (i.commandName !== "terminal") return;
     if (i.isAutocomplete()) return onAutocomplete(i).catch(() => {});
     if (!i.isChatInputCommand()) return;
+    // Only its commands were added to this server, not the bot itself (an install without the
+    // "bot" scope): it can't see voice channels or join one, so say so instead of "join a voice channel".
+    if (!i.inCachedGuild()) {
+      return i.reply({ content: `The bot isn't in this server yet, only its commands are, so it can't see or join voice channels. Someone who can manage the server needs to add it with this link: ${inviteUrl}`, flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
     try {
       const sub = i.options.getSubcommand();
       if (sub === "listen") await onListen(i);
