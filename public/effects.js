@@ -185,14 +185,17 @@
   };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
+  // (as big as the effects layer: the whole window, or on the stream page the part above the crew)
   function fullCanvas() {
     const c = document.createElement("canvas");
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    c.width = innerWidth * dpr;
-    c.height = innerHeight * dpr;
+    const r = layer().getBoundingClientRect();
+    const w = Math.round(r.width) || innerWidth, h = Math.round(r.height) || innerHeight;
+    c.width = w * dpr;
+    c.height = h * dpr;
     const ctx = c.getContext("2d");
     ctx.scale(dpr, dpr);
-    return { c, ctx, w: innerWidth, h: innerHeight };
+    return { c, ctx, w, h };
   }
 
   // Blood and goo can be wiped off the glass by dragging across them. The

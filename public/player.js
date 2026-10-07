@@ -92,6 +92,12 @@
     form.hidden = true;
     $("hdr-rules").hidden = $("hdr-rules").nextElementSibling.hidden = true;
     $("castbar").hidden = false;
+    // The screen's effects (and the dice, a room's plan) stay above the crew and the camera.
+    // (laid-out position, not the drawn one: the power-on animation squashes the screen for a moment)
+    const fxBottom = () => document.body.style.setProperty("--fx-bottom", `${Math.max(0, innerHeight - $("crt").offsetTop - $("castbar").offsetTop)}px`);
+    new ResizeObserver(fxBottom).observe($("castbar"));
+    addEventListener("resize", fxBottom);
+    fxBottom();
     powerOn(); // (streaming software plays sound without a click; a browser tab wakes on the first one)
   } else if (spectate) {
     bootEl.classList.add("gone");

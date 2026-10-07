@@ -660,6 +660,10 @@ body.look-portable #crt::before { content: "PORTABLE UNIT · SIGNAL ▂▄▆_ �
    played (portrait, name, wounds, health and stress), then a frame for the Warden's
    camera, a little bigger than a portrait. The streaming software puts the camera over it. */
 body.stream { --cb-face: 15vh; --cb-cam: 19vh; }
+/* The effects stay above them: they end at the line over the crew (--fx-bottom: player.js). */
+body.stream #fx, body.stream .rollfx, body.stream .planfx { bottom: var(--fx-bottom, 0px); overflow: hidden; }
+body.stream #crt.glitch-3 { filter: none; }
+body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #crt.glitch-3 #mainrow { filter: hue-rotate(40deg) contrast(1.3); }
 #castbar { display: flex; justify-content: flex-end; align-items: flex-end; gap: 2.5vh; margin-top: 0.6em; padding-top: 0.6em; border-top: 2px solid var(--dim); }
 #castbar[hidden] { display: none; }
 #cb-crew { display: flex; gap: 2.5vh; align-items: flex-end; }
