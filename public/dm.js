@@ -333,6 +333,9 @@
       ? `Listening in ${d.listening.channel} (${d.listening.guild}).${d.sttKey ? "" : " Add a Groq key, or nothing is written down."}`
       : "Not listening.";
     $("discordStop").hidden = !d.listening;
+    // Who's who (Discord /player).
+    const roster = [d.listening?.warden && ["Warden", d.listening.warden], ...(d.players || []).map((p) => [p.as, p.name])].filter(Boolean);
+    $("discordRoster").innerHTML = roster.map(([as, name]) => `<li><b>${esc(as)}</b>: ${esc(name)}</li>`).join("") || '<li class="muted">Nobody yet.</li>';
     $("discordLink").hidden = !!d.listening;
     $("discordCode").hidden = !d.code || !!d.listening;
     $("discordCmd").value = d.code ? `/terminal listen code:${d.code}` : "";
@@ -368,7 +371,7 @@
       case "aside": return { name: "Note → agent", by: "private", c: "var(--aside)" };
       case "aside_reply": return { name: "Agent → you", by: "private", c: "var(--aside)" };
       case "heard": return { name: "Warden · said aloud", by: e.speaker ? "on Discord → agent" : "speech → agent", c: "var(--heard)" };
-      case "table": return { name: `${e.speaker || "Player"} · table talk`, by: "on Discord → agent", c: "var(--table)" };
+      case "table": return { name: `${e.playing ? `${e.playing} · ${e.speaker || "player"}` : e.speaker || "Player"} · table talk`, by: "on Discord → agent", c: "var(--table)" };
       case "roll": return { name: "Roll result", c: "var(--roll)" };
       case "terminal": return { name: who(voiceName("terminal")), by, c: "var(--accent)" };
       case "system": return { name: who(voiceName("broadcast")), by, c: "var(--warn)" };

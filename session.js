@@ -436,6 +436,8 @@ function migrateGame(saved) {
     // (A build cut off by a restart goes back to choosing.)
     handouts: Array.isArray(saved.handouts) ? saved.handouts : [], // documents given to the players (see "handouts")
     localKeys: !!saved.localKeys, // started on the server's own computer: may use its .env keys (providers/index.js)
+    // Who plays whom on Discord (discordbot.js /player): Discord user id -> { crew: crew id, name: their Discord name }.
+    discordPlayers: saved.discordPlayers && typeof saved.discordPlayers === "object" ? saved.discordPlayers : {},
     clocks: Array.isArray(saved.clocks) ? saved.clocks : [], // countdowns on the players' screens (see "clocks")
     // The story as it was when play began (see "the story's start"): what Restart story restores.
     storyStart: saved.storyStart && saved.storyStart.config ? saved.storyStart : null,
@@ -2507,18 +2509,19 @@ export class Session {
   // doesn't prompt the agent: it goes with the next request, the Warden's as fact,
   // the players' as context. Speech in a row from the same person (nothing else
   // logged in between) adds up in one entry.
-  hearTable({ text, speaker = "", warden = false }) {
+  hearTable({ text, speaker = "", playing = "", warden = false }) {
     text = String(text || "").replace(/\s+/g, " ").trim().slice(0, 2000);
     if (!text) return;
     if (warden) this.storyBegins();
     const kind = warden ? "heard" : "table";
     speaker = String(speaker || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    playing = String(playing || "").slice(0, 80); // (the character they play, when the Warden has said)
     const last = this.state.log.at(-1);
-    if (last?.kind === kind && (last.speaker || "") === speaker && last.text.length + text.length < 4000) {
+    if (last?.kind === kind && (last.speaker || "") === speaker && (last.playing || "") === playing && last.text.length + text.length < 4000) {
       last.text += ` ${text}`;
       last.ts = Date.now();
       this.touch();
-    } else this.addLog(kind, text, speaker ? { speaker } : {});
+    } else this.addLog(kind, text, { ...(speaker ? { speaker } : {}), ...(playing ? { playing } : {}) });
     this.syncDm();
   }
 
@@ -2527,7 +2530,24 @@ export class Session {
     const d = discordStatus(this.code);
     if (!d) return { enabled: false };
     if (d.listening) this.discordCode = ""; // (used)
-    return { enabled: true, ...d, sttKey: !!this.sttKey, code: this.discordCode };
+    const players = Object.entries(this.state.discordPlayers || {}).map(([, p]) => ({ name: p.name, as: this.state.config.crew.find((c) => c.id === p.crew)?.name }))
+      .filter((p) => p.as);
+    return { enabled: true, ...d, players, sttKey: !!this.sttKey, code: this.discordCode };
+  }
+
+  // The crew member a Discord user plays (null: not said, or no longer in the crew).
+  playerOf(userId) {
+    const id = this.state.discordPlayers?.[userId]?.crew;
+    return (id && this.state.config.crew.find((c) => c.id === id)) || null;
+  }
+
+  // Discord /player: this user plays that crew member (one player each), or nobody (crewId null).
+  assignPlayer(userId, crewId, name = "") {
+    const map = (this.state.discordPlayers ||= {});
+    for (const [u, p] of Object.entries(map)) if (u === userId || (crewId && p.crew === crewId)) delete map[u];
+    if (crewId) map[userId] = { crew: crewId, name: String(name).slice(0, 40) };
+    this.touch();
+    this.syncDm();
   }
 
   // Words Whisper should spell right: the station, the crew, the cast.

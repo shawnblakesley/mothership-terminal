@@ -6,7 +6,8 @@
 // Linking: the Warden console asks for a one-time code (linkCode); in Discord
 // the Warden, in a voice channel, types /terminal listen code:<it>. The bot joins
 // that channel. Whoever linked it is the Warden: their speech is logged like the
-// Listen button's (fact, for the agent). Everyone else's is table talk.
+// Listen button's (fact, for the agent). Everyone else's is table talk, under the
+// character they play once the Warden says (/terminal player), else their name.
 //
 // Speech-to-text: each speaker's audio, cut at pauses, goes to Groq's Whisper on
 // the session's own Groq key (memory only, like its LLM key).
@@ -36,7 +37,7 @@ let client = null;
 let getSession = () => null;
 let inviteUrl = "";
 const codes = new Map(); // link code -> { session, expires }
-const links = new Map(); // guild id -> { session, guildName, channelId, channelName, wardenId, connection, chain, names, emptyTimer }
+const links = new Map(); // guild id -> { session, guildName, channelId, channelName, wardenId, wardenName, connection, chain, names, emptyTimer }
 
 // No 0/O/1/I/L, like session codes: it gets typed from one screen into another.
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -55,7 +56,7 @@ export function linkCode(sessionCode) {
 export function discordStatus(sessionCode) {
   if (!discordEnabled) return null;
   const link = [...links.values()].find((l) => l.session === sessionCode);
-  return { invite: inviteUrl, listening: link ? { guild: link.guildName, channel: link.channelName } : null };
+  return { invite: inviteUrl, listening: link ? { guild: link.guildName, channel: link.channelName, warden: link.wardenName } : null };
 }
 
 export function stopListening(sessionCode) {
@@ -161,7 +162,9 @@ function capture(guild, link, userId) {
     const job = Promise.all([transcribe(s, audio), speakerName(guild, link, userId)]);
     link.chain = link.chain.then(() => job).then(([text, who]) => {
       if (!text || who.bot || links.get(guild.id) !== link) return;
-      getSession(link.session)?.hearTable({ text, speaker: who.name, warden: userId === link.wardenId });
+      const s = getSession(link.session);
+      const warden = userId === link.wardenId;
+      s?.hearTable({ text, speaker: who.name, playing: warden ? "" : s.playerOf(userId)?.name, warden });
     }).catch((err) => console.warn(`[discord] transcription failed: ${err.message}`));
   };
   pcm.on("data", (c) => { chunks.push(c); bytes += c.length; if (bytes >= MAX_BYTES) flush(); });
@@ -180,6 +183,10 @@ const COMMANDS = [{
   options: [
     { type: 1, name: "listen", description: "Join your voice channel and write down what's said, into a session's log", options: [
       { type: 3, name: "code", description: "The link code from the Warden console (Settings, Discord)", required: true },
+    ] },
+    { type: 1, name: "player", description: "Warden only: say which crew member someone plays (or hand them the Warden role)", options: [
+      { type: 3, name: "character", description: "A crew member's name, Warden, or Nobody", required: true, autocomplete: true },
+      { type: 6, name: "user", description: "Who plays them", required: true },
     ] },
     { type: 1, name: "stop", description: "Stop listening and leave the voice channel" },
   ],
@@ -202,7 +209,7 @@ async function onListen(i) {
   leave(i.guildId); // (one channel per server)
   stopListening(ticket.session); // (and one channel per session)
   const connection = joinVoiceChannel({ channelId: channel.id, guildId: i.guildId, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false, selfMute: true });
-  const link = { session: ticket.session, guildName: i.guild.name, channelId: channel.id, channelName: channel.name, wardenId: i.user.id, connection, chain: Promise.resolve(), names: new Map(), emptyTimer: null };
+  const link = { session: ticket.session, guildName: i.guild.name, channelId: channel.id, channelName: channel.name, wardenId: i.user.id, wardenName: i.member?.displayName || i.user.username, connection, chain: Promise.resolve(), names: new Map(), emptyTimer: null };
   links.set(i.guildId, link);
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
@@ -225,6 +232,63 @@ async function onListen(i) {
   const keyNote = session.sttKey ? "" : "\nThe session has no Groq key yet, so nothing is written down until the Warden adds one (Settings, Discord).";
   // Said in the channel, for everyone: they're being transcribed.
   await i.editReply(`Listening in **${channel.name}**: what's said here is written down (speech-to-text) for the Warden's terminal. Anyone can stop it with \`/terminal stop\`.${keyNote}`);
+}
+
+const WARDEN = "Warden", NOBODY = "Nobody";
+const norm = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+// A crew member by name (or a word of it: "rook", "tick"), or their id.
+function findCrew(crew, ref) {
+  const r = norm(ref);
+  if (!r) return null;
+  const exact = crew.find((c) => norm(c.name) === r || c.id === ref);
+  if (exact) return exact;
+  const some = crew.filter((c) => norm(c.name).split(" ").includes(r) || norm(c.name).includes(r));
+  return some.length === 1 ? some[0] : null;
+}
+
+// The character box suggests the session's crew, plus Warden and Nobody.
+async function onAutocomplete(i) {
+  const s = getSession(links.get(i.guildId)?.session);
+  const typed = norm(i.options.getFocused());
+  const names = [...(s?.state.config.crew || []).map((c) => c.name), WARDEN, NOBODY];
+  await i.respond(names.filter((n) => !typed || norm(n).includes(typed)).slice(0, 25).map((n) => ({ name: n.slice(0, 100), value: n.slice(0, 100) })));
+}
+
+async function onPlayer(i) {
+  const link = links.get(i.guildId);
+  const s = getSession(link?.session);
+  if (!link || !s) return i.reply({ content: "I'm not listening in this server. Start with `/terminal listen`.", flags: MessageFlags.Ephemeral });
+  if (i.user.id !== link.wardenId) return i.reply({ content: `Only the Warden (${link.wardenName}) can say who plays whom.`, flags: MessageFlags.Ephemeral });
+  const user = i.options.getUser("user");
+  if (user.bot) return i.reply({ content: "That's a bot.", flags: MessageFlags.Ephemeral });
+  const name = i.options.getMember("user")?.displayName || user.globalName || user.username;
+  link.names.set(user.id, { name, bot: false }); // (their speech goes in under this name)
+  const ref = i.options.getString("character");
+  const quiet = { allowedMentions: { parse: [] } }; // (name them without pinging)
+
+  if (norm(ref) === norm(WARDEN)) {
+    if (user.id === link.wardenId) return i.reply({ content: "You're already the Warden.", flags: MessageFlags.Ephemeral });
+    link.wardenId = user.id;
+    link.wardenName = name;
+    s.assignPlayer(user.id, null); // (the Warden plays nobody)
+    s.send("dm", { t: "toast", level: "info", text: `Discord: ${name} is the Warden now.` });
+    return i.reply({ content: `<@${user.id}> is the Warden now: what they say goes to the terminal as the Warden's word.`, ...quiet });
+  }
+  if (user.id === link.wardenId) {
+    return i.reply({ content: "That's the Warden. To hand the role on first: `/terminal player character:Warden user:@someone`.", flags: MessageFlags.Ephemeral });
+  }
+  if (norm(ref) === norm(NOBODY)) {
+    s.assignPlayer(user.id, null);
+    return i.reply({ content: `<@${user.id}> doesn't play anyone now: they go in under their own name.`, ...quiet });
+  }
+  const crew = s.state.config.crew;
+  const member = findCrew(crew, ref);
+  if (!member) {
+    return i.reply({ content: `No crew member called "${ref}". The crew: ${crew.map((c) => c.name).join(", ") || "(none yet)"}.`, flags: MessageFlags.Ephemeral });
+  }
+  s.assignPlayer(user.id, member.id, name);
+  await i.reply({ content: `<@${user.id}> plays **${member.name}**.`, ...quiet });
 }
 
 async function onStop(i) {
@@ -262,9 +326,13 @@ export function startDiscord(lookup) {
     console.log(`  Discord bot online as ${c.user.tag}. Invite it: ${inviteUrl}`);
   });
   client.on(Events.InteractionCreate, async (i) => {
-    if (!i.isChatInputCommand() || i.commandName !== "terminal") return;
+    if (i.commandName !== "terminal") return;
+    if (i.isAutocomplete()) return onAutocomplete(i).catch(() => {});
+    if (!i.isChatInputCommand()) return;
     try {
-      if (i.options.getSubcommand() === "listen") await onListen(i);
+      const sub = i.options.getSubcommand();
+      if (sub === "listen") await onListen(i);
+      else if (sub === "player") await onPlayer(i);
       else await onStop(i);
     } catch (err) {
       console.error("[discord] command failed", err);
