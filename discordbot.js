@@ -83,7 +83,7 @@ function leave(guildId, why = "") {
   const s = getSession(l.session);
   if (s) {
     if (why) s.send("dm", { t: "toast", level: "info", text: why });
-    s.syncDm();
+    s.discordMoved(); // (voices set to play on Discord fall back to the screens)
   }
 }
 
@@ -317,7 +317,7 @@ async function onListen(i) {
     }
   });
   connection.on(VoiceConnectionStatus.Destroyed, () => links.get(i.guildId) === link && leave(i.guildId));
-  session.syncDm();
+  session.discordMoved(); // (voices set to play on Discord move there)
   session.send("dm", { t: "toast", level: "info", text: `Discord: listening in ${channel.name} (${i.guild.name}).` });
   const keyNote = session.sttKey ? "" : "\nThe session has no Groq key yet, so nothing is written down until the Warden adds one (Settings, Discord).";
   // Said in the channel, for everyone: they're being transcribed.

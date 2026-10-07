@@ -253,7 +253,7 @@ router.get("/api/sessions/:code/tts/:id", async (req, res) => {
   noStore(res);
   const s = sessions.get(normCode(req.params.code));
   const entry = s?.state.log.find((e) => e.id === Number(req.params.id));
-  if (!s || !s.state.config.tts || !entry || entry.hidden || !SPOKEN_KINDS.has(entry.kind)) return res.status(404).end();
+  if (!s || !s.speaksOnScreens() || !entry || entry.hidden || !SPOKEN_KINDS.has(entry.kind)) return res.status(404).end();
   try {
     // ?part=N: just that text line (human voices are fetched line by line so speech starts sooner).
     // ?v=N: the per-player variant this screen shows instead of the main text.

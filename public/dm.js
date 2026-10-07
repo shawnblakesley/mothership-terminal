@@ -316,6 +316,7 @@
     renderMnavDot();
     renderDiscord();
     renderDiscordButton();
+    renderVoicesOn();
     $("retcon").disabled = !S.canRetcon;
     $("retcon").textContent = S.canRetcon > 1 ? `↶ Retcon last response (${S.canRetcon})` : "↶ Retcon last response";
   }
@@ -1652,7 +1653,28 @@
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
   // On/off features in the Settings window (config keys of the same name).
-  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals", "tts", "discordTalk"];
+  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals"];
+
+  // Where voices play: the screens, Discord (the bot speaks them in its channel), or off.
+  const voicesOn = () => (S.config.discordTalk ? "discord" : S.config.tts !== false ? "screens" : "off");
+  function renderVoicesOn() {
+    const on = voicesOn(), d = S.discord || {};
+    for (const b of $("voicesOn").children) {
+      b.classList.toggle("on", b.dataset.on === on);
+      b.setAttribute("aria-checked", String(b.dataset.on === on));
+    }
+    const discordBtn = $("voicesOn").querySelector('[data-on="discord"]');
+    discordBtn.disabled = !d.enabled && on !== "discord";
+    discordBtn.title = d.enabled ? "The Discord bot speaks every line in its voice channel, with each voice's effects, at the same moment as the screens would" : "This server has no Discord bot (see Discord)";
+    $("voicesNote").textContent = on === "discord"
+      ? d.listening ? `Spoken in ${d.listening.channel} on Discord. The screens stay quiet.` : "Until the bot is in a voice channel (Discord tab), the screens speak instead."
+      : on === "screens" ? "Each player's screen speaks the lines aloud." : "Nobody hears the voices: lines are only read.";
+  }
+  $("voicesOn").addEventListener("click", (e) => {
+    const on = e.target.closest("[data-on]")?.dataset.on;
+    if (!on || on === voicesOn()) return;
+    send({ t: "config", patch: { tts: on === "screens", discordTalk: on === "discord" } });
+  });
 
   function renderConfig() {
     const c = S.config;
@@ -1663,6 +1685,7 @@
     }
     growStory();
     for (const id of SETTING_SWITCHES) $(id).checked = c[id] !== false;
+    renderVoicesOn();
     if (!dirty.has("station") && document.activeElement !== $("station")) $("station").value = JSON.stringify(S.station, null, 2);
   }
 

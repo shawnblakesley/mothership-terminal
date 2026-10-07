@@ -179,8 +179,10 @@ export function defaultGame(keys = {}) {
       talk: "brief", // how much the characters say: terse | brief | normal | long (agent.js TALK)
       playerVitals: true, // players may change their own health, wounds and stress
       playerRolls: true, // players may roll their own stats and saves
+      // Where voices play: on the players' screens (tts), on Discord (discordTalk: the bot
+      // speaks them in its voice channel, discordbot.js), or nowhere. See speaksOnScreens.
       tts: true,
-      discordTalk: false, // the Discord bot speaks every spoken line in its voice channel too (discordbot.js)
+      discordTalk: false,
       voices: defaultVoices().map((v) => ({ ...v, systems: ["*"] })), // (the default story: every voice reaches every system, the tug's too)
       theme: "green",
       map: DEFAULT_MAP,
@@ -611,6 +613,19 @@ export class Session {
   // were said on; someone talking in person is only heard in that room.
   sees(ws, e) { return shownOn(e.net, this.netOfSocket(ws)) && (!e.room || this.roomOfSocket(ws) === e.room); }
   // Only the player screens that show this line.
+  // Do the players' screens speak? When voices are set to play on the screens; or on
+  // Discord while the bot isn't in a voice channel (so nothing goes unsaid).
+  speaksOnScreens() {
+    const c = this.state.config;
+    return !!c.tts || (!!c.discordTalk && !discordLinked(this.code));
+  }
+
+  // The bot joined or left a voice channel: the screens may start or stop speaking.
+  discordMoved() {
+    this.toPlayers({ t: "header", header: this.playerHeader() });
+    this.syncDm();
+  }
+
   // Is a line on some player screen? (With none connected, everyone's on Discord.)
   seenByAnyone(entry) {
     const screens = [...this.sockets].filter((c) => c.role === "player");
@@ -664,7 +679,7 @@ export class Session {
       stationName: c.stationName,
       accessLevel: String(this.state.station.access_level ?? "GUEST"),
       theme: c.theme,
-      tts: c.tts,
+      tts: this.speaksOnScreens(),
       vitals: c.playerVitals, // players may edit their own health/wounds/stress
       terminals: c.terminals.map((t) => ({ id: t.id, name: t.name, look: t.look, theme: t.theme, system: t.system, os: t.os, open: reachable(t, this.state.station) })),
       moveTerminals: c.playerTerminals, // players may switch terminals themselves
@@ -793,7 +808,8 @@ export class Session {
     // Discord: the bot speaks the line in its channel too (the main text, not per-player
     // versions), when someone can see it, with the voice's effects (in person: none).
     const talk = !!c.discordTalk && SPOKEN_KINDS.has(entry.kind) && discordLinked(this.code) && this.seenByAnyone(entry);
-    const spoken = (c.tts || talk) && SPOKEN_KINDS.has(entry.kind);
+    const screens = this.speaksOnScreens();
+    const spoken = (screens || talk) && SPOKEN_KINDS.has(entry.kind);
     const voice = SPOKEN_KINDS.has(entry.kind) ? voiceFor(c.voices, entry) : null;
     const base = voice ? speakingVoice(c, entry) : null;
     const rate = entry.inPerson ? 1 : voice?.fx?.rate || 1; // (in person: no speaker effects)
@@ -819,10 +835,10 @@ export class Session {
       for (let v = 0; v < texts.length; v++) {
         if (i >= pieces[v].length) continue;
         const wav = await jobs[v][i];
-        if (wav && c.tts) wavs[v][i] = wav.toString("base64"); // (screens that don't speak just get the timing)
+        if (wav && screens) wavs[v][i] = wav.toString("base64"); // (screens that don't speak just get the timing)
         // Unspoken text gets reading time instead.
         const dur = wav ? Math.round((wavSeconds(wav) / rate) * 1000) : Math.min(6000, 400 + pieces[v][i].length * 18);
-        const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!wav && c.tts, last: i === pieces[v].length - 1 };
+        const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!wav && screens, last: i === pieces[v].length - 1 };
         if (talk && v === 0 && wav && live()) discordSay(this.code, wav, entry.inPerson ? {} : voice?.fx || {}, part.at);
         cursors[v] = part.at + dur + PIECE_GAP;
         timing.versions[v].push(part);
@@ -927,6 +943,7 @@ export class Session {
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
         s.config.discordTalk = !!s.config.discordTalk;
+        if (s.config.discordTalk && "discordTalk" in msg.patch) s.config.tts = false; // (one or the other)
         if ("discordTalk" in msg.patch) setDiscordTalk(this.code, s.config.discordTalk);
         // Switching provider snaps to its cheapest model; invalid efforts snap to the cheapest valid one.
         if ("provider" in msg.patch && !("model" in msg.patch)) Object.assign(s.config, { model: "", effort: "" });
@@ -1392,7 +1409,7 @@ export class Session {
   // Start making human-voice audio now (cached in tts.js), rather than when the
   // players' browsers ask for it. Pieces match the /tts/:id?part=N requests.
   pregenerate(lines) {
-    if (!this.state.config.tts) return;
+    if (!this.speaksOnScreens()) return;
     for (const l of lines) {
       const base = speakingVoice(this.state.config, l);
       if (base.engine !== "neural") continue; // synthetic voices are instant anyway
