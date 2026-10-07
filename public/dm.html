@@ -186,8 +186,11 @@
 
   <dialog id="synopsisDialog" class="synopsisdlg">
     <div class="row wrap">
-      <h2 class="grow">Synopsis</h2>
-      <span id="synStatus" class="muted small"></span>
+      <h2>Synopsis</h2>
+      <div class="seg" id="synKinds" role="tablist" aria-label="Which synopsis">
+        <button data-kind="prebrief" role="tab" title="Before play: who they are, where they are, what they know, their job">Prebrief</button><button data-kind="sofar" role="tab" title="During play: what has happened, where they are now, what's next">Story so far</button><button data-kind="wrapup" role="tab" title="After the one-shot: what happened, and what became of each of them afterwards">Wrap-up</button>
+      </div>
+      <span id="synStatus" class="muted small grow"></span>
       <button id="synWrite" title="Have the agent write it from the story and the comms so far. Uses this session's model and key.">↻ Write it</button>
       <button id="synCopy" title="Copy the player sections only, without the Warden-only notes">Copy for players</button>
       <button id="synClose" class="ghost" aria-label="Close">✕</button>

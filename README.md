@@ -93,11 +93,13 @@ A rimward ice-mining platform where the drill team broke into a "pressurised voi
 
 ## Synopsis
 
-**Synopsis** (top of the console) has the agent write a short, bulleted briefing to share with the players: who they are, where they are, what they know, their job, and their **next goals**. Once the story has started, it is written from the comms so far and tells the players only what their characters have actually learned.
+**Synopsis** (top of the console) has the agent write one of three, picked at the top of the dialog. It opens on the prebrief before play and on the story so far once play has started.
 
-- Sections marked **For the Warden only** cover what is really going on (once play is under way, which beats have landed and where everyone is now) and **next obstacles** to throw at the players, each with how it shows up and ways through.
-- **Copy for players** copies just the player sections.
-- The synopsis is kept with the session. When the log has moved on since it was written, **Update to now** rewrites it. It uses the session's model and key.
+- **Prebrief:** a short, bulleted briefing to share with the players before play: who they are, where they are, what they know, their job, and their **next goals**. It's always the setup, as the story started, even if you rewrite it later.
+- **Story so far:** the same, written from the comms so far: what has happened, where they are now, what they know and what they could do next. It tells the players only what their characters have actually learned.
+- **Wrap-up:** for after the one-shot: **What happened**, a short blurb of the story as it played out (secrets and all, since it's over), and **Afterwards**, what became of each of the crew in the months and years after, grounded in how they left the story.
+
+The prebrief and the story so far have sections marked **For the Warden only**: what is really going on (once play is under way, which beats have landed and where everyone is now) and **next obstacles** to throw at the players, each with how it shows up and ways through. **Copy for players** copies just the player sections (the whole wrap-up). Each is kept with the session; when the log has moved on since one was written, **Update to now** rewrites it. Restart story keeps the prebrief and clears the other two. They use the session's model and key.
 
 ## Player characters
 
@@ -232,7 +234,7 @@ When the group plays over Discord, a bot can sit in the voice channel and write 
 - Each player picks their character with `/terminal player character:<name>` (the box suggests the crew). Their speech then goes in as that character's player ("Rook Rusk · Alice"), so the agent knows who is who; anyone without one goes in under their Discord name. Each character has one player: a player can't take one someone else has, but the Warden can move it, and can set anyone's with `user:@someone`. Only the Warden can hand on the Warden role (`character:Warden user:@someone`). `character:Nobody` takes a character away. Settings → Discord lists who's who, and it's kept with the session.
 - Like Listen, it doesn't prompt the agent and players never see it on their screens.
 - **The characters can talk back:** set **Voices play: On Discord** (Settings → Players) and the bot speaks every line the players' screens would speak, at the same moment, in each voice with its effects (intercom static, robotic, radio and so on). The effects are rendered on the server for Discord only (`voicefx.js`, a copy of the browser's chain in a worker thread); player screens still do their own. Per-player versions of a line aren't spoken (the channel is shared), and when a player cuts the comms off, the bot stops too. The screens stay quiet then (lines keep their timing), except while the bot isn't in a voice channel: then the screens speak, so nothing goes unsaid.
-- Anyone in the Discord server can stop it with `/terminal stop`, or you can press **Stop listening**. It also leaves when everyone has been gone from the channel for five minutes.
+- Anyone in the Discord server can stop it with `/terminal stop`, or you can press **Stop listening**. It also leaves on its own when everyone has left the channel (after 15 seconds, so a dropped connection can come back).
 - Hosting it: make an application at [discord.com/developers](https://discord.com/developers/applications), add a bot, and set its token as `DISCORD_BOT_TOKEN` (on the shared server it comes from SSM `/mothership/discord-bot-token`, like the OpenRouter key). No privileged intents are needed. The server log prints the bot's invite link when it starts.
 
 ## Station map

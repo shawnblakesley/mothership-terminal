@@ -10,7 +10,7 @@ import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VITALS, changeItem, freshen } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
-import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap } from "./synopsis.js";
+import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
@@ -203,7 +203,7 @@ export function defaultGame(keys = {}) {
     handouts: [structuredClone(WORK_ORDER)],
     whisper: "",
     sounds: [],
-    synopsis: null, // the Warden's latest story synopsis (synopsis.js)
+    synopses: {}, // the Warden's synopses, by kind: prebrief, sofar, wrapup (synopsis.js)
   };
 }
 
@@ -233,6 +233,14 @@ function savedCast(config, station) {
     return { cast, channel: "intercom" };
   }
   return found;
+}
+
+// Synopses by kind. Before there were three, there was one: the prebrief, or the
+// story so far once play had started.
+function savedSynopses(saved) {
+  if (saved.synopses && typeof saved.synopses === "object") return saved.synopses;
+  const old = saved.synopsis;
+  return old ? { [old.started ? "sofar" : "prebrief"]: old } : {};
 }
 
 function migrateGame(saved) {
@@ -434,7 +442,7 @@ function migrateGame(saved) {
     sounds: Array.isArray(saved.sounds) ? saved.sounds : [], // the Warden's uploaded sounds (files: sounds.js)
     // The story builder's conversation and latest draft (builder.js).
     builder: { messages: Array.isArray(saved.builder?.messages) ? saved.builder.messages.slice(-60) : [], draft: saved.builder?.draft ?? null },
-    synopsis: saved.synopsis ?? null, // { sections, started, at, logId } (synopsis.js)
+    synopses: savedSynopses(saved), // kind -> { sections, started, at, logId } (synopsis.js)
     // A game without a Warden (see "no Warden" below): { phase, pitches, opened, error }.
     // (A build cut off by a restart goes back to choosing.)
     handouts: Array.isArray(saved.handouts) ? saved.handouts : [], // documents given to the players (see "handouts")
@@ -496,7 +504,7 @@ export class Session {
     // playing: sounds on the players' screens right now (loops stay listed until stopped).
     this.state = { ...migrateGame(saved.game ?? {}), pending: null, effects: [], playing: [] };
     this.builderBusy = ""; // "", "chat" or "draft" while the story builder waits on the agent
-    this.synopsisBusy = false; // the agent is writing the Warden's synopsis
+    this.synopsisBusy = ""; // the kind of synopsis the agent is writing for the Warden, if any
     this.handoutBusy = false; // the agent is writing a handout from the Warden's brief
     this.roomBusy = ""; // the map room whose floor plan the agent is drawing
     this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
@@ -1236,7 +1244,7 @@ export class Session {
         if (!this.builderBusy) this.builderTurn("draft");
         break;
       case "synopsis":
-        if (!this.synopsisBusy) this.writeSynopsis();
+        if (!this.synopsisBusy) this.writeSynopsis(SYNOPSIS_KINDS.includes(msg.kind) ? msg.kind : "sofar");
         break;
       case "roomLayout": {
         // The Warden's edits to a room's floor plan (rows: null removes it).
@@ -1567,20 +1575,20 @@ export class Session {
     this.syncDm();
   }
 
-  // The Warden's synopsis: the setup, or the story so far, with Warden-only notes.
-  async writeSynopsis() {
+  // The Warden's synopsis of one kind: the prebrief, the story so far, or the wrap-up.
+  async writeSynopsis(kind) {
     const s = this.state;
-    this.synopsisBusy = true;
+    this.synopsisBusy = kind; // (which one is being written)
     this.syncDm();
     try {
-      const { started, request } = synopsisRequest(s, this.screens());
+      const { started, request } = synopsisRequest(s, this.screens(), kind);
       const sections = normalizeSynopsis(await this.ask(request, "synopsis"));
-      s.synopsis = { sections, started, at: Date.now(), logId: s.log.at(-1)?.id ?? 0 };
+      (s.synopses ||= {})[kind] = { sections, started, at: Date.now(), logId: s.log.at(-1)?.id ?? 0 };
     } catch (err) {
       console.error(`[${this.code}] synopsis failed:`, err?.message || err);
       this.send("dm", { t: "toast", level: "error", text: `Couldn't write the synopsis: ${err?.message || err}` });
     }
-    this.synopsisBusy = false;
+    this.synopsisBusy = "";
     this.touch();
     this.syncDm();
   }
@@ -1618,7 +1626,7 @@ export class Session {
     this.genCounter++;
     this.playhead = 0;
     Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] }); // (new rooms: plans are drawn when first opened)
-    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), pending: null, whisper: "", roll: null, outcomeCheck: null, synopsis: null });
+    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), pending: null, whisper: "", roll: null, outcomeCheck: null, synopses: {} });
     for (const e of [...s.effects]) this.endEffect(e.id);
     this.stopSounds();
     for (const ws of this.sockets) if (ws.role === "player") ws.character = null; // everyone picks a new crew file
@@ -2316,7 +2324,7 @@ export class Session {
     const s = this.state;
     if (s.storyStart || s.solo && s.solo.phase !== "play") return;
     const config = Object.fromEntries(Object.entries(s.config).filter(([k]) => !SESSION_SETTINGS.has(k)));
-    s.storyStart = structuredClone({ config, station: s.station, synopsis: s.synopsis, at: Date.now() });
+    s.storyStart = structuredClone({ config, station: s.station, synopses: { prebrief: s.synopses?.prebrief }, at: Date.now() });
     this.touch();
   }
 
@@ -2384,7 +2392,9 @@ export class Session {
       s.station = structuredClone(snap.station);
       s.config.cast = sanitizeCast(s.config.cast);
       for (const m of [...s.config.cast, ...s.config.crew]) if (pics.has(m.id)) m.portrait = pics.get(m.id);
-      s.synopsis = structuredClone(snap.synopsis ?? null);
+      s.synopses = structuredClone(savedSynopses(snap)); // (the prebrief: the story is back at its start)
+      delete s.synopses.sofar;
+      delete s.synopses.wrapup;
     } else {
       // Played before saves existed: everyone fresh, and the default story's own station.
       for (const pc of s.config.crew) freshen(pc);
@@ -2392,7 +2402,7 @@ export class Session {
         s.station = structuredClone(DEFAULT_STATION);
         for (const m of s.config.cast) m.room = findCast(DEFAULT_CAST, m.name)?.room ?? m.room; // (back where they started)
       }
-      s.synopsis = null;
+      s.synopses = {};
     }
     // Every terminal reachable as the story starts it.
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });

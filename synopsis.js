@@ -1,9 +1,12 @@
-// The Warden's synopsis: a punchy, bulleted briefing to read or hand to the
-// players (who they are, where they are, what they know, their job, their next
-// goals), with sections for the Warden only (what's really going on, and the
-// next obstacles to throw at them). Before play it covers the setup; once the
-// story has started it is brought up to date from the comms log, telling the
-// players only what they have actually learned.
+// The Warden's synopsis, in three kinds (SYNOPSIS_KINDS):
+//   prebrief: a punchy, bulleted briefing to read or hand to the players before
+//     play (who they are, where they are, what they know, their job, their next
+//     goals), with sections for the Warden only (what's really going on, and the
+//     next obstacles to throw at them). Always the setup, as the story started.
+//   sofar: the same, brought up to date from the comms log (what has happened,
+//     where they are now), telling the players only what they have learned.
+//   wrapup: after the one-shot: the story of what happened (secrets and all), and
+//     an epilogue for each character: what became of them afterwards.
 import { crewBrief, crewStatus } from "./crew.js";
 import { terminalsBrief } from "./terminals.js";
 import { voiceIdOf } from "./agent.js";
@@ -73,9 +76,24 @@ export function logLine(e, voices) {
   }
 }
 
-export function synopsisRequest(state, screens = []) {
+export const SYNOPSIS_KINDS = ["prebrief", "sofar", "wrapup"];
+
+const WRAPUP = `You help the Warden (game master) of a Mothership (sci-fi horror TTRPG) one-shot that has just ENDED. Write the WRAP-UP to read to the players or hand them as they go: the story they just played, and what became of each of them afterwards. It's over, so spoilers are fine: the truth can come out.
+
+Use exactly these sections, in this order, with these headings (audience "players" for both):
+1. "What happened": a blurb of 2 short paragraphs (~150 words in all), past tense, told like the back of a paperback: the story as it played out, from the COMMS LOG, with what was really going on behind it (from SECRETS), including what they never found out.
+2. "Afterwards": one entry per crew member, each starting with their name and a colon, 2-4 sentences: their long-term fate after the mission, months or years on. Ground it in how they left the story (alive or dead, their Health, Wounds and Stress, what they did and chose in play) and who they are (backstory, crime, trinket, patch). Mothership's tone: grim, wry, sometimes bittersweet; a happy ending has to be earned. The dead get how they were remembered, or what happened to what they left behind. Blank line between entries.
+
+Plain text, no markdown, no bullet points.`;
+
+export function synopsisRequest(state, screens = [], kind = "sofar") {
+  // The prebrief is always the setup: the story as it started, if it has.
+  if (kind === "prebrief" && state.storyStart?.config) {
+    state = { ...state, config: { ...state.config, ...state.storyStart.config }, station: state.storyStart.station ?? state.station };
+    screens = [];
+  }
   const c = state.config;
-  const log = state.log.filter((e) => !e.cut && (e.text || e.variants?.length));
+  const log = kind === "prebrief" ? [] : state.log.filter((e) => !e.cut && (e.text || e.variants?.length));
   // Started = something has been typed or said at the terminal (not just Warden notes).
   const started = log.some((e) => e.kind === "player" || ["terminal", "system", "entity"].includes(e.kind));
   const feels = (m) => ({ "-3": "hostile", "-2": "resentful", "-1": "wary", 1: "friendly", 2: "trusting", 3: "loyal" })[m.attitude] || "neutral";
@@ -92,8 +110,19 @@ export function synopsisRequest(state, screens = []) {
     cast.length ? `CAST (people who can speak):\n${cast.join("\n")}` : "",
     c.terminals?.length ? `TERMINALS:\n${terminalsBrief(c.terminals)}${where.length ? `\n\nWHERE THE PLAYERS ARE NOW:\n${where.join("\n")}` : ""}` : "",
   ].filter(Boolean).join("\n\n");
+  const comms = `COMMS LOG (oldest first; private lines were never seen by the players):\n${log.slice(-LOG_ENTRIES).map((e) => logLine(e, c.voices)).join("\n")}`;
+  if (kind === "wrapup") {
+    return {
+      started,
+      request: {
+        system: WRAPUP, context, schema: SYNOPSIS_SCHEMA,
+        messages: [{ role: "user", content: started ? `${comms}\n\nThe one-shot is over. Write the wrap-up.` : "The story never got going: nothing was said at the terminal. Write a short wrap-up anyway, from the setup: what was waiting for them, and where the crew went instead." }],
+        example: { sections: [{ heading: "What happened", audience: "players", text: "..." }, { heading: "Afterwards", audience: "players", text: "NAME: ...\n\nNAME: ..." }] },
+      },
+    };
+  }
   const ask = started
-    ? `COMMS LOG (oldest first; private lines were never seen by the players):\n${log.slice(-LOG_ENTRIES).map((e) => logLine(e, c.voices)).join("\n")}\n\nThe story is under way. Write the synopsis as of NOW.`
+    ? `${comms}\n\nThe story is under way. Write the synopsis as of NOW.`
     : "The story hasn't started yet: nothing has been said at the terminal. Write the starting synopsis.";
   return {
     started,

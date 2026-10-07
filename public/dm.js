@@ -1021,39 +1021,64 @@
   });
 
   // ------------------------------------------------------------ synopsis
+  // Three kinds: the prebrief (the setup), the story so far, and the wrap-up after the one-shot.
+  const SYN_KINDS = {
+    prebrief: { label: "Prebrief", writing: "Writing the prebrief…",
+      empty: "<b>Write it</b> has the agent brief the players before play: who they are, where they are, what they know and what they're here to do, with notes only you see on what's really going on and the obstacles ahead." },
+    sofar: { label: "The story so far", writing: "Writing the story so far from the comms…",
+      empty: "<b>Write it</b> has the agent catch the players up: what has happened, where they are now, what they know and what they could do next, with notes only you see on where the story and the threat stand." },
+    wrapup: { label: "Wrap-up", writing: "Writing the wrap-up…",
+      empty: "<b>Write it</b> when the one-shot is over: the story of what happened, secrets and all, and what became of each of the crew afterwards, to read them as they go." },
+  };
+  // Before play, the prebrief; once it has started, the story so far. (The Warden can pick another.)
+  let synKind = null;
+  const synopsisOf = (k) => S.synopses?.[k] || null;
   let synopsisKey = "";
   function renderSynopsis() {
     if (!$("synopsisDialog").open) return;
-    const syn = S.synopsis, busy = S.synopsisBusy;
-    // Entries since it was written (things said or typed, not console notes).
-    const newer = syn ? S.log.filter((e) => e.id > syn.logId && e.kind !== "note").length : 0;
-    const key = JSON.stringify([syn, busy, newer]);
+    const kind = synKind || (S.storyStartedAt ? "sofar" : "prebrief");
+    const syn = synopsisOf(kind), busy = S.synopsisBusy, mine = busy === kind;
+    // Entries since it was written (things said or typed, not console notes). (Not for the prebrief: it's the setup.)
+    const newer = syn && kind !== "prebrief" ? S.log.filter((e) => e.id > syn.logId && e.kind !== "note").length : 0;
+    const key = JSON.stringify([kind, syn, busy, newer]);
     if (key === synopsisKey) return;
     synopsisKey = key;
+    for (const b of $("synKinds").children) {
+      b.classList.toggle("on", b.dataset.kind === kind);
+      b.setAttribute("aria-selected", String(b.dataset.kind === kind));
+    }
     const when = syn && new Date(syn.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    $("synStatus").textContent = busy ? "" : !syn ? "" : `${syn.started ? "The story so far" : "Starting synopsis"} · written ${when}${newer ? ` · ${newer} new log ${newer === 1 ? "entry" : "entries"} since` : ""}`;
-    $("synWrite").disabled = busy;
+    $("synStatus").textContent = mine || !syn ? "" : `written ${when}${newer ? ` · ${newer} new log ${newer === 1 ? "entry" : "entries"} since` : ""}`;
+    $("synWrite").disabled = !!busy;
     $("synWrite").textContent = syn ? (newer ? "↻ Update to now" : "↻ Rewrite") : "↻ Write it";
     $("synWrite").classList.toggle("primary", !syn || newer > 0);
-    $("synCopy").disabled = busy || !syn?.sections.some((x) => x.audience === "players");
+    $("synCopy").disabled = mine || !syn?.sections.some((x) => x.audience === "players");
     const body = $("synBody");
-    if (busy) { body.innerHTML = `<div class="synempty"><span class="spinner"></span>${syn ? "Bringing the synopsis up to date with the comms so far…" : "Writing the synopsis…"}</div>`; return; }
-    if (!syn) { body.innerHTML = `<div class="synempty muted">No synopsis yet. <b>Write it</b> has the agent brief the players on who they are, where they are, what they know and what they're here to do, with notes only you see on the story beats and next steps.</div>`; return; }
+    if (mine) { body.innerHTML = `<div class="synempty"><span class="spinner"></span>${SYN_KINDS[kind].writing}</div>`; return; }
+    if (!syn) { body.innerHTML = `<div class="synempty muted">Not written yet. ${SYN_KINDS[kind].empty}${busy ? ` <br><br>(${SYN_KINDS[busy]?.label} is being written; this one can go next.)` : ""}</div>`; return; }
     body.innerHTML = syn.sections.map((x) => x.audience === "warden"
       ? `<section class="synsec warden"><div class="synlabel">For the Warden only</div><h3>${esc(x.heading)}</h3><div class="syntext">${esc(x.text)}</div></section>`
       : `<section class="synsec"><h3>${esc(x.heading)}</h3><div class="syntext">${esc(x.text)}</div></section>`).join("");
   }
-  const writeSynopsis = () => { if (!S.synopsisBusy) send({ t: "synopsis" }); };
+  const shownKind = () => synKind || (S.storyStartedAt ? "sofar" : "prebrief");
+  const writeSynopsis = () => { if (!S.synopsisBusy) send({ t: "synopsis", kind: shownKind() }); };
   $("synopsisBtn").onclick = () => {
     synopsisKey = "";
+    synKind = null; // (opens on the one that fits where the story is)
     $("synopsisDialog").showModal();
-    if (!S.synopsis && !S.synopsisBusy) writeSynopsis(); // first time: write it straight away
+    if (!synopsisOf(shownKind()) && !S.synopsisBusy) writeSynopsis(); // first time: write it straight away
     renderSynopsis();
   };
+  $("synKinds").addEventListener("click", (e) => {
+    const k = e.target.closest("[data-kind]")?.dataset.kind;
+    if (!k) return;
+    synKind = k;
+    renderSynopsis();
+  });
   $("synClose").onclick = () => $("synopsisDialog").close();
   $("synWrite").onclick = writeSynopsis;
   $("synCopy").onclick = async () => {
-    const text = S.synopsis.sections.filter((x) => x.audience === "players").map((x) => `${x.heading.toUpperCase()}\n${x.text}`).join("\n\n");
+    const text = synopsisOf(shownKind()).sections.filter((x) => x.audience === "players").map((x) => `${x.heading.toUpperCase()}\n${x.text}`).join("\n\n");
     try { await navigator.clipboard.writeText(text); toast("Player sections copied (no Warden-only notes)."); }
     catch { toast("Couldn't copy: your browser blocked the clipboard.", "error"); }
   };
