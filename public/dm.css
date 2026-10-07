@@ -133,10 +133,13 @@ h3 { font-size: 12px; color: var(--muted); margin: 0; font-weight: 500; }
 .fxopts { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; }
 details .fxopts { grid-template-columns: 1fr 1fr; }
 .fxopts label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
-.fxgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
-.fxgrid button { padding: 10px 6px 8px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12.5px; background: var(--panel); border-radius: var(--radius); }
+.fxgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
+.fxgrid button { padding: 9px 8px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12.5px; line-height: 1.2; background: var(--panel); border-radius: var(--radius); }
 .fxgrid button:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
-.fxgrid button .ico { font-size: 20px; line-height: 1; }
+.fxgrid button .ico { display: inline-flex; flex: none; }
+.fxgrid button .fxi { width: 16px; height: 16px; }
+/* An effect's icon beside text elsewhere (draft lines, the active list): text-sized. */
+.fxi { width: 1.05em; height: 1.05em; vertical-align: -0.17em; flex: none; }
 .fxlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .fxlist li { display: flex; align-items: center; gap: 8px; background: var(--panel2); border-radius: 6px; padding: 4px 4px 4px 10px; font-size: 13px; }
 .fxlist li .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
