@@ -553,7 +553,7 @@ button.cs-num:focus-visible { outline: none; }
 #mainrow { flex: 1; min-height: 0; display: flex; gap: 0.9em; }
 #mainrow #screen { min-width: 0; }
 #side {
-  flex: 0 0 clamp(260px, 30%, 440px); overflow-y: auto; scrollbar-width: none;
+  flex: 0 0 auto; overflow-y: auto; /* (its width: sideWidth in player.js) */ scrollbar-width: none;
   border-left: 2px solid var(--dim); padding: 0 0 0 0.8em; line-height: 1.25;
   display: flex; flex-direction: column; /* (the sheet, then its buttons at the bottom) */
 }

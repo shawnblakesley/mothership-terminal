@@ -665,18 +665,43 @@
         ${c.patch ? `<div><span class="cs-k">PATCH</span> ${escH(c.patch)}</div>` : ""}
       </div>`;
 
-  // ---- the sidebar: the player's sheet beside the terminal (on wide screens).
+  // ---- the sidebar: the player's sheet beside the terminal (when there's room).
+  // Normally 30% of the row; widened (up to half) when the status report wouldn't fit in that.
+  // If it wouldn't fit even in half, there's no sidebar: FILE opens the full sheet instead.
   let sideOpen = true;
   try { sideOpen = localStorage.getItem("side-open") !== "0"; } catch {}
-  const wide = () => matchMedia("(min-width: 900px)").matches;
+  function sideNeed(c) {
+    // (the status report at its narrowest, measured off-screen in the sidebar's type)
+    const m = document.createElement("div");
+    // (squeezed to nothing, its three columns each shrink to their own pill: what overflows is what it needs)
+    m.style.cssText = "position: absolute; visibility: hidden; left: -9999px; top: 0; width: 0;";
+    m.innerHTML = `<div class="cs cs-compact">${statusCard(c)}</div>`;
+    document.body.append(m);
+    const card = m.querySelector(".cs-card"), cs = getComputedStyle(card);
+    const w = m.querySelector(".cs-vitals").scrollWidth + ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"].reduce((n, k) => n + parseFloat(cs[k]), 0);
+    m.remove();
+    const side = getComputedStyle($("side"));
+    return Math.ceil(w + parseFloat(side.paddingLeft) + parseFloat(side.borderLeftWidth) + 2);
+  }
+  // The sidebar's width, or 0 if it doesn't fit.
+  function sideWidth() {
+    const c = mine();
+    if (!c) return 0;
+    const row = $("mainrow").clientWidth, need = sideNeed(c);
+    if (need > row / 2) return 0;
+    return Math.max(need, Math.min(row * 0.3, 440));
+  }
+  const wide = () => sideWidth() > 0;
 
   function renderSide() {
     const c = mine();
     docsButton();
     const side = $("side");
-    side.hidden = !c || !sideOpen || !wide() || spectate || !$("crewpick").hidden || !$("crewfile").hidden || !$("reveal").hidden; // (hidden while choosing a character, with the full sheet open, or a picture up)
+    const w = sideWidth();
+    side.hidden = !c || !sideOpen || !w || spectate || !$("crewpick").hidden || !$("crewfile").hidden || !$("reveal").hidden; // (hidden while choosing a character, with the full sheet open, or a picture up)
     $("hdr-file").classList.toggle("on", !side.hidden);
     if (side.hidden) return;
+    side.style.flexBasis = `${w}px`;
     // (the buttons stay at the bottom of the panel, whatever is scrolled above them)
     side.innerHTML = `<div class="cs cs-compact">${sheetCards(c)}</div>
       <div class="s-foot"><button type="button" class="p-btn" id="side-change">[ CHANGE CHARACTER ]</button> <button type="button" class="p-btn" id="side-hide">[ HIDE ]</button></div>`;
