@@ -694,23 +694,33 @@
     },
 
     // Ice: frost creeping in over the glass from every edge. Crystals grow inward as
-    // feathery branches that split at sixty degrees, as real frost does, fogging the
-    // glass round them into a haze that's thickest at the edges, with a few glints.
-    // It reaches in unevenly, in drifts (further at higher intensity), then holds.
+    // straight, kinked branches that split at sixty degrees, as real frost does,
+    // fogging the glass round them with faceted flakes, thickest at the edges and
+    // fading to nothing toward the middle, with a few glints. It reaches in unevenly,
+    // in drifts (further at higher intensity), then holds. Never quite opaque (player.css).
     ice(fx) {
       const { c, ctx, w, h } = fullCanvas();
       c.className = "fx-canvas fx-ice";
       const k = fx.intensity || 2, reach = Math.min(w, h) * (0.07 + 0.05 * k), drift = makeNoise(), bend = makeNoise();
-      // A soft puff of frost, stamped along the branches as they grow.
+      // A faceted flake of frost (six-sided, not round), stamped along the branches as they grow.
       const puff = document.createElement("canvas");
       puff.width = puff.height = 32;
-      const pctx = puff.getContext("2d"), pg = pctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-      pg.addColorStop(0, "rgba(210,232,255,0.13)"); pg.addColorStop(1, "rgba(210,232,255,0)");
-      pctx.fillStyle = pg; pctx.fillRect(0, 0, 32, 32);
+      const pctx = puff.getContext("2d");
+      pctx.translate(16, 16);
+      pctx.fillStyle = "rgba(210,232,255,0.1)"; pctx.strokeStyle = "rgba(230,245,255,0.16)"; pctx.lineWidth = 0.8;
+      pctx.beginPath();
+      for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU, r = 14 * (i % 2 ? 0.8 : 1); i ? pctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : pctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+      pctx.closePath(); pctx.fill();
+      pctx.beginPath();
+      for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI; pctx.moveTo(-Math.cos(a) * 13, -Math.sin(a) * 13); pctx.lineTo(Math.cos(a) * 13, Math.sin(a) * 13); }
+      pctx.stroke();
+      // How far a point is in from the nearest edge, as 1 (at the edge) .. 0 (as far as it reaches):
+      // the frost thins toward its inner edge and fades out there.
+      const fade = (x, y) => { const d = Math.min(x, y, w - x, h - y) / (reach * 1.35); return d <= 0.3 ? 1 : Math.max(0, 1 - (d - 0.3) / 0.7) ** 1.4; };
       const tips = [];
       const seed = (x, y, ang) => {
         const len = reach * (0.3 + drift(x / 150, y / 150, 2) * 1.1) * rand(0.75, 1.15);
-        tips.push({ x, y, ang, left: len, len, gen: 0, w: rand(1.1, 1.7), next: rand(8, 20), curl: rand(-0.0035, 0.0035) });
+        tips.push({ x, y, ang, left: len, len, gen: 0, w: rand(1.1, 1.7), next: rand(8, 20) });
       };
       for (let x = rand(0, 20); x < w; x += rand(22, 46)) { seed(x, -2, Math.PI / 2 + rand(-0.45, 0.45)); seed(x, h + 2, -Math.PI / 2 + rand(-0.45, 0.45)); }
       for (let y = rand(0, 20); y < h; y += rand(22, 46)) { seed(-2, y, rand(-0.45, 0.45)); seed(w + 2, y, Math.PI + rand(-0.45, 0.45)); }
@@ -736,24 +746,32 @@
         last = now;
         const grow = dt * 0.028 * (0.75 + k * 0.15);
         ctx.lineCap = "round";
-        // One stroke per generation (all its new segments at once).
-        const paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+        // One stroke per generation and strength (all their new segments at once).
+        const LEVELS = 5, paths = Array.from({ length: 4 }, () => Array.from({ length: LEVELS }, () => new Path2D()));
         for (let i = tips.length - 1; i >= 0; i--) {
           const t = tips[i];
           const d = Math.min(t.left, grow * (t.gen ? 0.85 : 1));
-          t.ang += t.curl * d; // (fronds sweep as they grow)
-          const ang = t.ang + (bend(t.x / 28, t.y / 28) - 0.5) * 0.3;
+          if (Math.random() < 0.012) t.ang += rand(-0.3, 0.3); // (straight runs, then a sharp kink)
+          const ang = t.ang + (bend(t.x / 28, t.y / 28) - 0.5) * 0.08;
           const nx = t.x + Math.cos(ang) * d, ny = t.y + Math.sin(ang) * d;
-          paths[t.gen].moveTo(t.x, t.y); paths[t.gen].lineTo(nx, ny);
-          // Haze: thick where the frost starts at the edge, thin further in.
-          if (Math.random() < (t.gen === 0 && t.left > t.len * 0.55 ? 0.4 : 0.035)) { const s = 26 - t.gen * 5; ctx.drawImage(puff, nx - s / 2, ny - s / 2, s, s); }
+          const strength = fade(nx, ny);
+          if (strength > 0.02) {
+            paths[t.gen][Math.min(LEVELS - 1, Math.floor(strength * LEVELS))].moveTo(t.x, t.y);
+            paths[t.gen][Math.min(LEVELS - 1, Math.floor(strength * LEVELS))].lineTo(nx, ny);
+          }
+          // Haze: thick where the frost starts at the edge, thinning to nothing further in.
+          if (Math.random() < (t.gen === 0 && t.left > t.len * 0.55 ? 0.4 : 0.035) * strength) {
+            const s = 24 - t.gen * 5;
+            ctx.save(); ctx.globalAlpha = strength; ctx.translate(nx, ny); ctx.rotate(rand(0, Math.PI / 3));
+            ctx.drawImage(puff, -s / 2, -s / 2, s, s); ctx.restore();
+          }
           t.x = nx; t.y = ny; t.left -= d; t.next -= d;
           // Side branches at sixty degrees, shorter each generation.
           if (t.next <= 0 && t.gen < 3 && t.left > 4 && tips.length < 2500) {
             t.next = rand(9, 24) * (1 + t.gen * 0.8);
             const len = Math.min(t.left + 10, reach * 0.35) * rand(0.25, 0.6) / (1 + t.gen * 0.6);
             for (const s of [-1, 1]) {
-              if (Math.random() < 0.55) tips.push({ x: t.x, y: t.y, ang: t.ang + s * (Math.PI / 3) + rand(-0.1, 0.1), left: len, len, gen: t.gen + 1, w: t.w * 0.62, next: rand(4, 9), curl: t.curl * 1.3 + rand(-0.003, 0.003) });
+              if (Math.random() < 0.55) tips.push({ x: t.x, y: t.y, ang: t.ang + s * (Math.PI / 3) + rand(-0.1, 0.1), left: len, len, gen: t.gen + 1, w: t.w * 0.62, next: rand(4, 9) });
             }
           }
           if (t.left <= 0) {
@@ -761,11 +779,11 @@
             tips.splice(i, 1);
           }
         }
-        paths.forEach((p, g) => {
-          ctx.strokeStyle = `rgba(222,240,255,${(0.8 - g * 0.16).toFixed(2)})`;
+        paths.forEach((byLevel, g) => byLevel.forEach((p, lv) => {
+          ctx.strokeStyle = `rgba(222,240,255,${((0.8 - g * 0.16) * (lv + 0.5) / LEVELS).toFixed(3)})`;
           ctx.lineWidth = Math.max(0.35, 1.3 - g * 0.32);
           ctx.stroke(p);
-        });
+        }));
         if ((crackle += dt) > 140 && tips.length) { crackle = 0; if (Math.random() < 0.5) Sound.burst(0.04, 0.05, rand(4000, 7000)); }
         if (tips.length) raf = requestAnimationFrame(step);
       };
