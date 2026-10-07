@@ -14,7 +14,7 @@ import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap } from
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
-import { linkCode, discordStatus, stopListening } from "./discordbot.js";
+import { linkCode, discordStatus, stopListening, codeValid } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
@@ -2529,8 +2529,8 @@ export class Session {
   discordView() {
     const d = discordStatus(this.code);
     if (!d) return { enabled: false };
-    if (d.listening) this.discordCode = ""; // (used)
-    const players = Object.entries(this.state.discordPlayers || {}).map(([, p]) => ({ name: p.name, as: this.state.config.crew.find((c) => c.id === p.crew)?.name }))
+    if (this.discordCode && !codeValid(this.discordCode)) this.discordCode = ""; // (used, or expired)
+    const players = Object.entries(this.state.discordPlayers || {}).map(([, p]) => ({ name: p.name, crew: p.crew, as: this.state.config.crew.find((c) => c.id === p.crew)?.name }))
       .filter((p) => p.as);
     return { enabled: true, ...d, players, sttKey: !!this.sttKey, code: this.discordCode };
   }

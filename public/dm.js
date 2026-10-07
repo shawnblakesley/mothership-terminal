@@ -315,8 +315,51 @@
     renderRoom();
     renderMnavDot();
     renderDiscord();
+    renderDiscordButton();
     $("retcon").disabled = !S.canRetcon;
     $("retcon").textContent = S.canRetcon > 1 ? `↶ Retcon last response (${S.canRetcon})` : "↶ Retcon last response";
+  }
+
+  // Discord's logo (Simple Icons, CC0), in the text colour.
+  const DISCORD_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>';
+  // Discord is ready when the server has the bot and this session has a Groq key.
+  const discordReady = () => !!(S?.discord?.enabled && S.discord.sttKey);
+
+  // With Discord ready, Listen becomes the Discord button: it copies the /terminal listen
+  // command (with a fresh link code), and pulses while the bot is listening.
+  let micMode = "", micTitle = null, copyWanted = null;
+  function renderDiscordButton() {
+    const d = S.discord || {}, btn = $("micBtn"), on = discordReady();
+    micTitle ??= btn.title;
+    if (on && listening) setListening(false); // (Discord does the listening now)
+    const mode = on ? `discord|${d.listening ? `${d.listening.channel}|${d.listening.guild}` : ""}` : "mic";
+    if (mode !== micMode) {
+      micMode = mode;
+      btn.classList.toggle("discord", on);
+      if (on) {
+        btn.innerHTML = DISCORD_ICON;
+        btn.setAttribute("aria-label", d.listening ? "Discord: listening. Copy the listen command" : "Discord: copy the listen command");
+        btn.setAttribute("aria-pressed", String(!!d.listening));
+        btn.title = d.listening
+          ? `Listening on Discord in ${d.listening.channel} (${d.listening.guild}): what's said there goes into the log. Click to copy a new /terminal listen command (to move it to another channel).`
+          : "Discord: click to copy the /terminal listen command, then paste it into your voice channel's chat to start listening.";
+      } else {
+        btn.removeAttribute("aria-label");
+        btn.title = micTitle;
+        btn.textContent = listening ? "Listening" : "Listen";
+        btn.setAttribute("aria-pressed", String(listening));
+      }
+    }
+    // The code the button asked for is here: copy the command.
+    if (copyWanted && d.code && d.code !== copyWanted.prev) {
+      copyWanted = null;
+      const cmd = `/terminal listen code:${d.code}`;
+      navigator.clipboard.writeText(cmd).then(() => toast("Copied. Paste it into your Discord voice channel's chat and send it."), () => copy(cmd, "Command"));
+    }
+  }
+  function copyDiscordCommand() {
+    copyWanted = { prev: S.discord?.code || "" };
+    send({ t: "discordLink" }); // (a fresh code, good for 15 minutes)
   }
 
   // Discord (Settings): the Groq key, and the bot's link to a voice channel.
@@ -523,7 +566,7 @@
     const panel = $("crew");
     if (!fromDraft) {
       const editing = panel.contains(document.activeElement) || crewTimer !== null || Date.now() - crewSentAt < 1500;
-      const json = JSON.stringify([S.config.crew, S.claims, S.screens, S.config.terminals.map((t) => t.name)]);
+      const json = JSON.stringify([S.config.crew, S.claims, S.screens, S.config.terminals.map((t) => t.name), discordReady() && S.discord.players]);
       if ((crewDraft && editing) || panel.dataset.json === json) return;
       panel.dataset.json = json;
       crewDraft = structuredClone(S.config.crew);
@@ -534,8 +577,9 @@
       : `<label class="wide">${label}<input data-c="${k}" value="${esc(v)}"></label>`;
     panel.innerHTML = crewDraft.map((c, i) => {
       const playing = S.claims?.[c.id] || 0;
+      const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id); // (who plays them on Discord)
       return `<details class="pc" data-i="${i}">
-        <summary><button class="pick small" data-pcpic="${i}" title="${c.portrait ? "Change their picture" : "Add a picture: shown on their crew file and beside what they type"}" aria-label="Picture of ${esc(c.name)}">${c.portrait ? `<img src="${esc(portraitUrl(c.portrait))}" alt="">` : `<span>${esc(initials(c.name) || "+")}</span>`}</button>${c.portrait ? `<button class="ghost small edit-only" data-pcnopic="${i}" title="Remove their picture">✕ picture</button>` : ""}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Connected: playing on ${playing} screen${playing > 1 ? "s" : ""}` : "Not connected: no player has picked them"}">${esc(c.name || "Unnamed")}</span>
+        <summary><button class="pick small" data-pcpic="${i}" title="${c.portrait ? "Change their picture" : "Add a picture: shown on their crew file and beside what they type"}" aria-label="Picture of ${esc(c.name)}">${c.portrait ? `<img src="${esc(portraitUrl(c.portrait))}" alt="">` : `<span>${esc(initials(c.name) || "+")}</span>`}</button>${c.portrait ? `<button class="ghost small edit-only" data-pcnopic="${i}" title="Remove their picture">✕ picture</button>` : ""}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Connected: playing on ${playing} screen${playing > 1 ? "s" : ""}` : "Not connected: no player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
           <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move their screens to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(no terminal yet)</option>') + S.config.terminals.map((t) =>
@@ -1777,7 +1821,7 @@
     ? "Listen needs a secure page: open the console over https, or at localhost on the computer running it."
     : !Recognition ? (/firefox/i.test(navigator.userAgent) ? FIREFOX_HOW : "Listen needs speech recognition, which this browser doesn't have. Use Chrome, Edge or Firefox.") : "";
   if (micUnavailable) $("micBtn").title = micUnavailable;
-  $("micBtn").onclick = () => (micUnavailable ? toast(micUnavailable, "error") : setListening(!listening));
+  $("micBtn").onclick = () => (discordReady() ? copyDiscordCommand() : micUnavailable ? toast(micUnavailable, "error") : setListening(!listening));
 
   $("log").addEventListener("click", (e) => {
     const id = e.target.closest("[data-del]")?.dataset.del;

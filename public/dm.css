@@ -563,6 +563,27 @@ summary .muted { font-weight: 400; font-size: 12px; }
 :root { --table: #7fa8d6; }
 .entry.table { background: color-mix(in srgb, var(--table) 6%, var(--panel2)); border-color: color-mix(in srgb, var(--table) 24%, transparent); }
 #discordCmd { font-size: 13px; }
+/* Discord: its logo beside a crew member someone plays there, and the Listen button as
+   the Discord button. While the bot listens, rings ripple out from it like sound
+   waves; the icon itself stays put. */
+:root { --discord: #5865f2; }
+.dlogo { display: inline-flex; color: var(--discord); margin-left: 6px; vertical-align: -2px; }
+.dlogo svg { width: 14px; height: 14px; }
+#micBtn.discord { position: relative; display: inline-grid; place-items: center; width: 32px; height: 24px; padding: 0; color: var(--muted); }
+#micBtn.discord svg { width: 16px; height: 16px; display: block; }
+#micBtn.discord:hover { color: var(--discord); border-color: var(--discord); }
+#micBtn.discord[aria-pressed="true"] { color: var(--discord); border-color: var(--discord); background: color-mix(in srgb, var(--discord) 14%, transparent); }
+#micBtn.discord[aria-pressed="true"]::before,
+#micBtn.discord[aria-pressed="true"]::after {
+  content: ""; position: absolute; inset: -1px; width: auto; height: auto; margin: 0; border-radius: inherit;
+  border: 2px solid var(--discord); background: none; pointer-events: none;
+  animation: dcwave 1.8s cubic-bezier(.2, .6, .3, 1) infinite;
+}
+#micBtn.discord[aria-pressed="true"]::after { animation-delay: .9s; }
+@keyframes dcwave { from { transform: scale(1); opacity: .75; } to { transform: scale(1.9, 2.2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  #micBtn.discord[aria-pressed="true"]::before, #micBtn.discord[aria-pressed="true"]::after { animation: none; opacity: 0; }
+}
 .roster { margin: 2px 0 0; padding-left: 18px; }
 #micBtn { padding: 2px 8px; font-size: 12px; border: 1px solid var(--muted); }
 #micBtn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }

@@ -52,6 +52,9 @@ export function linkCode(sessionCode) {
   return code;
 }
 
+// Can this link code still be used? (Not yet used, not expired.)
+export const codeValid = (code) => (codes.get(code)?.expires ?? 0) > Date.now();
+
 // For the Warden console: whether the bot is on, how to invite it, and where it's listening.
 export function discordStatus(sessionCode) {
   if (!discordEnabled) return null;
