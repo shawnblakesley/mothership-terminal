@@ -201,6 +201,7 @@ dialog h2::after { display: none; }
 /* ---- voices ---- */
 .sendas { display: inline-flex; gap: 0; min-width: 12em; }
 .sendas select { flex: 1; min-width: 0; border-radius: 6px 0 0 6px; border-right: 0; }
+.sendas select + select { border-radius: 0; } /* (the middle of the bar: square both sides) */
 .sendas button { border-radius: 0 6px 6px 0; }
 .sendas select.on { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .keyhint { margin-top: -4px; }
