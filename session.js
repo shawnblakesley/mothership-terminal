@@ -691,7 +691,18 @@ export class Session {
         ws.sent.set(e.id, e.text);
       }
       if (add.length || update.length) ws.send(JSON.stringify({ t: "wardenLog", add, update }));
+      const map = JSON.stringify(this.streamMap());
+      if (map !== ws.mapSent) { ws.mapSent = map; ws.send(`{"t":"streamMap","map":${map}}`); }
     }
+  }
+  // The stream page's map: the layout, and which crew members are in which room (at a terminal there).
+  streamMap() {
+    const people = {};
+    for (const ws of this.sockets) {
+      const room = ws.role === "player" && ws.character && this.roomOfSocket(ws);
+      if (room && !(people[room] ||= []).includes(ws.character)) people[room].push(ws.character);
+    }
+    return { layout: this.state.config.map, people };
   }
   queueStreamSync() {
     if (this.streamSyncQueued) return;
@@ -706,7 +717,10 @@ export class Session {
     const log = ws?.stream
       ? this.state.log.filter((e) => !e.queued && !e.cut)
       : this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net)));
-    if (ws?.stream) ws.sent = new Map(log.filter((e) => PRIVATE_KINDS.has(e.kind)).map((e) => [e.id, e.text]));
+    if (ws?.stream) {
+      ws.sent = new Map(log.filter((e) => PRIVATE_KINDS.has(e.kind)).map((e) => [e.id, e.text]));
+      ws.mapSent = JSON.stringify(this.streamMap());
+    }
     return {
       version: APP_VERSION,
       log,
@@ -715,6 +729,7 @@ export class Session {
       playing: this.state.playing.filter((p) => p.loop),
       crew: this.state.config.crew,
       played: this.played(),
+      ...(ws?.stream ? { map: this.streamMap() } : {}),
       clocks: this.publicClocks(),
       handouts: ws?.stream ? [] : this.handoutsFor(ws),
       solo: this.soloView(), // a game without a Warden: choosing a story, building it, or playing

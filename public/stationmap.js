@@ -325,5 +325,42 @@
     return [];
   }
 
-  window.StationMap = { render, draw, parseLayout, parseLinks, parseDocked, choicesFor };
+  // ---------------------------------------------------------------- mini map
+  // The stream page's corner: just the decks (on the lift), their rooms, and which
+  // rooms the players are in. No doors, cameras or values.
+  //   people: { roomId: ["ROOK", ...] }
+  function mini(el, layoutText, people = {}) {
+    const decks = parseLayout(layoutText).filter((d) => d.rooms.length);
+    const docked = parseDocked(layoutText);
+    const RW = 168, RH = 42, GAP = 12, ROW = RH + 8, LIFT = 10, X0 = 96;
+    const fit = (s, n) => (s.length > n ? s.slice(0, n) : s);
+    const deckName = (label) => (label.match(/deck\s*\d+/i)?.[0] || label).toUpperCase();
+    const placed = {}, corridors = [], stops = [];
+    let y = 2, w = X0;
+    for (const d of decks) {
+      const dock = docked.filter((r) => d.rooms.some((x) => x.id === r.parent));
+      if (dock.length) y += ROW; // (docked rooms sit above the room they're docked at)
+      const cy = y + RH / 2, end = X0 + d.rooms.length * (RW + GAP) - GAP;
+      stops.push(cy);
+      corridors.push(`<text class="mm-deck" x="${LIFT + 12}" y="${cy + 5}">${esc(fit(deckName(d.label), 7))}</text><line class="mm-corr" x1="${LIFT}" y1="${cy}" x2="${LIFT + 8}" y2="${cy}"/><line class="mm-corr" x1="${X0 - 8}" y1="${cy}" x2="${end}" y2="${cy}"/>`); // (broken for the deck's name)
+      d.rooms.forEach((r, i) => (placed[r.id] = { x: X0 + i * (RW + GAP), y, label: r.label }));
+      for (const r of dock) {
+        const p = placed[r.parent];
+        placed[r.id] = { x: p.x, y: y - ROW, label: r.label };
+        corridors.push(`<line class="mm-corr" x1="${p.x + RW / 2}" y1="${y - ROW + RH}" x2="${p.x + RW / 2}" y2="${y}"/>`);
+      }
+      w = Math.max(w, end);
+      y += ROW;
+    }
+    const lift = stops.length > 1 ? `<line class="mm-lift" x1="${LIFT}" y1="${stops[0]}" x2="${LIFT}" y2="${stops.at(-1)}"/>` : "";
+    const rooms = Object.entries(placed).map(([id, r]) => {
+      const pcs = people[id] || [];
+      return `<g class="mm-room${pcs.length ? " here" : ""}"><rect x="${r.x}" y="${r.y}" width="${RW}" height="${RH}" rx="4"/>
+        <text class="mm-name" x="${r.x + 8}" y="${r.y + (pcs.length ? 18 : 27)}">${esc(fit(r.label.toUpperCase(), 17))}</text>
+        ${pcs.length ? `<text class="mm-pcs" x="${r.x + 8}" y="${r.y + 37}">${esc(fit(pcs.join(" "), 17))}</text>` : ""}</g>`;
+    }).join("");
+    el.innerHTML = decks.length ? `<svg class="mm" viewBox="0 0 ${w + 4} ${y - 6}" role="img" aria-label="Where the crew are">${lift}${corridors.join("")}${rooms}</svg>` : "";
+  }
+
+  window.StationMap = { render, draw, mini, parseLayout, parseLinks, parseDocked, choicesFor };
 })();

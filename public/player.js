@@ -657,8 +657,13 @@
   }
   // The stream page's corner: the crew being played, each with their portrait and condition,
   // and a frame for the Warden's camera (their streaming software puts the camera over it).
+  let stationMap = null; // { layout, people: { room: [crew ids] } } (session.js streamMap)
   function renderCastbar() {
     if (!stream) return;
+    if (stationMap) {
+      const people = Object.fromEntries(Object.entries(stationMap.people).map(([room, ids]) => [room, ids.map((id) => shortName(crew.find((c) => c.id === id) || { name: id }))]));
+      StationMap.mini($("cb-map"), stationMap.layout, people);
+    }
     const pcs = played.map((p) => ({ ...p, c: crew.find((c) => c.id === p.id) })).filter((p) => p.c);
     $("cb-crew").innerHTML = pcs.map(({ c, by }) => {
       const wounds = Array.from({ length: c.wounds.max }, (_, i) => `<i class="${i < c.wounds.current ? "on" : ""}"></i>`).join("");
@@ -1557,6 +1562,7 @@
           cueState.clear();
           heldCues.clear();
           // Our crew file first: lines can read differently for it.
+          if (msg.map) stationMap = msg.map;
           setCrew(msg.crew, msg.claims, msg.played);
           if (mine()) ws.send(JSON.stringify({ t: "claim", id: myId }));
           // Past lines appear at once; any still playing join the schedule in step.
@@ -1601,6 +1607,7 @@
         case "roll": showRoll(msg.roll); break;
         case "crew": setCrew(msg.crew, msg.claims, msg.played); break;
         case "wardenLog": onWardenLog(msg); break;
+        case "streamMap": stationMap = msg.map; renderCastbar(); break;
         case "rollResult": showRollResult(msg); break;
         case "roomPlan": showPlan(msg); break;
         case "showImage": showImage(msg); break;
