@@ -472,10 +472,12 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow, body.p
 .cs-field .cs-k { display: block; }
 .cs-field b { display: block; font-weight: normal; border: 2px solid var(--fg); border-radius: 0.35em; padding: 0 0.4em; text-align: center; line-height: 1.15; overflow-wrap: anywhere; }
 .cs-vitals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4em; text-align: center; }
-.cs-pill { display: flex; align-items: center; justify-content: space-between; gap: 0.2em; min-height: 1.6em; border: 2px solid var(--fg); border-radius: 999px; padding: 0.05em 0.2em; font-size: 1.15em; white-space: nowrap; }
+.cs-pill { display: flex; align-items: stretch; justify-content: space-between; gap: 0.2em; min-height: 1.6em; border: 2px solid var(--fg); border-radius: 999px; padding: 0; overflow: hidden; font-size: 1.15em; white-space: nowrap; }
 .cs-of { color: var(--dim); }
-.cs-step { padding: 0 0.35em; opacity: 0.75; font-size: 1.05em; line-height: 1; }
-.cs-pill > span { flex: 1; text-align: center; }
+/* (the -/+ run to the pill's ends, so hovered they fill its rounded end, clipped to it) */
+.cs-step { display: flex; align-items: center; padding: 0 0.3em 0 0.5em; opacity: 0.75; font-size: 1.05em; line-height: 1; }
+.cs-step:last-child { padding: 0 0.5em 0 0.3em; }
+.cs-pill > span { flex: 1; align-self: center; padding: 0.05em 0.2em; text-align: center; }
 .cs-step:hover, .cs-step:focus-visible { opacity: 1; }
 .cs-subs { display: flex; justify-content: space-around; color: var(--dim); font-size: 0.68em; letter-spacing: 0.08em; margin-top: 0.15em; }
 .cs-nums { display: flex; justify-content: space-around; text-align: center; }
