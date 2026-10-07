@@ -275,6 +275,8 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .advm .check input { width: auto; }
 .advm input[type="color"] { width: 40px; height: 26px; padding: 1px; }
 .advm [data-aact="show"] { padding: 2px 8px; font-size: 12px; }
+/* Read-only: all of what it is, with the Warden's own line breaks, to look things up mid-game. */
+.advm .advinfo { white-space: pre-wrap; overflow-wrap: anywhere; color: color-mix(in srgb, var(--fg) 82%, var(--muted)); line-height: 1.45; }
 .castbody .mood { display: inline-flex; align-items: baseline; gap: 4px; }
 .castbody .mood select { width: auto; padding: 1px 4px; }
 .castbody .mood select.up { color: var(--accent); }

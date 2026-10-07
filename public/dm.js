@@ -796,7 +796,7 @@
           <input data-a="picture" class="edit-only why" value="${esc(/^https:\/\//.test(v.adversary.picture) ? v.adversary.picture : "")}" placeholder="Or a link to a picture on the web (https://…): it loads from there" aria-label="Picture link">
           ${v.adversary.picture ? `<input data-a="credit" class="edit-only why" value="${esc(v.adversary.credit || "")}" placeholder="Picture credit, if you want one: the artist, a link (shown with it)" aria-label="Picture credit">` : ""}
           <textarea data-a="persona" class="edit-only" rows="3" aria-label="What it is" placeholder="What it is, what it wants, how it acts and speaks (the agent reads this)">${esc(v.persona)}</textarea>
-          <div class="play-only small muted">${esc(v.persona.slice(0, 220))}${v.persona.length > 220 ? "…" : ""}</div>
+          <div class="play-only small advinfo">${esc(v.persona)}</div>
         </div>
       </div>`).join("") || '<p class="muted small">No adversaries. Add the story\'s threats here.</p>';
   }
