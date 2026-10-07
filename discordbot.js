@@ -184,9 +184,9 @@ const COMMANDS = [{
     { type: 1, name: "listen", description: "Join your voice channel and write down what's said, into a session's log", options: [
       { type: 3, name: "code", description: "The link code from the Warden console (Settings, Discord)", required: true },
     ] },
-    { type: 1, name: "player", description: "Warden only: say which crew member someone plays (or hand them the Warden role)", options: [
-      { type: 3, name: "character", description: "A crew member's name, Warden, or Nobody", required: true, autocomplete: true },
-      { type: 6, name: "user", description: "Who plays them", required: true },
+    { type: 1, name: "player", description: "Say which crew member you play (the Warden can set it for anyone)", options: [
+      { type: 3, name: "character", description: "A crew member's name, or Nobody (the Warden can also give Warden)", required: true, autocomplete: true },
+      { type: 6, name: "user", description: "Who plays them (leave out for yourself; others are for the Warden)", required: false },
     ] },
     { type: 1, name: "stop", description: "Stop listening and leave the voice channel" },
   ],
@@ -247,11 +247,12 @@ function findCrew(crew, ref) {
   return some.length === 1 ? some[0] : null;
 }
 
-// The character box suggests the session's crew, plus Warden and Nobody.
+// The character box suggests the session's crew, Nobody, and (for the Warden) Warden.
 async function onAutocomplete(i) {
-  const s = getSession(links.get(i.guildId)?.session);
+  const link = links.get(i.guildId);
+  const s = getSession(link?.session);
   const typed = norm(i.options.getFocused());
-  const names = [...(s?.state.config.crew || []).map((c) => c.name), WARDEN, NOBODY];
+  const names = [...(s?.state.config.crew || []).map((c) => c.name), ...(i.user.id === link?.wardenId ? [WARDEN] : []), NOBODY];
   await i.respond(names.filter((n) => !typed || norm(n).includes(typed)).slice(0, 25).map((n) => ({ name: n.slice(0, 100), value: n.slice(0, 100) })));
 }
 
@@ -259,16 +260,22 @@ async function onPlayer(i) {
   const link = links.get(i.guildId);
   const s = getSession(link?.session);
   if (!link || !s) return i.reply({ content: "I'm not listening in this server. Start with `/terminal listen`.", flags: MessageFlags.Ephemeral });
-  if (i.user.id !== link.wardenId) return i.reply({ content: `Only the Warden (${link.wardenName}) can say who plays whom.`, flags: MessageFlags.Ephemeral });
-  const user = i.options.getUser("user");
-  if (user.bot) return i.reply({ content: "That's a bot.", flags: MessageFlags.Ephemeral });
-  const name = i.options.getMember("user")?.displayName || user.globalName || user.username;
+  // Anyone may pick their own character; only the Warden picks for others, gives the Warden role,
+  // or moves a character someone else already plays.
+  const user = i.options.getUser("user") || i.user;
+  const isWarden = i.user.id === link.wardenId;
+  const self = user.id === i.user.id;
+  const denied = (text) => i.reply({ content: text, flags: MessageFlags.Ephemeral });
+  if (user.bot) return denied("That's a bot.");
+  if (!self && !isWarden) return denied(`Only the Warden (${link.wardenName}) can say who someone else plays. For yourself, leave out user.`);
+  const name = (self ? i.member?.displayName : i.options.getMember("user")?.displayName) || user.globalName || user.username;
   link.names.set(user.id, { name, bot: false }); // (their speech goes in under this name)
   const ref = i.options.getString("character");
   const quiet = { allowedMentions: { parse: [] } }; // (name them without pinging)
 
   if (norm(ref) === norm(WARDEN)) {
-    if (user.id === link.wardenId) return i.reply({ content: "You're already the Warden.", flags: MessageFlags.Ephemeral });
+    if (!isWarden) return denied(`Only the Warden (${link.wardenName}) can hand on the Warden role.`);
+    if (user.id === link.wardenId) return denied("You're already the Warden.");
     link.wardenId = user.id;
     link.wardenName = name;
     s.assignPlayer(user.id, null); // (the Warden plays nobody)
@@ -276,7 +283,7 @@ async function onPlayer(i) {
     return i.reply({ content: `<@${user.id}> is the Warden now: what they say goes to the terminal as the Warden's word.`, ...quiet });
   }
   if (user.id === link.wardenId) {
-    return i.reply({ content: "That's the Warden. To hand the role on first: `/terminal player character:Warden user:@someone`.", flags: MessageFlags.Ephemeral });
+    return denied(`${self ? "You're" : "That's"} the Warden. To hand the role on first: \`/terminal player character:Warden user:@someone\`.`);
   }
   if (norm(ref) === norm(NOBODY)) {
     s.assignPlayer(user.id, null);
@@ -287,6 +294,8 @@ async function onPlayer(i) {
   if (!member) {
     return i.reply({ content: `No crew member called "${ref}". The crew: ${crew.map((c) => c.name).join(", ") || "(none yet)"}.`, flags: MessageFlags.Ephemeral });
   }
+  const holder = Object.entries(s.state.discordPlayers || {}).find(([u, p]) => p.crew === member.id && u !== user.id);
+  if (holder && !isWarden) return denied(`${holder[1].name} already plays ${member.name}. The Warden can change that.`);
   s.assignPlayer(user.id, member.id, name);
   await i.reply({ content: `<@${user.id}> plays **${member.name}**.`, ...quiet });
 }
