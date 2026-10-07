@@ -1177,7 +1177,8 @@
   });
 
   // ---- rolling your own Stat/Save: pick a relevant skill (optional; it adds its bonus), then roll.
-  const ADV = [["none", "NORMAL"], ["advantage", "[+] ADVANTAGE"], ["disadvantage", "[-] DISADVANTAGE"]];
+  // Edge: its own sign in the pip ([+] / [-]), shown inverted when chosen (NORMAL's pip is [ ] / [■]).
+  const ADV = [["none", "NORMAL", ""], ["advantage", "ADVANTAGE", "+"], ["disadvantage", "DISADVANTAGE", "-"]];
   let sr = null; // { check, skill, adv }
 
   function openSelfRoll(check) {
@@ -1197,7 +1198,11 @@
     const pick = (on, attrs, label) => `<button type="button" class="p-btn${on ? " on" : ""}" ${attrs}>${on ? "[■]" : "[ ]"} ${escH(label)}</button>`;
     $("sr-title").textContent = `■ ROLL: ${sr.check.toUpperCase()} (${base}) ■`;
     $("sr-skills").innerHTML = [pick(!sr.skill, 'data-skill=""', "NONE"), ...c.skills.map((s) => pick(sr.skill === s.name, `data-skill="${escH(s.name)}"`, `${s.name.toUpperCase()} +${s.bonus}`))].join(" ");
-    $("sr-adv").innerHTML = ADV.map(([id, label]) => pick(sr.adv === id, `data-adv="${id}"`, label)).join(" ");
+    $("sr-adv").innerHTML = ADV.map(([id, label, sign]) => {
+      if (!sign) return pick(sr.adv === id, `data-adv="${id}"`, label);
+      const on = sr.adv === id;
+      return `<button type="button" class="p-btn${on ? " on" : ""}" data-adv="${id}">[${on ? `<span class="sr-sign">${sign}</span>` : sign}] ${label}</button>`;
+    }).join(" ");
     $("sr-target").textContent = `ROLL UNDER ${base + bonus} ON D100${sr.adv === "none" ? "" : " (ROLL TWICE)"}.`;
     $("sr-dice").placeholder = sr.adv === "none" ? "47" : "47 82";
   }
