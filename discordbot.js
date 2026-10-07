@@ -269,6 +269,7 @@ const COMMANDS = [{
   name: "terminal",
   description: "Mothership terminal: write down what's said in this voice channel",
   contexts: [0], // servers only
+  integration_types: [0], // (installed to a server, not to a user: it needs to be in the server to join voice)
   options: [
     { type: 1, name: "listen", description: "Join your voice channel and write down what's said, into a session's log", options: [
       { type: 3, name: "code", description: "The link code from the Warden console (Settings, Discord)", required: true },
@@ -421,7 +422,18 @@ export function startDiscord(lookup) {
   client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
   client.once(Events.ClientReady, async (c) => {
     inviteUrl = `https://discord.com/oauth2/authorize?client_id=${c.user.id}&scope=bot+applications.commands&permissions=${PERMISSIONS}`;
-    try { await c.application.commands.set(COMMANDS); } catch (err) { console.warn(`  ! Discord: couldn't register /terminal: ${err.message}`); }
+    // Register /terminal only when it changed: every re-registration makes Discord
+    // clients that cached the old one say "This command is outdated" for a while.
+    try {
+      const current = await c.application.commands.fetch();
+      const same = current.size === COMMANDS.length && COMMANDS.every((d) => current.find((x) => x.name === d.name)?.equals(d, true));
+      if (!same) {
+        await c.application.commands.set(COMMANDS);
+        console.log("  Discord: /terminal registered (changed).");
+      }
+    } catch (err) {
+      console.warn(`  ! Discord: couldn't register /terminal: ${err.message}`);
+    }
     console.log(`  Discord bot online as ${c.user.tag}. Invite it: ${inviteUrl}`);
   });
   client.on(Events.InteractionCreate, async (i) => {
