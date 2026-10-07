@@ -482,6 +482,9 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow, body.p
 .cs-vitals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4em; text-align: center; }
 .cs-pill { display: flex; align-items: stretch; justify-content: space-between; gap: 0.2em; min-height: 1.6em; border: 2px solid var(--fg); border-radius: 999px; padding: 0; overflow: hidden; font-size: 1.15em; white-space: nowrap; }
 .cs-of { color: var(--dim); }
+/* (the current value keeps as many places as the max, at least two: the pill doesn't shrink when it drops a digit) */
+.cs-now { display: inline-block; text-align: center; }
+.cs-now.of { text-align: right; } /* (beside a max: the / stays put) */
 /* (the -/+ run to the pill's ends, so hovered they fill its rounded end, clipped to it) */
 .cs-pill .cs-step { flex: none; display: flex; align-items: center; padding: 0 0.15em 0 0.4em; opacity: 0.75; line-height: 1; }
 .cs-pill .cs-step:last-child { padding: 0 0.4em 0 0.15em; }

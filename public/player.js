@@ -613,7 +613,7 @@
     const ctl = header.vitals && !spectate;
     const btn = (d) => `<button type="button" class="p-btn cs-step" data-vital="${field}" data-d="${d}" aria-label="${field} ${d > 0 ? "up" : "down"}">${d > 0 ? STEP_PLUS : STEP_MINUS}</button>`;
     return `<div class="cs-vital"><div class="cs-k">${label}</div>
-      <div class="cs-pill">${ctl ? btn(-1) : ""}<span>${now}${max !== undefined ? ` <span class="cs-of">/</span> ${max}` : ""}</span>${ctl ? btn(1) : ""}</div>
+      <div class="cs-pill">${ctl ? btn(-1) : ""}<span><span class="cs-now${max !== undefined ? " of" : ""}" style="min-width: ${Math.max(2, String(max ?? "").length)}ch">${now}</span>${max !== undefined ? ` <span class="cs-of">/</span> ${max}` : ""}</span>${ctl ? btn(1) : ""}</div>
       <div class="cs-subs">${subs.map((x) => `<span>${x}</span>`).join("")}</div></div>`;
   }
   const field = (label, value) => value ? `<div class="cs-field"><span class="cs-k">${label}</span><b>${escH(value.toUpperCase())}</b></div>` : "";
