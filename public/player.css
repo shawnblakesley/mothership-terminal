@@ -363,6 +363,15 @@ body {
 
 .fx-canvas { width: 100%; height: 100%; }
 .fx-goo { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)) saturate(1.2); }
+/* Goo is alive: it breathes (swelling a touch, hanging from the top) and its light
+   throbs in an uneven double beat, each splash at its own pace (--beat). */
+.fx-goo { transform-origin: 50% 0; animation: gooBreathe calc(var(--beat, 3s) * 2.3) ease-in-out infinite; }
+.fx-goo.fx-in { animation: fxIn 0.25s ease-out, gooBreathe calc(var(--beat, 3s) * 2.3) ease-in-out infinite; }
+.fx-goo > canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fx-goo .goo-glow { mix-blend-mode: screen; filter: blur(2.5px); animation: gooBeat var(--beat, 3s) infinite; }
+@keyframes gooBreathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.004, 1.012); } }
+@keyframes gooBeat { 0% { opacity: 0.12; } 7% { opacity: 0.75; } 16% { opacity: 0.3; } 25% { opacity: 0.55; } 45% { opacity: 0.18; } 100% { opacity: 0.1; } }
+@media (prefers-reduced-motion: reduce) { .fx-goo, .fx-goo.fx-in, .fx-goo .goo-glow { animation: none; } }
 .fx-static { image-rendering: pixelated; mix-blend-mode: screen; }
 
 
@@ -409,6 +418,24 @@ body {
   clip-path: polygon(0 0, 100% 0, 100% var(--gs), 96% var(--gs), 96% calc(var(--gs) + 3%), 100% calc(var(--gs) + 3%), 100% 100%, 0 100%);
 }
 #crt.glitch-3 { filter: hue-rotate(40deg) contrast(1.3); }
+
+/* The text rots (corruption, part of the glitch): junk characters in sick colours,
+   lines lurching sideways, and bands of the screen tearing. */
+#crt .cr-red { color: #ff2448; text-shadow: 0 0 6px rgba(255,36,72,0.7); }
+#crt .cr-mag { color: #ff3df2; text-shadow: 0 0 6px rgba(255,61,242,0.7); }
+#crt .cr-cyan { color: #39f3ff; text-shadow: 0 0 6px rgba(57,243,255,0.7); }
+#crt .cr-white { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.8); }
+#crt .cr-inv { background: var(--fg); color: var(--bg); text-shadow: none; }
+#crt .cr-dim { color: var(--dim); opacity: 0.6; }
+#crt .cr-shift { display: block; transform: translateX(var(--cs, 0)); filter: hue-rotate(160deg) saturate(2); }
+#crt.corrupting #lines, #crt.corrupting #hdr {
+  text-shadow: var(--cx, 0) 0 rgba(255,30,90,0.7), calc(var(--cx, 0) * -1) 0 rgba(30,220,255,0.7), 0 0 6px var(--glow);
+}
+.fx-corrupt { pointer-events: none; }
+.fx-corrupt i { position: absolute; left: 0; right: 0; opacity: 0.55; }
+.fx-corrupt .b-inv { backdrop-filter: invert(1) hue-rotate(180deg); }
+.fx-corrupt .b-hue { backdrop-filter: hue-rotate(110deg) saturate(3) brightness(1.3); }
+.fx-corrupt .b-sat { backdrop-filter: hue-rotate(-90deg) contrast(2) saturate(4); }
 
 @media (prefers-reduced-motion: reduce) {
   #crt { animation: none; }

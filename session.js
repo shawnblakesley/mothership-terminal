@@ -18,7 +18,7 @@ import { discordStatus, stopListening, discordLinked, discordSay, discordCut, se
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
-import { ALL_EFFECTS, AGENT_EFFECTS, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
+import { ALL_EFFECTS, AGENT_EFFECTS, effectType, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
 const FREE_CALLS_PER_DAY = Number(process.env.FREE_CALLS_PER_DAY || 150);
 
@@ -1354,6 +1354,7 @@ export class Session {
   // of dialogue, in step with the text and voices). Players time cue effects
   // themselves; the server just keeps them listed until they're surely over.
   startEffect(raw, source, cue = null) {
+    if (raw) raw = { ...raw, type: effectType(raw.type) };
     if (!raw || !ALL_EFFECTS.includes(raw.type)) return;
     if (source === "agent" && !AGENT_EFFECTS.includes(raw.type)) return;
     const seconds = Math.max(0, Math.min(3600, Number(raw.seconds) || 0));

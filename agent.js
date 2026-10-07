@@ -10,12 +10,16 @@ import { terminalsBrief, netOf, systemsOf, systemName } from "./terminals.js";
 import { TILES } from "./rooms.js";
 
 // Every effect the player screen can render. The agent may only trigger the
-// "electronic" ones; blood/goo/crack are physical and stay in the Warden's hands.
+// "electronic" ones; blood/goo/crack/ice are physical and stay in the Warden's hands.
 export const ALL_EFFECTS = [
-  "blood", "goo", "crack", "alarm", "redalert", "glitch",
-  "static", "blackout", "lockout", "banner", "corrupt",
+  "blood", "goo", "crack", "ice", "alarm", "redalert", "glitch",
+  "static", "blackout", "lockout", "banner",
 ];
-export const AGENT_EFFECTS = ["alarm", "redalert", "glitch", "static", "blackout", "lockout", "banner", "corrupt"];
+export const AGENT_EFFECTS = ["alarm", "redalert", "glitch", "static", "blackout", "lockout", "banner"];
+// Old names still in saved sessions (or used by a model out of habit): corrupted
+// text is now part of the glitch.
+const EFFECT_ALIASES = { corrupt: "glitch" };
+export const effectType = (type) => EFFECT_ALIASES[type] || type;
 
 // How much of the log the model sees. Keeps per-reply cost bounded in long sessions.
 const HISTORY_ENTRIES = 80;
@@ -103,8 +107,8 @@ export function normalizeVariants(list) {
 
 export function normalizeEffects(list) {
   return (Array.isArray(list) ? list : [])
-    .filter((e) => e && AGENT_EFFECTS.includes(e.type))
-    .map((e) => ({ type: e.type, text: String(e.text ?? "").slice(0, 200), seconds: Math.max(0, Math.min(3600, Number(e.seconds) || 0)) }));
+    .filter((e) => e && AGENT_EFFECTS.includes(effectType(e.type)))
+    .map((e) => ({ type: effectType(e.type), text: String(e.text ?? "").slice(0, 200), seconds: Math.max(0, Math.min(3600, Number(e.seconds) || 0)) }));
 }
 
 // Built per request: the voice list is the Warden's to change at any time.
@@ -444,10 +448,10 @@ CREW CONDITION (the players' characters: Health, Wounds, Stress)
 - outcome_check: see RULE OF COOL. needed=false whenever nothing uncertain is left for the Warden.
 
 SCREEN EFFECTS (you can trigger these yourself)
-- You control the players' screen as well as the voices: alarms, red alert, glitches, static, blackouts, lockouts, banners and corrupted text (full list under AVAILABLE EFFECTS).
+- You control the players' screen as well as the voices: alarms, red alert, glitches (the display shakes and its text corrupts), static, blackouts, lockouts and banners (full list under AVAILABLE EFFECTS).
 - Timing: put an effect in a line's own "effects" and it fires the moment that line begins, after the previous line has finished appearing and being spoken. That lets you stage beats BETWEEN lines of dialogue. The reply-level "effects" fire immediately instead.
 - A BEAT is a line with empty text and only effects: the dialogue pauses for the effect's duration, then the next line comes.
-- Blackout turns the players' screen black and silences every voice while it lasts. Use it as a beat between lines, never on a line you want seen or heard. Glitch, static, corrupt and red alert can play over a line.
+- Blackout turns the players' screen black and silences every voice while it lasts. Use it as a beat between lines, never on a line you want seen or heard. Glitch, static and red alert can play over a line.
 - Example: [intercom] "Something's in the vents." -> BEAT: empty text, effects [blackout, 3s] -> ??? "i can hear you." with effects [static, 2s] -> the terminal comes back with effects [glitch, 2s].
 - Use effects for impact, not on every reply. A few seconds suits glitches, static and blackouts; alarms and red alert can run longer.
 - station_changes: EVERY change to the station that happens in this reply (doors, lights, access_level, systems...), as dot paths into LIVE STATION STATE. If a line says something changed, it must be listed here, or it did not happen.`;
@@ -531,8 +535,8 @@ function buildSystem(state) {
   When the shape itself changes (a ship docks or leaves, a hull breach opens a new way through, a shaft collapses, a new room is found), return the WHOLE new layout in "layout". Otherwise "layout" is "".
 - ROOM FLOOR PLANS (in the per-turn context) are top-down grids, one string per row, one tile per character: ${Object.entries(TILES).map(([c, d]) => `"${c}" ${d}`).join(", ")}. When a room's physical layout changes (a wall breached, debris, a barricade, a crate moved), return its complete new rows in room_plans. Plans show structure and furniture only (the players may be shown them): people and creatures go in occupants, notable things in contents.`,
     `AVAILABLE EFFECTS: ${AGENT_EFFECTS.join(", ")}. ` +
-      `alarm = intrusion/hacker alarm, redalert = station-wide emergency, glitch = display corruption, static = signal noise, ` +
-      `blackout = terminal loses power, lockout = terminal refuses input, banner = large flashing caption, corrupt = scrambles existing text.`,
+      `alarm = intrusion/hacker alarm, redalert = station-wide emergency, glitch = the display shakes and its text corrupts, static = signal noise, ` +
+      `blackout = terminal loses power, lockout = terminal refuses input, banner = large flashing caption.`,
   ].join("\n\n");
 }
 

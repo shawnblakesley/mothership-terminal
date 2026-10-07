@@ -336,11 +336,14 @@
 
   // Liquid that runs: the finished picture is drawn at once except for the drips,
   // which are uncovered a little each frame as they run down.
-  function runLiquid(c, ctx, full, drips, speed) {
-    ctx.drawImage(full, 0, 0);
-    for (const d of drips) ctx.clearRect(d.x0, d.y, d.w, d.end - d.y + 4);
-    const fctx = full.getContext("2d");
-    makeWipeable(c, ctx, [fctx]);
+  // more: other layers drawn and uncovered the same way ([{ ctx, src }], e.g. goo's glow).
+  function runLiquid(c, ctx, full, drips, speed, more = []) {
+    const layers = [{ ctx, src: full }, ...more];
+    for (const L of layers) {
+      L.ctx.drawImage(L.src, 0, 0);
+      for (const d of drips) L.ctx.clearRect(d.x0, d.y, d.w, d.end - d.y + 4);
+    }
+    makeWipeable(c, ctx, [full.getContext("2d"), ...more.flatMap((L) => [L.ctx, L.src.getContext("2d")])]);
     let raf;
     const step = () => {
       let running = false;
@@ -351,8 +354,10 @@
         else d.v = Math.min(d.max, d.v + d.max * 0.01);
         const y1 = Math.min(d.end + 4, d.y + d.v * speed);
         const hgt = Math.max(1, Math.ceil(y1 - d.y));
-        ctx.clearRect(d.x0, d.y, d.w, hgt);
-        ctx.drawImage(full, d.x0, d.y, d.w, hgt, d.x0, d.y, d.w, hgt);
+        for (const L of layers) {
+          L.ctx.clearRect(d.x0, d.y, d.w, hgt);
+          L.ctx.drawImage(L.src, d.x0, d.y, d.w, hgt, d.x0, d.y, d.w, hgt);
+        }
         d.y = y1;
       }
       if (running) raf = requestAnimationFrame(step);
@@ -510,17 +515,40 @@
         fctx.strokeStyle = "rgba(255,255,255,0.7)"; fctx.lineWidth = Math.max(0.8, r * 0.3);
         fctx.beginPath(); fctx.arc(x, y, r * 0.55, Math.PI * 1.1, Math.PI * 1.55); fctx.stroke();
       }
+      // It's alive: its inner light (and the motes in it) on a layer of its own that
+      // throbs, while the whole mass breathes (player.css .fx-goo).
+      const glowSrc = document.createElement("canvas");
+      glowSrc.width = w; glowSrc.height = h;
+      const gsctx = glowSrc.getContext("2d"), gimg = gsctx.createImageData(w, h), G = gimg.data;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const f = fl.F[y * w + x];
+          if (f < 0.75) continue;
+          const lit = (Math.pow(glow(x / 90, y / 90, 2), 3) * 2.2 + 0.08) * Math.min(1, (f - 0.5) * 1.5);
+          if (lit < 0.03) continue;
+          const o = (y * w + x) * 4;
+          G[o] = 140; G[o + 1] = 255; G[o + 2] = 110; G[o + 3] = Math.min(255, lit * 230);
+        }
+      }
+      gsctx.putImageData(gimg, 0, 0);
       for (let i = 0, tries = 0; i < 40 * fx.intensity && tries < 4000; tries++) {
         const x = rand(0, w), y = rand(0, h);
         if (fl.F[(y | 0) * w + (x | 0)] < 0.9) continue;
         i++;
-        const g = fctx.createRadialGradient(x, y, 0, x, y, rand(2, 5));
-        g.addColorStop(0, "rgba(200,255,140,0.75)"); g.addColorStop(1, "rgba(120,255,80,0)");
-        fctx.fillStyle = g; fctx.fillRect(x - 6, y - 6, 12, 12);
+        const g = gsctx.createRadialGradient(x, y, 0, x, y, rand(2, 5));
+        g.addColorStop(0, "rgba(200,255,140,0.85)"); g.addColorStop(1, "rgba(120,255,80,0)");
+        gsctx.fillStyle = g; gsctx.fillRect(x - 6, y - 6, 12, 12);
       }
-      layer().append(c);
+      const glowC = document.createElement("canvas");
+      glowC.width = w; glowC.height = h;
+      glowC.className = "fx-canvas goo-glow";
+      const box = el("fx-goo");
+      c.className = "fx-canvas";
+      box.append(c, glowC);
+      box.style.setProperty("--beat", `${rand(2.6, 3.6).toFixed(2)}s`); // (each its own pulse)
+      layer().append(box);
       Sound.burst(0.6, 0.35, 250);
-      return { el: c, stop: runLiquid(c, ctx, full, drips, 1) };
+      return { el: box, stop: runLiquid(c, ctx, full, drips, 1, [{ ctx: glowC.getContext("2d"), src: glowSrc }]) };
     },
 
     // A crack in the glass: a crushed point of impact, jagged cracks running out of
@@ -576,6 +604,22 @@
       const halo = ctx.createRadialGradient(ox, oy, 0, ox, oy, r0 * 4);
       halo.addColorStop(0, "rgba(200,255,225,0.1)"); halo.addColorStop(1, "rgba(200,255,225,0)");
       ctx.fillStyle = halo; ctx.fillRect(ox - r0 * 4, oy - r0 * 4, r0 * 8, r0 * 8);
+      // A dark hollow where it struck: over the shards, and again (smaller) over the
+      // cracks, so they run into the dark instead of meeting in a bright point.
+      const hole = r0 * rand(0.8, 1.1);
+      const chipped = Array.from({ length: 25 }, () => rand(0.85, 1.05));
+      const hollow = (size, core) => {
+        const dark = ctx.createRadialGradient(ox, oy, 0, ox, oy, hole * size);
+        dark.addColorStop(0, `rgba(0,0,0,${core})`); dark.addColorStop(0.45, `rgba(1,3,2,${core * 0.85})`);
+        dark.addColorStop(0.75, "rgba(3,8,6,0.3)"); dark.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = dark;
+        ctx.beginPath();
+        chipped.forEach((m, i) => { // (not a perfect circle: chipped)
+          const a = (i / 24) * TAU, rr = hole * size * m;
+          i ? ctx.lineTo(ox + Math.cos(a) * rr, oy + Math.sin(a) * rr) : ctx.moveTo(ox + Math.cos(a) * rr, oy + Math.sin(a) * rr);
+        });
+        ctx.fill();
+      };
       // Facets near the centre catching the light.
       for (let i = 0; i < n; i++) {
         if (Math.random() < 0.45) continue;
@@ -597,6 +641,9 @@
           ctx.beginPath(); q.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill(); ctx.stroke();
         }
       }
+      hollow(1.7, 0.95);
+      ctx.strokeStyle = "rgba(140,255,190,0.22)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(ox, oy, hole * 1.05, 0, TAU); ctx.stroke();
       // Each crack: a dark shadow, the light splitting red and blue, then the bright break.
       const glint = makeNoise();
       cracks.forEach((cr, j) => { cr.lit = cr.pts.map((_, i) => 0.25 + 0.75 * Math.pow(glint(i / 7, j * 3.7), 1.8) * 1.6); });
@@ -631,6 +678,7 @@
       }
       ctx.restore();
       strokeAll("rgba(228,255,238,0.95)", 0, 0, 0, 1, true);
+      hollow(1, 0.97);
       // Hairline whiskers off the main cracks.
       ctx.strokeStyle = "rgba(225,255,235,0.45)"; ctx.lineWidth = 0.5;
       for (const pts of radials) {
@@ -643,6 +691,86 @@
       Sound.burst(0.15, 0.7, 3000);
       Sound.burst(0.4, 0.3, 1200);
       return { el: c };
+    },
+
+    // Ice: frost creeping in over the glass from every edge. Crystals grow inward as
+    // feathery branches that split at sixty degrees, as real frost does, fogging the
+    // glass round them into a haze that's thickest at the edges, with a few glints.
+    // It reaches in unevenly, in drifts (further at higher intensity), then holds.
+    ice(fx) {
+      const { c, ctx, w, h } = fullCanvas();
+      c.className = "fx-canvas fx-ice";
+      const k = fx.intensity || 2, reach = Math.min(w, h) * (0.07 + 0.05 * k), drift = makeNoise(), bend = makeNoise();
+      // A soft puff of frost, stamped along the branches as they grow.
+      const puff = document.createElement("canvas");
+      puff.width = puff.height = 32;
+      const pctx = puff.getContext("2d"), pg = pctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+      pg.addColorStop(0, "rgba(210,232,255,0.13)"); pg.addColorStop(1, "rgba(210,232,255,0)");
+      pctx.fillStyle = pg; pctx.fillRect(0, 0, 32, 32);
+      const tips = [];
+      const seed = (x, y, ang) => {
+        const len = reach * (0.3 + drift(x / 150, y / 150, 2) * 1.1) * rand(0.75, 1.15);
+        tips.push({ x, y, ang, left: len, len, gen: 0, w: rand(1.1, 1.7), next: rand(8, 20), curl: rand(-0.0035, 0.0035) });
+      };
+      for (let x = rand(0, 20); x < w; x += rand(22, 46)) { seed(x, -2, Math.PI / 2 + rand(-0.45, 0.45)); seed(x, h + 2, -Math.PI / 2 + rand(-0.45, 0.45)); }
+      for (let y = rand(0, 20); y < h; y += rand(22, 46)) { seed(-2, y, rand(-0.45, 0.45)); seed(w + 2, y, Math.PI + rand(-0.45, 0.45)); }
+      // Rime along the very edges.
+      const rime = (x0, y0, x1, y1, rx, ry, rw, rh) => {
+        const g = ctx.createLinearGradient(x0, y0, x1, y1);
+        g.addColorStop(0, "rgba(225,240,255,0.32)"); g.addColorStop(1, "rgba(225,240,255,0)");
+        ctx.fillStyle = g; ctx.fillRect(rx, ry, rw, rh);
+      };
+      rime(0, 0, 0, 16, 0, 0, w, 16); rime(0, h, 0, h - 16, 0, h - 16, w, 16);
+      rime(0, 0, 16, 0, 0, 0, 16, h); rime(w, 0, w - 16, 0, w - 16, 0, 16, h);
+      const glint = (x, y) => {
+        const r = rand(2.5, 6);
+        ctx.strokeStyle = "rgba(245,252,255,0.85)"; ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.moveTo(x - r, y); ctx.lineTo(x + r, y); ctx.moveTo(x, y - r); ctx.lineTo(x, y + r); ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.beginPath(); ctx.arc(x, y, 0.9, 0, TAU); ctx.fill();
+      };
+      layer().append(c);
+      Sound.burst(0.25, 0.12, 5000);
+      let raf, last = performance.now(), crackle = 0;
+      const step = (now) => {
+        const dt = Math.min(50, now - last);
+        last = now;
+        const grow = dt * 0.028 * (0.75 + k * 0.15);
+        ctx.lineCap = "round";
+        // One stroke per generation (all its new segments at once).
+        const paths = [new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+        for (let i = tips.length - 1; i >= 0; i--) {
+          const t = tips[i];
+          const d = Math.min(t.left, grow * (t.gen ? 0.85 : 1));
+          t.ang += t.curl * d; // (fronds sweep as they grow)
+          const ang = t.ang + (bend(t.x / 28, t.y / 28) - 0.5) * 0.3;
+          const nx = t.x + Math.cos(ang) * d, ny = t.y + Math.sin(ang) * d;
+          paths[t.gen].moveTo(t.x, t.y); paths[t.gen].lineTo(nx, ny);
+          // Haze: thick where the frost starts at the edge, thin further in.
+          if (Math.random() < (t.gen === 0 && t.left > t.len * 0.55 ? 0.4 : 0.035)) { const s = 26 - t.gen * 5; ctx.drawImage(puff, nx - s / 2, ny - s / 2, s, s); }
+          t.x = nx; t.y = ny; t.left -= d; t.next -= d;
+          // Side branches at sixty degrees, shorter each generation.
+          if (t.next <= 0 && t.gen < 3 && t.left > 4 && tips.length < 2500) {
+            t.next = rand(9, 24) * (1 + t.gen * 0.8);
+            const len = Math.min(t.left + 10, reach * 0.35) * rand(0.25, 0.6) / (1 + t.gen * 0.6);
+            for (const s of [-1, 1]) {
+              if (Math.random() < 0.55) tips.push({ x: t.x, y: t.y, ang: t.ang + s * (Math.PI / 3) + rand(-0.1, 0.1), left: len, len, gen: t.gen + 1, w: t.w * 0.62, next: rand(4, 9), curl: t.curl * 1.3 + rand(-0.003, 0.003) });
+            }
+          }
+          if (t.left <= 0) {
+            if (t.gen === 0 && Math.random() < 0.18) glint(t.x, t.y);
+            tips.splice(i, 1);
+          }
+        }
+        paths.forEach((p, g) => {
+          ctx.strokeStyle = `rgba(222,240,255,${(0.8 - g * 0.16).toFixed(2)})`;
+          ctx.lineWidth = Math.max(0.35, 1.3 - g * 0.32);
+          ctx.stroke(p);
+        });
+        if ((crackle += dt) > 140 && tips.length) { crackle = 0; if (Math.random() < 0.5) Sound.burst(0.04, 0.05, rand(4000, 7000)); }
+        if (tips.length) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+      return { el: c, stop: () => cancelAnimationFrame(raf) };
     },
 
     alarm(fx) {
@@ -659,6 +787,7 @@
       return { el: d, stop: Sound.klaxon() };
     },
 
+    // The display glitches: it jumps and tears, and its text corrupts (corruptText).
     glitch(fx) {
       const root = crt();
       root.classList.add("glitching", `glitch-${fx.intensity}`);
@@ -668,9 +797,10 @@
         root.style.setProperty("--gs", `${rand(0, 100)}%`);
         if (Math.random() < 0.25) Sound.burst(0.06, 0.15, 4000);
       }, 90);
+      const text = corruptText(fx);
       return {
-        el: null,
-        stop: () => { clearInterval(iv); root.classList.remove("glitching", `glitch-${fx.intensity}`); },
+        el: text.el,
+        stop: () => { clearInterval(iv); root.classList.remove("glitching", `glitch-${fx.intensity}`); text.stop(); },
       };
     },
 
@@ -720,32 +850,72 @@
       return { el: d };
     },
 
-    corrupt(fx) {
-      const glyphs = "▓▒░█▄▀■□◊¥§¤ØÆ#%&@!?/\\|<>{}[]~^*";
-      const iv = setInterval(() => {
-        const lines = document.querySelectorAll("#lines .line.done");
-        for (const el of lines) {
-          const line = el.querySelector(".lt") || el; // (beside a portrait: just its text)
-          if (!line.dataset.orig) line.dataset.orig = line.textContent;
-          const orig = line.dataset.orig;
-          const p = 0.04 * fx.intensity + Math.random() * 0.05;
-          let out = "";
-          for (const ch of orig) out += ch !== "\n" && ch !== " " && Math.random() < p ? glyphs[(Math.random() * glyphs.length) | 0] : ch;
-          line.textContent = out;
-        }
-      }, 120);
-      return {
-        el: null,
-        stop: () => {
-          clearInterval(iv);
-          for (const line of document.querySelectorAll("#lines .line[data-orig], #lines .line .lt[data-orig]")) {
-            line.textContent = line.dataset.orig;
-            delete line.dataset.orig;
-          }
-        },
-      };
-    },
+    corrupt(fx) { return builders.glitch(fx); }, // (an old name: corrupted text is part of the glitch now)
   };
+
+  // The screen's text decays (part of the glitch): characters turn to junk in sick
+  // colours, words rot in runs, letters sprout stacked marks, lines lurch sideways,
+  // the colours split, and bands of the screen invert and shift hue. It reaches the
+  // header too (not the clock or the buttons). Everything is put back when it ends.
+  function corruptText(fx) {
+    const glyphs = "▓▒░█▄▀■□◊¥§¤ØÆ#%&@!?/\\|<>{}[]~^*ΞΨΔ∑∂∆≡≠∞";
+    const tints = ["cr-red", "cr-mag", "cr-cyan", "cr-white", "cr-inv", "cr-dim"];
+    const marks = () => { let m = ""; for (let i = 0, n = 1 + ((Math.random() * 4) | 0); i < n; i++) m += String.fromCharCode(0x300 + ((Math.random() * 0x70) | 0)); return m; };
+    const k = fx.intensity || 2;
+    const root = crt();
+    root.classList.add("corrupting");
+    const bands = el("fx-corrupt");
+    layer().append(bands);
+    const targets = () => [
+      ...[...document.querySelectorAll("#lines .line.done")].map((l) => l.querySelector(".lt") || l), // (beside a portrait: just its text)
+      ...["hdr-station", "hdr-os", "hdr-access"].map((id) => document.getElementById(id)).filter(Boolean),
+    ];
+    const rot = (orig) => {
+      const p = 0.05 * k + Math.random() * 0.06;
+      let out = "", run = 0;
+      for (const ch of orig) {
+        if (ch === "\n") { out += "\n"; run = 0; continue; }
+        if (!run && ch !== " " && Math.random() < p * 0.12) run = 3 + ((Math.random() * 8) | 0); // (a whole stretch goes)
+        const hit = run > 0 || (ch !== " " && Math.random() < p);
+        if (run > 0) run--;
+        if (!hit) { out += esc(ch); continue; }
+        const g = Math.random() < 0.7 ? glyphs[(Math.random() * glyphs.length) | 0] : ch;
+        const z = Math.random() < 0.18 * k ? marks() : "";
+        out += `<span class="${tints[(Math.random() * tints.length) | 0]}">${esc(g)}${z}</span>`;
+      }
+      return out;
+    };
+    const iv = setInterval(() => {
+      for (const t of targets()) {
+        if (t.dataset.orig === undefined) t.dataset.orig = t.textContent;
+        t.innerHTML = rot(t.dataset.orig);
+        // Now and then a line lurches sideways and goes off-colour.
+        const line = t.closest(".line") || t;
+        if (Math.random() < 0.06 * k) line.style.setProperty("--cs", `${rand(-14, 14) * k}px`), line.classList.add("cr-shift");
+        else line.classList.remove("cr-shift");
+      }
+      // The colours split and jitter.
+      root.style.setProperty("--cx", `${rand(-2.5, 2.5) * k}px`);
+      // Bands of the screen tear: inverted, or the wrong colours.
+      bands.innerHTML = Array.from({ length: Math.random() < 0.35 ? 0 : 1 + ((Math.random() * 2 * k) | 0) }, () =>
+        `<i class="${["b-inv", "b-hue", "b-sat"][(Math.random() * 3) | 0]}" style="top:${rand(0, 98).toFixed(1)}%;height:${rand(2, 6 + 10 * k).toFixed(0)}px"></i>`).join("");
+      if (Math.random() < 0.15) Sound.burst(0.05, 0.12, 3000);
+    }, 110);
+    return {
+      el: bands,
+      stop: () => {
+        clearInterval(iv);
+        root.classList.remove("corrupting");
+        root.style.removeProperty("--cx");
+        for (const t of document.querySelectorAll("#crt [data-orig]")) {
+          t.textContent = t.dataset.orig;
+          delete t.dataset.orig;
+        }
+        for (const l of document.querySelectorAll("#crt .cr-shift")) l.classList.remove("cr-shift");
+        bands.innerHTML = "";
+      },
+    };
+  }
 
   // fx.quiet: no sound (e.g. a terminal's permanent blood or crack, drawn on arrival).
   function start(fx) {

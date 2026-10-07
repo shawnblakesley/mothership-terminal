@@ -196,7 +196,7 @@ After a restart the next first move saves the story again, so changes you make i
 | **Mode** (top right) | **Auto** (the default): agent replies go straight to players. **Review**: every reply arrives as an editable draft that you send, regenerate with steering, or discard. |
 | **Comms log** | Full transcript, with one box for everything you send. **Direction** gives the agent an order it must obey; it acts on it right away and players never see the order. **Speak** puts your exact words on screen as any voice or character (see below). **Note** is private between you and the agent (see below). Keyboard first: **Tab** / **Shift+Tab** in the box switches between Direction, Note, and each voice and character; **Enter** sends, **Shift+Enter** is a new line, and **Ctrl+Enter** sends a Note whatever is selected. Deleting an entry also removes it from the agent's memory. |
 | **Draft card** | A reply is a list of lines, each said by a voice. Edit the text, change who says each line, add or remove lines, and untick any station changes or effects you don't want. The 🧠 note is the agent's private read on what the players are attempting. |
-| **Screen effects** | Blood, goo (players can drag to wipe these off the glass), cracked screen, hacker alarm with siren, red alert with klaxon, glitch, static, blackout, terminal lockout (blocks input), giant banner, text corruption. Set the caption, duration (blank, the default, keeps it on until you clear it) and intensity. |
+| **Screen effects** | Blood, goo that pulses as if it's alive (players can drag to wipe these off the glass), a cracked screen with a dark hollow at the impact, ice creeping in from every edge, hacker alarm with siren, red alert with klaxon, glitch (the display jumps and tears and its text rots into junk in sick colours), static, blackout, terminal lockout (blocks input), giant banner. Set the caption, duration (blank, the default, keeps it on until you clear it) and intensity. |
 | **Station map** | The station state drawn as decks and rooms (see below). Click any value to change it; **⤢ Expand** opens the full map. |
 | **Station state** | JSON the agent reads every turn and can change, e.g. opening doors or raising `access_level`. The player header shows `access_level`. |
 | **Standing orders** | Persistent steering, e.g. "the AI is slowly being infected". |
@@ -308,7 +308,7 @@ The agent says yes to cool ideas but **never decides whether an uncertain action
 
 ## Screen effects from the agent
 
-Besides you, the agent can trigger the electronic effects: alarm, red alert, glitch, static, blackout, lockout, banner and corrupted text. It can time them **between lines of dialogue**:
+Besides you, the agent can trigger the electronic effects: alarm, red alert, glitch, static, blackout, lockout and banner (blood, goo, the crack and ice stay yours). It can time them **between lines of dialogue**:
 
 - **On a line:** an effect fires the moment that line begins, after the previous line has finished appearing and being spoken. For example, static as Salk's second sentence starts.
 - **As a beat:** an effect on its own, between lines, pauses the dialogue for its duration. A blackout always plays as a beat: the screen goes dark, then the next line comes once the lights are back.
