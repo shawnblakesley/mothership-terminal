@@ -815,7 +815,7 @@
     },
 
     redalert(fx) {
-      const d = el("fx-redalert", `<div class="strip">■ RED ALERT ■ ${esc(fx.text || "STATION EMERGENCY")} ■ RED ALERT ■</div>`);
+      const d = el("fx-redalert", `<div class="strip"><span class="sq">■</span> RED ALERT <span class="sq">■</span> ${esc(fx.text || "STATION EMERGENCY")} <span class="sq">■</span> RED ALERT <span class="sq">■</span></div>`);
       layer().append(d);
       return { el: d, stop: Sound.klaxon() };
     },

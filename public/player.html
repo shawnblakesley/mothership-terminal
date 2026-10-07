@@ -42,14 +42,14 @@
     <main id="screen">
       <!-- Crew file selection (the players' characters), and your own file. -->
       <section id="crewpick" class="panel" hidden>
-        <div class="p-title">■ CREW IDENTIFICATION ■</div>
+        <div class="p-title"><span class="sq">■</span> CREW IDENTIFICATION <span class="sq">■</span></div>
         <div class="p-dim">SELECT YOUR CREW FILE (PRESS 1-4).</div>
         <ol id="crewpick-list"></ol>
         <button type="button" id="crewpick-none" class="p-btn">[ NO FILE: JUST WATCHING ]</button>
       </section>
       <!-- A game without a Warden: everyone sees the stories on offer; the pilot picks one. -->
       <section id="solopick" class="panel" hidden>
-        <div class="p-title" id="solopick-title">■ CHOOSE A STORY ■</div>
+        <div class="p-title" id="solopick-title"><span class="sq">■</span> CHOOSE A STORY <span class="sq">■</span></div>
         <div class="p-dim" id="solopick-note"></div>
         <ol id="solopick-list"></ol>
         <div id="solopick-status" class="p-dim" role="status"></div>
@@ -57,7 +57,7 @@
       </section>
       <!-- The end of a game without a Warden: how it ended, and the recap. -->
       <section id="ending" class="panel" hidden>
-        <div class="p-title">■ THE END ■</div>
+        <div class="p-title"><span class="sq">■</span> THE END <span class="sq">■</span></div>
         <div id="ending-verdict" class="ending-verdict"></div>
         <div id="ending-how" class="p-dim"></div>
         <div id="ending-recap"></div>
@@ -66,7 +66,7 @@
       </section>
       <!-- Move to another terminal on the station (or the portable unit). -->
       <section id="termpick" class="panel" hidden>
-        <div class="p-title">■ STATION TERMINALS ■</div>
+        <div class="p-title"><span class="sq">■</span> STATION TERMINALS <span class="sq">■</span></div>
         <div class="p-dim" id="termpick-note">SELECT A TERMINAL (PRESS 1-9).</div>
         <ol id="termpick-list"></ol>
         <button type="button" id="termpick-close" class="p-btn">[ STAY HERE ]</button>
@@ -88,7 +88,7 @@
       </section>
       <!-- Documents the Warden or the agent gave the players: the list, or one to read. -->
       <section id="docs" class="panel" hidden>
-        <div class="p-title" id="docs-title">■ DOCUMENTS ■</div>
+        <div class="p-title" id="docs-title"><span class="sq">■</span> DOCUMENTS <span class="sq">■</span></div>
         <ol id="docs-list"></ol>
         <div id="docs-body" class="docbody" hidden></div>
         <div class="p-actions">
@@ -108,7 +108,7 @@
       <!-- A roll the Warden called for one character or all of them (d100 under Stat + Skill,
            or a d20 Panic check against Stress). Only the characters who must roll get the dice. -->
       <section id="rollbox" class="rollbox" hidden aria-live="polite">
-        <div id="rb-title" class="rb-title">■ ROLL REQUIRED ■</div>
+        <div id="rb-title" class="rb-title"><span class="sq">■</span> ROLL REQUIRED <span class="sq">■</span></div>
         <div id="rb-label"></div>
         <div id="rb-reason" class="rb-dim"></div>
         <div id="rb-stakes" class="rb-dim" hidden></div>

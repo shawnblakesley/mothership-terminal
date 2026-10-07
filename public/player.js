@@ -534,6 +534,8 @@
   const mine = () => crew.find((c) => c.id === myId) || null;
   const watching = () => !spectate && crew.length > 0 && !mine();
   let docs = []; // the documents this player holds (handouts; see "documents")
+  // The square (■): drawn by a stand-in font that sits it on the baseline; .sq lifts it to the letters' middle.
+  const SQ = '<span class="sq">■</span>', sq = (html) => `${SQ} ${html} ${SQ}`;
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   function openPanel(id) {
@@ -819,7 +821,7 @@
     showDoc(h.id);
   }
   function showDocList() {
-    $("docs-title").textContent = "■ DOCUMENTS ■";
+    $("docs-title").innerHTML = sq("DOCUMENTS");
     $("docs-list").hidden = false;
     $("docs-body").hidden = $("docs-back").hidden = true;
     $("docs-list").innerHTML = docs.map((d, i) => `<li><button type="button" class="p-btn" data-doc="${escH(d.id)}">[${i + 1}] ${escH(d.title.toUpperCase())}</button></li>`).join("") || '<li class="p-dim">NONE YET.</li>';
@@ -828,7 +830,7 @@
   function showDoc(id) {
     const d = docs.find((x) => x.id === id);
     if (!d) return showDocList();
-    $("docs-title").textContent = `■ ${d.title.toUpperCase()} ■`;
+    $("docs-title").innerHTML = sq(escH(d.title.toUpperCase()));
     $("docs-list").hidden = true;
     $("docs-body").hidden = false;
     $("docs-body").innerHTML = renderMd(d.text);
@@ -857,7 +859,7 @@
     el.hidden = !clocks.length;
     el.innerHTML = clocks.map((c) => {
       const s = c.paused ? c.left : Math.max(0, Math.ceil((c.ends - serverNow()) / 1000));
-      return `<span class="clock${s <= 30 && !c.paused ? " low" : ""}${c.paused ? " paused" : ""}">■ ${escH(c.label)} <b>${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}</b>${c.paused ? " HOLD" : ""}</span>`;
+      return `<span class="clock${s <= 30 && !c.paused ? " low" : ""}${c.paused ? " paused" : ""}">${SQ} ${escH(c.label)} <b>${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}</b>${c.paused ? " HOLD" : ""}</span>`;
     }).join("");
   }
   setInterval(() => clocks.some((c) => !c.paused) && renderClocks(), 250);
@@ -942,7 +944,7 @@
   function renderSolo() {
     if (!solo) return;
     const building = solo.phase === "building";
-    $("solopick-title").textContent = building ? `■ BUILDING: ${solo.title.toUpperCase()} ■` : "■ CHOOSE A STORY ■";
+    $("solopick-title").innerHTML = sq(building ? `BUILDING: ${escH(solo.title.toUpperCase())}` : "CHOOSE A STORY");
     $("solopick-note").textContent = building
       ? "THE AI IS BUILDING THE WORLD AND EVERYONE IN IT. THIS CAN TAKE A FEW MINUTES."
       : `NO WARDEN TONIGHT: THE AI RUNS THE GAME. ${isPilot ? "PICK A STORY (PRESS 1-9)." : "THE PILOT IS PICKING A STORY. TALK IT OVER."}`;
@@ -1177,7 +1179,7 @@
   });
 
   // ---- rolling your own Stat/Save: pick a relevant skill (optional; it adds its bonus), then roll.
-  // Edge: its own sign in the pip ([+] / [-]), chosen, it's cut out of NORMAL's [■] (so the two highlights match).
+  // Edge: its own sign in the pip ([+] / [-]); chosen, it's cut out of a square the size of NORMAL's [■].
   const ADV = [["none", "NORMAL", ""], ["advantage", "ADVANTAGE", "+"], ["disadvantage", "DISADVANTAGE", "-"]];
   let sr = null; // { check, skill, adv }
 
@@ -1195,13 +1197,15 @@
     if (!c || !sr) return;
     const base = c.stats[sr.check] ?? c.saves[sr.check];
     const bonus = skillBonus(c, sr.skill);
-    const pick = (on, attrs, label) => `<button type="button" class="p-btn${on ? " on" : ""}" ${attrs}>${on ? "[■]" : "[ ]"} ${escH(label)}</button>`;
-    $("sr-title").textContent = `■ ROLL: ${sr.check.toUpperCase()} (${base}) ■`;
+    const pick = (on, attrs, label) => `<button type="button" class="p-btn${on ? " on" : ""}" ${attrs}>${on ? `[${SQ}]` : "[ ]"} ${escH(label)}</button>`;
+    $("sr-title").innerHTML = sq(`ROLL: ${escH(sr.check.toUpperCase())} (${base})`);
     $("sr-skills").innerHTML = [pick(!sr.skill, 'data-skill=""', "NONE"), ...c.skills.map((s) => pick(sr.skill === s.name, `data-skill="${escH(s.name)}"`, `${s.name.toUpperCase()} +${s.bonus}`))].join(" ");
     $("sr-adv").innerHTML = ADV.map(([id, label, sign]) => {
       if (!sign) return pick(sr.adv === id, `data-adv="${id}"`, label);
       const on = sr.adv === id;
-      return `<button type="button" class="p-btn${on ? " on" : ""}" data-adv="${id}">[${on ? `<span class="sr-pip">■<span>${sign}</span></span>` : sign}] ${label}</button>`;
+      // (chosen: the [■] square, drawn, with the sign cut out of it)
+      const pip = `<svg class="sr-pip" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10"/><path d="M2.5 5h5${sign === "+" ? "M5 2.5v5" : ""}"/></svg>`;
+      return `<button type="button" class="p-btn${on ? " on" : ""}" data-adv="${id}">[${on ? pip : sign}] ${label}</button>`;
     }).join(" ");
     $("sr-target").textContent = `ROLL UNDER ${base + bonus} ON D100${sr.adv === "none" ? "" : " (ROLL TWICE)"}.`;
     $("sr-dice").placeholder = sr.adv === "none" ? "47" : "47 82";
@@ -1258,7 +1262,7 @@
     const own = mine();
     const mustRoll = !spectate && !!own && roll.pcs.some((p) => p.id === own.id && !p.done);
     const waiting = roll.pcs.filter((p) => !p.done).map((p) => p.name.toUpperCase());
-    $("rb-title").textContent = mustRoll ? "■ ROLL REQUIRED ■" : "■ ROLL IN PROGRESS ■";
+    $("rb-title").innerHTML = sq(mustRoll ? "ROLL REQUIRED" : "ROLL IN PROGRESS");
     $("rb-label").textContent = [roll.label, roll.skill].filter(Boolean).join(" · ");
     $("rb-reason").textContent = roll.reason ? roll.reason.toUpperCase() : "";
     $("rb-stakes").hidden = !roll.stakes;
