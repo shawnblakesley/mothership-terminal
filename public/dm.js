@@ -28,6 +28,8 @@
   const time = (ts) => new Date(ts).toTimeString().slice(0, 5);
 
   // Each effect's icon (flat line icons from Lucide, ISC licence: lucide.dev) and name.
+  // A skill as the Warden reads and edits it: "Hacking +15" (crew.js keeps { name, bonus }).
+  const skillStr = (s) => (typeof s === "string" ? s : `${s.name} +${s.bonus}`);
   const fxIcon = (inner) => `<svg class="fxi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
   const FX_META = {
     blood: [fxIcon('<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>'), "Blood"],
@@ -601,7 +603,7 @@
           ${num("health.current", c.health.current, "Health")}${num("health.max", c.health.max, "Max health")}
           ${num("wounds.current", c.wounds.current, "Wounds")}${num("wounds.max", c.wounds.max, "Max wounds")}
           ${num("stress", c.stress, "Stress")}${num("startStress", c.startStress, "Starting stress")}
-          ${txt("skills", c.skills.join(", "), "Skills")}
+          ${txt("skills", c.skills.map(skillStr).join(", "), "Skills")}
           ${txt("crime", c.crime, "Conviction", 2)}
           ${txt("backstory", c.backstory, "Backstory", 4)}
           ${txt("loadout", c.loadout, "Starting loadout", 2)}
@@ -863,7 +865,7 @@
         <label>Wounds <input type="number" data-c="wounds.current" value="${c.wounds.current}" min="0" max="99"> / ${c.wounds.max}</label>
         <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"></label>
       </div>
-      ${line("Skills", c.skills.join(", "))}${itemsLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
+      ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
     </div>`;
   }
   // What they carry: changes in play, so it's editable in read-only too (✕ drops one; type to add).
@@ -983,7 +985,7 @@
     const crew = d.crew.map((c) => `<div class="bcard"><b>${esc(c.name)}</b> <span class="muted small">${esc([c.pronouns, c.className, c.role].filter(Boolean).join(" · "))}</span>
         <div class="small">${esc(c.crime)}</div><div class="small muted">${esc(c.backstory)}</div>
         <div class="small mono">${["strength", "speed", "intellect", "combat"].map((k) => `${k.slice(0, 3).toUpperCase()} ${c.stats?.[k]}`).join(" · ")} | ${["sanity", "fear", "body"].map((k) => `${k.slice(0, 3).toUpperCase()} ${c.saves?.[k]}`).join(" · ")} | HP ${c.health_max}</div>
-        <div class="small muted">${esc((c.skills || []).join(", "))}</div></div>`).join("");
+        <div class="small muted">${esc((c.skills || []).map(skillStr).join(", "))}</div></div>`).join("");
     el.innerHTML = `
       <div class="row"><div class="grow"><div class="btitle">${esc(d.title)}</div><div class="muted">${esc(d.stationName)} · ${esc(d.theme)} screen</div></div>
         <button id="bApply" class="primary">Apply story</button></div>
@@ -2240,7 +2242,8 @@
 
   let rollFromOutcome = false, rollWhoKey = "";
   const rollSkillName = (v) => v.slice(2); // option values are "s:<skill>"
-  const hasSkill = (pc, skill) => pc.skills.some((k) => k.toLowerCase() === skill.toLowerCase());
+  // Their own bonus for a skill, from their sheet (0: they don't have it).
+  const skillBonus = (pc, skill) => (skill && pc.skills.find((k) => k.name.toLowerCase() === skill.toLowerCase())?.bonus) || 0;
 
   // The roll form: who rolls (one character, or all), and the skills they have.
   function renderRoll() {
@@ -2276,28 +2279,29 @@
     if (skillSel.dataset.for !== who) {
       skillSel.dataset.for = who;
       const was = skillSel.value;
-      const skills = [...new Set(pcs.flatMap((c) => c.skills))];
+      const skills = [...new Map(pcs.flatMap((c) => c.skills).map((k) => [k.name.toLowerCase(), k.name])).values()];
+      const short = (c) => c.name.match(/"([^"]+)"/)?.[1] || c.name.split(/\s+/)[0];
       skillSel.innerHTML = `<option value="">No skill</option>` + skills.map((k) => {
-        const holders = who === "all" ? ` (${pcs.filter((c) => hasSkill(c, k)).map((c) => c.name.match(/"([^"]+)"/)?.[1] || c.name.split(/\s+/)[0]).join(", ")})` : "";
-        return `<option value="s:${esc(k)}">${esc(k + holders)}</option>`;
+        const label = who === "all"
+          ? `${k} (${pcs.filter((c) => skillBonus(c, k)).map((c) => `${short(c)} +${skillBonus(c, k)}`).join(", ")})`
+          : `${k} +${skillBonus(pcs[0], k)}`;
+        return `<option value="s:${esc(k)}">${esc(label)}</option>`;
       }).join("");
       if ([...skillSel.options].some((o) => o.value === was)) skillSel.value = was;
     }
     for (const el of document.querySelectorAll("#rollCard .rollskill")) el.hidden = panic;
-    $("rollSkillLevel").closest("label").hidden = panic || !skillSel.value;
     // What each of them will roll against, from their sheets.
     const check = $("rollCheck").value, skill = rollSkillName(skillSel.value);
-    const bonus = { trained: 10, expert: 15, master: 20 }[$("rollSkillLevel").value];
     const line = (c) => {
       if (panic) return `${c.name}: Stress ${c.stress}, panics on a d20 of ${c.stress} or under`;
       const stat = c.stats[check] ?? c.saves[check];
-      const plus = skill && hasSkill(c, skill) ? bonus : 0;
+      const plus = skillBonus(c, skill);
       return `${c.name}: ${checkName(check)} ${stat}${plus ? ` + ${plus}` : ""}, roll under ${stat + plus}`;
     };
     $("rollTarget").innerHTML = pcs.length ? pcs.map((c) => esc(line(c))).join("<br>") : "Add crew to call for rolls.";
     $("rollCall").disabled = !pcs.length || S.roll?.status === "waiting";
   }
-  for (const id of ["rollWho", "rollCheck", "rollSkill", "rollSkillLevel"]) $(id).addEventListener("change", rollFormChanged);
+  for (const id of ["rollWho", "rollCheck", "rollSkill"]) $(id).addEventListener("change", rollFormChanged);
 
   // The roll in progress (who has rolled, who hasn't), or the last one's results.
   function renderRollStatus() {
@@ -2340,7 +2344,6 @@
         check: $("rollCheck").value,
         advantage: $("rollAdv").value,
         skill: rollSkillName($("rollSkill").value),
-        skillLevel: $("rollSkill").value ? $("rollSkillLevel").value : "none",
         reason: $("rollReason").value,
       },
     });

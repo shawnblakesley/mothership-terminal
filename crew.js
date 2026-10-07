@@ -125,7 +125,7 @@ export function sanitizeCrew(list) {
       // Where their Stress starts in a fresh story (a restart puts it back here):
       // the original crew file's, or Mothership's 2.
       startStress: int(c.startStress ?? DEFAULT_CREW.find((d) => d.id === slug(c.id || name))?.stress, 0, 20, 2),
-      skills: (Array.isArray(c.skills) ? c.skills : String(c.skills || "").split(",")).map((s) => str(s, 40).trim()).filter(Boolean).slice(0, 12),
+      skills: (Array.isArray(c.skills) ? c.skills : String(c.skills || "").split(",")).map(skillOf).filter(Boolean).slice(0, 12),
       loadout: str(c.loadout, 400),
       // What they carry now (the loadout is how they started): changes in play.
       items: Array.isArray(c.items) ? c.items.map((s) => str(s, 60).trim()).filter(Boolean).slice(0, MAX_ITEMS) : itemsFrom(c.loadout),
@@ -206,7 +206,37 @@ export function changeItem(pc, action, rawItem) {
   return `lost ${gone}`;
 }
 
+// ---- skills: each { name, bonus }. The bonus is the skill's tier in the Mothership 1e
+// skill tree (Trained +10, Expert +15, Master +20). A skill written with a bonus
+// ("Gambling +15") keeps it (to the nearest tier); one the book doesn't have counts as
+// Trained. Old saves (and drafts) have plain names: they're filled in from the book.
+export const SKILL_BONUSES = [10, 15, 20];
+const SKILL_TIERS = {
+  10: ["Linguistics", "Zoology", "Botany", "Geology", "Industrial Equipment", "Heavy Machinery", "Jury-Rigging", "Chemistry", "Computers", "Zero-G", "Mathematics", "Art", "Archaeology", "Theology", "Military Training", "Rimwise", "Athletics"],
+  15: ["Psychology", "Pathology", "Field Medicine", "Ecology", "Asteroid Mining", "Mechanical Repair", "Explosives", "Pharmacology", "Hacking", "Piloting", "Physics", "Mysticism", "Wilderness Survival", "Firearms", "Hand-to-Hand Combat"],
+  20: ["Sophontology", "Exobiology", "Surgery", "Planetology", "Robotics", "Engineering", "Cybernetics", "Artificial Intelligence", "Hyperspace", "Xenoesotericism", "Command"],
+};
+const skillKey = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "");
+const BOOK = new Map(Object.entries(SKILL_TIERS).flatMap(([b, list]) => list.map((s) => [skillKey(s), Number(b)])));
+const nearestTier = (n) => SKILL_BONUSES.reduce((best, b) => (Math.abs(b - n) < Math.abs(best - n) ? b : best));
+
+// A skill from a sheet, an editor or a draft: { name, bonus } or "Name" or "Name +15".
+export function skillOf(raw) {
+  let name, bonus;
+  if (raw && typeof raw === "object") ({ name, bonus } = raw);
+  else {
+    const m = /^(.*?)\s*\+\s*(\d{1,2})\s*$/.exec(String(raw ?? ""));
+    [name, bonus] = m ? [m[1], Number(m[2])] : [raw, undefined];
+  }
+  name = String(name ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!name) return null;
+  const n = Number(bonus);
+  return { name, bonus: Number.isFinite(n) && n > 0 ? nearestTier(n) : BOOK.get(skillKey(name)) ?? 10 };
+}
+export const skillText = (s) => `${s.name} +${s.bonus}`;
+export const findSkill = (pc, name) => (name ? (pc?.skills || []).find((s) => s.name.toLowerCase() === String(name).toLowerCase()) : null) || null;
+
 // One line per character for the agent.
 export function crewBrief(crew) {
-  return crew.map((c) => `- ${c.name} (${c.pronouns || "?"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.join(", ") || "none"}. Started with: ${c.loadout}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
+  return crew.map((c) => `- ${c.name} (${c.pronouns || "?"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
 }

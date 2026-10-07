@@ -539,7 +539,7 @@
     for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "solopick", "docs", "ending"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
     // (Not before power-on: the key that wakes the terminal would also press the button.)
-    if (id === "crewpick" && bootEl.classList.contains("gone")) $("crewpick-list").querySelector("button")?.focus();
+    if (id === "crewpick" && bootEl.classList.contains("gone")) ($("crewpick-list").querySelector("li.current button") || $("crewpick-list").querySelector("button"))?.focus();
     if (!id && !spectate) input.focus();
     renderSide(); // (out of the way while choosing a character)
   }
@@ -565,8 +565,9 @@
   function renderPicker() {
     $("crewpick-list").innerHTML = crew.map((c, i) => {
       const others = (claims[c.id] || 0) - (c.id === myId ? 1 : 0);
-      return `<li${c.portrait ? ' class="has-face"' : ""}>${portraitHtml(c.portrait, "face")}<button type="button" class="p-btn pick" data-id="${escH(c.id)}">[${i + 1}] ${escH(c.name.toUpperCase())}</button>
-        <span class="p-dim"> · ${escH(c.className.toUpperCase())} · ${escH(c.role.toUpperCase())}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>YOU</b>" : ""}</span>
+      const cls = [c.portrait && "has-face", c.id === myId && "current"].filter(Boolean).join(" ");
+      return `<li${cls ? ` class="${cls}"` : ""}>${portraitHtml(c.portrait, "face")}<button type="button" class="p-btn pick" data-id="${escH(c.id)}">[${i + 1}] ${escH(c.name.toUpperCase())}</button>
+        <span class="p-dim"> · ${escH(c.className.toUpperCase())} · ${escH(c.role.toUpperCase())}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>CURRENT FILE</b>" : ""}</span>
         <div class="p-dim p-crime">${escH(c.crime)}</div></li>`;
     }).join("");
   }
@@ -622,6 +623,8 @@
     $("crewfile-body").innerHTML = `<div class="cs cs-full">${sheetCards(c)}</div>`;
     fitChips($("crewfile-body"));
   }
+  // A skill's bonus comes with it from the server ({ name, bonus }: crew.js).
+  const skillBonus = (pc, name) => (name && pc.skills.find((s) => s.name.toLowerCase() === name.toLowerCase())?.bonus) || 0;
   // A document they hold, among their items: a file you can open.
   const FILE_ICON = '<svg class="cs-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
   const docChip = (d) => `<button type="button" class="cs-doc" data-doc="${escH(d.id)}" title="Open">${FILE_ICON}${chipText(d.title.toUpperCase())}</button>`;
@@ -645,7 +648,7 @@
       ${statusCard(c)}
       ${numbersCard("STATS", c.stats, rollHint())}
       ${numbersCard("SAVES", c.saves)}
-      <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((x) => `<div>${escH(x)}</div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
+      <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((s) => `<div><span>${escH(s.name)}</span><span class="cs-bonus">+${s.bonus}</span></div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
       <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length || docs.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${chipText(x)}</span>`).join("")}${docs.map(docChip).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
       <div class="cs-card cs-story">
         ${c.crime ? `<div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>` : ""}
@@ -703,17 +706,28 @@
     openPanel("crewpick");
   }
 
-  $("crewpick-list").addEventListener("click", (e) => {
-    const id = e.target.closest("[data-id]")?.dataset.id;
-    if (!id) return;
+  // Picking a character shows their file to confirm: SELECT keeps it, BACK returns to the
+  // picker. Opened from the header instead, it's CLOSE and CHANGE.
+  let confirming = false;
+  function showPicked(id) {
     claim(id);
     renderFile();
+    openCrewfile(true);
+  }
+  function openCrewfile(picking) {
+    confirming = picking;
+    $("crewfile-close").textContent = picking ? "[ BACK ]" : "[ CLOSE ]";
+    $("crewfile-change").textContent = picking ? "[ SELECT ]" : "[ CHANGE ]";
     openPanel("crewfile");
+  }
+  $("crewpick-list").addEventListener("click", (e) => {
+    const id = e.target.closest("[data-id]")?.dataset.id;
+    if (id) showPicked(id);
   });
   addEventListener("keydown", (e) => {
     if ($("crewpick").hidden || !bootEl.classList.contains("gone") || e.ctrlKey || e.metaKey || e.altKey) return; // (not the key that powers the terminal on)
     const c = crew[Number(e.key) - 1];
-    if (c) { e.preventDefault(); claim(c.id); renderFile(); openPanel("crewfile"); $("crewfile-close").focus(); }
+    if (c) { e.preventDefault(); showPicked(c.id); $("crewfile-change").focus(); }
   });
   $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
   // ------------------------------------------------------------ markdown
@@ -1021,10 +1035,11 @@
     }
     if (mine() && wide() && $("crewfile").hidden && $("crewpick").hidden) return setSide(!sideOpen);
     renderFile();
-    openPanel($("crewfile").hidden ? "crewfile" : null);
+    if ($("crewfile").hidden) openCrewfile(false); else openPanel(null);
   };
-  $("crewfile-close").onclick = () => openPanel(null);
-  $("crewfile-change").onclick = () => { renderPicker(); openPanel("crewpick"); $("crewpick-list").querySelector("button")?.focus(); };
+  const toPicker = () => { renderPicker(); openPanel("crewpick"); ($("crewpick-list").querySelector("li.current button") || $("crewpick-list").querySelector("button"))?.focus(); };
+  $("crewfile-close").onclick = () => (confirming ? toPicker() : openPanel(null));
+  $("crewfile-change").onclick = () => (confirming ? openPanel(null) : toPicker());
   addEventListener("keydown", (e) => {
     if (e.key === "Escape" && document.body.classList.contains("panel-open") && !$("crewfile").hidden) openPanel(null);
   });
@@ -1125,14 +1140,13 @@
     if (t) { e.preventDefault(); pickTerm(t.id); }
   });
 
-  // ---- rolling your own Stat/Save: pick a relevant skill (optional), then roll.
-  const LEVELS = [["trained", "TRAINED +10", 10], ["expert", "EXPERT +15", 15], ["master", "MASTER +20", 20]];
+  // ---- rolling your own Stat/Save: pick a relevant skill (optional; it adds its bonus), then roll.
   const ADV = [["none", "NORMAL"], ["advantage", "[+] ADVANTAGE"], ["disadvantage", "[-] DISADVANTAGE"]];
-  let sr = null; // { check, skill, level, adv }
+  let sr = null; // { check, skill, adv }
 
   function openSelfRoll(check) {
     if (!mine() || !header.selfRolls) return;
-    sr = { check, skill: "", level: "trained", adv: "none" };
+    sr = { check, skill: "", adv: "none" };
     $("sr-dice").value = "";
     $("sr-err").textContent = "";
     renderSelfRoll();
@@ -1143,12 +1157,10 @@
     const c = mine();
     if (!c || !sr) return;
     const base = c.stats[sr.check] ?? c.saves[sr.check];
-    const bonus = sr.skill ? LEVELS.find((l) => l[0] === sr.level)[2] : 0;
+    const bonus = skillBonus(c, sr.skill);
     const pick = (on, attrs, label) => `<button type="button" class="p-btn${on ? " on" : ""}" ${attrs}>${on ? "[■]" : "[ ]"} ${escH(label)}</button>`;
     $("sr-title").textContent = `■ ROLL: ${sr.check.toUpperCase()} (${base}) ■`;
-    $("sr-skills").innerHTML = [pick(!sr.skill, 'data-skill=""', "NONE"), ...c.skills.map((s) => pick(sr.skill === s, `data-skill="${escH(s)}"`, s.toUpperCase()))].join(" ");
-    $("sr-level-row").hidden = !sr.skill;
-    $("sr-levels").innerHTML = LEVELS.map(([id, label]) => pick(sr.level === id, `data-level="${id}"`, label)).join(" ");
+    $("sr-skills").innerHTML = [pick(!sr.skill, 'data-skill=""', "NONE"), ...c.skills.map((s) => pick(sr.skill === s.name, `data-skill="${escH(s.name)}"`, `${s.name.toUpperCase()} +${s.bonus}`))].join(" ");
     $("sr-adv").innerHTML = ADV.map(([id, label]) => pick(sr.adv === id, `data-adv="${id}"`, label)).join(" ");
     $("sr-target").textContent = `ROLL UNDER ${base + bonus} ON D100${sr.adv === "none" ? "" : " (ROLL TWICE)"}.`;
     $("sr-dice").placeholder = sr.adv === "none" ? "47" : "47 82";
@@ -1157,15 +1169,14 @@
     const b = e.target.closest("button");
     if (!b || !sr) return;
     if (b.dataset.skill !== undefined) sr.skill = b.dataset.skill;
-    else if (b.dataset.level) sr.level = b.dataset.level;
     else if (b.dataset.adv) sr.adv = b.dataset.adv;
     else return;
     renderSelfRoll();
-    $("selfroll").querySelector(`[data-${b.dataset.skill !== undefined ? "skill" : b.dataset.level ? "level" : "adv"}="${CSS.escape(b.dataset.skill ?? b.dataset.level ?? b.dataset.adv)}"]`)?.focus();
+    $("selfroll").querySelector(`[data-${b.dataset.skill !== undefined ? "skill" : "adv"}="${CSS.escape(b.dataset.skill ?? b.dataset.adv)}"]`)?.focus();
   });
   function sendSelfRoll(manual) {
     if (!sr) return;
-    const msg = { t: "selfRoll", check: sr.check, skill: sr.skill, skillLevel: sr.level, advantage: sr.adv };
+    const msg = { t: "selfRoll", check: sr.check, skill: sr.skill, advantage: sr.adv };
     if (manual) {
       const dice = $("sr-dice").value.split(/[^0-9]+/).filter(Boolean).map(Number);
       const need = sr.adv === "none" ? 1 : 2;
@@ -1195,7 +1206,7 @@
   function rollTargetText(roll, pc) {
     if (roll.panic) return `YOUR STRESS: ${pc.stress} · ROLL ABOVE IT ON A D20 TO KEEP YOUR COOL`;
     const stat = pc.stats[roll.check] ?? pc.saves[roll.check];
-    const bonus = roll.skillName && pc.skills.some((s) => s.toLowerCase() === roll.skillName.toLowerCase()) ? roll.bonus : 0;
+    const bonus = skillBonus(pc, roll.skillName);
     return `YOUR ${roll.check.toUpperCase()}: ${stat}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}`;
   }
 

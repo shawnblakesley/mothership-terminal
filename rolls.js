@@ -15,6 +15,7 @@
 // The Warden calls a roll for one character, or for all of them at once; each
 // rolls on their own screen against the numbers on their own sheet.
 import crypto from "crypto";
+import { findSkill } from "./crew.js";
 
 export const CHECKS = {
   strength: { label: "Strength", kind: "Stat" },
@@ -39,21 +40,23 @@ const clampInt = (v, min, max) => {
 };
 
 // What the Warden asks for: who rolls (one character's id, or "all"), and what.
-// Their Stat/Save (or Stress, for panic) comes from their sheet when they roll.
-// A skill only adds its bonus for characters who have it on their sheet.
+// Their Stat/Save (or Stress, for panic) comes from their sheet when they roll, and so
+// does a skill's bonus: each character who has the skill adds their own (crew.js).
+// bonus: the one roller's, when one rolls (for "all", each has their own: rollTarget).
+const LEVEL_OF = Object.fromEntries(Object.entries(SKILL_LEVELS).map(([k, v]) => [v, k]));
 export function sanitizeRequest(raw, crew = []) {
   const check = CHECKS[raw?.check] || raw?.check === PANIC ? raw.check : "intellect";
   const panic = check === PANIC;
-  const skillLevel = !panic && SKILL_LEVELS[raw?.skillLevel] !== undefined ? raw.skillLevel : "none";
-  const skill = skillLevel === "none" ? "" : String(raw?.skill || "").trim().slice(0, 40);
+  const skill = panic ? "" : String(raw?.skill || "").trim().slice(0, 40);
   const who = raw?.pc === "all" ? crew : crew.filter((c) => c.id === raw?.pc);
   if (!who.length) throw new Error("Choose who rolls.");
+  const bonus = raw?.pc === "all" ? 0 : findSkill(who[0], skill)?.bonus ?? 0;
   return {
     id: crypto.randomBytes(6).toString("hex"),
     check,
     skill,
-    skillLevel: skill ? skillLevel : "none",
-    bonus: skill ? SKILL_LEVELS[skillLevel] : 0,
+    skillLevel: LEVEL_OF[bonus] || "none",
+    bonus,
     advantage: ADVANTAGE.includes(raw?.advantage) ? raw.advantage : "none",
     reason: String(raw?.reason || "").trim().slice(0, 140),
     all: raw?.pc === "all",
@@ -64,12 +67,10 @@ export function sanitizeRequest(raw, crew = []) {
   };
 }
 
-const hasSkill = (pc, skill) => !!skill && (pc?.skills || []).some((s) => s.toLowerCase() === skill.toLowerCase());
-
 // The number a character rolls against, from their sheet.
 export function rollTarget(req, pc) {
   if (req.check === PANIC) return { stat: pc.stress, bonus: 0 };
-  return { stat: pc.stats[req.check] ?? pc.saves[req.check], bonus: hasSkill(pc, req.skill) ? req.bonus : 0 };
+  return { stat: pc.stats[req.check] ?? pc.saves[req.check], bonus: findSkill(pc, req.skill)?.bonus ?? 0 };
 }
 
 // One die: rank orders outcomes for advantage/disadvantage.
@@ -126,7 +127,7 @@ export function checkLabel(req) {
 }
 
 export function skillLabel(req) {
-  return req.bonus ? `${(req.skill || "SKILL").toUpperCase()} +${req.bonus}` : "";
+  return req.skill ? `${req.skill.toUpperCase()}${req.bonus ? ` +${req.bonus}` : ""}` : "";
 }
 
 // The line that goes in the log (players see it; the agent reads it).

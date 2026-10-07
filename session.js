@@ -186,7 +186,7 @@ export function defaultGame(keys = {}) {
       voices: defaultVoices().map((v) => ({ ...v, systems: ["*"] })), // (the default story: every voice reaches every system, the tug's too)
       theme: "green",
       map: DEFAULT_MAP,
-      crew: structuredClone(DEFAULT_CREW), // the players' characters (crew.js)
+      crew: sanitizeCrew(structuredClone(DEFAULT_CREW)), // the players' characters (crew.js)
       cast: defaultCast(), // the story's people, and where they are (cast.js)
       castChannel: "intercom", // the voice the cast is heard through when not in the players' room
       terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
@@ -1791,7 +1791,7 @@ export class Session {
     const now = Date.now();
     if (now - (ws.lastRoll || 0) < 1500) return;
     ws.lastRoll = now;
-    const r = sanitizeRequest({ pc: pc.id, check: msg.check, skill: msg.skill, skillLevel: msg.skill ? msg.skillLevel : "none", advantage: msg.advantage }, [pc]);
+    const r = sanitizeRequest({ pc: pc.id, check: msg.check, skill: msg.skill, advantage: msg.advantage }, [pc]);
     const dice = msg.manual ? (Array.isArray(msg.dice) ? msg.dice : []).map(Number) : diceFor(r);
     let result;
     try {
@@ -2392,6 +2392,7 @@ export class Session {
       s.config.voices = sanitizeVoices(s.config.voices);
       s.station = structuredClone(snap.station);
       s.config.cast = sanitizeCast(s.config.cast);
+      s.config.crew = sanitizeCrew(s.config.crew); // (a start saved before skills had bonuses: they're filled in)
       for (const m of [...s.config.cast, ...s.config.crew]) if (pics.has(m.id)) m.portrait = pics.get(m.id);
       s.synopses = structuredClone(savedSynopses(snap)); // (the prebrief: the story is back at its start)
       delete s.synopses.sofar;

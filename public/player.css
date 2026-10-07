@@ -172,6 +172,7 @@ body {
 /* The crew's portraits on their files: the picker, the full file, the side sheet. */
 .portrait.face { float: left; margin: 0.1em 0.7em 0.2em 0; }
 #crewpick-list li.has-face::after { content: ""; display: block; clear: both; }
+#crewpick-list li.current { outline: 1px solid var(--fg); outline-offset: 0.3em; }
 .portrait.big { float: right; width: 7em; height: 7em; margin: 0 0 0.6em 1em; }
 .portrait.side { width: 5.5em; height: 5.5em; margin-bottom: 0.5em; }
 .portrait {
@@ -478,7 +479,8 @@ button.cs-num:hover .cs-circle, button.cs-num:focus-visible .cs-circle { backgro
 button.cs-num:focus-visible { outline: none; }
 .cs-num .cs-k { font-size: 0.74em; }
 .cs-hint { text-align: center; color: var(--dim); font-size: 0.78em; margin-top: 0.35em; }
-.cs-list > div { border-bottom: 1px dashed var(--dim); padding: 0.05em 0; }
+.cs-list > div { border-bottom: 1px dashed var(--dim); padding: 0.05em 0; display: flex; justify-content: space-between; align-items: baseline; gap: 0.6em; }
+.cs-list .cs-bonus { flex: none; font-size: 0.85em; opacity: 0.85; }
 .cs-list > div:last-child { border: 0; }
 .cs-chips { display: flex; flex-wrap: wrap; gap: 0.3em; }
 .cs-chips > span, .cs-chips > .cs-doc { border: 2px solid var(--fg); border-radius: 999px; padding: 2px calc(0.45em + 2px); font-size: 0.85em; }
