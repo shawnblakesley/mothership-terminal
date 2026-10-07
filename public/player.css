@@ -539,7 +539,7 @@ button.cs-num:focus-visible { outline: none; }
 .cs-compact { font-size: 0.85em; max-width: none; }
 .cs-compact .cs-head { grid-template-columns: 4.6em 1fr; }
 /* The side sheet's buttons, always at the bottom of the panel (the sheet scrolls above them). */
-.s-foot { position: sticky; bottom: 0; display: flex; gap: 1.2em; padding: 0.45em 0 0.2em; background: var(--bg); border-top: 1px solid var(--dim); margin-top: auto;
+.s-foot { position: sticky; bottom: -1px; display: flex; gap: 1.2em; padding: 0.45em 0 calc(0.2em + 1px); /* (1px past the bottom: the panel can end on a fraction of a pixel, and the sheet showed through below) */ background: var(--bg); border-top: 1px solid var(--dim); margin-top: auto;
   box-shadow: -0.8em 0 0 var(--bg); } /* (and over the panel's left padding, where the cards' glow spills) */
 
 .panel { border: 3px double var(--fg); padding: 0.6em 0.9em; margin: 0.2em 0 0.8em; max-width: 52em; }
