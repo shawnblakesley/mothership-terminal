@@ -193,20 +193,23 @@
     return { c, ctx, w: innerWidth, h: innerHeight };
   }
 
-  // Players can drag across blood/goo to smear it off the glass.
   // Blood and goo can be wiped off the glass by dragging across them. The
   // overlay itself never takes the mouse (clicks go through to the buttons and
   // text underneath); the drag is watched on the whole page instead.
-  function makeWipeable(c, ctx) {
+  // others: offscreen canvases holding the same picture, wiped too (so drips that
+  // are still being revealed from them don't bring wiped liquid back).
+  function makeWipeable(c, ctx, others = []) {
     let last = null, dragged = 0;
     const wipe = (x, y) => {
-      ctx.save();
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.lineCap = "round";
-      ctx.lineWidth = 70;
-      ctx.strokeStyle = "rgba(0,0,0,0.35)";
-      ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(x, y); ctx.stroke();
-      ctx.restore();
+      for (const k of [ctx, ...others]) {
+        k.save();
+        k.globalCompositeOperation = "destination-out";
+        k.lineCap = "round";
+        k.lineWidth = 70;
+        k.strokeStyle = "rgba(0,0,0,0.35)";
+        k.beginPath(); k.moveTo(last[0], last[1]); k.lineTo(x, y); k.stroke();
+        k.restore();
+      }
     };
     const down = (e) => { last = [e.clientX, e.clientY]; dragged = 0; };
     const move = (e) => {
@@ -233,127 +236,413 @@
     c.style.pointerEvents = "none";
   }
 
-  function blob(ctx, x, y, r, color) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    const n = 10 + Math.floor(Math.random() * 8);
-    for (let i = 0; i <= n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      const rr = r * rand(0.7, 1.25);
-      const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
-      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+  const TAU = Math.PI * 2;
+
+  // Smooth value noise in 0..1, summed over a few octaves: organic edges, veins, mottling.
+  function makeNoise() {
+    const p = [...Array(256).keys()];
+    for (let i = 255; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+    const P = new Uint8Array(512);
+    for (let i = 0; i < 512; i++) P[i] = p[i & 255];
+    const V = Float32Array.from({ length: 256 }, () => Math.random());
+    const fade = (t) => t * t * (3 - 2 * t);
+    const n = (x, y) => {
+      const xi = Math.floor(x), yi = Math.floor(y), u = fade(x - xi), v = fade(y - yi);
+      const a = V[P[(xi & 255) + P[yi & 255]]], b = V[P[((xi + 1) & 255) + P[yi & 255]]];
+      const c = V[P[(xi & 255) + P[(yi + 1) & 255]]], d = V[P[((xi + 1) & 255) + P[(yi + 1) & 255]]];
+      return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+    };
+    return (x, y, oct = 3) => {
+      let s = 0, amp = 0.5, f = 1, norm = 0;
+      for (let o = 0; o < oct; o++) { s += n(x * f, y * f) * amp; norm += amp; amp *= 0.5; f *= 2; }
+      return s / norm;
+    };
+  }
+
+  // A liquid on the glass, as a thickness at every (CSS) pixel. Droplets add to it;
+  // where it passes a threshold there is liquid, and its slope catches the light.
+  function liquidField(w, h) {
+    const F = new Float32Array(w * h);
+    // A droplet at (x, y): radius r, strength a, stretched k times along angle ang.
+    const drop = (x, y, r, a = 1.6, ang = 0, k = 1) => {
+      const R = r * Math.max(1, k);
+      const x0 = Math.max(0, Math.floor(x - R)), x1 = Math.min(w - 1, Math.ceil(x + R));
+      const y0 = Math.max(0, Math.floor(y - R)), y1 = Math.min(h - 1, Math.ceil(y + R));
+      if (x0 > x1 || y0 > y1) return;
+      const ca = Math.cos(ang), sa = Math.sin(ang), r2 = r * r;
+      for (let py = y0; py <= y1; py++) {
+        const dy = py - y;
+        for (let px = x0; px <= x1; px++) {
+          const dx = px - x, u = (dx * ca + dy * sa) / k, v = -dx * sa + dy * ca;
+          const d2 = (u * u + v * v) / r2;
+          if (d2 < 1) { const t = 1 - d2; F[py * w + px] += a * t * t; }
+        }
+      }
+    };
+    return { F, w, h, drop };
+  }
+
+  // Light the liquid. paint(th, n, x, y, nx, ny, v) gives [r, g, b, a] for a pixel of
+  // thickness th (0 at the edge .. 1 thick; v is the raw depth), noise n and surface normal (nx, ny);
+  // a sharp highlight from the top left is added on top (it's wet).
+  function shadeLiquid(fl, noise, paint, { edge = 0.22, relief = 14, gloss = 0.85, shine = 70 } = {}) {
+    const { F, w, h } = fl, T = 0.5;
+    const img = new ImageData(w, h), D = img.data;
+    const hx = -0.42, hy = -0.56, hz = 1.71, hl = Math.hypot(hx, hy, hz); // halfway between the light and the eye
+    // The surface's height: it rises at the edges and levels off (a pool is flat on top),
+    // so the light catches the curve round each drop's rim.
+    const H = (f) => (f > 0.3 ? 1 - Math.exp(-(f - 0.3) * 1.6) : 0);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x, f = F[i];
+        if (f < T - edge) continue;
+        const nz = noise(x / 26, y / 26, 3);
+        const v = f + (nz - 0.5) * edge * 2; // (ragged, organic edges)
+        if (v < T - 0.035) continue;
+        const cover = Math.min(1, (v - (T - 0.035)) / 0.07); // anti-aliased edge
+        const th = Math.max(0, Math.min(1, (v - T) / 1.4));
+        let nx = -(H(F[i + 1]) - H(F[i - 1])) * relief, ny = -(H(F[i + w]) - H(F[i - w])) * relief;
+        const nl = Math.hypot(nx, ny, 1);
+        nx /= nl; ny /= nl;
+        const s = Math.max(0, (nx * hx + ny * hy + hz / nl) / hl);
+        const spec = Math.pow(s, shine) * gloss;
+        const [r, g, b, a] = paint(th, nz, x, y, nx, ny, v);
+        const o = i * 4;
+        D[o] = Math.max(0, Math.min(255, r + 255 * spec));
+        D[o + 1] = Math.max(0, Math.min(255, g + 255 * spec));
+        D[o + 2] = Math.max(0, Math.min(255, b + 255 * spec));
+        D[o + 3] = Math.max(0, Math.min(255, (a + spec * 0.5) * 255 * cover));
+      }
     }
-    ctx.closePath(); ctx.fill();
+    const out = document.createElement("canvas");
+    out.width = w; out.height = h;
+    out.getContext("2d").putImageData(img, 0, 0);
+    return out;
+  }
+
+  // A drip running down from (x, y): a thin trail, a heavier bead at its head.
+  // top / bottom: its thickness where it leaves the pool, and just above the bead.
+  function dripPath(fl, x, y, len, r0, { wobble = 0.3, bead = 1.6, beads = 0, top = 1, bottom = 0.65, stretch = 1.25 } = {}) {
+    let px = x;
+    for (let d = 0; d < len; d += 1.5) {
+      px += Math.sin((y + d) / 31) * wobble * 0.2 + rand(-0.12, 0.12);
+      const t = d / len;
+      fl.drop(px, y + d, r0 * (top + (bottom - top) * Math.pow(t, 0.6)), 1.6);
+      if (beads && Math.random() < beads / len * 1.5) fl.drop(px, y + d, r0 * 1.2, 1.7, Math.PI / 2, 1.5);
+    }
+    fl.drop(px, y + len - r0 * bead * 0.3, r0 * bead, 1.8, Math.PI / 2, stretch);
+    return { x: px, end: y + len + r0 * bead };
+  }
+
+  // Liquid that runs: the finished picture is drawn at once except for the drips,
+  // which are uncovered a little each frame as they run down.
+  function runLiquid(c, ctx, full, drips, speed) {
+    ctx.drawImage(full, 0, 0);
+    for (const d of drips) ctx.clearRect(d.x0, d.y, d.w, d.end - d.y + 4);
+    const fctx = full.getContext("2d");
+    makeWipeable(c, ctx, [fctx]);
+    let raf;
+    const step = () => {
+      let running = false;
+      for (const d of drips) {
+        if (d.y >= d.end + 4) continue;
+        running = true;
+        if (Math.random() < 0.004) d.v *= 0.4; // (it catches, then creeps on)
+        else d.v = Math.min(d.max, d.v + d.max * 0.01);
+        const y1 = Math.min(d.end + 4, d.y + d.v * speed);
+        const hgt = Math.max(1, Math.ceil(y1 - d.y));
+        ctx.clearRect(d.x0, d.y, d.w, hgt);
+        ctx.drawImage(full, d.x0, d.y, d.w, hgt, d.x0, d.y, d.w, hgt);
+        d.y = y1;
+      }
+      if (running) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }
+
+  // Where a pool's lower edge is, straight down from (x, y): drips start there.
+  function poolBottom(fl, x, y) {
+    const { F, w, h } = fl;
+    let yy = Math.max(0, Math.floor(y)), xi = Math.max(0, Math.min(w - 1, Math.round(x)));
+    while (yy < h - 1 && F[yy * w + xi] > 0.5) yy++;
+    return yy;
   }
 
   // ---------------------------------------------------------------- effects
   const builders = {
+    // Blood on the glass: a heavy impact spatter, nearly black where it pooled and
+    // a translucent red at its thin edges, darker at the rims where it's drying,
+    // with spatter and mist flung out from it and drips running down.
     blood(fx) {
       const { c, ctx, w, h } = fullCanvas();
-      c.className = "fx-canvas";
-      const n = fx.intensity * 2 + 1;
-      const drips = [];
-      const colors = ["rgba(110,0,0,0.92)", "rgba(140,6,6,0.88)", "rgba(80,0,0,0.95)"];
-      for (let s = 0; s < n; s++) {
-        const cx = rand(w * 0.1, w * 0.9), cy = rand(h * 0.05, h * 0.75);
-        const R = rand(30, 70) * (0.7 + fx.intensity * 0.3);
-        const col = colors[s % colors.length];
-        for (let i = 0; i < 9; i++) blob(ctx, cx + rand(-R, R) * 0.5, cy + rand(-R, R) * 0.5, R * rand(0.35, 0.8), col);
-        // spatter spikes + droplets
+      c.className = "fx-canvas fx-blood";
+      const pools = liquidField(w, h), noise = makeNoise(), tone = makeNoise();
+      const splats = 1 + fx.intensity;
+      const starts = [];
+      for (let s = 0; s < splats; s++) {
+        const cx = rand(w * 0.12, w * 0.88), cy = rand(h * 0.08, h * 0.62);
+        const R = rand(34, 70) * (0.75 + fx.intensity * 0.22);
+        const flung = rand(0, TAU); // the direction it came from: spatter streams the other way
+        // The body: overlapping masses, heavier at the centre.
         for (let i = 0; i < 26; i++) {
-          const a = rand(0, Math.PI * 2), d = R * rand(1, 3.2);
-          const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
-          ctx.strokeStyle = col; ctx.lineWidth = rand(1, 4); ctx.lineCap = "round";
-          ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * R * 0.7, cy + Math.sin(a) * R * 0.7); ctx.lineTo(x, y); ctx.stroke();
-          blob(ctx, x, y, rand(2, 7), col);
+          const a = rand(0, TAU), d = R * Math.pow(Math.random(), 1.6) * 0.6;
+          pools.drop(cx + Math.cos(a) * d, cy + Math.sin(a) * d, R * rand(0.32, 0.72), rand(1.4, 2.0));
         }
-        for (let i = 0; i < 3 + fx.intensity; i++) {
-          drips.push({ x: cx + rand(-R, R) * 0.6, y: cy + rand(0, R * 0.4), r: rand(3, 7), v: rand(0.4, 1.4), life: rand(80, 320), col });
+        // Fingers thrown out of it, each ending in a bead, some breaking off into a teardrop.
+        const arms = 7 + Math.floor(rand(0, 9));
+        for (let i = 0; i < arms; i++) {
+          const a = rand(0, TAU), len = R * rand(0.7, 2.3) * (Math.cos(a - flung) > 0.4 ? 1.5 : 1);
+          let x = cx, y = cy;
+          for (let t = 0; t <= 1; t += 0.06) {
+            x = cx + Math.cos(a + Math.sin(t * 6) * 0.04) * len * t;
+            y = cy + Math.sin(a + Math.sin(t * 6) * 0.04) * len * t;
+            pools.drop(x, y, R * 0.2 * (1 - t * 0.72), 1.5, a, 1.5);
+          }
+          pools.drop(x, y, R * 0.11, 1.8);
+          if (Math.random() < 0.6) {
+            const d = len * rand(1.12, 1.45);
+            pools.drop(cx + Math.cos(a) * d, cy + Math.sin(a) * d, R * rand(0.05, 0.09), 1.8, a, rand(1.8, 3));
+          }
         }
+        // Satellite droplets: smaller and more stretched the further they flew.
+        for (let i = 0; i < 140; i++) {
+          const a = Math.random() < 0.55 ? flung + rand(-0.8, 0.8) : rand(0, TAU);
+          const far = Math.pow(Math.random(), 1.5) * 3.8, d = R * (0.9 + far);
+          const r = Math.max(1, R * 0.1 * (1.3 - far / 4.2) * rand(0.35, 1.2));
+          pools.drop(cx + Math.cos(a) * d, cy + Math.sin(a) * d, r, rand(1.4, 2), a, 1 + far * 0.7);
+        }
+        // A fine mist around it all.
+        for (let i = 0; i < 700; i++) {
+          const a = rand(0, TAU), d = R * rand(0.8, 5.2);
+          pools.drop(cx + Math.cos(a) * d, cy + Math.sin(a) * d, rand(0.6, 1.7), rand(1.2, 2.2));
+        }
+        // Drips, from the bottom of the pool.
+        for (let i = 0; i < 2 + fx.intensity * 2; i++) starts.push({ x: cx + rand(-R, R) * 0.55, y: cy, len: rand(50, 160) * (0.6 + fx.intensity * 0.45), r0: rand(2, 4.2) });
       }
+      const drips = starts.map((s) => {
+        const y = poolBottom(pools, s.x, s.y) - 2;
+        const { x, end } = dripPath(pools, s.x, y, s.len, s.r0, { wobble: 0.6 });
+        const half = s.r0 * 2.4 + 6 + Math.abs(x - s.x);
+        return { x0: Math.floor(Math.min(s.x, x) - half), w: Math.ceil(Math.abs(x - s.x) + half * 2), y: y + 3, end, v: 0, max: rand(0.35, 1.1) };
+      });
+      const full = shadeLiquid(pools, noise, (th, n, x, y) => {
+        const k = Math.min(1, th * 2.2), rim = th < 0.025 ? 1 - th / 0.025 : 0;
+        const mottle = tone(x / 60, y / 60, 2);
+        const r = (180 - 112 * k) * (0.85 + mottle * 0.3) - rim * 25;
+        return [r, 10 - 8 * k + mottle * 5, 16 - 12 * k, 0.8 + 0.19 * k + rim * 0.06];
+      }, { edge: 0.12, relief: 9, gloss: 0.75, shine: 70 });
       layer().append(c);
-      makeWipeable(c, ctx, () => document.getElementById("in")?.focus());
       Sound.burst(0.35, 0.5, 500);
-      let raf;
-      const step = () => {
-        for (const d of drips) {
-          if (d.life <= 0) continue;
-          ctx.fillStyle = d.col;
-          ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill();
-          d.y += d.v; d.v *= 0.997; d.r = Math.max(1.5, d.r * 0.9995); d.life--;
-        }
-        raf = requestAnimationFrame(step);
-      };
-      step();
-      return { el: c, stop: () => cancelAnimationFrame(raf) };
+      return { el: c, stop: runLiquid(c, ctx, full, drips, 1) };
     },
 
+    // Goo: alien ichor, thick and translucent, dark with a sick bioluminescent green,
+    // threaded with darker veins, an oily sheen that shifts colour where the light
+    // catches it, and bubbles caught inside. It sags from the top in heavy strands.
     goo(fx) {
       const { c, ctx, w, h } = fullCanvas();
       c.className = "fx-canvas fx-goo";
-      const col = () => `rgba(${rand(90, 140) | 0},${rand(200, 255) | 0},${rand(30, 80) | 0},${rand(0.5, 0.7)})`;
-      // A wavy sheet along the top edge
-      const band = h * (0.06 + fx.intensity * 0.06);
-      ctx.fillStyle = col();
-      ctx.beginPath(); ctx.moveTo(0, 0);
-      for (let x = 0; x <= w + 40; x += 40) ctx.lineTo(x, band + Math.sin(x / 70) * 18 + rand(-10, 10));
-      ctx.lineTo(w, 0); ctx.closePath(); ctx.fill();
-      // Random globs
-      for (let i = 0; i < 5 * fx.intensity; i++) blob(ctx, rand(0, w), rand(0, h * 0.8), rand(20, 90), col());
+      const fl = liquidField(w, h), noise = makeNoise(), veins = makeNoise(), glow = makeNoise(), lie = makeNoise();
+      // The sheet along the top, its lower edge sagging into lobes.
+      const band = h * (0.05 + fx.intensity * 0.04);
+      for (let x = -30; x < w + 30; x += 12) {
+        const depth = band * (0.55 + lie(x / 220, 0.5, 2) * 1.1);
+        fl.drop(x, -depth * 0.25, depth * 1.05, 1.9, Math.PI / 2, 1);
+      }
+      const lobes = [];
+      for (let i = 0; i < 3 + fx.intensity * 3; i++) {
+        const x = rand(0, w), depth = band * (0.55 + lie(x / 220, 0.5, 2) * 1.1);
+        const r = rand(14, 34) * (0.8 + fx.intensity * 0.15);
+        fl.drop(x, depth * 0.55 + r * 0.5, r, 1.7, Math.PI / 2, rand(1.3, 2)); // (swelling out of the sheet)
+        fl.drop(x, depth * 0.45, r * 0.8, 1.6, Math.PI / 2, 1.4);
+        lobes.push({ x, y: depth * 0.55 + r * 0.7 });
+      }
+      // Globs flung across the glass: rounder and heavier than blood, a few beads round them.
+      for (let i = 0; i < 2 * fx.intensity; i++) {
+        const cx = rand(w * 0.08, w * 0.92), cy = rand(h * 0.25, h * 0.85), R = rand(22, 58);
+        for (let j = 0; j < 14; j++) {
+          const a = rand(0, TAU), d = R * Math.pow(Math.random(), 1.3) * 0.65;
+          fl.drop(cx + Math.cos(a) * d, cy + Math.sin(a) * d, R * rand(0.35, 0.75), rand(1.5, 2.1), rand(0, TAU), rand(1, 1.6));
+        }
+        for (let j = 0; j < 18; j++) {
+          const a = rand(0, TAU), d = R * rand(0.9, 2.2);
+          fl.drop(cx + Math.cos(a) * d, cy + Math.sin(a) * d, R * rand(0.06, 0.16), 1.8, a, rand(1, 1.8));
+        }
+        lobes.push({ x: cx, y: cy, glob: R });
+      }
+      // Strands hanging down, slow and heavy: a thin neck, beads along it, a fat drop at the end.
       const drips = [];
-      for (let i = 0; i < 10 * fx.intensity; i++) {
-        drips.push({ x: rand(0, w), y: band * rand(0.6, 1), r: rand(6, 16), v: rand(0.15, 0.7), life: rand(300, 1400), col: col() });
+      for (let i = 0; i < 4 + fx.intensity * 4; i++) {
+        const from = lobes[Math.floor(rand(0, lobes.length))] || { x: rand(0, w), y: band };
+        const sx = from.x + rand(-12, 12) * (from.glob ? from.glob / 20 : 1);
+        const y = poolBottom(fl, sx, from.y) - 3;
+        const len = rand(60, h * (0.18 + fx.intensity * 0.12));
+        const r0 = rand(1.8, 3.4);
+        const { x, end } = dripPath(fl, sx, y, len, r0, { wobble: 0.35, bead: rand(1.5, 2.1), beads: rand(0, 2), top: 2.2, bottom: 1.2, stretch: 1.7 });
+        const half = r0 * 4 + 8 + Math.abs(x - sx);
+        drips.push({ x0: Math.floor(Math.min(sx, x) - half), w: Math.ceil(Math.abs(x - sx) + half * 2), y: y + 4, end, v: 0, max: rand(0.12, 0.45) });
+      }
+      const full = shadeLiquid(fl, noise, (th, n, x, y, nx, ny, depth) => {
+        const k = Math.max(0, Math.min(1, (depth - 0.5) / 3.5)); // (thin strands stay light; the deep sheet goes dark)
+        // Veins: fine dark threads, fading in and out.
+        const vein = Math.max(0, 1 - Math.abs(veins(x / 30, y / 30, 3) - 0.5) * 70) * Math.min(1, th * 4) * Math.pow(glow(x / 140 + 7, y / 140, 1), 1.5) * 1.6;
+        // A sick light from inside, in patches.
+        const lit = Math.pow(glow(x / 90, y / 90, 2), 4) * 1.6 * Math.min(1, th * 3);
+        let r = 50 - 40 * k + lit * 30, g = 105 - 78 * k + lit * 115, b = 30 - 20 * k + lit * 22;
+        r -= vein * 8; g -= vein * 30; b -= vein * 8;
+        // The oily film: its colour turns with the slope of the surface.
+        const slope = Math.min(1, Math.hypot(nx, ny) * 3), film = (nx * 2 + ny * 3 + n * 4) * 3;
+        r += slope * 0.3 * (70 + 70 * Math.sin(film)); g += slope * 0.3 * (40 + 40 * Math.sin(film + 2.1)); b += slope * 0.3 * (100 + 90 * Math.sin(film + 4.2));
+        return [r, g, b, 0.55 + 0.38 * k];
+      }, { edge: 0.14, relief: 7, gloss: 0.85, shine: 30 });
+      // Bubbles and motes caught in the thick of it.
+      const fctx = full.getContext("2d");
+      for (let i = 0, tries = 0; i < 26 * fx.intensity && tries < 4000; tries++) {
+        const x = rand(0, w), y = rand(0, h);
+        if (fl.F[(y | 0) * w + (x | 0)] < 1.4) continue;
+        i++;
+        const r = rand(1.5, 6);
+        fctx.fillStyle = "rgba(10,30,8,0.25)";
+        fctx.beginPath(); fctx.arc(x, y, r, 0, TAU); fctx.fill();
+        fctx.strokeStyle = "rgba(190,255,170,0.35)"; fctx.lineWidth = 0.8;
+        fctx.beginPath(); fctx.arc(x, y, r, 0, TAU); fctx.stroke();
+        fctx.strokeStyle = "rgba(255,255,255,0.7)"; fctx.lineWidth = Math.max(0.8, r * 0.3);
+        fctx.beginPath(); fctx.arc(x, y, r * 0.55, Math.PI * 1.1, Math.PI * 1.55); fctx.stroke();
+      }
+      for (let i = 0, tries = 0; i < 40 * fx.intensity && tries < 4000; tries++) {
+        const x = rand(0, w), y = rand(0, h);
+        if (fl.F[(y | 0) * w + (x | 0)] < 0.9) continue;
+        i++;
+        const g = fctx.createRadialGradient(x, y, 0, x, y, rand(2, 5));
+        g.addColorStop(0, "rgba(200,255,140,0.75)"); g.addColorStop(1, "rgba(120,255,80,0)");
+        fctx.fillStyle = g; fctx.fillRect(x - 6, y - 6, 12, 12);
       }
       layer().append(c);
-      makeWipeable(c, ctx, () => document.getElementById("in")?.focus());
       Sound.burst(0.6, 0.35, 250);
-      let raf;
-      const step = () => {
-        for (const d of drips) {
-          if (d.life <= 0) continue;
-          ctx.fillStyle = d.col;
-          ctx.beginPath(); ctx.arc(d.x + Math.sin(d.y / 40) * 1.5, d.y, d.r, 0, Math.PI * 2); ctx.fill();
-          d.y += d.v; d.life--;
-          if (Math.random() < 0.002) d.v *= 0.5; // occasional stall
-        }
-        raf = requestAnimationFrame(step);
-      };
-      step();
-      return { el: c, stop: () => cancelAnimationFrame(raf) };
+      return { el: c, stop: runLiquid(c, ctx, full, drips, 1) };
     },
 
+    // A crack in the glass: a crushed point of impact, jagged cracks running out of
+    // it and branching, rings of fracture between them, facets catching the light,
+    // and the light splitting faintly red and blue along the breaks.
     crack() {
-      const w = innerWidth, h = innerHeight;
-      const ox = rand(w * 0.2, w * 0.8), oy = rand(h * 0.2, h * 0.8);
-      let paths = "";
-      const rays = 9 + Math.floor(rand(0, 6));
-      for (let i = 0; i < rays; i++) {
-        let a = (i / rays) * Math.PI * 2 + rand(-0.2, 0.2), x = ox, y = oy, d = "M" + x + " " + y;
-        const len = rand(0.5, 1.2) * Math.max(w, h);
-        for (let s = 0; s < len; s += rand(20, 60)) {
-          a += rand(-0.25, 0.25);
-          x += Math.cos(a) * rand(20, 60); y += Math.sin(a) * rand(20, 60);
-          d += ` L${x.toFixed(1)} ${y.toFixed(1)}`;
+      const { c, ctx, w, h } = fullCanvas();
+      c.className = "fx-canvas fx-crack";
+      const ox = rand(w * 0.2, w * 0.8), oy = rand(h * 0.2, h * 0.8), far = Math.hypot(w, h);
+      // A jagged line between two points (midpoint displacement).
+      const jag = (x1, y1, x2, y2, rough, depth) => {
+        let pts = [[x1, y1], [x2, y2]];
+        for (let d = 0; d < depth; d++) {
+          const next = [pts[0]];
+          for (let i = 1; i < pts.length; i++) {
+            const [ax, ay] = pts[i - 1], [bx, by] = pts[i], len = Math.hypot(bx - ax, by - ay);
+            const off = len * rough * rand(-1, 1), nx = -(by - ay) / (len || 1), ny = (bx - ax) / (len || 1);
+            next.push([(ax + bx) / 2 + nx * off, (ay + by) / 2 + ny * off], pts[i]);
+          }
+          pts = next;
         }
-        paths += `<path d="${d}"/>`;
-      }
-      for (let r = 1; r <= 3; r++) {
-        const rad = r * rand(25, 45);
-        let d = "";
-        for (let i = 0; i <= rays; i++) {
-          const a = (i / rays) * Math.PI * 2;
-          const rr = rad * rand(0.8, 1.2);
-          d += `${i ? "L" : "M"}${(ox + Math.cos(a) * rr).toFixed(1)} ${(oy + Math.sin(a) * rr).toFixed(1)} `;
+        return pts;
+      };
+      const cracks = []; // { pts, w0, w1, a }
+      const n = 11 + Math.floor(rand(0, 8));
+      const angles = Array.from({ length: n }, (_, i) => (i / n) * TAU + rand(-0.22, 0.22)).sort((a, b) => a - b);
+      const radials = angles.map((a) => {
+        const len = far * rand(0.3, 0.9);
+        const pts = jag(ox, oy, ox + Math.cos(a) * len, oy + Math.sin(a) * len, 0.11, 5); // (straight runs, sharp kinks)
+        cracks.push({ pts, w0: 1.7, w1: 0.35, a: 0.95 });
+        // Branches splitting off it.
+        for (let b = 0; b < 1 + Math.floor(rand(0, 3)); b++) {
+          const at = pts[Math.floor(pts.length * rand(0.15, 0.75))], ba = a + rand(0.25, 0.65) * (Math.random() < 0.5 ? -1 : 1), bl = len * rand(0.12, 0.38);
+          cracks.push({ pts: jag(at[0], at[1], at[0] + Math.cos(ba) * bl, at[1] + Math.sin(ba) * bl, 0.12, 4), w0: 1, w1: 0.3, a: 0.8 });
         }
-        paths += `<path d="${d}" opacity="0.7"/>`;
+        return pts;
+      });
+      const pointAt = (pts, r) => pts.find(([x, y]) => Math.hypot(x - ox, y - oy) >= r) || pts[pts.length - 1];
+      // Rings of fracture between neighbouring cracks, bowing in toward the impact.
+      const r0 = rand(26, 40);
+      for (let k = 1; k <= 5; k++) {
+        const r = r0 * Math.pow(1.75, k);
+        for (let i = 0; i < n; i++) {
+          if (Math.random() > 0.8 - k * 0.11) continue;
+          const [ax, ay] = pointAt(radials[i], r * rand(0.9, 1.1)), [bx, by] = pointAt(radials[(i + 1) % n], r * rand(0.9, 1.1));
+          const mx = (ax + bx) / 2, my = (ay + by) / 2, pull = rand(0.06, 0.16);
+          const cx = mx + (ox - mx) * pull, cy = my + (oy - my) * pull;
+          const pts = [...jag(ax, ay, cx, cy, 0.05, 3), ...jag(cx, cy, bx, by, 0.05, 3).slice(1)];
+          cracks.push({ pts, w0: 1.1 - k * 0.12, w1: 0.9 - k * 0.12, a: 0.8 - k * 0.08 });
+        }
       }
-      const d = el("fx-crack", `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-        <g class="shadow">${paths}</g><g class="line">${paths}</g>
-        <circle cx="${ox}" cy="${oy}" r="10" class="impact"/></svg>`);
-      layer().append(d);
+      // Faint light through the impact.
+      const halo = ctx.createRadialGradient(ox, oy, 0, ox, oy, r0 * 4);
+      halo.addColorStop(0, "rgba(200,255,225,0.1)"); halo.addColorStop(1, "rgba(200,255,225,0)");
+      ctx.fillStyle = halo; ctx.fillRect(ox - r0 * 4, oy - r0 * 4, r0 * 8, r0 * 8);
+      // Facets near the centre catching the light.
+      for (let i = 0; i < n; i++) {
+        if (Math.random() < 0.45) continue;
+        const k = 1 + Math.floor(rand(0, 2)), ra = r0 * Math.pow(1.75, k - 1), rb = r0 * Math.pow(1.75, k);
+        const p = [pointAt(radials[i], ra), pointAt(radials[i], rb), pointAt(radials[(i + 1) % n], rb), pointAt(radials[(i + 1) % n], ra)];
+        const g = ctx.createLinearGradient(p[0][0], p[0][1], p[2][0], p[2][1]);
+        g.addColorStop(0, `rgba(235,255,240,${rand(0.06, 0.2).toFixed(2)})`); g.addColorStop(1, "rgba(235,255,240,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); p.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill();
+      }
+      // The crushed point of impact: small shards, each a little different.
+      for (let ring = 0; ring < 3; ring++) {
+        const ra = r0 * 0.38 * ring, rb = r0 * 0.38 * (ring + 1), m = 7 + ring * 5;
+        for (let j = 0; j < m; j++) {
+          const a0 = (j / m) * TAU + rand(-0.1, 0.1), a1 = ((j + 1) / m) * TAU + rand(-0.1, 0.1);
+          const q = [[ra, a0], [rb * rand(0.85, 1.15), a0], [rb * rand(0.85, 1.15), a1], [ra, a1]].map(([r, a]) => [ox + Math.cos(a) * r, oy + Math.sin(a) * r]);
+          ctx.fillStyle = Math.random() < 0.25 ? `rgba(0,0,0,${rand(0.2, 0.5).toFixed(2)})` : `rgba(225,255,235,${rand(0.05, 0.45).toFixed(2)})`;
+          ctx.strokeStyle = "rgba(240,255,245,0.55)"; ctx.lineWidth = 0.6;
+          ctx.beginPath(); q.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
+      }
+      // Each crack: a dark shadow, the light splitting red and blue, then the bright break.
+      const glint = makeNoise();
+      cracks.forEach((cr, j) => { cr.lit = cr.pts.map((_, i) => 0.25 + 0.75 * Math.pow(glint(i / 7, j * 3.7), 1.8) * 1.6); });
+      const strokeAll = (style, extra, dx, dy, alpha, catchLight = false) => {
+        ctx.strokeStyle = style; ctx.lineCap = "round"; ctx.lineJoin = "round";
+        for (const cr of cracks) {
+          const pts = cr.pts, last = pts.length - 1;
+          ctx.globalAlpha = cr.a * alpha;
+          for (let i = 1; i <= last; i++) {
+            if (catchLight) ctx.globalAlpha = Math.min(1, cr.a * alpha * cr.lit[i]);
+            ctx.lineWidth = Math.max(0.3, cr.w0 + (cr.w1 - cr.w0) * (i / last) + extra);
+            ctx.beginPath(); ctx.moveTo(pts[i - 1][0] + dx, pts[i - 1][1] + dy); ctx.lineTo(pts[i][0] + dx, pts[i][1] + dy); ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = 1;
+      };
+      strokeAll("rgba(0,0,0,0.6)", 2.2, 0.8, 1, 1);
+      strokeAll("rgba(255,70,70,0.3)", 0, 1, 0, 1);
+      strokeAll("rgba(80,200,255,0.3)", 0, -1, 0, 1);
+      // Something cold glowing through the breaks near the impact.
+      ctx.save();
+      ctx.shadowColor = "rgba(110,255,170,0.9)"; ctx.shadowBlur = 10;
+      ctx.strokeStyle = "rgba(120,255,175,0.5)"; ctx.lineCap = "round";
+      for (const pts of radials) {
+        for (let i = 1; i < pts.length; i++) {
+          const d = Math.hypot(pts[i][0] - ox, pts[i][1] - oy);
+          if (d > r0 * 6) break;
+          ctx.globalAlpha = 0.35 * (1 - d / (r0 * 6));
+          ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(pts[i - 1][0], pts[i - 1][1]); ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke();
+        }
+      }
+      ctx.restore();
+      strokeAll("rgba(228,255,238,0.95)", 0, 0, 0, 1, true);
+      // Hairline whiskers off the main cracks.
+      ctx.strokeStyle = "rgba(225,255,235,0.45)"; ctx.lineWidth = 0.5;
+      for (const pts of radials) {
+        for (let i = 4; i < pts.length; i += Math.floor(rand(3, 9))) {
+          const [x, y] = pts[i], a = rand(0, TAU), l = rand(3, 11);
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke();
+        }
+      }
+      layer().append(c);
       Sound.burst(0.15, 0.7, 3000);
       Sound.burst(0.4, 0.3, 1200);
-      return { el: d };
+      return { el: c };
     },
 
     alarm(fx) {

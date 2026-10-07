@@ -365,11 +365,6 @@ body {
 .fx-goo { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)) saturate(1.2); }
 .fx-static { image-rendering: pixelated; mix-blend-mode: screen; }
 
-.fx-crack svg { width: 100%; height: 100%; }
-.fx-crack path { fill: none; stroke-linejoin: round; }
-.fx-crack .shadow path { stroke: rgba(0,0,0,0.7); stroke-width: 4; }
-.fx-crack .line path { stroke: rgba(230,255,240,0.65); stroke-width: 1.3; }
-.fx-crack .impact { fill: rgba(220,255,230,0.25); stroke: rgba(255,255,255,0.6); }
 
 .fx-alarm {
   display: grid; place-items: center;
