@@ -35,7 +35,7 @@
   };
 
   // ------------------------------------------------------------ socket
-  let autoKeySent = false;
+  let autoKeySent = false, autoSttSent = false;
   function connect() {
     const u = new URL(`ws?s=${encodeURIComponent(code)}&role=dm`, location.href);
     u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -67,6 +67,8 @@
           autoKeySent = true;
           send({ t: "apiKey", provider: p.id, key: remembered });
         }
+        const groq = S.discord && !S.discord.sttKey && store.get("wardenKey:groq");
+        if (groq && !autoSttSent) { autoSttSent = true; send({ t: "sttKey", key: groq }); }
       } else if (msg.t === "toast") toast(msg.text, msg.level);
       else if (msg.t === "handoutWriting") handoutWriting(msg.busy);
       else if (msg.t === "handoutDraft") {
@@ -312,8 +314,27 @@
     renderSynopsis();
     renderRoom();
     renderMnavDot();
+    renderDiscord();
     $("retcon").disabled = !S.canRetcon;
     $("retcon").textContent = S.canRetcon > 1 ? `↶ Retcon last response (${S.canRetcon})` : "↶ Retcon last response";
+  }
+
+  // Discord (Settings): the Groq key, and the bot's link to a voice channel.
+  function renderDiscord() {
+    const d = S.discord;
+    $("discordSet").hidden = !d;
+    if (!d) return;
+    $("sttKey").placeholder = d.sttKey ? "A Groq key is set (paste another to replace it)" : "Groq API key (gsk_…)";
+    $("sttRemember").checked = !!store.get("wardenKey:groq");
+    $("discordInvite").href = d.invite || "#";
+    $("discordInvite").hidden = !d.invite;
+    $("discordState").textContent = d.listening
+      ? `Listening in ${d.listening.channel} (${d.listening.guild}).${d.sttKey ? "" : " Add a Groq key, or nothing is written down."}`
+      : "Not listening.";
+    $("discordStop").hidden = !d.listening;
+    $("discordLink").hidden = !!d.listening;
+    $("discordCode").hidden = !d.code || !!d.listening;
+    $("discordCode").innerHTML = d.code ? `In Discord, join the voice channel and type <code>/terminal listen code:${esc(d.code)}</code> (works once, for 15 minutes).` : "";
   }
 
   function fillSelect(sel, options, value) {
@@ -345,7 +366,8 @@
       case "warden": return { name: "Warden → agent", c: "var(--warden)" };
       case "aside": return { name: "Note → agent", by: "private", c: "var(--aside)" };
       case "aside_reply": return { name: "Agent → you", by: "private", c: "var(--aside)" };
-      case "heard": return { name: "Warden · said aloud", by: "speech → agent", c: "var(--heard)" };
+      case "heard": return { name: "Warden · said aloud", by: e.speaker ? "on Discord → agent" : "speech → agent", c: "var(--heard)" };
+      case "table": return { name: `${e.speaker || "Player"} · table talk`, by: "on Discord → agent", c: "var(--table)" };
       case "roll": return { name: "Roll result", c: "var(--roll)" };
       case "terminal": return { name: who(voiceName("terminal")), by, c: "var(--accent)" };
       case "system": return { name: who(voiceName("broadcast")), by, c: "var(--warn)" };
@@ -2293,6 +2315,20 @@
   });
 
   // ------------------------------------------------------------ session controls
+  $("sttKeySave").onclick = () => {
+    const k = $("sttKey").value.trim();
+    if (!k) return;
+    send({ t: "sttKey", key: k });
+    if ($("sttRemember").checked) store.set("wardenKey:groq", k);
+    $("sttKey").value = "";
+  };
+  $("sttRemember").onchange = (e) => {
+    if (!e.target.checked) store.del("wardenKey:groq");
+    else if ($("sttKey").value.trim()) store.set("wardenKey:groq", $("sttKey").value.trim());
+    else { e.target.checked = false; toast("Paste the Groq key, tick this, then save it.", "info"); }
+  };
+  $("discordLink").onclick = () => send({ t: "discordLink" });
+  $("discordStop").onclick = () => send({ t: "discordStop" });
   $("keyBtn").onclick = openKeyDialog;
   $("keywarn").onclick = openKeyDialog;
   $("sessionCode").onclick = () => copy(playerLink(), "Player link");

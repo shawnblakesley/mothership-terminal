@@ -14,6 +14,7 @@ import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap } from
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
+import { linkCode, discordStatus, stopListening } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
@@ -157,8 +158,9 @@ const DEFAULT_STATION = {
 
 // Log kinds players never see: Warden notes, the Warden's commands to the agent,
 // private notes between the Warden and the agent (aside / aside_reply), and what
-// the Warden said aloud at the table (heard: speech-to-text, for the agent).
-const PRIVATE_KINDS = new Set(["note", "warden", "aside", "aside_reply", "heard"]);
+// the Warden said aloud at the table (heard: speech-to-text, for the agent), and
+// what the players said aloud on Discord (table: the same, but only context).
+const PRIVATE_KINDS = new Set(["note", "warden", "aside", "aside_reply", "heard", "table"]);
 export const SPOKEN_KINDS = new Set(["terminal", "system", "entity"]);
 
 export function defaultGame(keys = {}) {
@@ -494,6 +496,8 @@ export class Session {
     this.roomBusy = ""; // the map room whose floor plan the agent is drawing
     this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
     if (this.state.localKeys) this.keys[LOCAL_KEYS] = true; // (started on this computer: its .env keys; see providers)
+    this.sttKey = ""; // Groq key, for writing down Discord voice (discordbot.js). Memory only, like this.keys.
+    this.discordCode = ""; // the one-time code the Warden types into Discord to link it here
     this.freeCalls = { day: "", count: 0 }; // calls on the server's free key today (see callModel)
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
@@ -682,6 +686,7 @@ export class Session {
       synopsisBusy: this.synopsisBusy,
       code: this.code,
       providers: catalog(this.keys),
+      discord: this.discordView(),
       allEffects: ALL_EFFECTS,
       rollOptions: { checks: CHECKS, skillLevels: SKILL_LEVELS },
       voiceOptions: { presets: PRESETS, fxParams: FX_PARAMS, variants: VARIANTS, styles: STYLES, engines: ENGINES, speakers: SPEAKERS },
@@ -1038,19 +1043,27 @@ export class Session {
         if (msg.clearPending) { this.genCounter++; s.pending = null; this.setBusy(false); }
         break;
       }
-      case "heard": {
+      case "heard":
         // What the Warden said aloud at the table (their console's speech-to-text).
-        // It doesn't prompt the agent: it goes with the next request, as fact.
-        // Speech in a row (nothing else logged in between) adds up in one entry.
-        const text = String(msg.text || "").replace(/\s+/g, " ").trim().slice(0, 2000);
-        if (!text) break;
-        const last = s.log.at(-1);
-        if (last?.kind === "heard" && last.text.length + text.length < 4000) {
-          last.text += ` ${text}`;
-          last.ts = Date.now();
-        } else this.addLog("heard", text);
+        return this.hearTable({ text: msg.text, warden: true });
+      case "sttKey": {
+        // A Groq key, for writing down Discord voice. Memory only.
+        const key = String(msg.key || "").trim();
+        rememberSecret(key);
+        if (key && !/^gsk_[A-Za-z0-9]{20,}$/.test(key)) {
+          this.send("dm", { t: "toast", level: "error", text: "That doesn't look like a Groq key (expected gsk_…)." });
+          return;
+        }
+        this.sttKey = key;
         break;
       }
+      case "discordLink":
+        this.discordCode = linkCode(this.code);
+        break;
+      case "discordStop":
+        stopListening(this.code);
+        this.discordCode = "";
+        break;
       case "note": {
         // A private note to the agent: it updates what's true, without the players seeing anything.
         const text = String(msg.text || "").trim().slice(0, 4000);
@@ -2489,7 +2502,42 @@ export class Session {
     this.requestReply();
   }
 
+  // Said aloud at the table: by the Warden (heard: their console's Listen button,
+  // or them on Discord), or by a player on Discord (table, under their name). It
+  // doesn't prompt the agent: it goes with the next request, the Warden's as fact,
+  // the players' as context. Speech in a row from the same person (nothing else
+  // logged in between) adds up in one entry.
+  hearTable({ text, speaker = "", warden = false }) {
+    text = String(text || "").replace(/\s+/g, " ").trim().slice(0, 2000);
+    if (!text) return;
+    if (warden) this.storyBegins();
+    const kind = warden ? "heard" : "table";
+    speaker = String(speaker || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    const last = this.state.log.at(-1);
+    if (last?.kind === kind && (last.speaker || "") === speaker && last.text.length + text.length < 4000) {
+      last.text += ` ${text}`;
+      last.ts = Date.now();
+      this.touch();
+    } else this.addLog(kind, text, speaker ? { speaker } : {});
+    this.syncDm();
+  }
+
+  // Discord, for the Warden console (null when the server has no bot).
+  discordView() {
+    const d = discordStatus(this.code);
+    if (d?.listening) this.discordCode = ""; // (used)
+    return d && { ...d, sttKey: !!this.sttKey, code: this.discordCode };
+  }
+
+  // Words Whisper should spell right: the station, the crew, the cast.
+  sttPrompt() {
+    const c = this.state.config;
+    const names = [c.stationName, ...c.crew.map((m) => m.name), ...(c.cast || []).map((m) => m.name)].filter(Boolean);
+    return names.length ? `Mothership RPG session aboard ${names.join(", ")}.`.slice(0, 600) : "";
+  }
+
   close() {
+    stopListening(this.code);
     for (const t of this.clockTimers.values()) clearTimeout(t);
     for (const t of this.effectTimers.values()) clearTimeout(t);
     for (const ws of this.sockets) ws.close(4004, "session ended");

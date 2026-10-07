@@ -74,6 +74,23 @@
         <option value="normal">Normal: a few sentences, no monologues</option>
         <option value="long">Expansive: longer speeches when it's dramatic</option>
       </select></label>
+    <div id="discordSet" hidden>
+      <h3 class="sethead">Discord</h3>
+      <p class="muted small">A bot in your Discord voice channel writes down what everyone says, by name, into this log for the agent: yours as things that happened, the players' as table talk. Players never see it. Speech-to-text runs on your own Groq key.</p>
+      <div class="row wrap">
+        <input id="sttKey" class="grow" type="password" autocomplete="off" spellcheck="false" placeholder="Groq API key (gsk_…)" aria-label="Groq API key">
+        <button id="sttKeySave">Save key</button>
+        <a href="https://console.groq.com/keys" target="_blank" rel="noopener">get one ↗</a>
+      </div>
+      <label class="check"><input type="checkbox" id="sttRemember"> <span>Remember the Groq key on this device</span></label>
+      <div class="row wrap">
+        <span id="discordState" class="grow small"></span>
+        <a id="discordInvite" target="_blank" rel="noopener" title="Add the bot to your Discord server (once)">Add the bot to a server ↗</a>
+        <button id="discordLink" title="A one-time code that links a Discord voice channel to this session">Get a link code</button>
+        <button id="discordStop" class="danger" hidden>Stop listening</button>
+      </div>
+      <p id="discordCode" class="small" hidden></p>
+    </div>
     <h3 class="sethead">The agent may…</h3>
     <label class="check"><input type="checkbox" id="narrator"> <span>narrate the scene <em>the NARRATOR describes what happens around the players: dripping water, flickering panels, people moving and reacting; never speaking to them</em></span></label>
     <label class="check"><input type="checkbox" id="agentEffects"> <span>trigger screen effects <em>alarms, glitches, blackouts, timed between lines</em></span></label>

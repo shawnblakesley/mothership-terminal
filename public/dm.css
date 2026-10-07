@@ -554,6 +554,10 @@ summary .muted { font-weight: 400; font-size: 12px; }
 /* ---- the Warden's speech (speech-to-text, for the agent) ---- */
 :root { --heard: #e8b04a; }
 .entry.heard { background: color-mix(in srgb, var(--heard) 7%, var(--panel2)); border-color: color-mix(in srgb, var(--heard) 28%, transparent); }
+/* ---- the players' speech on Discord (table talk: context for the agent) ---- */
+:root { --table: #7fa8d6; }
+.entry.table { background: color-mix(in srgb, var(--table) 6%, var(--panel2)); border-color: color-mix(in srgb, var(--table) 24%, transparent); }
+#discordCode code { user-select: all; }
 #micBtn { padding: 2px 8px; font-size: 12px; border: 1px solid var(--muted); }
 #micBtn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 #micBtn[aria-pressed="true"]::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--accent); animation: micpulse 1.2s ease-in-out infinite; vertical-align: 1px; }

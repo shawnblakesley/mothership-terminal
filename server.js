@@ -16,7 +16,8 @@ import { getProvider, looksLikeKey, catalog, offered, fixSelection, LOCAL_KEYS }
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
 import { setSoundsDir, saveSound, soundPath, deleteSoundFile, deleteSessionSounds, MAX_SOUND_BYTES } from "./sounds.js";
 import { track, gauge } from "./telemetry.js";
-for (const p of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"]) rememberSecret(process.env[p]);
+import { startDiscord } from "./discordbot.js";
+for (const p of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "DISCORD_BOT_TOKEN"]) rememberSecret(process.env[p]);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -430,6 +431,7 @@ loadSessions();
 sweep();
 setInterval(sweep, 3600_000).unref();
 const imported = importLegacyGame();
+startDiscord((code) => sessions.get(code)); // (only when DISCORD_BOT_TOKEN is set)
 
 server.listen(PORT, "0.0.0.0", () => {
   const lan = Object.values(os.networkInterfaces()).flat()

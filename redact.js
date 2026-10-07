@@ -1,13 +1,13 @@
 // LLM keys must never reach a log. Two layers:
 //   - the keys sessions actually hold are remembered (in memory only) and
 //     replaced wherever they'd appear, whatever their shape;
-//   - anything shaped like a credential (sk-..., sk-ant-..., AWS and GitHub
+//   - anything shaped like a credential (sk-..., sk-ant-..., gsk_..., AWS and GitHub
 //     keys, bearer tokens) is replaced too.
 // guardConsole() puts every console line through redact(); telemetry.js drops
 // any event that would contain one (looksSecret).
 
 const held = new Set();
-const SHAPES = String.raw`sk-(?:ant-)?[A-Za-z0-9_\-]{8,}|AKIA[0-9A-Z]{16}|gh[opsu]_[A-Za-z0-9]{20,}|Bearer\s+[A-Za-z0-9._\-]{12,}`;
+const SHAPES = String.raw`sk-(?:ant-)?[A-Za-z0-9_\-]{8,}|gsk_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|gh[opsu]_[A-Za-z0-9]{20,}|Bearer\s+[A-Za-z0-9._\-]{12,}`;
 const shapesAll = () => new RegExp(SHAPES, "g");
 const shapesAny = new RegExp(SHAPES);
 

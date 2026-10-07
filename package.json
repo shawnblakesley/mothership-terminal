@@ -9,9 +9,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",
+    "@discordjs/voice": "^0.19.2",
+    "discord.js": "^14.27.0",
     "express": "^4.21.2",
     "kokoro-js": "^1.2.1",
     "mespeak": "^2.0.2",
+    "opusscript": "^0.0.8",
+    "prism-media": "^1.3.5",
     "ws": "^8.18.0"
   },
   "overrides": {

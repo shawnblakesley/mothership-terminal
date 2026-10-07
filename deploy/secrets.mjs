@@ -17,7 +17,7 @@ import path from "path";
 
 const REGION = "us-west-2";
 // env var -> parameter name
-const PARAMS = { OPENROUTER_API_KEY: "/mothership/openrouter-api-key" };
+const PARAMS = { OPENROUTER_API_KEY: "/mothership/openrouter-api-key", DISCORD_BOT_TOKEN: "/mothership/discord-bot-token" };
 
 function credentials() {
   const e = process.env;

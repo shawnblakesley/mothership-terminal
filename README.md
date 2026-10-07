@@ -219,6 +219,20 @@ You can also ask it questions this way. Notes need an API key; they work in ever
 - Players never see it.
 - It uses the browser's own speech recognition. Chrome, Edge and Safari have it on. **Firefox** has it switched off: open `about:config`, set `media.webspeech.recognition.enable` to `true`, and reload the console (Listen tells you this if you press it without). Brave and some other Chromium browsers have no speech service behind it; Listen says so if that's the problem.
 
+### Discord
+
+When the group plays over Discord, a bot can sit in the voice channel and write down what **everyone** says, each under their name. It's on when the server sets `DISCORD_BOT_TOKEN` (see `.env.example`); then **Settings → Discord** shows up in the console.
+
+1. **Add the bot to a server** (the link in Settings → Discord), once per Discord server.
+2. Paste a **Groq API key** ([console.groq.com/keys](https://console.groq.com/keys)) and save it. The speech-to-text runs on Groq's Whisper with your key; like the LLM key it's kept in memory only (tick *Remember* to have this browser send it again after a restart).
+3. Press **Get a link code**, join the voice channel in Discord and type `/terminal listen code:<the code>`. The bot joins the channel and says in the chat that it's writing things down.
+
+- Whoever ran `/terminal listen` is the Warden: what you say goes in as **Warden · said aloud**, exactly like Listen (the agent takes it as having happened).
+- Everyone else goes in as **<their Discord name> · table talk**. The agent reads it as context (what the players mean to do, plan or say in character) but not as something the characters heard or did, and it never has Warden authority.
+- Like Listen, it doesn't prompt the agent and players never see it on their screens.
+- Anyone in the Discord server can stop it with `/terminal stop`, or you can press **Stop listening**. It also leaves when everyone has been gone from the channel for five minutes.
+- Hosting it: make an application at [discord.com/developers](https://discord.com/developers/applications), add a bot, and set its token as `DISCORD_BOT_TOKEN` (on the shared server it comes from SSM `/mothership/discord-bot-token`, like the OpenRouter key). No privileged intents are needed. The server log prints the bot's invite link when it starts.
+
 ## Station map
 
 The **Station map** has two views (switch with **Drawing / Status**):
