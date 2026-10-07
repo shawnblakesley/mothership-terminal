@@ -697,7 +697,7 @@
     // straight, kinked branches that split at sixty degrees, as real frost does,
     // fogging the glass round them with faceted flakes, thickest at the edges and
     // fading to nothing toward the middle, with a few glints. It reaches in unevenly,
-    // in drifts (further at higher intensity), then holds. Never quite opaque (player.css).
+    // in drifts (further at higher intensity), then holds. Half see-through (player.css).
     // It's slow: well over a minute to reach its full extent, each frond at its own
     // pace that wanders (crawling, stalling, edging on), and now and then the whole
     // frost lurches forward with a crack before it settles back to its creep.

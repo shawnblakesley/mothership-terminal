@@ -362,7 +362,7 @@ body {
 @keyframes fxIn { from { opacity: 0; } }
 
 .fx-canvas { width: 100%; height: 100%; }
-.fx-ice { opacity: 0.85; } /* (never quite opaque: the screen always shows through the frost) */
+.fx-ice { opacity: 0.425; } /* (half-there: the screen always shows through the frost) */
 .fx-goo { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)) saturate(1.2); }
 /* Goo is alive: it breathes (swelling a touch, hanging from the top) and its light
    throbs in an uneven double beat, each splash at its own pace (--beat). */
