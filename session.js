@@ -802,11 +802,14 @@ export class Session {
   // The line goes out once each version's first piece is ready; later pieces
   // follow as "part" messages, then "lineEnd".
   async scheduleLine(entry) {
-    const LEAD = 700, PIECE_GAP = 250, LINE_GAP = 150; // LEAD: time for every screen to decode the first clip
+    const PIECE_GAP = 250, LINE_GAP = 150;
     const c = this.state.config;
     // Discord: the bot speaks the line in its channel too (the main text, not per-player
     // versions), when someone can see it, with the voice's effects (in person: none).
     const talk = !!c.discordTalk && SPOKEN_KINDS.has(entry.kind) && discordLinked(this.code) && this.seenByAnyone(entry);
+    // LEAD: time for every screen to decode the first clip; for Discord, for the server
+    // to put its effects on too (a clip that's still late waits its turn: discordbot.js).
+    const LEAD = talk ? 1500 : 700;
     const screens = this.speaksOnScreens();
     const spoken = (screens || talk) && SPOKEN_KINDS.has(entry.kind);
     const voice = SPOKEN_KINDS.has(entry.kind) ? voiceFor(c.voices, entry) : null;

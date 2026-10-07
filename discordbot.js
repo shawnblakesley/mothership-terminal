@@ -19,6 +19,7 @@ import { joinVoiceChannel, EndBehaviorType, VoiceConnectionStatus, entersState, 
 import prism from "prism-media";
 import { Readable } from "stream";
 import { renderVoice } from "./voicefx.js";
+import { wavSeconds } from "./tts.js";
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN || "";
 export const discordEnabled = !!TOKEN;
@@ -70,23 +71,35 @@ function leave(guildId, why = "") {
 // ---------------------------------------------------------------- talking back
 
 // The channel's voice: clips (48 kHz stereo 16-bit) placed on the wall clock, mixed
-// 20 ms at a time, so a reverb tail can ring on under the next line. It ends once
-// the last clip has played; the next line starts a new one.
+// 20 ms at a time, so a reverb tail can ring on under the next line. A voice never
+// talks over the one before it: a clip that comes late (its effects took a while)
+// waits for the last one's voice to finish, as the screens do (voice.js busyUntil).
+// It runs on silence for a moment after the last sound (Discord holds some audio
+// ahead, which a new stream would cut off), then ends; the next line starts another.
 const FRAME = 960; // samples per 20 ms
+const GRACE = 48000 * 1.5; // silence after the last sound before it ends
 class Mixer extends Readable {
   constructor() {
     super();
     this.clips = [];
     this.pos = 0; // samples handed to Discord so far
     this.start = Date.now();
+    this.busyUntil = 0; // where the last voice (not its tail) ends
+    this.lastSound = 0; // where the last clip, tail and all, ends
   }
-  add(pcm, at) {
-    const from = Math.max(this.pos, Math.round((at - this.start) * 48)); // (late: right away)
-    this.clips.push({ data: new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length / 2), from });
+  // voice: how long the voice itself is (in samples), without its effects' tail.
+  add(pcm, at, voice) {
+    const due = Math.round((at - this.start) * 48);
+    const from = Math.max(this.pos, due, this.busyUntil);
+    if (from - due > 24000) console.warn(`[discord] a line started ${Math.round((from - due) / 48)} ms late`);
+    const data = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length / 2);
+    this.clips.push({ data, from });
+    this.busyUntil = from + voice;
+    this.lastSound = Math.max(this.lastSound, from + data.length / 2);
   }
-  cut() { this.clips = []; }
+  cut() { this.clips = []; this.lastSound = 0; }
   _read() {
-    if (!this.clips.length) { this.ended = true; return this.push(null); }
+    if (!this.clips.length && this.pos >= this.lastSound + GRACE) { this.ended = true; return this.push(null); }
     const mix = new Float32Array(FRAME * 2), end = this.pos + FRAME;
     for (const c of this.clips) {
       const a = Math.max(this.pos, c.from), b = Math.min(end, c.from + c.data.length / 2);
@@ -121,9 +134,10 @@ export async function discordSay(sessionCode, wav, fx, at) {
     l.player.on("error", (err) => console.warn(`[discord] speaking failed: ${err.message}`));
     l.player.on(AudioPlayerStatus.Idle, () => { if (l.mixer?.ended) l.mixer = null; });
   }
-  if (l.mixer && !l.mixer.ended) return l.mixer.add(pcm, at);
+  const voice = Math.round((wavSeconds(wav) / (fx.rate || 1)) * 48000);
+  if (l.mixer && !l.mixer.ended) return l.mixer.add(pcm, at, voice);
   l.mixer = new Mixer();
-  l.mixer.add(pcm, at); // (before it starts: it ends when it has nothing)
+  l.mixer.add(pcm, at, voice); // (before it starts: it ends when it has nothing)
   l.player.play(createAudioResource(l.mixer, { inputType: StreamType.Raw }));
 }
 
