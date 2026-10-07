@@ -440,6 +440,9 @@
   }
   ["input", "keyup", "click", "focus"].forEach((ev) => input.addEventListener(ev, placeCaret));
   addEventListener("resize", placeCaret);
+  // (and whenever the prompt changes size: renamed on connecting, the font arriving, the row shown again)
+  new ResizeObserver(() => placeCaret()).observe(promptEl);
+  new ResizeObserver(() => placeCaret()).observe(input);
 
   // Nothing speaks during a blackout; lines that arrive then stay silent.
   Voice.setBlocked(() => FX.has("blackout"));
