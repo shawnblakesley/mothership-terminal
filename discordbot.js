@@ -31,7 +31,7 @@ const SILENCE_MS = 900; // a pause this long ends a phrase
 const BYTES_PER_SEC = 48000 * 2 * 2; // what Discord decodes to: 48 kHz, stereo, 16-bit
 const MIN_BYTES = BYTES_PER_SEC * 0.5; // shorter is a cough or a click
 const MAX_BYTES = BYTES_PER_SEC * 30; // someone talking on and on: send it in pieces
-const EMPTY_LEAVE_MS = 5 * 60_000; // nobody left in the channel: go after this long
+const EMPTY_LEAVE_MS = 15_000; // nobody left in the channel: go after this long (a moment, for a dropped connection to come back)
 // Connect + Speak + View Channel. (It only listens; Speak keeps clients from flagging it.)
 const PERMISSIONS = 1024 + 1048576 + 2097152;
 // Whisper fills silence and noise with these; on their own they're never real.
@@ -391,15 +391,15 @@ function onVoiceState(oldState, newState) {
   for (const id of new Set([oldState.guild.id, newState.guild.id])) {
     const l = links.get(id);
     if (!l) continue;
-    const ch = newState.guild.channels.cache.get(l.channelId);
-    const people = ch?.members?.filter((m) => !m.user.bot).size ?? 0;
-    clearTimeout(l.emptyTimer);
-    l.emptyTimer = people ? null : setTimeout(() => leave(id, "Discord: everyone left the voice channel, so the bot left too."), EMPTY_LEAVE_MS);
     if (newState.id === client.user.id && newState.channelId && newState.channelId !== l.channelId) {
       l.channelId = newState.channelId; // (someone moved the bot)
       l.channelName = newState.channel?.name || l.channelName;
       getSession(l.session)?.syncDm();
     }
+    const ch = newState.guild.channels.cache.get(l.channelId);
+    const people = ch?.members?.filter((m) => !m.user.bot).size ?? 0;
+    clearTimeout(l.emptyTimer);
+    l.emptyTimer = people ? null : setTimeout(() => leave(id, "Discord: everyone left the voice channel, so the bot left too."), EMPTY_LEAVE_MS);
   }
 }
 
