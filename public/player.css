@@ -481,7 +481,11 @@ button.cs-num:focus-visible { outline: none; }
 .cs-list > div { border-bottom: 1px dashed var(--dim); padding: 0.05em 0; }
 .cs-list > div:last-child { border: 0; }
 .cs-chips { display: flex; flex-wrap: wrap; gap: 0.3em; }
-.cs-chips span { border: 2px solid var(--fg); border-radius: 999px; padding: 0 0.45em; font-size: 0.85em; }
+.cs-chips span, .cs-chips .cs-doc { border: 2px solid var(--fg); border-radius: 999px; padding: 2px calc(0.45em + 2px); font-size: 0.85em; }
+/* A document among the items: it opens. */
+.cs-chips .cs-doc { display: inline-flex; align-items: center; gap: 0.3em; background: none; color: inherit; font-family: inherit; text-shadow: inherit; line-height: inherit; cursor: pointer; }
+.cs-chips .cs-doc:hover, .cs-chips .cs-doc:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
+.cs-chips .cs-file { width: 1em; height: 1em; flex: none; }
 .cs-story { display: flex; flex-direction: column; gap: 0.3em; }
 /* The full sheet fills the panel; with room for it, the cards pair up side by side
    (by the space the sheet has, not the window's: a container query). */

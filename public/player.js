@@ -532,6 +532,7 @@
   let crew = [], claims = {}, myId = null;
   const crewKey = () => `crew:${code}`;
   const mine = () => crew.find((c) => c.id === myId) || null;
+  let docs = []; // the documents this player holds (handouts; see "documents")
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   function openPanel(id) {
@@ -583,6 +584,8 @@
       if (v) return vitalsChange(v.dataset.vital, Number(v.dataset.d));
       const s = e.target.closest("[data-check]");
       if (s) openSelfRoll(s.dataset.check);
+      const doc = e.target.closest("[data-doc]");
+      if (doc) showDoc(doc.dataset.doc);
     });
   }
 
@@ -618,6 +621,9 @@
     if (!c) { $("crewfile-body").innerHTML = '<div class="p-dim">NO CREW FILE SELECTED.</div>'; return; }
     $("crewfile-body").innerHTML = `<div class="cs cs-full">${sheetCards(c)}</div>`;
   }
+  // A document they hold, among their items: a file you can open.
+  const FILE_ICON = '<svg class="cs-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
+  const docChip = (d) => `<button type="button" class="cs-doc" data-doc="${escH(d.id)}" title="Open">${FILE_ICON}${escH(d.title.toUpperCase())}</button>`;
   // Everything on their sheet, in cards (the full file and the side sheet alike).
   const sheetCards = (c) => `
       ${sheetHead(c)}
@@ -625,7 +631,7 @@
       ${numbersCard("STATS", c.stats, rollHint())}
       ${numbersCard("SAVES", c.saves)}
       <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((x) => `<div>${escH(x)}</div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
-      <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${escH(x)}</span>`).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
+      <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length || docs.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${escH(x)}</span>`).join("")}${docs.map(docChip).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
       <div class="cs-card cs-story">
         ${c.crime ? `<div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>` : ""}
         ${c.backstory ? `<div class="p-text">${escH(c.backstory)}</div>` : ""}
@@ -640,6 +646,7 @@
 
   function renderSide() {
     const c = mine();
+    docsButton();
     const side = $("side");
     side.hidden = !c || !sideOpen || !wide() || spectate || !$("crewpick").hidden || !$("crewfile").hidden || !$("reveal").hidden; // (hidden while choosing a character, with the full sheet open, or a picture up)
     $("hdr-file").classList.toggle("on", !side.hidden);
@@ -726,12 +733,17 @@
   }
 
   // ------------------------------------------------------------ documents
-  // Handouts: a new one opens on arrival; DOCS lists them all.
-  let docs = [];
+  // Handouts: a new one opens on arrival, and they're kept with the player's items on
+  // their sheet. Without a sheet (no character picked), DOCS in the header lists them.
+  function docsButton() {
+    $("hdr-docs").hidden = $("hdr-docs-sep").hidden = !docs.length || spectate || !!mine();
+    $("hdr-docs").textContent = docs.length ? `DOCS (${docs.length})` : "DOCS";
+  }
   function setDocs(list) {
     docs = list || [];
-    $("hdr-docs").hidden = $("hdr-docs-sep").hidden = !docs.length || spectate;
-    $("hdr-docs").textContent = docs.length ? `DOCS (${docs.length})` : "DOCS";
+    docsButton();
+    renderSide();
+    if (!$("crewfile").hidden) renderFile();
     if (!$("docs").hidden && $("docs-body").hidden) showDocList();
   }
   function gotDoc(h) {
