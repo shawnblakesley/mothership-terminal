@@ -1321,7 +1321,8 @@
   function showImage({ title, name, src, credit = "" }) {
     if (!src) return FX.Sound.sting(); // (revealed, but no picture: just the sting)
     const box = $("reveal");
-    box.querySelector(".rv-title").textContent = String(title || name || "").toUpperCase();
+    const rvTitle = box.querySelector(".rv-title"), t = String(title || name || "").toUpperCase();
+    if (rvTitle.dataset.orig !== undefined) rvTitle.dataset.orig = t; else rvTitle.textContent = t; // (mid-glitch: effects.js puts it back)
     // (a credit's link stays clickable: everything else in it is text)
     const link = (t) => escH(t).replace(/(https?:\/\/[^\s<]+|[\w-]+(?:\.[\w-]+)+\/[^\s<]*)/g, (u) => `<a href="${u.startsWith("http") ? u : `https://${u}`}" target="_blank" rel="noopener">${u}</a>`);
     box.querySelector(".rv-pic").innerHTML = `<img src="${escH(src)}" alt="" referrerpolicy="no-referrer">`;

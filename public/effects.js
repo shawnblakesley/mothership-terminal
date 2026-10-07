@@ -904,6 +904,7 @@
     const targets = () => [
       ...[...document.querySelectorAll("#lines .line.done")].map((l) => l.querySelector(".lt") || l), // (beside a portrait: just its text)
       ...["hdr-station", "hdr-os", "hdr-access", "crewfile-close", "crewfile-change"].map((id) => document.getElementById(id)).filter(Boolean),
+      ...document.querySelectorAll("#reveal:not([hidden]) .rv-title"),
     ];
     const rot = (orig) => {
       const p = 0.05 * k + Math.random() * 0.06;
@@ -943,8 +944,8 @@
         if (Math.random() < 0.05 * k) card.style.setProperty("--cs", `${rand(-10, 10) * k}px`), card.classList.add("cr-shift");
         else card.classList.remove("cr-shift");
       }
-      // Their picture: jolted, torn into slices, the wrong colours, now and then inverted.
-      for (const box of document.querySelectorAll("#side .cs-facebox, #crewfile-body .cs-facebox")) {
+      // Their picture (and an adversary's, revealed): jolted, torn into slices, the wrong colours, now and then inverted.
+      for (const box of document.querySelectorAll("#side .cs-facebox, #crewfile-body .cs-facebox, #reveal .rv-pic")) {
         box.classList.add("cr-img");
         box.classList.toggle("cr-img-inv", Math.random() < 0.18);
         const torn = Math.random() < 0.55, top = rand(0, 70);

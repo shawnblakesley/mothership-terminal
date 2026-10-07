@@ -438,6 +438,9 @@ body {
 #crt .cr-img > * { transform: translateX(var(--fx, 0)); clip-path: inset(var(--ct, 0) 0 var(--cb, 0) 0); filter: hue-rotate(var(--fh, 0deg)) saturate(2.6) contrast(1.5); }
 #crt .cr-img.cr-img-inv > * { filter: invert(1) hue-rotate(var(--fh, 0deg)) contrast(1.8); }
 #crt .cr-img::after { content: ""; position: absolute; left: -4%; right: -4%; top: var(--bt, 50%); height: var(--bh, 4%); background: var(--fg); mix-blend-mode: difference; pointer-events: none; }
+/* (the adversary's picture keeps its scanlines: its tearing band goes before them) */
+#crt .rv-pic.cr-img::after { left: 0; right: 0; top: 0; height: auto; inset: 0; background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.3) 2px 3px); mix-blend-mode: normal; }
+#crt .rv-pic.cr-img::before { content: ""; position: absolute; z-index: 1; left: -4%; right: -4%; top: var(--bt, 50%); height: var(--bh, 4%); background: var(--fg); mix-blend-mode: difference; pointer-events: none; }
 .fx-corrupt { pointer-events: none; }
 .fx-corrupt i { position: absolute; left: 0; right: 0; opacity: 0.55; }
 .fx-corrupt .b-inv { backdrop-filter: invert(1) hue-rotate(180deg); }
