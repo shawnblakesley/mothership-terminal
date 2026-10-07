@@ -598,7 +598,7 @@ button.cs-num:focus-visible { outline: none; }
 /* Clickable stats, vitals controls, the self-roll panel. */
 #selfroll .p-btn { margin: 0 0.5em 0.2em 0; }
 #selfroll .p-btn.on { color: var(--fg); }
-/* (one character wide, the size and height of the lifted ■: 0.4em square, 0.08em up) */
+/* (a chosen pip: one character wide, centred on the letters' middle) */
 #selfroll .sr-pip { width: 0.4em; height: 0.4em; vertical-align: 0.08em; }
 #selfroll .sr-pip rect { fill: currentColor; }
 #selfroll .sr-pip path { stroke: var(--bg); stroke-width: 1.5; stroke-linecap: square; }

@@ -1179,7 +1179,7 @@
   });
 
   // ---- rolling your own Stat/Save: pick a relevant skill (optional; it adds its bonus), then roll.
-  // Edge: its own sign in the pip ([+] / [-]); chosen, it's cut out of a square the size of NORMAL's [■].
+  // Edge: its own sign in the pip ([+] / [-]); chosen, it's cut out of the square (pip).
   const ADV = [["none", "NORMAL", ""], ["advantage", "ADVANTAGE", "+"], ["disadvantage", "DISADVANTAGE", "-"]];
   let sr = null; // { check, skill, adv }
 
@@ -1197,15 +1197,16 @@
     if (!c || !sr) return;
     const base = c.stats[sr.check] ?? c.saves[sr.check];
     const bonus = skillBonus(c, sr.skill);
-    const pick = (on, attrs, label) => `<button type="button" class="p-btn${on ? " on" : ""}" ${attrs}>${on ? `[${SQ}]` : "[ ]"} ${escH(label)}</button>`;
+    // A chosen pip is a drawn square (one character wide), its sign (if any) cut out of it:
+    // drawn, not the ■ character, so every pip is exactly the same size.
+    const pip = (sign = "") => `<svg class="sr-pip" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10"/>${sign ? `<path d="M2.5 5h5${sign === "+" ? "M5 2.5v5" : ""}"/>` : ""}</svg>`;
+    const pick = (on, attrs, label) => `<button type="button" class="p-btn${on ? " on" : ""}" ${attrs}>[${on ? pip() : " "}] ${escH(label)}</button>`;
     $("sr-title").innerHTML = sq(`ROLL: ${escH(sr.check.toUpperCase())} (${base})`);
     $("sr-skills").innerHTML = [pick(!sr.skill, 'data-skill=""', "NONE"), ...c.skills.map((s) => pick(sr.skill === s.name, `data-skill="${escH(s.name)}"`, `${s.name.toUpperCase()} +${s.bonus}`))].join(" ");
     $("sr-adv").innerHTML = ADV.map(([id, label, sign]) => {
       if (!sign) return pick(sr.adv === id, `data-adv="${id}"`, label);
       const on = sr.adv === id;
-      // (chosen: the [■] square, drawn, with the sign cut out of it)
-      const pip = `<svg class="sr-pip" viewBox="0 0 10 10" aria-hidden="true"><rect width="10" height="10"/><path d="M2.5 5h5${sign === "+" ? "M5 2.5v5" : ""}"/></svg>`;
-      return `<button type="button" class="p-btn${on ? " on" : ""}" data-adv="${id}">[${on ? pip : sign}] ${label}</button>`;
+      return `<button type="button" class="p-btn${on ? " on" : ""}" data-adv="${id}">[${on ? pip(sign) : sign}] ${label}</button>`;
     }).join(" ");
     $("sr-target").textContent = `ROLL UNDER ${base + bonus} ON D100${sr.adv === "none" ? "" : " (ROLL TWICE)"}.`;
     $("sr-dice").placeholder = sr.adv === "none" ? "47" : "47 82";
