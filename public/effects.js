@@ -698,10 +698,14 @@
     // fogging the glass round them with faceted flakes, thickest at the edges and
     // fading to nothing toward the middle, with a few glints. It reaches in unevenly,
     // in drifts (further at higher intensity), then holds. Never quite opaque (player.css).
+    // It's slow: well over a minute to reach its full extent, each frond at its own
+    // pace that wanders (crawling, stalling, edging on), and now and then the whole
+    // frost lurches forward with a crack before it settles back to its creep.
     ice(fx) {
       const { c, ctx, w, h } = fullCanvas();
       c.className = "fx-canvas fx-ice";
-      const k = fx.intensity || 2, reach = Math.min(w, h) * (0.07 + 0.05 * k), drift = makeNoise(), bend = makeNoise();
+      const k = fx.intensity || 2, reach = Math.min(w, h) * (0.07 + 0.05 * k), drift = makeNoise(), bend = makeNoise(), pace = makeNoise();
+      const seconds = 110 - k * 13; // (to reach its full extent, at an average pace)
       // A faceted flake of frost (six-sided, not round), stamped along the branches as they grow.
       const puff = document.createElement("canvas");
       puff.width = puff.height = 32;
@@ -720,7 +724,7 @@
       const tips = [];
       const seed = (x, y, ang) => {
         const len = reach * (0.3 + drift(x / 150, y / 150, 2) * 1.1) * rand(0.75, 1.15);
-        tips.push({ x, y, ang, left: len, len, gen: 0, w: rand(1.1, 1.7), next: rand(8, 20) });
+        tips.push({ x, y, ang, left: len, len, gen: 0, w: rand(1.1, 1.7), next: rand(8, 20), speed: rand(0.55, 1.5), phase: rand(0, 100) });
       };
       for (let x = rand(0, 20); x < w; x += rand(22, 46)) { seed(x, -2, Math.PI / 2 + rand(-0.45, 0.45)); seed(x, h + 2, -Math.PI / 2 + rand(-0.45, 0.45)); }
       for (let y = rand(0, 20); y < h; y += rand(22, 46)) { seed(-2, y, rand(-0.45, 0.45)); seed(w + 2, y, Math.PI + rand(-0.45, 0.45)); }
@@ -740,17 +744,27 @@
       };
       layer().append(c);
       Sound.burst(0.25, 0.12, 5000);
-      let raf, last = performance.now(), crackle = 0;
+      const begun = performance.now();
+      let raf, last = begun, crackle = 0, surgeAt = begun + rand(12000, 22000), surgeUntil = 0;
       const step = (now) => {
         const dt = Math.min(50, now - last);
         last = now;
-        const grow = dt * 0.028 * (0.75 + k * 0.15);
+        // Now and then it lurches: a few seconds' growth in one, with a crack.
+        if (now > surgeAt) {
+          surgeUntil = now + rand(900, 1600);
+          surgeAt = now + rand(12000, 30000);
+          Sound.burst(0.35, 0.14, 4500);
+        }
+        const surge = now < surgeUntil ? 5 : 1;
+        const base = dt * (reach / (seconds * 1000)) * surge;
         ctx.lineCap = "round";
         // One stroke per generation and strength (all their new segments at once).
         const LEVELS = 5, paths = Array.from({ length: 4 }, () => Array.from({ length: LEVELS }, () => new Path2D()));
         for (let i = tips.length - 1; i >= 0; i--) {
           const t = tips[i];
-          const d = Math.min(t.left, grow * (t.gen ? 0.85 : 1));
+          // Its own pace, wandering: crawling, stalling, edging on.
+          const wander = 0.15 + 1.6 * pace(t.phase + (now - begun) / 7000, t.phase * 0.37, 2) ** 2;
+          const d = Math.min(t.left, base * t.speed * wander * (t.gen ? 1.6 : 1));
           if (Math.random() < 0.012) t.ang += rand(-0.3, 0.3); // (straight runs, then a sharp kink)
           const ang = t.ang + (bend(t.x / 28, t.y / 28) - 0.5) * 0.08;
           const nx = t.x + Math.cos(ang) * d, ny = t.y + Math.sin(ang) * d;
@@ -760,7 +774,8 @@
             paths[t.gen][Math.min(LEVELS - 1, Math.floor(strength * LEVELS))].lineTo(nx, ny);
           }
           // Haze: thick where the frost starts at the edge, thinning to nothing further in.
-          if (Math.random() < (t.gen === 0 && t.left > t.len * 0.55 ? 0.4 : 0.035) * strength) {
+          // (per distance grown, not per frame: a slow frond mustn't pile it up)
+          if (Math.random() < (t.gen === 0 && t.left > t.len * 0.55 ? 0.33 : 0.03) * strength * d) {
             const s = 24 - t.gen * 5;
             ctx.save(); ctx.globalAlpha = strength; ctx.translate(nx, ny); ctx.rotate(rand(0, Math.PI / 3));
             ctx.drawImage(puff, -s / 2, -s / 2, s, s); ctx.restore();
@@ -771,7 +786,7 @@
             t.next = rand(9, 24) * (1 + t.gen * 0.8);
             const len = Math.min(t.left + 10, reach * 0.35) * rand(0.25, 0.6) / (1 + t.gen * 0.6);
             for (const s of [-1, 1]) {
-              if (Math.random() < 0.55) tips.push({ x: t.x, y: t.y, ang: t.ang + s * (Math.PI / 3) + rand(-0.1, 0.1), left: len, len, gen: t.gen + 1, w: t.w * 0.62, next: rand(4, 9) });
+              if (Math.random() < 0.55) tips.push({ x: t.x, y: t.y, ang: t.ang + s * (Math.PI / 3) + rand(-0.1, 0.1), left: len, len, gen: t.gen + 1, w: t.w * 0.62, next: rand(4, 9), speed: t.speed * rand(0.8, 1.2), phase: t.phase + rand(0, 3) });
             }
           }
           if (t.left <= 0) {
@@ -784,7 +799,7 @@
           ctx.lineWidth = Math.max(0.35, 1.3 - g * 0.32);
           ctx.stroke(p);
         }));
-        if ((crackle += dt) > 140 && tips.length) { crackle = 0; if (Math.random() < 0.5) Sound.burst(0.04, 0.05, rand(4000, 7000)); }
+        if ((crackle += dt) > 400 && tips.length) { crackle = 0; if (Math.random() < 0.3) Sound.burst(0.04, 0.04, rand(4000, 7000)); }
         if (tips.length) raf = requestAnimationFrame(step);
       };
       raf = requestAnimationFrame(step);
