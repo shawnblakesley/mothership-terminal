@@ -452,10 +452,10 @@
       const when = `<span class="time">${time(e.ts)}</span>`;
       // Warden notes: one quiet line each.
       if (!sp) {
-        // "Agent triggered effect: blackout (2s) before line #13" -> "⚡ blackout (2s)":
+        // "Agent triggered effect: blackout (2s) before line #13" -> "<blackout icon> blackout (2s)":
         // it's listed right under the line it plays with.
         const fx = /^Agent triggered effect: (.*?)(?: (before|after) line #\d+)?$/.exec(e.text);
-        const txt = fx ? `⚡ ${esc(fx[1])}${fx[2] === "after" ? " · after this line" : ""}` : esc(e.text);
+        const txt = fx ? `${FX_META[fx[1].split(" ")[0]]?.[0] || "⚡"} ${esc(fx[1])}${fx[2] === "after" ? " · after this line" : ""}` : esc(e.text);
         return `<div class="entry note${fx ? " fx" : ""}"><span class="txt">${txt}</span>${when}${del}</div>`;
       }
       return `
@@ -541,7 +541,7 @@
       <button data-act="delLine" class="ghost" title="Remove line">✕</button>
       <div class="dvars">${(l.variants || []).map(variantRow).join("")}
         <button data-act="addVar" class="ghost small" title="Alternate line for a player or class">+ Variant</button></div>
-      ${l.effects?.length ? `<div class="dfx">${l.effects.map((f, i) => `<label class="chip"><input type="checkbox" data-leff="${i}" ${S.config.agentEffects ? "checked" : ""}> ⚡ ${FX_META[f.type]?.[0] || ""} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s <span class="muted">as this line starts</span></label>`).join("")}</div>` : ""}
+      ${l.effects?.length ? `<div class="dfx">${l.effects.map((f, i) => `<label class="chip"><input type="checkbox" data-leff="${i}" ${S.config.agentEffects ? "checked" : ""}> ${FX_META[f.type]?.[0] || "⚡"} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s <span class="muted">as this line starts</span></label>`).join("")}</div>` : ""}
     </div>`;
   const variantRow = (v) => `<div class="dvar">
       <input class="dvfor" list="variantTargets" value="${esc(v.for)}" placeholder="for: name or class" aria-label="Variant for">
