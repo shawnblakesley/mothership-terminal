@@ -716,8 +716,10 @@
   }
   function openCrewfile(picking) {
     confirming = picking;
-    $("crewfile-close").textContent = picking ? "[ BACK ]" : "[ CLOSE ]";
-    $("crewfile-change").textContent = picking ? "[ SELECT ]" : "[ CHANGE ]";
+    // (Mid-glitch, the label it rots and puts back is in data-orig: effects.js.)
+    const label = (b, t) => { if (b.dataset.orig !== undefined) b.dataset.orig = t; else b.textContent = t; };
+    label($("crewfile-close"), picking ? "[ BACK ]" : "[ CLOSE ]");
+    label($("crewfile-change"), picking ? "[ SELECT ]" : "[ CHANGE ]");
     openPanel("crewfile");
   }
   $("crewpick-list").addEventListener("click", (e) => {
