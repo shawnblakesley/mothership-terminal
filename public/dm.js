@@ -1686,10 +1686,10 @@
     }
     const discordBtn = $("voicesOn").querySelector('[data-on="discord"]');
     discordBtn.disabled = !d.enabled && on !== "discord";
-    discordBtn.title = d.enabled ? "The Discord bot speaks every line in its voice channel, with each voice's effects, at the same moment as the screens would" : "This server has no Discord bot (see Discord)";
+    discordBtn.title = d.enabled ? "The Discord bot speaks every line in its voice channel, with each voice's effects. While it isn't in one, the terminals speak instead." : "This server has no Discord bot (see Discord)";
     $("voicesNote").textContent = on === "discord"
-      ? d.listening ? `Spoken in ${d.listening.channel} on Discord. The screens stay quiet.` : "Until the bot is in a voice channel (Discord tab), the screens speak instead."
-      : on === "screens" ? "Each player's screen speaks the lines aloud." : "Nobody hears the voices: lines are only read.";
+      ? d.listening ? `Spoken in ${d.listening.channel} on Discord. The terminals stay quiet.` : "The bot isn't in a voice channel (Discord tab), so the terminals speak for now."
+      : on === "screens" ? "Each player's terminal speaks the lines aloud, even with the bot on Discord." : "Nobody hears the voices: lines are only read.";
   }
   $("voicesOn").addEventListener("click", (e) => {
     const on = e.target.closest("[data-on]")?.dataset.on;
