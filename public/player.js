@@ -601,9 +601,12 @@
     ? `<button type="button" class="cs-num" data-check="${k}" title="Roll ${k}"><span class="cs-circle">${v}</span><span class="cs-k">${k.toUpperCase()}</span></button>`
     : `<div class="cs-num"><span class="cs-circle">${v}</span><span class="cs-k">${k.toUpperCase()}</span></div>`;
   // Health, Wounds or Stress in a pill, with [-] / [+] when players track their own.
+  // (drawn, not typed: the font's hyphen is thinner than its plus)
+  const STEP_ICON = (d) => `<svg viewBox="0 0 10 10" aria-hidden="true"><path d="${d}" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>`;
+  const STEP_MINUS = STEP_ICON("M1.5 5h7"), STEP_PLUS = STEP_ICON("M1.5 5h7M5 1.5v7");
   function pill(field, label, now, max, subs) {
     const ctl = header.vitals && !spectate;
-    const btn = (d) => `<button type="button" class="p-btn cs-step" data-vital="${field}" data-d="${d}" aria-label="${field} ${d > 0 ? "up" : "down"}">${d > 0 ? "+" : "-"}</button>`;
+    const btn = (d) => `<button type="button" class="p-btn cs-step" data-vital="${field}" data-d="${d}" aria-label="${field} ${d > 0 ? "up" : "down"}">${d > 0 ? STEP_PLUS : STEP_MINUS}</button>`;
     return `<div class="cs-vital"><div class="cs-k">${label}</div>
       <div class="cs-pill">${ctl ? btn(-1) : ""}<span>${now}${max !== undefined ? ` <span class="cs-of">/</span> ${max}` : ""}</span>${ctl ? btn(1) : ""}</div>
       <div class="cs-subs">${subs.map((x) => `<span>${x}</span>`).join("")}</div></div>`;
