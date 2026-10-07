@@ -13,13 +13,14 @@
 //
 // Talking back (the session's "discordTalk" setting): every line the players'
 // screens would speak is spoken in the channel too, at the same moment, with its
-// voice's effects rendered on the server (voicefx.js).
+// voice's effects rendered on the server (voicefx.js). On joining, a random one of
+// the story's voices says "NOW RECORDING".
 import { Client, GatewayIntentBits, Events, MessageFlags, ActivityType } from "discord.js";
 import { joinVoiceChannel, EndBehaviorType, VoiceConnectionStatus, entersState, createAudioPlayer, createAudioResource, StreamType, NoSubscriberBehavior, AudioPlayerStatus } from "@discordjs/voice";
 import prism from "prism-media";
 import { Readable } from "stream";
 import { renderVoice } from "./voicefx.js";
-import { wavSeconds } from "./tts.js";
+import { wavSeconds, synthesize } from "./tts.js";
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN || "";
 export const discordEnabled = !!TOKEN;
@@ -32,7 +33,7 @@ const BYTES_PER_SEC = 48000 * 2 * 2; // what Discord decodes to: 48 kHz, stereo,
 const MIN_BYTES = BYTES_PER_SEC * 0.5; // shorter is a cough or a click
 const MAX_BYTES = BYTES_PER_SEC * 30; // someone talking on and on: send it in pieces
 const EMPTY_LEAVE_MS = 15_000; // nobody left in the channel: go after this long (a moment, for a dropped connection to come back)
-// Connect + Speak + View Channel. (It only listens; Speak keeps clients from flagging it.)
+// Connect + Speak + View Channel. (Speak: it announces itself, and can talk back.)
 const PERMISSIONS = 1024 + 1048576 + 2097152;
 // Whisper fills silence and noise with these; on their own they're never real.
 const HALLUCINATIONS = /^(thank you( (so much|very much))?|thanks( for watching)?|you|bye|okay|oh|um+|uh+|hmm+|so|\.+|subtitles by.*|please subscribe.*)[.!?]*$/i;
@@ -139,17 +140,40 @@ export async function discordSay(sessionCode, wav, fx, at) {
   const pcm = await renderVoice(wav, fx).catch(() => null);
   const l = linkOf(sessionCode);
   if (!pcm || !l || !l.talk) return;
+  play(l, pcm, wav, fx, at);
+}
+
+function play(l, pcm, wav, fx, at) {
   if (!l.player) {
     l.player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play } });
     l.connection.subscribe(l.player);
     l.player.on("error", (err) => console.warn(`[discord] speaking failed: ${err.message}`));
-    l.player.on(AudioPlayerStatus.Idle, () => { if (l.mixer?.ended) l.mixer = null; });
+    l.player.on(AudioPlayerStatus.Idle, () => { if (l.mixer?.ended) { l.mixer = null; settleMute(l); } });
   }
   const voice = Math.round((wavSeconds(wav) / (fx.rate || 1)) * 48000);
   if (l.mixer && !l.mixer.ended) return l.mixer.add(pcm, at, voice);
   l.mixer = new Mixer();
   l.mixer.add(pcm, at, voice); // (before it starts: it ends when it has nothing)
   l.player.play(createAudioResource(l.mixer, { inputType: StreamType.Raw }));
+}
+
+// Joining: a voice from the story, picked at random, says it's recording, with all
+// its effects. (Unmuted for that even when it won't talk back; muted again after.)
+async function announce(l, session) {
+  const voices = session.state.config.voices || [];
+  const v = voices[Math.floor(Math.random() * voices.length)];
+  const wav = v ? await synthesize("NOW RECORDING", v.voice).catch(() => null) : null;
+  const fx = v?.fx || {};
+  const pcm = wav ? await renderVoice(wav, fx).catch(() => null) : null;
+  if (!pcm || links.get(l.guildId) !== l || l.mixer) return settleMute(l);
+  play(l, pcm, wav, fx, Date.now());
+}
+
+// Muted unless it talks back (or is still saying something).
+function settleMute(l) {
+  const mute = !l.talk && !l.mixer;
+  if (links.get(l.guildId) !== l || l.connection.joinConfig.selfMute === mute) return;
+  try { l.connection.rejoin({ ...l.connection.joinConfig, selfMute: mute }); } catch {}
 }
 
 // A player cut the comms off: stop speaking now (as the screens do).
@@ -159,6 +183,7 @@ export function discordCut(sessionCode) {
   l.mixer.cut();
   l.mixer = null;
   try { l.player?.stop(true); } catch {} // (what's already queued for Discord, too)
+  settleMute(l);
 }
 
 // Talking back on or off: the bot unmutes itself to speak.
@@ -167,7 +192,7 @@ export function setDiscordTalk(sessionCode, on) {
   if (!l || l.talk === !!on) return;
   l.talk = !!on;
   if (!on) discordCut(sessionCode);
-  try { l.connection.rejoin({ ...l.connection.joinConfig, selfMute: !on }); } catch {}
+  settleMute(l);
 }
 
 // ---------------------------------------------------------------- audio
@@ -299,8 +324,8 @@ async function onListen(i) {
   leave(i.guildId); // (one channel per server)
   stopListening(code); // (and one channel per session)
   const talk = !!session.state.config.discordTalk; // (it unmutes to speak the characters' lines)
-  const connection = joinVoiceChannel({ channelId: channel.id, guildId: i.guildId, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false, selfMute: !talk });
-  const link = { session: code, guildName: i.guild.name, channelId: channel.id, channelName: channel.name, wardenId: i.user.id, wardenName: i.member?.displayName || i.user.username, connection, talk, player: null, mixer: null, chain: Promise.resolve(), names: new Map(), emptyTimer: null };
+  const connection = joinVoiceChannel({ channelId: channel.id, guildId: i.guildId, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false, selfMute: false }); // (unmuted to announce itself: announce)
+  const link = { session: code, guildId: i.guildId, guildName: i.guild.name, channelId: channel.id, channelName: channel.name, wardenId: i.user.id, wardenName: i.member?.displayName || i.user.username, connection, talk, player: null, mixer: null, chain: Promise.resolve(), names: new Map(), emptyTimer: null };
   links.set(i.guildId, link);
   showPresence();
   try {
@@ -319,6 +344,7 @@ async function onListen(i) {
     }
   });
   connection.on(VoiceConnectionStatus.Destroyed, () => links.get(i.guildId) === link && leave(i.guildId));
+  announce(link, session).catch((err) => { console.warn(`[discord] announcing failed: ${err.message}`); settleMute(link); });
   session.discordMoved(); // (voices set to play on Discord move there)
   session.send("dm", { t: "toast", level: "info", text: `Discord: listening in ${channel.name} (${i.guild.name}).` });
   const keyNote = session.sttKey ? "" : "\nNo Groq key yet: nothing is transcribed until the Warden adds one in Settings → Discord.";
