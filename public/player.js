@@ -1177,7 +1177,7 @@
   });
 
   // ---- rolling your own Stat/Save: pick a relevant skill (optional; it adds its bonus), then roll.
-  // Edge: its own sign in the pip ([+] / [-]), shown inverted when chosen (NORMAL's pip is [ ] / [■]).
+  // Edge: its own sign in the pip ([+] / [-]), chosen, it's cut out of NORMAL's [■] (so the two highlights match).
   const ADV = [["none", "NORMAL", ""], ["advantage", "ADVANTAGE", "+"], ["disadvantage", "DISADVANTAGE", "-"]];
   let sr = null; // { check, skill, adv }
 
@@ -1201,7 +1201,7 @@
     $("sr-adv").innerHTML = ADV.map(([id, label, sign]) => {
       if (!sign) return pick(sr.adv === id, `data-adv="${id}"`, label);
       const on = sr.adv === id;
-      return `<button type="button" class="p-btn${on ? " on" : ""}" data-adv="${id}">[${on ? `<span class="sr-sign">${sign}</span>` : sign}] ${label}</button>`;
+      return `<button type="button" class="p-btn${on ? " on" : ""}" data-adv="${id}">[${on ? `<span class="sr-pip">■<span>${sign}</span></span>` : sign}] ${label}</button>`;
     }).join(" ");
     $("sr-target").textContent = `ROLL UNDER ${base + bonus} ON D100${sr.adv === "none" ? "" : " (ROLL TWICE)"}.`;
     $("sr-dice").placeholder = sr.adv === "none" ? "47" : "47 82";

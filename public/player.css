@@ -590,8 +590,9 @@ button.cs-num:focus-visible { outline: none; }
 /* Clickable stats, vitals controls, the self-roll panel. */
 #selfroll .p-btn { margin: 0 0.5em 0.2em 0; }
 #selfroll .p-btn.on { color: var(--fg); }
-#selfroll .sr-sign { background: var(--fg); color: var(--bg); text-shadow: none; }
-#selfroll .p-btn:hover .sr-sign, #selfroll .p-btn:focus-visible .sr-sign { background: var(--bg); color: var(--fg); }
+#selfroll .sr-pip { position: relative; }
+#selfroll .sr-pip > span { position: absolute; inset: 0; text-align: center; color: var(--bg); text-shadow: none; }
+#selfroll .p-btn:hover .sr-pip > span, #selfroll .p-btn:focus-visible .sr-pip > span { color: var(--fg); }
 #selfroll [hidden] { display: none; }
 #sr-dice { background: transparent; border: 0; border-bottom: 2px solid var(--fg); outline: 0; color: var(--fg); font: inherit; text-shadow: inherit; text-align: center; }
 #sr-err { color: var(--fg); animation: blink 1s infinite steps(1); }
