@@ -221,6 +221,7 @@ body {
 @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
 
 #inputrow { display: flex; align-items: baseline; gap: 0.4em; position: relative; }
+#inputrow[hidden] { display: none; }
 #prompt { white-space: nowrap; }
 #in {
   flex: 1; min-width: 0;
@@ -458,7 +459,7 @@ body {
 /* Crew files: picker and the player's own sheet (replace the log while open). */
 #hdr .hdr-btn { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; text-shadow: inherit; letter-spacing: inherit; text-transform: uppercase; }
 #hdr .hdr-btn:hover, #hdr .hdr-btn:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
-body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow { display: none; }
+body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow, body.panel-open #watchpick { display: none; }
 /* The crew sheet, in cards (renderFile, renderSide): rounded boxes, values in pills and circles. */
 .cs { display: flex; flex-direction: column; gap: 0.5em; max-width: 30em; }
 .cs-card { border: 2px solid var(--fg); border-radius: 0.6em; padding: 0.45em 0.6em 0.55em; box-shadow: 0 0 8px color-mix(in srgb, var(--fg) 22%, transparent), inset 0 0 10px color-mix(in srgb, var(--fg) 7%, transparent); }

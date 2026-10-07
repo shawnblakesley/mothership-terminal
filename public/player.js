@@ -450,7 +450,7 @@
     // lights to come back (Voice is blocked meanwhile), then carry on.
     if (FX.has("blackout")) Voice.interrupt();
     form.classList.toggle("disabled", lockedOut());
-    input.disabled = lockedOut();
+    input.disabled = lockedOut() || watching();
     const typingElsewhere = document.activeElement && document.activeElement !== input && document.activeElement.matches("input, textarea, select");
     if (!lockedOut() && !spectate && !typingElsewhere) input.focus();
   });
@@ -458,7 +458,7 @@
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = input.value.trim();
-    if (!text || lockedOut()) return;
+    if (!text || lockedOut() || watching()) return;
     history.unshift(text);
     histIdx = -1;
     input.value = "";
@@ -532,6 +532,7 @@
   let crew = [], claims = {}, myId = null;
   const crewKey = () => `crew:${code}`;
   const mine = () => crew.find((c) => c.id === myId) || null;
+  const watching = () => !spectate && crew.length > 0 && !mine();
   let docs = []; // the documents this player holds (handouts; see "documents")
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
@@ -553,6 +554,10 @@
       if (!spectate && crew.length) setTimeout(() => { renderPicker(); openPanel("crewpick"); });
     }
     const pc = mine();
+    // Just watching (there are files, none of them theirs): no prompt, only the way back to the picker.
+    form.hidden = spectate || watching();
+    input.disabled = lockedOut() || watching();
+    $("watchpick").hidden = !watching();
     $("hdr-file").hidden = $("hdr-file-sep").hidden = spectate || !crew.length;
     $("hdr-file").textContent = pc ? `FILE: ${shortName(pc)}` : "FILE: NONE";
     if (!$("crewpick").hidden) renderPicker();
@@ -732,6 +737,7 @@
     if (c) { e.preventDefault(); showPicked(c.id); $("crewfile-change").focus(); }
   });
   $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
+  $("watchpick").onclick = () => toPicker();
   // ------------------------------------------------------------ markdown
   // Handouts are written in a little Markdown: # headings, **bold**, *italic*,
   // __underline__ (here, not bold), ~~struck out~~, `code`, - and 1. lists,
