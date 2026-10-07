@@ -30,10 +30,17 @@
     $("credit").hidden = bootEl.classList.contains("gone") || header.portraitCredit === false;
   }
 
-  // Turn on the terminal: unlock audio (needs a key press/click), CRT power-on.
+  // Turn on the terminal: CRT power-on, and sound. Browsers only allow sound after a key
+  // press or click, so until there's been one it waits (and the first one starts it).
   function powerOn() {
     FX.Sound.unlock();
     FX.Sound.beep(1200, 0.05);
+    const wake = () => {
+      FX.Sound.unlock();
+      if (FX.Sound.ctx?.state !== "running") return;
+      for (const ev of ["keydown", "pointerdown"]) removeEventListener(ev, wake, true);
+    };
+    for (const ev of ["keydown", "pointerdown"]) addEventListener(ev, wake, true);
     bootEl.classList.add("gone");
     showCredit();
     const crtEl = $("crt");
@@ -68,7 +75,7 @@
       window.history.replaceState(null, "", `?s=${code}`); // (plain "history" is the command history below)
       joinForm.hidden = true;
       await printBoot([`STATION LINK ........... ${info.stationName}`, ""], 120);
-      powerOn(); // submitting the form counts as the key press browsers need for audio
+      powerOn(); // (submitting the form is the key press browsers need for sound)
       connect();
     } catch (err) {
       joinErr.textContent = err.message;
@@ -88,14 +95,7 @@
       try {
         const info = await lookup(code);
         await printBoot([`STATION LINK ........... ${info.stationName}`, ""]);
-        $("boot-press").hidden = false;
-        const go = () => {
-          removeEventListener("keydown", go);
-          bootEl.removeEventListener("click", go);
-          powerOn();
-        };
-        addEventListener("keydown", go);
-        bootEl.addEventListener("click", go);
+        powerOn();
         connect();
       } catch (err) {
         askForCode(err.message);
@@ -1388,7 +1388,6 @@
         bootEl.classList.remove("gone");
         showCredit();
         bootText.textContent = "SESSION TERMINATED.\n\n";
-        $("boot-press").hidden = true;
         return askForCode();
       }
       setTimeout(connect, ev.code === 4029 ? 10000 : 1500);

@@ -344,9 +344,8 @@ body {
   display: flex; flex-direction: column; cursor: pointer;
 }
 #boot pre { margin: 0; font: inherit; white-space: pre-wrap; }
-#boot-press { margin-top: 1em; animation: blink 1.2s infinite steps(1); }
 #boot.gone { display: none; }
-#boot-press[hidden], #join[hidden] { display: none; }
+#join[hidden] { display: none; }
 #join { margin-top: 0.5em; cursor: auto; }
 #join label { margin-right: 0.4em; }
 #join-code {
