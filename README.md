@@ -225,7 +225,7 @@ When the group plays over Discord, a bot can sit in the voice channel and write 
 
 1. **Add the bot to a server** (the link in Settings → Discord), once per Discord server.
 2. Paste a **Groq API key** ([console.groq.com/keys](https://console.groq.com/keys)) and save it. The speech-to-text runs on Groq's Whisper with your key; like the LLM key it's kept in memory only (tick *Remember* to have this browser send it again after a restart).
-3. Press **Get a link code**, join the voice channel in Discord and type `/terminal listen code:<the code>`. The bot joins the channel and says in the chat that it's writing things down.
+3. Join the voice channel in Discord and type `/terminal listen code:<the session code>`: the same code players join with, and it doesn't change. (The Discord button under the comms box, or Copy in Settings → Discord, copies the whole command.) The bot joins the channel and says in the chat that it's writing things down. Anyone with the code can do this, and whoever does is the Warden on Discord, so keep the code within your group.
 
 - Whoever ran `/terminal listen` is the Warden: what you say goes in as **Warden · said aloud**, exactly like Listen (the agent takes it as having happened).
 - Everyone else goes in as **table talk**. The agent reads it as context (what the players mean to do, plan or say in character) but not as something the characters heard or did, and it never has Warden authority.

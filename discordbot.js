@@ -3,9 +3,8 @@
 // button does for one microphone. One bot serves every session; it's on when
 // the server sets DISCORD_BOT_TOKEN.
 //
-// Linking: the Warden console asks for a one-time code (linkCode); in Discord
-// the Warden, in a voice channel, types /terminal listen code:<it>. The bot joins
-// that channel. Whoever linked it is the Warden: their speech is logged like the
+// Linking: in a voice channel, the Warden types /terminal listen code:<the session's
+// code> (the one players join with). The bot joins that channel. Whoever linked it is the Warden: their speech is logged like the
 // Listen button's (fact, for the agent). Everyone else's is table talk, under the
 // character they play once the Warden says (/terminal player), else their name.
 //
@@ -18,7 +17,6 @@
 import { Client, GatewayIntentBits, Events, MessageFlags } from "discord.js";
 import { joinVoiceChannel, EndBehaviorType, VoiceConnectionStatus, entersState, createAudioPlayer, createAudioResource, StreamType, NoSubscriberBehavior, AudioPlayerStatus } from "@discordjs/voice";
 import prism from "prism-media";
-import crypto from "crypto";
 import { Readable } from "stream";
 import { renderVoice } from "./voicefx.js";
 
@@ -28,7 +26,6 @@ export const discordEnabled = !!TOKEN;
 const STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 const STT_MODEL = process.env.DISCORD_STT_MODEL || "whisper-large-v3-turbo";
 const STT_LANGUAGE = process.env.DISCORD_STT_LANGUAGE ?? "en"; // "" = Whisper guesses
-const LINK_TTL_MS = 15 * 60_000;
 const SILENCE_MS = 900; // a pause this long ends a phrase
 const BYTES_PER_SEC = 48000 * 2 * 2; // what Discord decodes to: 48 kHz, stereo, 16-bit
 const MIN_BYTES = BYTES_PER_SEC * 0.5; // shorter is a cough or a click
@@ -42,24 +39,7 @@ const HALLUCINATIONS = /^(thank you( (so much|very much))?|thanks( for watching)
 let client = null;
 let getSession = () => null;
 let inviteUrl = "";
-const codes = new Map(); // link code -> { session, expires }
 const links = new Map(); // guild id -> { session, guildName, channelId, channelName, wardenId, wardenName, connection, chain, names, emptyTimer }
-
-// No 0/O/1/I/L, like session codes: it gets typed from one screen into another.
-const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-// A fresh one-time code for a session (any older one for it stops working).
-export function linkCode(sessionCode) {
-  for (const [c, v] of codes) if (v.session === sessionCode || v.expires < Date.now()) codes.delete(c);
-  let code;
-  do code = [...crypto.randomBytes(6)].map((b) => ALPHABET[b % ALPHABET.length]).join("");
-  while (codes.has(code));
-  codes.set(code, { session: sessionCode, expires: Date.now() + LINK_TTL_MS });
-  return code;
-}
-
-// Can this link code still be used? (Not yet used, not expired.)
-export const codeValid = (code) => (codes.get(code)?.expires ?? 0) > Date.now();
 
 // For the Warden console: whether the bot is on, how to invite it, and where it's listening.
 export function discordStatus(sessionCode) {
@@ -272,7 +252,7 @@ const COMMANDS = [{
   integration_types: [0], // (installed to a server, not to a user: it needs to be in the server to join voice)
   options: [
     { type: 1, name: "listen", description: "Join your voice channel and write down what's said, into a session's log", options: [
-      { type: 3, name: "code", description: "The link code from the Warden console (Settings, Discord)", required: true },
+      { type: 3, name: "code", description: "The game's session code (the one players join with)", required: true },
     ] },
     { type: 1, name: "player", description: "Say which crew member you play (the Warden can set it for anyone)", options: [
       { type: 3, name: "character", description: "A crew member's name, or Nobody (the Warden can also give Warden)", required: true, autocomplete: true },
@@ -284,23 +264,18 @@ const COMMANDS = [{
 
 async function onListen(i) {
   const code = String(i.options.getString("code") || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const ticket = codes.get(code);
-  if (!ticket || ticket.expires < Date.now()) {
-    return i.reply({ content: "That code doesn't work. Get a new one from the Warden console: Settings, Discord, Get a link code.", flags: MessageFlags.Ephemeral });
-  }
+  const session = getSession(code);
+  if (!session) return i.reply({ content: "No game with that code. Use the session code from the Warden console (it's at the top).", flags: MessageFlags.Ephemeral });
   const channel = i.member?.voice?.channel;
   if (!channel) return i.reply({ content: "Join a voice channel first, then run this again.", flags: MessageFlags.Ephemeral });
-  const session = getSession(ticket.session);
-  if (!session) return i.reply({ content: "That session has ended.", flags: MessageFlags.Ephemeral });
   if (!channel.joinable) return i.reply({ content: `I can't join ${channel.name}: give me Connect and View Channel there.`, flags: MessageFlags.Ephemeral });
-  codes.delete(code);
   await i.deferReply();
 
   leave(i.guildId); // (one channel per server)
-  stopListening(ticket.session); // (and one channel per session)
+  stopListening(code); // (and one channel per session)
   const talk = !!session.state.config.discordTalk; // (it unmutes to speak the characters' lines)
   const connection = joinVoiceChannel({ channelId: channel.id, guildId: i.guildId, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false, selfMute: !talk });
-  const link = { session: ticket.session, guildName: i.guild.name, channelId: channel.id, channelName: channel.name, wardenId: i.user.id, wardenName: i.member?.displayName || i.user.username, connection, talk, player: null, mixer: null, chain: Promise.resolve(), names: new Map(), emptyTimer: null };
+  const link = { session: code, guildName: i.guild.name, channelId: channel.id, channelName: channel.name, wardenId: i.user.id, wardenName: i.member?.displayName || i.user.username, connection, talk, player: null, mixer: null, chain: Promise.resolve(), names: new Map(), emptyTimer: null };
   links.set(i.guildId, link);
   try {
     await entersState(connection, VoiceConnectionStatus.Ready, 20_000);

@@ -327,8 +327,8 @@
   const discordReady = () => !!(S?.discord?.enabled && S.discord.sttKey);
 
   // With Discord ready, Listen becomes the Discord button: it copies the /terminal listen
-  // command (with a fresh link code), and pulses while the bot is listening.
-  let micMode = "", micTitle = null, copyWanted = null;
+  // command (with the session's code), and pulses while the bot is listening.
+  let micMode = "", micTitle = null;
   function renderDiscordButton() {
     const d = S.discord || {}, btn = $("micBtn"), on = discordReady();
     micTitle ??= btn.title;
@@ -342,7 +342,7 @@
         btn.setAttribute("aria-label", d.listening ? "Discord: listening. Copy the listen command" : "Discord: copy the listen command");
         btn.setAttribute("aria-pressed", String(!!d.listening));
         btn.title = d.listening
-          ? `Listening on Discord in ${d.listening.channel} (${d.listening.guild}): what's said there goes into the log. Click to copy a new /terminal listen command (to move it to another channel).`
+          ? `Listening on Discord in ${d.listening.channel} (${d.listening.guild}): what's said there goes into the log. Click to copy the /terminal listen command (to move it to another channel).`
           : "Discord: click to copy the /terminal listen command, then paste it into your voice channel's chat to start listening.";
       } else {
         btn.removeAttribute("aria-label");
@@ -351,16 +351,12 @@
         btn.setAttribute("aria-pressed", String(listening));
       }
     }
-    // The code the button asked for is here: copy the command.
-    if (copyWanted && d.code && d.code !== copyWanted.prev) {
-      copyWanted = null;
-      const cmd = `/terminal listen code:${d.code}`;
-      navigator.clipboard.writeText(cmd).then(() => toast("Copied. Paste it into your Discord voice channel's chat and send it."), () => copy(cmd, "Command"));
-    }
   }
+  // The command that brings the bot into a voice channel: the session's own code.
+  const listenCommand = () => `/terminal listen code:${code}`;
   function copyDiscordCommand() {
-    copyWanted = { prev: S.discord?.code || "" };
-    send({ t: "discordLink" }); // (a fresh code, good for 15 minutes)
+    const cmd = listenCommand();
+    navigator.clipboard.writeText(cmd).then(() => toast("Copied. Paste it into your Discord voice channel's chat and send it."), () => copy(cmd, "Command"));
   }
 
   // Discord (Settings): the Groq key, and the bot's link to a voice channel.
@@ -380,9 +376,8 @@
     // Who's who (Discord /player).
     const roster = [d.listening?.warden && ["Warden", d.listening.warden], ...(d.players || []).map((p) => [p.as, p.name])].filter(Boolean);
     $("discordRoster").innerHTML = roster.map(([as, name]) => `<li><b>${esc(as)}</b>: ${esc(name)}</li>`).join("") || '<li class="muted">Nobody yet.</li>';
-    $("discordLink").hidden = !!d.listening;
-    $("discordCode").hidden = !d.code || !!d.listening;
-    $("discordCmd").value = d.code ? `/terminal listen code:${d.code}` : "";
+    $("discordCode").hidden = !!d.listening;
+    $("discordCmd").value = listenCommand();
   }
 
   function fillSelect(sel, options, value) {
@@ -2398,9 +2393,8 @@
     else if ($("sttKey").value.trim()) store.set("wardenKey:groq", $("sttKey").value.trim());
     else { e.target.checked = false; toast("Paste the Groq key, tick this, then save it.", "info"); }
   };
-  $("discordLink").onclick = () => send({ t: "discordLink" });
   $("discordStop").onclick = () => send({ t: "discordStop" });
-  $("discordCopy").onclick = () => copy($("discordCmd").value, "Command");
+  $("discordCopy").onclick = copyDiscordCommand;
   $("discordCmd").onfocus = (e) => e.target.select();
   $("keyBtn").onclick = openKeyDialog;
   $("keywarn").onclick = openKeyDialog;

@@ -136,11 +136,10 @@
         <div class="row wrap">
           <span id="discordState" class="grow small"></span>
           <a id="discordInvite" target="_blank" rel="noopener" title="Add the bot to your Discord server (once)">Add the bot to a server ↗</a>
-          <button id="discordLink" title="A one-time code that links a Discord voice channel to this session">Get a link code</button>
           <button id="discordStop" class="danger" hidden>Stop listening</button>
         </div>
-        <div id="discordCode" class="stack" hidden>
-          <p class="small">In Discord, join the voice channel, then paste this into the chat and send it. It works once, for 15 minutes.</p>
+        <div id="discordCode" class="stack">
+          <p class="small">In Discord, join the voice channel, then paste this into the chat and send it.</p>
           <div class="row">
             <input id="discordCmd" class="grow mono" readonly aria-label="The Discord command">
             <button id="discordCopy" class="primary">Copy</button>

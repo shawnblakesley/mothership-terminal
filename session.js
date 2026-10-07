@@ -14,7 +14,7 @@ import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap } from
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
-import { linkCode, discordStatus, stopListening, codeValid, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
+import { discordStatus, stopListening, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC } from "./rolls.js";
@@ -502,7 +502,6 @@ export class Session {
     this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
     if (this.state.localKeys) this.keys[LOCAL_KEYS] = true; // (started on this computer: its .env keys; see providers)
     this.sttKey = ""; // Groq key, for writing down Discord voice (discordbot.js). Memory only, like this.keys.
-    this.discordCode = ""; // the one-time code the Warden types into Discord to link it here
     this.freeCalls = { day: "", count: 0 }; // calls on the server's free key today (see callModel)
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
@@ -1089,12 +1088,8 @@ export class Session {
         this.sttKey = key;
         break;
       }
-      case "discordLink":
-        this.discordCode = linkCode(this.code);
-        break;
       case "discordStop":
         stopListening(this.code);
-        this.discordCode = "";
         break;
       case "note": {
         // A private note to the agent: it updates what's true, without the players seeing anything.
@@ -2559,10 +2554,9 @@ export class Session {
   discordView() {
     const d = discordStatus(this.code);
     if (!d) return { enabled: false };
-    if (this.discordCode && !codeValid(this.discordCode)) this.discordCode = ""; // (used, or expired)
     const players = Object.entries(this.state.discordPlayers || {}).map(([, p]) => ({ name: p.name, crew: p.crew, as: this.state.config.crew.find((c) => c.id === p.crew)?.name }))
       .filter((p) => p.as);
-    return { enabled: true, ...d, players, sttKey: !!this.sttKey, code: this.discordCode };
+    return { enabled: true, ...d, players, sttKey: !!this.sttKey };
   }
 
   // The crew member a Discord user plays (null: not said, or no longer in the crew).
