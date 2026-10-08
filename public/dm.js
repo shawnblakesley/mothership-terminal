@@ -589,7 +589,7 @@
       const playing = S.claims?.[c.id] || 0;
       const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id); // (who plays them on Discord)
       return `<details class="pc" data-i="${i}">
-        <summary><button class="pick small" data-pcpic="${i}" title="${c.portrait ? "Change their picture" : "Add a picture"}" aria-label="Picture of ${esc(c.name)}">${c.portrait ? `<img src="${esc(portraitUrl(c.portrait))}" alt="">` : `<span>${esc(initials(c.name) || "+")}</span>`}</button>${c.portrait ? `<button class="ghost small edit-only" data-pcnopic="${i}" title="Remove their picture">✕ picture</button>` : ""}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
+        <summary><button class="pick small" data-pcpic="${i}" title="${c.portrait ? "Change their picture" : "Add a picture"}" aria-label="Picture of ${esc(c.name)}">${c.portrait ? `<img src="${esc(portraitUrl(c.portrait))}" alt="">` : `<span>${esc(initials(c.name) || "+")}</span>`}</button><span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
           <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(none yet)</option>') + S.config.terminals.map((t) =>
@@ -661,7 +661,6 @@
           <div class="row wrap edit-only small">
             <select data-m="voice" aria-label="Their voice"><option value="">(a voice of their own)</option>${speakers.map(([id, label]) => `<option value="${id}" ${id === m.voice ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
             <button data-mact="test" title="Preview voice here">▶</button>
-            ${m.portrait ? '<button data-mact="nopic" class="ghost">Remove picture</button>' : ""}
             <span class="grow"></span><button data-mact="del" class="ghost" title="Remove ${esc(m.name)}">✕</button>
           </div>
           <input data-m="why" class="why" value="${esc(m.why || "")}" placeholder="Affinity reason" aria-label="Why ${esc(m.name)} feels that way">
@@ -696,7 +695,6 @@
     if (!act || !card) return;
     const i = Number(card.dataset.i), m = castDraft[i];
     if (act === "pic") openPortraits({ cast: i });
-    else if (act === "nopic") { m.portrait = ""; saveCast(true); renderCast(true); }
     else if (act === "panic") send({ t: "castPanic", id: m.id });
     else if (act === "test") Voice.test({ name: "test", voice: { engine: "neural", speaker: m.voice || "am_michael", pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     else if (act === "del") {
@@ -879,10 +877,9 @@
   };
   // A crew member's picture (the same picker and upload as the characters').
   $("crew").addEventListener("click", (e) => {
-    const pic = e.target.closest("[data-pcpic]"), off = e.target.closest("[data-pcnopic]");
-    if (!pic && !off) return;
+    const pic = e.target.closest("[data-pcpic]");
+    if (!pic) return;
     e.preventDefault(); // (it's in the card's header: don't open or close the card)
-    if (off) { crewDraft[Number(off.dataset.pcnopic)].portrait = ""; saveCrew(); renderCrew(true); return; }
     openPortraits({ crew: Number(pic.dataset.pcpic) });
   });
   $("crew").addEventListener("change", (e) => {

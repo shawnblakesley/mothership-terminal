@@ -268,7 +268,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .castm .pick { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 6px; overflow: hidden; display: grid; place-items: center; font-weight: 600; color: var(--muted); }
 .castm .pick img, .pc .pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pc .pick { flex: none; width: 30px; height: 30px; padding: 0; border-radius: 5px; overflow: hidden; display: inline-grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--muted); align-self: center; }
-.pc [data-pcnopic] { padding: 1px 6px; font-size: 11px; align-self: center; }
 .castbody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .castbody .cname { flex: 1; min-width: 8em; font-weight: 600; }
 .castbody .where { display: inline-flex; align-items: baseline; gap: 4px; margin-left: auto; }
