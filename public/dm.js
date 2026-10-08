@@ -1967,6 +1967,39 @@
   });
   $("retcon").onclick = () => send({ t: "retcon" });
 
+  // Download: the whole game as one file (for a recap, a record, or to look back on): the log
+  // (comms, notes, table talk, rolls), the crew and cast as they are now, the story, the map,
+  // the station and what was handed out. (No stream key, no builder chat, nothing secret to the app.)
+  $("logDownload").onclick = () => {
+    if (!S) return;
+    const c = S.config;
+    const game = {
+      app: "Mothership Terminal",
+      session: code,
+      exported: new Date().toISOString(),
+      storyStarted: S.storyStartedAt ? new Date(S.storyStartedAt).toISOString() : null,
+      story: {
+        station: c.stationName, lore: c.lore, secrets: c.secrets, standingOrders: c.standingOrders, map: c.map,
+        voices: c.voices.map((v) => ({ id: v.id, name: v.name })),
+        terminals: c.terminals.map((t) => ({ id: t.id, name: t.name, room: t.room, system: t.system })),
+        rooms: c.rooms,
+      },
+      crew: c.crew,
+      cast: c.cast,
+      station: S.station,
+      log: S.log,
+      handouts: S.handouts,
+      roomDocs: (c.roomDocs || []).map((d) => ({ ...d, found: (S.found || []).includes(d.id) })),
+      clocks: S.clocks,
+      synopses: S.synopses,
+    };
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(game, null, 2)], { type: "application/json" }));
+    a.download = `${c.stationName || "game"}-${code}-${new Date().toISOString().slice(0, 10)}.json`.replace(/[^\w.-]+/g, "_");
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  };
+
   // Effect buttons
   $("fxButtons").innerHTML = Object.entries(FX_META)
     .map(([type, [ico, label]]) => `<button data-fx="${type}"><span class="ico">${ico}</span>${label}</button>`).join("");

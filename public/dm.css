@@ -629,6 +629,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .hint { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--line2); color: var(--muted); font-size: 10px; font-weight: 600; cursor: help; letter-spacing: 0; text-transform: none; }
 .hint:hover { color: var(--fg); border-color: var(--muted); }
 h2 .hint { margin-left: -4px; }
+h2 .h2btn { order: 2; padding: 1px 8px; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: none; } /* (after the rule line) */
 /* Collapsible sections that look like plain section headings (Story tab). */
 details.sec { background: none; border: 0; border-radius: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 details.sec[open] { padding-bottom: 0; }
