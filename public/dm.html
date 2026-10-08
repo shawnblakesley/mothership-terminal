@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Warden Console</title>
+  <!-- three.js, for the 3D station map (isomap.js; served from node_modules by server.js) -->
+  <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }</script>
+
   <link rel="icon" href="warden.svg" type="image/svg+xml">
   <link rel="stylesheet" href="dm.css">
 </head>
@@ -209,7 +212,8 @@
     <div class="row">
       <h2 class="grow" id="mapTitle">Station map</h2>
       <span class="muted small">Click a door, light, camera or value to change it.</span>
-      <span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">Drawing</button><button data-view="status">Status</button></span>
+      <span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">Drawing</button><button data-view="status">Status</button><button data-view="iso">3D</button></span>
+      <button class="isoShow" hidden title="Show the 3D map on the players' screens: the layout and where they are, nothing else">Show players</button>
       <button id="mapClose" class="ghost" aria-label="Close">✕</button>
     </div>
     <div id="mapBig" class="smap"></div>
@@ -425,8 +429,8 @@
       </div>
 
       <div class="tabpanel" data-tabs="side" data-panel="map">
-        <div class="row" id="mapPanel"><span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">Drawing</button><button data-view="status">Status</button></span>
-          <span class="grow"></span><button id="mapExpand" class="ghost" title="Open the full map">⤢ Expand</button></div>
+        <div class="row" id="mapPanel"><span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">Drawing</button><button data-view="status">Status</button><button data-view="iso">3D</button></span>
+          <span class="grow"></span><button class="isoShow" hidden title="Show the 3D map on the players' screens: the layout and where they are, nothing else">Show players</button><button id="mapExpand" class="ghost" title="Open the full map">⤢ Expand</button></div>
         <div id="map" class="smap compact"></div>
       <details class="edit-only">
         <summary>Station state <span class="muted">(agent-editable)</span></summary>

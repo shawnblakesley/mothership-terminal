@@ -362,5 +362,5 @@
     el.innerHTML = decks.length ? `<svg class="mm" viewBox="0 0 ${w + 4} ${y - 6}" role="img" aria-label="Where the crew are">${lift}${corridors.join("")}${rooms}</svg>` : "";
   }
 
-  window.StationMap = { render, draw, mini, parseLayout, parseLinks, parseDocked, choicesFor };
+  window.StationMap = { render, draw, mini, parseLayout, parseLinks, parseDocked, parseLift, choicesFor };
 })();

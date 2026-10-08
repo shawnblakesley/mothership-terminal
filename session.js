@@ -675,6 +675,17 @@ export class Session {
   syncDm() {
     this.send("dm", { t: "state", state: this.dmView() });
     this.syncStreams();
+    this.syncIso();
+  }
+
+  // The 3D station map on the players' screens, while the Warden shows it: the layout,
+  // the rooms' floor plans and where the players are (nothing else). Re-sent as that changes.
+  isoView() { return this.state.isoShown ? { ...this.streamMap(), rooms: this.state.config.rooms } : null; }
+  syncIso() {
+    const map = JSON.stringify(this.isoView());
+    if (map === this.isoSent) return;
+    this.isoSent = map;
+    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1) c.send(`{"t":"isoMap","map":${map}}`);
   }
 
   // The stream pages: the Warden's own entries (notes, asides, table talk), new or
@@ -729,6 +740,7 @@ export class Session {
       playing: this.state.playing.filter((p) => p.loop),
       crew: this.state.config.crew,
       played: this.played(),
+      iso: this.isoView(),
       ...(ws?.stream ? { map: this.streamMap() } : {}),
       clocks: this.publicClocks(),
       handouts: ws?.stream ? [] : this.handoutsFor(ws),
@@ -1325,6 +1337,9 @@ export class Session {
         else delete s.config.rooms[id];
         break;
       }
+      case "isoShow": // the Warden shows the players the 3D map, or takes it away
+        s.isoShown = !!msg.on;
+        break;
       case "roomDraft":
         if (!this.roomBusy) this.draftRoom(msg);
         return;

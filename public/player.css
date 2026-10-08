@@ -126,6 +126,8 @@ body {
 .planfx[hidden] { display: none; }
 .pf-title { letter-spacing: 0.2em; text-shadow: 0 0 6px var(--glow); }
 .pf-hint { color: var(--dim); font-size: 0.85em; animation: blink 1.2s infinite steps(1); }
+.isofx { cursor: default; padding: 3vh 3vw; }
+.isofx .if-map { flex: 1; min-height: 0; width: 100%; cursor: grab; }
 .pf-plan { width: min(92vw, 900px); display: flex; justify-content: center; filter: drop-shadow(0 0 4px var(--glow)); }
 /* An adversary's picture beside the terminal (the right-hand panel), grey multiplied
    over the screen's colour, with scanlines. On narrow screens, over everything. */

@@ -1344,10 +1344,16 @@
   }
   function renderMap(force = false) {
     const people = playersByRoom();
-    const key = JSON.stringify([S.station, S.config.map, mapView, people, S.config.cast.map((c) => [c.name, c.room])]);
+    const key = JSON.stringify([S.station, S.config.map, mapView, people, S.config.cast.map((c) => [c.name, c.room]), mapView === "iso" ? S.config.rooms : 0, S.isoShown]);
     if (!force && key === mapKey) return;
     mapKey = key;
-    const show = (el) => (mapView === "status" ? StationMap.render : StationMap.draw)(el, withCast(S.station), S.config.map, { people });
+    const show = (el) => (mapView === "iso" ? showIso(el, isoData(people))
+      : (dropIso(el), (mapView === "status" ? StationMap.render : StationMap.draw)(el, withCast(S.station), S.config.map, { people })));
+    for (const b of document.querySelectorAll(".isoShow")) {
+      b.hidden = mapView !== "iso";
+      b.textContent = S.isoShown ? "Hide from players" : "Show players";
+      b.classList.toggle("primary", !!S.isoShown);
+    }
     for (const b of document.querySelectorAll(".mapview button")) b.classList.toggle("on", b.dataset.view === mapView);
     show($("map"));
     if ($("mapDialog").open) show($("mapBig"));
@@ -1385,6 +1391,27 @@
     renderMap(true);
   };
   $("mapClose").onclick = () => $("mapDialog").close();
+  $("mapDialog").addEventListener("close", () => dropIso($("mapBig"))); // (its 3D view stops drawing)
+  // The 3D view (isomap.js, three.js): loaded the first time it's picked. One per map element.
+  let isoLib = null;
+  const isoViews = new Map(); // element -> { view, data }
+  const nick = (name) => (String(name).match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || String(name).split(" ")[0]).toUpperCase();
+  const isoData = (people) => ({ layout: S.config.map, rooms: S.config.rooms, people: Object.fromEntries(Object.entries(people).map(([room, names]) => [room, names.map(nick)])) });
+  function showIso(el, data) {
+    let v = isoViews.get(el);
+    if (!v || !el.contains(v.box)) {
+      dropIso(el);
+      el.innerHTML = '<div class="iso"></div>';
+      v = { box: el.firstChild, view: null, data };
+      isoViews.set(el, v);
+      (isoLib ||= import("./isomap.js")).then((lib) => { if (isoViews.get(el) === v) v.view = lib.mount(v.box, v.data, { fg: "#3bff7a", dim: "#1d8a43" }); })
+        .catch((err) => { v.box.textContent = `The 3D map couldn't load (${err.message}).`; });
+    }
+    v.data = data;
+    v.view?.update(data);
+  }
+  function dropIso(el) { isoViews.get(el)?.view?.dispose(); isoViews.delete(el); }
+  for (const b of document.querySelectorAll(".isoShow")) b.onclick = () => send({ t: "isoShow", on: !S.isoShown });
   for (const seg of document.querySelectorAll(".mapview")) {
     seg.addEventListener("click", (e) => {
       const v = e.target.closest("[data-view]")?.dataset.view;

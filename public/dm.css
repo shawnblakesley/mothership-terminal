@@ -296,6 +296,9 @@ summary .muted { font-weight: 400; font-size: 12px; }
 #mapPanel summary .grow { flex: 1; }
 #mapExpand { padding: 2px 8px; font-weight: 400; font-size: 12px; }
 .smap { display: flex; flex-direction: column; gap: 10px; }
+/* The 3D view (isomap.js): a terminal-dark window onto the station. */
+.smap .iso { height: 360px; background: #050805; border-radius: 8px; overflow: hidden; cursor: grab; }
+.mapdlg .smap .iso { height: 70vh; }
 .msystems { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
 .msys { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 .msname, .mrname { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 4px; }

@@ -177,6 +177,9 @@ router.get("/dm", (_req, res) => { track("PageView", { Page: "warden" }); noStor
 router.get("/stream", (_req, res) => { track("PageView", { Page: "stream" }); noStore(res).sendFile(path.join(pub, "player.html")); });
 // "you" = the address rate limits use for this request (checks proxy setup).
 router.get("/healthz", (req, res) => res.json({ ok: true, sessions: sessions.size, you: clientIp(req) }));
+// three.js, for the 3D station map (public/isomap.js; the pages map "three" here).
+router.use("/vendor/three/addons", express.static(path.join(here, "node_modules", "three", "examples", "jsm"), { index: false, maxAge: "7d" }));
+router.use("/vendor/three", express.static(path.join(here, "node_modules", "three", "build"), { index: false, maxAge: "7d" }));
 // Revalidate on every load (cheap with ETags) so players never run stale code after a deploy.
 router.use(express.static(pub, { index: false, maxAge: 0 }));
 
