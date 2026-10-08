@@ -266,6 +266,17 @@ body {
 #ending { max-height: 80vh; overflow-y: auto; }
 
 /* Documents (handouts): read as printed text. */
+/* An audio log: its player, and the transcript lighting up a line at a time as it's said. */
+.docbody .alog { white-space: normal; } /* (the docbody keeps a document's line breaks; this lays out its own) */
+.alog-head { display: flex; justify-content: space-between; gap: 1em; color: var(--dim); }
+.alog-state { color: var(--fg); }
+.alog-ctl { margin: 0.4em 0 0.6em; }
+.alog-lines { white-space: normal; }
+.alog-line { color: var(--dim); opacity: 0.55; margin: 0 0 0.25em; }
+.alog-line.said { color: var(--fg); opacity: 0.85; }
+.alog-line.now { color: var(--fg); opacity: 1; text-shadow: 0 0 2px var(--glow), 0 0 9px var(--glow), 0 0 18px var(--glow); }
+.alog-line.now::before { content: "> "; }
+.alog-who { color: var(--fg); opacity: 0.8; letter-spacing: 0.04em; }
 .docbody { margin: 0.6em 0; font: inherit; max-height: 60vh; overflow-y: auto; white-space: pre-wrap; }
 .docbody .md-h { color: var(--fg); letter-spacing: 0.08em; text-transform: uppercase; }
 .docbody .md-h1 { border-bottom: 1px solid var(--dim); margin-bottom: 0.2em; }

@@ -2405,9 +2405,21 @@
     const opts = [["", "Everyone"], ...S.config.crew.map((c) => [c.id, c.name])];
     const key = JSON.stringify(opts);
     if (to.dataset.key !== key) { to.dataset.key = key; const was = to.value; to.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(""); to.value = opts.some(([v]) => v === was) ? was : ""; }
+    // An audio log's speaker: none (a written document), a voice, or someone of the cast.
+    fillSelect($("docVoice"), [["", "None (written)"], ...S.config.voices.map((v) => [v.id, v.name]), ...(S.config.cast || []).map((c) => [`cast:${c.id}`, c.name])], $("docVoice").value || "");
+    // Where: handed out now, or left in a room to be found.
+    const roomsOf = [...StationMap.parseLayout(S.config.map).flatMap((d) => d.rooms), ...StationMap.parseDocked(S.config.map)];
+    const roomLabel = (id) => roomsOf.find((r) => r.id === id)?.label || id;
+    fillSelect($("docRoom"), [["", "Hand out now"], ...roomsOf.map((r) => [r.id, `In ${r.label}`])], $("docRoom").value || "");
+    $("docSend").textContent = $("docRoom").value ? "Leave it there" : "Hand it out";
+    // What's lying in rooms: found ones are struck through; Give hands one over now, ✕ takes it out of the story.
+    const found = new Set(S.found || []);
+    const docs = S.config.roomDocs || [];
+    $("roomDocHead").hidden = !docs.length;
+    $("roomDocList").innerHTML = docs.map((d) => `<li title="${esc(d.text.slice(0, 300))}"><span class="grow">${found.has(d.id) ? "<s>" : ""}${esc(d.title)}${found.has(d.id) ? "</s>" : ""} <span class="muted">· ${d.voice ? "audio log · " : ""}${esc(roomLabel(d.room))}${found.has(d.id) ? " · found" : ""}</span></span>${found.has(d.id) ? "" : `<button data-rdoc-give="${esc(d.id)}" class="ghost" title="Give it to the players now (to: the To above)">Give</button>`}<button data-rdoc-del="${esc(d.id)}" class="ghost" title="Take it out of the story">✕</button></li>`).join("");
     const list = (S.handouts || []).slice().reverse();
     const nameOf = (id) => S.config.crew.find((c) => c.id === id)?.name || "everyone";
-    $("docList").innerHTML = list.length ? list.map((h) => `<li title="${esc(h.text.slice(0, 300))}"><span class="grow">${esc(h.title)} <span class="muted">· ${esc(h.to ? nameOf(h.to) : "everyone")}</span></span><button data-doc-again="${esc(h.id)}" class="ghost" title="Show again">↻</button><button data-doc-del="${esc(h.id)}" class="ghost" title="Take it back">✕</button></li>`).join("") : '<li class="muted small">None given yet.</li>';
+    $("docList").innerHTML = list.length ? list.map((h) => `<li title="${esc(h.text.slice(0, 300))}"><span class="grow">${esc(h.title)} <span class="muted">· ${h.voice ? "audio log · " : ""}${esc(h.to ? nameOf(h.to) : "everyone")}</span></span><button data-doc-again="${esc(h.id)}" class="ghost" title="Show again">↻</button><button data-doc-del="${esc(h.id)}" class="ghost" title="Take it back">✕</button></li>`).join("") : '<li class="muted small">None given yet.</li>';
   }
   // The agent writes it from the description in the text box (and the title, if any).
   function handoutWriting(busy) {
@@ -2417,13 +2429,23 @@
   $("docWrite").onclick = () => {
     const title = $("docTitle").value.trim(), brief = $("docText").value.trim();
     if (!brief && !title) return toast("Describe the document first.", "error");
-    send({ t: "handoutWrite", brief, title });
+    send({ t: "handoutWrite", brief, title, voice: $("docVoice").value });
   };
   $("docSend").onclick = () => {
     const title = $("docTitle").value.trim(), text = $("docText").value.trim();
     if (!title || !text) return toast("Add a title and text.", "error");
-    send({ t: "handout", title, text, to: $("docTo").value });
+    if ($("docRoom").value) send({ t: "roomDocPlace", room: $("docRoom").value, title, text, voice: $("docVoice").value });
+    else send({ t: "handout", title, text, to: $("docTo").value, voice: $("docVoice").value });
     $("docTitle").value = $("docText").value = "";
+  };
+  $("docRoom").onchange = () => { $("docSend").textContent = $("docRoom").value ? "Leave it there" : "Hand it out"; };
+  $("roomDocList").addEventListener("click", (e) => {
+    const give = e.target.closest("[data-rdoc-give]")?.dataset.rdocGive, del = e.target.closest("[data-rdoc-del]")?.dataset.rdocDel;
+    if (give) send({ t: "roomDocGive", id: give, to: $("docTo").value });
+    if (del) send({ t: "roomDocDelete", id: del });
+  });
+  $("docVoice").onchange = () => {
+    $("docText").placeholder = $("docVoice").value ? "What's said, a line each, or describe it and press Write it" : "Text, or describe it and press Write it";
   };
   $("docList").addEventListener("click", (e) => {
     const again = e.target.closest("[data-doc-again]")?.dataset.docAgain, del = e.target.closest("[data-doc-del]")?.dataset.docDel;

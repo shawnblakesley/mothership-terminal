@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, OLD_COLD_PICTURES } from "./voices.js";
-import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
+import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
@@ -12,6 +12,7 @@ import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, VIT
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
+import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
 import { track } from "./telemetry.js";
 import { rememberSecret } from "./redact.js";
 import { discordStatus, stopListening, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
@@ -196,6 +197,7 @@ export function defaultGame(keys = {}) {
       narrator: true, // the agent may narrate the scene (the NARRATOR voice)
       rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
       startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
+      roomDocs: structuredClone(DEFAULT_ROOM_DOCS), // documents and audio logs lying in rooms, to be found (roomdocs.js)
       upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all"], // one-time additions already made to this story (see migrateGame)
     },
     station: structuredClone(DEFAULT_STATION),
@@ -203,6 +205,7 @@ export function defaultGame(keys = {}) {
     introduced: [], // voices the narrator has already brought in (see introduce)
     clocks: [],
     handouts: [structuredClone(WORK_ORDER)],
+    found: [], // the room documents found so far (ids)
     whisper: "",
     sounds: [],
     synopses: {}, // the Warden's synopses, by kind: prebrief, sofar, wrapup (synopsis.js)
@@ -405,6 +408,17 @@ function migrateGame(saved) {
     }
     config.upgrades.push("the-cold-picture-2");
   }
+  // Once: an original KESTREL-9 story gets its documents and audio logs to find in its rooms.
+  config.roomDocs = sanitizeRoomDocs(config.roomDocs);
+  if (!config.upgrades.includes("room-docs")) {
+    if (config.stationName === "KESTREL-9") {
+      for (const c of [config, saved.storyStart?.config].filter(Boolean)) {
+        const have = sanitizeRoomDocs(c.roomDocs);
+        c.roomDocs = [...have, ...structuredClone(DEFAULT_ROOM_DOCS).filter((d) => !have.some((x) => x.id === d.id))];
+      }
+    }
+    config.upgrades.push("room-docs");
+  }
   // Once: an original KESTREL-9 story starts the crew with their work order.
   config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];
   if (!config.upgrades.includes("work-order")) {
@@ -448,6 +462,7 @@ function migrateGame(saved) {
     // A game without a Warden (see "no Warden" below): { phase, pitches, opened, error }.
     // (A build cut off by a restart goes back to choosing.)
     handouts: Array.isArray(saved.handouts) ? saved.handouts : [], // documents given to the players (see "handouts")
+    found: Array.isArray(saved.found) ? saved.found.map(String) : [], // room documents found so far (see "room documents")
     localKeys: !!saved.localKeys, // started on the server's own computer: may use its .env keys (providers/index.js)
     // Who plays whom on Discord (discordbot.js /player): Discord user id -> { crew: crew id, name: their Discord name }.
     discordPlayers: saved.discordPlayers && typeof saved.discordPlayers === "object" ? saved.discordPlayers : {},
@@ -751,7 +766,7 @@ export class Session {
       iso: this.isoView(),
       ...(ws?.stream ? { map: this.streamMap() } : {}),
       clocks: this.publicClocks(),
-      handouts: ws?.stream ? [] : this.handoutsFor(ws),
+      handouts: this.handoutsFor(ws),
       solo: this.soloView(), // a game without a Warden: choosing a story, building it, or playing
       claims: this.claims(),
       busy: !!this.state.pending,
@@ -1288,11 +1303,24 @@ export class Session {
         this.touch();
         return; // (no redraw: the Warden is typing in the card)
       }
-      case "handout": // the Warden gives the players a document (everyone, or one character)
-        this.giveHandout({ title: msg.title, text: msg.text, to: msg.to }, "dm");
+      case "handout": // the Warden gives the players a document, or an audio log (voice), to everyone or one character
+        this.giveHandout({ title: msg.title, text: msg.text, to: msg.to, voice: msg.voice }, "dm");
+        break;
+      case "roomDocPlace": { // the Warden leaves a document or audio log in a room, to be found
+        const [d] = sanitizeRoomDocs([{ id: newRoomDocId(), room: msg.room, title: msg.title, text: msg.text, voice: msg.voice && this.logVoice(msg.voice) ? msg.voice : "" }]);
+        if (!d || s.config.roomDocs.length >= MAX_ROOM_DOCS) break;
+        s.config.roomDocs.push(d);
+        this.addLog("note", `"${d.title}" left in ${this.roomName(d.room)}`);
+        break;
+      }
+      case "roomDocGive": // the Warden hands one over now (found)
+        this.findRoomDoc(String(msg.id || ""), msg.to || "");
+        break;
+      case "roomDocDelete":
+        s.config.roomDocs = s.config.roomDocs.filter((d) => d.id !== msg.id);
         break;
       case "handoutWrite": // the agent drafts one from the Warden's brief (back to the Warden to edit, not to the players)
-        if (!this.handoutBusy) this.writeHandout(String(msg.brief || "").slice(0, 2000), String(msg.title || "").slice(0, 120));
+        if (!this.handoutBusy) this.writeHandout(String(msg.brief || "").slice(0, 2000), String(msg.title || "").slice(0, 120), String(msg.voice || ""));
         return;
       case "handoutAgain": { // show it again (it pops up on their screens)
         const h = s.handouts.find((x) => x.id === msg.id);
@@ -1720,7 +1748,8 @@ export class Session {
     this.genCounter++;
     this.playhead = 0;
     Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] }); // (new rooms: plans are drawn when first opened)
-    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), pending: null, whisper: "", roll: null, outcomeCheck: null, synopses: {} });
+    s.config.roomDocs = sanitizeRoomDocs(config.roomDocs);
+    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopses: {} });
     for (const e of [...s.effects]) this.endEffect(e.id);
     this.stopSounds();
     for (const ws of this.sockets) if (ws.role === "player") ws.character = null; // everyone picks a new crew file
@@ -2095,7 +2124,15 @@ export class Session {
     // The story's over (in a game without a Warden; with one, the Warden decides).
     if (reply?.story_end?.ended && this.state.solo?.phase === "play") setTimeout(() => this.soloEnd(reply.story_end.how), 0);
     for (const c of reply?.clocks || []) c.action === "stop" ? this.stopClock(c.label) : this.startClock(c.label, c.seconds, "agent");
-    for (const h of reply?.handouts || []) this.giveHandout({ title: h.title, text: h.text, to: findCharacterId(this.state.config.crew, h.for) }, "agent");
+    for (const f of reply?.found_docs || []) {
+      const to = findCharacterId(this.state.config.crew, f.for);
+      this.findRoomDoc(f.id, to, to ? this.state.config.crew.find((c) => c.id === to)?.name : "The crew");
+    }
+    for (const h of reply?.handouts || []) {
+      // (an audio log: spoken by someone of the cast, or one of the voices)
+      const member = h.voice && findCast(this.state.config.cast, h.voice), vid = h.voice && !member && resolveVoice(h.voice, this.state.config.voices);
+      this.giveHandout({ title: h.title, text: h.text, to: findCharacterId(this.state.config.crew, h.for), voice: member ? `cast:${member.id}` : vid || "" }, "agent");
+    }
   }
 
   // The map changes in an agent reply that really change something: a new
@@ -2503,7 +2540,7 @@ export class Session {
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
     // Players start as guests.
     s.station.access_level = DEFAULT_STATION.access_level;
-    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null });
+    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);
     this.toPlayers({ t: "roomPlan", rows: null }); // (any floor plan they were shown)
@@ -2518,23 +2555,27 @@ export class Session {
   // ---------------------------------------------------------------- handouts
   // Documents in the players' hands (a log, a memo, a manifest): they pop up on
   // the screens they're for, and stay under DOCS. to: a crew id, or "" for all.
-  giveHandout({ title, text, to = "" }, source) {
+  // An audio log is one with a voice: its text is what's said, one line at a time,
+  // and the players play it on their screens (the audio comes from handoutAudio).
+  // note: what the log says (default: who received it).
+  giveHandout({ title, text, to = "", voice = "" }, source, note = "") {
     const clean = (v, n) => String(v ?? "").replace(/\r/g, "").trim().slice(0, n);
     const h = { id: `doc${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, title: clean(title, 120), text: clean(text, 6000), to: this.state.config.crew.some((c) => c.id === to) ? to : "", at: Date.now() };
+    if (voice && this.logVoice(voice)) h.voice = String(voice);
     if (!h.title || !h.text) return;
     this.state.handouts.push(h);
     if (this.state.handouts.length > 60) this.state.handouts.shift();
     const who = h.to ? this.state.config.crew.find((c) => c.id === h.to)?.name : "everyone";
-    this.addLog("note", `Handout${source === "agent" ? " from the agent" : ""} to ${who}: ${h.title}`);
+    this.addLog("note", note || `${who} received "${h.title}"`);
     this.showHandout(h);
     this.touch();
   }
-  async writeHandout(brief, title) {
+  async writeHandout(brief, title, voice = "") {
     if (!brief.trim() && !title.trim()) return;
     this.handoutBusy = true;
     this.send("dm", { t: "handoutWriting", busy: true });
     try {
-      const h = normalizeHandout(await this.ask(handoutRequest(this.state, brief || title, title), "handout"));
+      const h = normalizeHandout(await this.ask(handoutRequest(this.state, brief || title, title, this.logVoice(voice)?.name || ""), "handout"));
       this.send("dm", { t: "handoutDraft", ...h });
     } catch (err) {
       console.error(`[${this.code}] handout failed:`, err?.message || err);
@@ -2544,12 +2585,86 @@ export class Session {
     this.send("dm", { t: "handoutWriting", busy: false });
   }
   showHandout(h) {
-    const data = JSON.stringify({ t: "handout", handout: h });
-    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && (!h.to || c.character === h.to)) c.send(data);
+    const data = JSON.stringify({ t: "handout", handout: this.handoutView(h) });
+    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && (c.stream || !h.to || c.character === h.to)) c.send(data);
   }
+  // A screen's handouts: everyone's, and its character's own. (The stream page: all of them.)
   handoutsFor(ws) {
-    return (this.state.handouts || []).filter((h) => !h.to || h.to === ws?.character);
+    return (this.state.handouts || []).filter((h) => ws?.stream || !h.to || h.to === ws?.character).map((h) => this.handoutView(h));
   }
+  // An audio log's speaker: a voice ("terminal", "intercom") or someone of the cast ("cast:<id>").
+  // How it sounds: the voice with its effects; the cast through their channel's (recorded off the comms).
+  logVoice(ref) {
+    const c = this.state.config, r = String(ref || "");
+    if (r.startsWith("cast:")) {
+      const m = (c.cast || []).find((x) => x.id === r.slice(5));
+      if (!m) return null;
+      return { base: castVoice(m), fx: c.voices.find((v) => v.id === channelOf(c))?.fx || {}, name: m.name };
+    }
+    const v = c.voices.find((x) => x.id === r);
+    return v ? { base: v.voice, fx: v.fx, name: shownName(v) } : null;
+  }
+  // An audio log's lines, each with who says it: "OKONKWO: ..." starts someone's lines (someone
+  // of the cast, a voice, or anyone else by name, in a voice of their own); a line without a name
+  // is the speaker before's (at first, the log's own voice). [{ who, text, base, fx }]
+  // who: the name as written, on lines that start with one (else "").
+  logParts(h) {
+    const main = this.logVoice(h.voice);
+    if (!main) return [];
+    let cur = main;
+    return speechParts(h.text).map((line) => {
+      const m = line.match(/^([A-Z][A-Z .'-]{0,38}[A-Z.]):\s+(.+)$/); // (a name in capitals, no digits: "DAY 4:" isn't one)
+      const sp = m && this.speakerNamed(m[1], main);
+      if (sp) cur = sp;
+      return { who: sp ? m[1] : "", text: sp ? m[2] : line, base: cur.base, fx: cur.fx };
+    });
+  }
+  speakerNamed(name, main) {
+    const c = this.state.config;
+    const member = findCast(c.cast, name);
+    if (member) return this.logVoice(`cast:${member.id}`);
+    const vid = resolveVoice(name, c.voices);
+    if (vid) return this.logVoice(vid);
+    if (name.trim().split(/\s+/).length > 3) return null;
+    // Anyone else (the company on a comms channel): a voice of their own, the same every time, through the
+    // log's effects. (One none of the cast use, so they don't sound like someone on the station.)
+    const taken = new Set((c.cast || []).map((m) => castVoice(m).speaker));
+    const free = Object.keys(SPEAKERS).filter((k) => !taken.has(k)), keys = free.length ? free : Object.keys(SPEAKERS);
+    let n = 0;
+    for (const ch of name.toUpperCase()) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
+    return { base: { engine: "neural", speaker: keys[n % keys.length], pace: 1 }, fx: main.fx, name };
+  }
+  // A handout as the players get it: an audio log comes with its lines, who says each and how they sound.
+  handoutView(h) {
+    const { voice, ...rest } = h, lv = voice && this.logVoice(voice);
+    return lv ? { ...rest, audio: { speaker: lv.name, lines: this.logParts(h).map(({ who, text, fx }) => ({ who, text, fx })) } } : rest;
+  }
+  // One line of an audio log, spoken (a WAV; null if there's no such line).
+  handoutAudio(id, part) {
+    const h = (this.state.handouts || []).find((x) => x.id === id);
+    const p = h?.voice && this.logParts(h)[part];
+    return p ? synthesize(p.text, p.base) : Promise.resolve(null);
+  }
+
+  // ---------------------------------------------------------------- room documents
+  // Documents and audio logs in rooms (config.roomDocs, roomdocs.js): where they are tells the
+  // agent what it can hand the players while they're there; the Warden can give any of them.
+  roomName(id) {
+    const m = String(this.state.config.map || "").match(new RegExp(`\\b${id}\\s*=\\s*([^,\\n@]+)`));
+    return m ? m[1].trim() : String(id).replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
+  }
+  roomDocsIn(room) {
+    const found = new Set(this.state.found || []);
+    return (this.state.config.roomDocs || []).filter((d) => d.room === room && !found.has(d.id));
+  }
+  // Found: it's a handout now (to one character, or everyone), and gone from its room.
+  findRoomDoc(id, to = "", finder = "") {
+    const d = (this.state.config.roomDocs || []).find((x) => x.id === id);
+    if (!d || (this.state.found ||= []).includes(id)) return;
+    this.state.found.push(id);
+    this.giveHandout({ title: d.title, text: d.text, voice: d.voice, to }, "found", finder ? `${finder} found "${d.title}" in ${this.roomName(d.room)}` : "");
+  }
+
 
   // ---------------------------------------------------------------- clocks
   // Countdowns on every player's screen (a breach, oxygen, a self-destruct).

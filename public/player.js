@@ -183,7 +183,7 @@
     if (META[entry.kind]) { // (the Warden's own entries, on the stream)
       div.classList.add("meta", "style-label");
       div.dataset.kind = entry.kind;
-      div.dataset.label = `${META[entry.kind](entry)}: `;
+      div.dataset.label = entry.kind === "note" ? "> " : `${META[entry.kind](entry)}: `;
       return div;
     }
     if (entry.kind === "roll") {
@@ -626,6 +626,7 @@
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   function openPanel(id) {
+    if (id !== "docs") stopLog(); // (an audio log stops when its panel closes)
     for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "solopick", "docs", "ending"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
     // (Not before power-on: the key that wakes the terminal would also press the button.)
@@ -747,7 +748,9 @@
   const skillBonus = (pc, name) => (name && pc.skills.find((s) => s.name.toLowerCase() === name.toLowerCase())?.bonus) || 0;
   // A document they hold, among their items: a file you can open.
   const FILE_ICON = '<svg class="cs-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
-  const docChip = (d) => `<button type="button" class="cs-doc" data-doc="${escH(d.id)}" title="Open">${FILE_ICON}${chipText(d.title.toUpperCase())}</button>`;
+  // An audio log, among their items: a cassette.
+  const TAPE_ICON = '<svg class="cs-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><circle cx="16" cy="11" r="2"/><path d="M8 13h8"/><path d="M6 19l2-3h8l2 3"/></svg>';
+  const docChip = (d) => `<button type="button" class="cs-doc" data-doc="${escH(d.id)}" title="${d.audio ? "Play" : "Open"}">${d.audio ? TAPE_ICON : FILE_ICON}${chipText(d.title.toUpperCase())}</button>`;
   // A pill's text: one line; too long for the pill, it fades at the end and scrolls across on hover (fitChips).
   const chipText = (t) => `<span class="cs-cw"><span class="cs-ct">${escH(t)}</span></span>`;
   function fitChips(root) {
@@ -769,7 +772,8 @@
       ${numbersCard("STATS", c.stats, rollHint())}
       ${numbersCard("SAVES", c.saves)}
       <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((s) => `<div><span>${escH(s.name)}</span><span class="cs-bonus">+${s.bonus}</span></div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
-      <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length || docs.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${chipText(x)}</span>`).join("")}${docs.map(docChip).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
+      <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length || docs.some((d) => d.to) ? `<div class="cs-chips">${c.items.map((x) => `<span>${chipText(x)}</span>`).join("")}${docs.filter((d) => d.to).map(docChip).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
+      ${docs.some((d) => !d.to) ? `<div class="cs-card cs-shared"><div class="cs-title">SHARED</div><div class="cs-chips">${docs.filter((d) => !d.to).map(docChip).join("")}</div></div>` : ""}
       <div class="cs-card cs-story">
         ${c.crime ? `<div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>` : ""}
         ${c.backstory ? `<div class="p-text">${escH(c.backstory)}</div>` : ""}
@@ -914,7 +918,8 @@
   // Handouts: a new one opens on arrival, and they're kept with the player's items on
   // their sheet. Without a sheet (no character picked), DOCS in the header lists them.
   function docsButton() {
-    $("hdr-docs").hidden = $("hdr-docs-sep").hidden = !docs.length || spectate || !!mine();
+    // (On the stream page, every handout: open one to show it, or play an audio log for the viewers.)
+    $("hdr-docs").hidden = $("hdr-docs-sep").hidden = !docs.length || (spectate && !stream) || !!mine();
     $("hdr-docs").textContent = docs.length ? `DOCS (${docs.length})` : "DOCS";
   }
   function setDocs(list) {
@@ -926,7 +931,7 @@
   }
   function gotDoc(h) {
     setDocs([...docs.filter((d) => d.id !== h.id), h]);
-    if (spectate) return;
+    if (spectate && !stream) return;
     FX.Sound.beep(880, 0.08);
     showDoc(h.id);
   }
@@ -934,7 +939,8 @@
     $("docs-title").innerHTML = sq("DOCUMENTS");
     $("docs-list").hidden = false;
     $("docs-body").hidden = $("docs-back").hidden = true;
-    $("docs-list").innerHTML = docs.map((d, i) => `<li><button type="button" class="p-btn" data-doc="${escH(d.id)}">[${i + 1}] ${escH(d.title.toUpperCase())}</button></li>`).join("") || '<li class="p-dim">NONE YET.</li>';
+    stopLog();
+    $("docs-list").innerHTML = docs.map((d, i) => `<li><button type="button" class="p-btn" data-doc="${escH(d.id)}">[${i + 1}] ${escH(d.title.toUpperCase())}</button>${d.audio ? ' <span class="p-dim">· AUDIO</span>' : ""}</li>`).join("") || '<li class="p-dim">NONE YET.</li>';
     openPanel("docs");
   }
   function showDoc(id) {
@@ -943,10 +949,70 @@
     $("docs-title").innerHTML = sq(escH(d.title.toUpperCase()));
     $("docs-list").hidden = true;
     $("docs-body").hidden = false;
-    $("docs-body").innerHTML = renderMd(d.text);
+    stopLog();
+    $("docs-body").innerHTML = d.audio ? logHtml(d) : renderMd(d.text);
     $("docs-back").hidden = docs.length < 2;
     openPanel("docs");
   }
+
+  // ---- audio logs: a handout with a voice. PLAY speaks it a line at a time, with the voice's
+  // effects, lighting up each line of the transcript as it's said; STOP (or closing it) stops it.
+  let log = null; // { id, gen, clip } while one plays
+  let logGen = 0;
+  const logHtml = (d) => `<div class="alog" data-alog="${escH(d.id)}">
+      <div class="alog-head"><span>VOICE: ${escH(d.audio.speaker.toUpperCase())}</span><span class="alog-state">READY</span></div>
+      <div class="alog-ctl"><button type="button" class="p-btn" data-alog-play>[ PLAY ]</button> <button type="button" class="p-btn" data-alog-stop hidden>[ STOP ]</button></div>
+      <div class="alog-lines">${d.audio.lines.map((l, i) => `<div class="alog-line" data-i="${i}">${l.who ? `<span class="alog-who">${escH(l.who)}:</span> ` : ""}${escH(l.text)}</div>`).join("")}</div>
+    </div>`;
+  function stopLog() {
+    logGen++;
+    log?.clip?.stop();
+    log = null;
+  }
+  async function playLog(d) {
+    stopLog();
+    FX.Sound.unlock();
+    const gen = logGen, box = $("docs-body").querySelector(".alog"), lines = [...box.querySelectorAll(".alog-line")];
+    log = { id: d.id, clip: null };
+    const state = (t) => { box.querySelector(".alog-state").textContent = t; };
+    const buttons = (playing) => { box.querySelector("[data-alog-play]").hidden = playing; box.querySelector("[data-alog-stop]").hidden = !playing; };
+    buttons(true);
+    for (const l of lines) l.classList.remove("now", "said");
+    const fetchPart = (i) => (i < lines.length ? Voice.load(`api/sessions/${code}/handouts/${encodeURIComponent(d.id)}/audio/${i}`) : null);
+    let next = fetchPart(0);
+    for (let i = 0; i < lines.length; i++) {
+      state(`LOADING ${i + 1}/${lines.length}`);
+      const buf = await next;
+      if (gen !== logGen) return;
+      next = fetchPart(i + 1); // (the next line loads while this one plays)
+      lines[i].classList.add("now");
+      lines[i].scrollIntoView({ block: "nearest" });
+      state(`PLAYING ${i + 1}/${lines.length}`);
+      if (buf) {
+        log.clip = Voice.playClip(buf, d.audio.lines[i].fx); // (each speaker sounds their own way)
+        if (!(await log.clip.done) || gen !== logGen) return;
+      }
+      lines[i].classList.replace("now", "said");
+      await new Promise((r) => setTimeout(r, 350));
+      if (gen !== logGen) return;
+    }
+    state("END OF RECORDING");
+    buttons(false);
+    log = null;
+  }
+  $("docs-body").addEventListener("click", (e) => {
+    const box = e.target.closest(".alog");
+    const d = box && docs.find((x) => x.id === box.dataset.alog);
+    if (!d) return;
+    if (e.target.closest("[data-alog-play]")) playLog(d);
+    if (e.target.closest("[data-alog-stop]")) {
+      stopLog();
+      box.querySelector(".alog-state").textContent = "STOPPED";
+      box.querySelector("[data-alog-play]").hidden = false;
+      box.querySelector("[data-alog-stop]").hidden = true;
+      for (const l of box.querySelectorAll(".alog-line.now")) l.classList.remove("now");
+    }
+  });
   $("hdr-docs").onclick = () => ($("docs").hidden ? showDocList() : openPanel(null));
   $("docs-list").addEventListener("click", (e) => { const id = e.target.closest("[data-doc]")?.dataset.doc; if (id) showDoc(id); });
   $("docs-close").onclick = () => openPanel(null);

@@ -274,6 +274,22 @@ router.get("/api/sessions/:code/tts/:id", async (req, res) => {
   }
 });
 
+// One line of an audio log the players were given (a handout with a voice; see Session.handoutAudio).
+router.get("/api/sessions/:code/handouts/:id/audio/:part", async (req, res) => {
+  noStore(res);
+  const s = sessions.get(normCode(req.params.code));
+  if (!s) return res.status(404).end();
+  if (limited(`logaudio:${clientIp(req)}`, 240, 60_000)) return res.status(429).end();
+  try {
+    const wav = await s.handoutAudio(String(req.params.id), Number(req.params.part));
+    if (!wav) return res.status(404).end();
+    res.set("Content-Type", "audio/wav").send(wav);
+  } catch (err) {
+    console.error("audio log failed:", err?.message || err);
+    res.status(500).end();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Sound library: the Warden uploads audio files and plays them on the players'
 // screens (play/stop go over the WebSocket; see Session "soundPlay").

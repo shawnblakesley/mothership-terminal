@@ -372,14 +372,16 @@
         </div>
         </div>
 
-        <h2>Handouts <span class="hint" title="Documents that pop up on player screens and stay under DOCS.">?</span></h2>
+        <h2>Handouts <span class="hint" title="Documents that pop up on player screens and stay under DOCS. With a voice, it's an audio log: they play it, and read along.">?</span></h2>
         <div class="card stack">
           <input id="docTitle" placeholder="Title" maxlength="120">
           <textarea id="docText" rows="4" placeholder="Text, or describe it and press Write it"></textarea>
-          <div class="row wrap"><label class="small muted">To <select id="docTo"></select></label><span class="grow"></span>
+          <div class="row wrap"><label class="small muted">To <select id="docTo"></select></label><label class="small muted" title="An audio log: who speaks it. The text is then what's said, a line at a time; NAME: at the start of a line switches speaker.">Voice <select id="docVoice"></select></label><label class="small muted" title="Leave it in a room, to be found there (FILES on a terminal in that room, or when the players search it)">Where <select id="docRoom"></select></label><span class="grow"></span>
             <button id="docWrite" title="Agent writes it from your description">Write it</button>
             <button id="docSend">Hand it out</button></div>
           <ul id="docList" class="fxlist"></ul>
+          <div class="small muted" id="roomDocHead">In rooms, to be found</div>
+          <ul id="roomDocList" class="fxlist"></ul>
         </div>
 
         <h2>Clocks <span class="hint" title="Countdowns on player screens. The agent acts when one runs out.">?</span></h2>
