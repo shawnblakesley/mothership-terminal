@@ -116,7 +116,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "item_changes", "moves", "cast_changes", "clocks", "handouts", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "item_changes", "moves", "cast_changes", "clocks", "handouts", "found_docs", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -236,9 +236,22 @@ function buildSchema(voices) {
           required: ["title", "text", "for", "voice"],
           properties: {
             title: { type: "string", description: "What the document is, e.g. MEDICAL LOG: DR. SALK, DAY 19." },
-            voice: { type: "string", description: "Empty for a written document. For an audio recording they can play (an audio log, a voicemail, a black box, a distress call): who speaks it, a character's name or a voice's name; then text is exactly what's said, plain words, one sentence per line, no Markdown or stage directions." },
+            voice: { type: "string", description: "Empty for a written document. For an audio recording they can play (an audio log, a voicemail, a black box, a distress call): who speaks it, a character's name or a voice's name; then text is exactly what's said, plain words, one sentence per line, no Markdown or stage directions. Several speakers: start each speaker's line with their name in CAPITALS and a colon (OKONKWO: ...); lines without a name are the last speaker's. Someone not in the cast (a voice on a comms channel) by what they're called (HOLLIS-VANE: ...)." },
             text: { type: "string", description: "Its full text, as written in the world, in Markdown: # headings, **bold**, *italic*, __underlined__ (here __text__ means underline), ~~crossed out~~, - lists, > quotes, --- between entries. Used as the document itself would, not overdone." },
             for: { type: "string", description: "A crew member's name if only they get it; empty for everyone." },
+          },
+        },
+      },
+      found_docs: {
+        type: "array",
+        description: "Documents and recordings lying in rooms (see FILES IN ROOMS) that the players find now: when they search where one is, or pull it up on a terminal there. It's handed to them to read or play, and gone from the room. Usually empty.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "for"],
+          properties: {
+            id: { type: "string", description: "Its id, from FILES IN ROOMS." },
+            for: { type: "string", description: "The crew member who finds it; empty for everyone." },
           },
         },
       },
@@ -327,6 +340,7 @@ const REPLY_EXAMPLE = {
   cast_changes: [{ name: "Dr. Imre Salk", room: "", notes: "", attitude_change: 1, why: "they promised medicine for Webb", stress_change: 0, panic_check: false }],
   clocks: [],
   handouts: [],
+  found_docs: [],
   layout: "",
   room_plans: [],
   effects: [],
@@ -724,6 +738,10 @@ function buildContext(state, steer, aside = false) {
   const plans = Object.entries(state.config.rooms || {});
   if (plans.length) ctx.push(`ROOM FLOOR PLANS (now):\n${plans.map(([id, p]) => `${id}:\n${p.rows.join("\n")}`).join("\n\n")}`);
   if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
+  // What's lying in rooms to be found (hand one over with found_docs when they search there).
+  const found = new Set(state.found || []);
+  const lying = (state.config.roomDocs || []).filter((d) => !found.has(d.id));
+  if (lying.length) ctx.push(`FILES IN ROOMS (not found yet; players at a terminal in the room can also take them themselves):\n${lying.map((d) => `- ${d.id} [${d.room}] ${d.title} (${d.voice ? "audio recording" : "document"}): ${d.text.replace(/\s+/g, " ").slice(0, 140)}`).join("\n")}`);
   if (state.clocks?.length) ctx.push(`CLOCKS (countdowns on the players' screens, running now):\n${state.clocks.map((c) => `- ${c.label}: ${c.paused ? `${c.left}s left, paused by the Warden` : `${Math.max(0, Math.round((c.ends - Date.now()) / 1000))}s left`}`).join("\n")}`);
   if (state.config.terminals?.length) {
     const at = (state.screens || []).map((s) => `- ${s.character || "a screen with no crew file"}: ${state.config.terminals.find((t) => t.id === s.terminal)?.name || s.terminal}`);
@@ -820,6 +838,10 @@ export function parseReply(text, voices) {
       .filter((c) => c && ["start", "stop"].includes(c.action) && String(c.label ?? "").trim())
       .slice(0, 4)
       .map((c) => ({ action: c.action, label: String(c.label).replace(/\s+/g, " ").trim().toUpperCase().slice(0, 40), seconds: Math.max(0, Math.min(7200, Math.round(Number(c.seconds) || 0))) })),
+    found_docs: (Array.isArray(r?.found_docs) ? r.found_docs : [])
+      .filter((f) => f && String(f.id ?? "").trim())
+      .slice(0, 6)
+      .map((f) => ({ id: String(f.id).trim().slice(0, 40), for: String(f.for ?? "").trim().slice(0, 60) })),
     handouts: (Array.isArray(r?.handouts) ? r.handouts : [])
       .filter((h) => h && String(h.title ?? "").trim() && String(h.text ?? "").trim())
       .slice(0, 3)

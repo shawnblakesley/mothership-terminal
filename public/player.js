@@ -183,7 +183,7 @@
     if (META[entry.kind]) { // (the Warden's own entries, on the stream)
       div.classList.add("meta", "style-label");
       div.dataset.kind = entry.kind;
-      div.dataset.label = `${META[entry.kind](entry)}: `;
+      div.dataset.label = entry.kind === "note" ? "> " : `${META[entry.kind](entry)}: `;
       return div;
     }
     if (entry.kind === "roll") {
@@ -927,6 +927,29 @@
     if (!$("crewfile").hidden) renderFile();
     if (!$("docs").hidden && $("docs-body").hidden) showDocList();
   }
+  // ---- files: documents and recordings lying in the room this screen's terminal is in. TAKE
+  // one and it's this character's (it opens, and joins their documents).
+  let files = [], docsMode = "docs";
+  function setFiles(list) {
+    files = list || [];
+    $("hdr-files").hidden = $("hdr-files-sep").hidden = !files.length || spectate;
+    $("hdr-files").textContent = `FILES (${files.length})`;
+    if (!$("docs").hidden && docsMode === "files") files.length ? showFiles() : openPanel(null);
+  }
+  function showFiles() {
+    stopLog();
+    docsMode = "files";
+    $("docs-title").innerHTML = sq("FILES IN THIS ROOM");
+    $("docs-list").hidden = false;
+    $("docs-body").hidden = $("docs-back").hidden = true;
+    $("docs-list").innerHTML = files.map((f, i) => `<li><button type="button" class="p-btn" data-take="${escH(f.id)}">[${i + 1}] ${escH(f.title.toUpperCase())}</button><span class="p-dim"> · ${f.audio ? "AUDIO" : "TEXT"} · TAKE</span></li>`).join("");
+    openPanel("docs");
+  }
+  function take(id) {
+    ws?.readyState === 1 && ws.send(JSON.stringify({ t: "take", id }));
+    FX.Sound.beep(660, 0.06, 0.05);
+  }
+  $("hdr-files").onclick = () => ($("docs").hidden || docsMode !== "files" ? showFiles() : openPanel(null));
   function gotDoc(h) {
     setDocs([...docs.filter((d) => d.id !== h.id), h]);
     if (spectate) return;
@@ -938,6 +961,7 @@
     $("docs-list").hidden = false;
     $("docs-body").hidden = $("docs-back").hidden = true;
     stopLog();
+    docsMode = "docs";
     $("docs-list").innerHTML = docs.map((d, i) => `<li><button type="button" class="p-btn" data-doc="${escH(d.id)}">[${i + 1}] ${escH(d.title.toUpperCase())}</button>${d.audio ? ' <span class="p-dim">· AUDIO</span>' : ""}</li>`).join("") || '<li class="p-dim">NONE YET.</li>';
     openPanel("docs");
   }
@@ -948,6 +972,7 @@
     $("docs-list").hidden = true;
     $("docs-body").hidden = false;
     stopLog();
+    docsMode = "docs";
     $("docs-body").innerHTML = d.audio ? logHtml(d) : renderMd(d.text);
     $("docs-back").hidden = docs.length < 2;
     openPanel("docs");
@@ -955,13 +980,12 @@
 
   // ---- audio logs: a handout with a voice. PLAY speaks it a line at a time, with the voice's
   // effects, lighting up each line of the transcript as it's said; STOP (or closing it) stops it.
-  const logLines = (text) => String(text).split(/\n+/).map((s) => s.trim()).filter(Boolean); // (as the server splits it: voices.js speechParts)
   let log = null; // { id, gen, clip } while one plays
   let logGen = 0;
   const logHtml = (d) => `<div class="alog" data-alog="${escH(d.id)}">
       <div class="alog-head"><span>VOICE: ${escH(d.audio.speaker.toUpperCase())}</span><span class="alog-state">READY</span></div>
       <div class="alog-ctl"><button type="button" class="p-btn" data-alog-play>[ PLAY ]</button> <button type="button" class="p-btn" data-alog-stop hidden>[ STOP ]</button></div>
-      <div class="alog-lines">${logLines(d.text).map((l, i) => `<div class="alog-line" data-i="${i}">${escH(l)}</div>`).join("")}</div>
+      <div class="alog-lines">${d.audio.lines.map((l, i) => `<div class="alog-line" data-i="${i}">${l.who ? `<span class="alog-who">${escH(l.who)}:</span> ` : ""}${escH(l.text)}</div>`).join("")}</div>
     </div>`;
   function stopLog() {
     logGen++;
@@ -988,7 +1012,7 @@
       lines[i].scrollIntoView({ block: "nearest" });
       state(`PLAYING ${i + 1}/${lines.length}`);
       if (buf) {
-        log.clip = Voice.playClip(buf, d.audio.fx);
+        log.clip = Voice.playClip(buf, d.audio.lines[i].fx); // (each speaker sounds their own way)
         if (!(await log.clip.done) || gen !== logGen) return;
       }
       lines[i].classList.replace("now", "said");
@@ -1013,13 +1037,21 @@
     }
   });
   $("hdr-docs").onclick = () => ($("docs").hidden ? showDocList() : openPanel(null));
-  $("docs-list").addEventListener("click", (e) => { const id = e.target.closest("[data-doc]")?.dataset.doc; if (id) showDoc(id); });
+  $("docs-list").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-take]")?.dataset.take;
+    if (t) return take(t);
+    const id = e.target.closest("[data-doc]")?.dataset.doc;
+    if (id) showDoc(id);
+  });
   $("docs-close").onclick = () => openPanel(null);
   $("docs-back").onclick = showDocList;
   addEventListener("keydown", (e) => {
     if ($("docs").hidden) return;
     if (e.key === "Escape") return openPanel(null);
-    if (!$("docs-list").hidden && /^[1-9]$/.test(e.key) && docs[Number(e.key) - 1]) { e.preventDefault(); showDoc(docs[Number(e.key) - 1].id); }
+    if ($("docs-list").hidden || !/^[1-9]$/.test(e.key)) return;
+    const n = Number(e.key) - 1;
+    if (docsMode === "files" && files[n]) { e.preventDefault(); take(files[n].id); }
+    else if (docsMode === "docs" && docs[n]) { e.preventDefault(); showDoc(docs[n].id); }
   });
 
   // ------------------------------------------------------------ clocks
@@ -1681,6 +1713,7 @@
           showRoll(msg.roll || null);
           setClocks(msg.clocks);
           setDocs(msg.handouts);
+          setFiles(msg.files);
           // A game without a Warden: the stories on offer until one is playing.
           applySolo(msg.solo);
           // First visit, or a new story replaced the crew: reclaim a remembered file or pick one.
@@ -1692,6 +1725,7 @@
         case "clocks": setClocks(msg.clocks); break;
         case "handout": gotDoc(msg.handout); break;
         case "handouts": setDocs(msg.handouts); break;
+        case "files": setFiles(msg.files); break;
         case "handoutGone": setDocs(docs.filter((d) => d.id !== msg.id)); break;
         case "pilotInfo": setPilot(msg); break;
         case "notice": notice(msg.text); break;

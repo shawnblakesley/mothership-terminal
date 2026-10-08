@@ -25,7 +25,7 @@ const SCHEMA = {
 };
 
 // The transcript of an audio recording instead, when it has a speaker.
-const AUDIO = `\n\nTHIS ONE IS AN AUDIO RECORDING (an audio log, a voicemail, a black box), not a written document. The players will hear it spoken in SPEAKER's voice and read along. text is exactly what's said: plain words, one sentence (or broken-off fragment) per line, in SPEAKER's own voice and state of mind. No Markdown, no stage directions or [bracketed] cues (they would be read out); let what's said carry it: hesitations, a sentence cut off, a time-stamp spoken aloud. Under 120 words. title: what the recording is called on screen (e.g. AUDIO LOG: DR. I. SALK, DAY 19).`;
+const AUDIO = `\n\nTHIS ONE IS AN AUDIO RECORDING (an audio log, a voicemail, a black box), not a written document. The players will hear it spoken in SPEAKER's voice and read along. text is exactly what's said: plain words, one sentence (or broken-off fragment) per line, in SPEAKER's own voice and state of mind. No Markdown, no stage directions or [bracketed] cues (they would be read out); let what's said carry it: hesitations, a sentence cut off, a time-stamp spoken aloud. If several people speak (a conversation, a call), start each speaker's line with their name in CAPITALS and a colon (OKONKWO: ...); lines without a name are the last speaker's; someone not in the cast by what they're called (HOLLIS-VANE: ...). Under 120 words. title: what the recording is called on screen (e.g. AUDIO LOG: DR. I. SALK, DAY 19).`;
 
 export function handoutRequest(state, brief, title = "", speaker = "") {
   const c = state.config;
