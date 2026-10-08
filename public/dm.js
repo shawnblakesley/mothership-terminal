@@ -1344,15 +1344,15 @@
   }
   function renderMap(force = false) {
     const people = playersByRoom();
-    const key = JSON.stringify([S.station, S.config.map, mapView, people, S.config.cast.map((c) => [c.name, c.room]), mapView === "iso" ? S.config.rooms : 0, S.isoShown]);
+    const key = JSON.stringify([S.station, S.config.map, mapView, people, S.config.cast.map((c) => [c.name, c.room]), mapView === "iso" ? S.config.rooms : 0, S.mapShown]);
     if (!force && key === mapKey) return;
     mapKey = key;
     const show = (el) => (mapView === "iso" ? showIso(el, isoData(people))
       : (dropIso(el), (mapView === "status" ? StationMap.render : StationMap.draw)(el, withCast(S.station), S.config.map, { people })));
-    for (const b of document.querySelectorAll(".isoShow")) {
-      b.hidden = mapView !== "iso";
-      b.textContent = S.isoShown ? "Hide from players" : "Show players";
-      b.classList.toggle("primary", !!S.isoShown);
+    // Show players: this view (none of the cast's whereabouts); shown, Hide; another view shown, switch to this one.
+    for (const b of document.querySelectorAll(".mapShow")) {
+      b.textContent = S.mapShown === mapView ? "Hide from players" : S.mapShown ? "Show players this view" : "Show players";
+      b.classList.toggle("primary", S.mapShown === mapView);
     }
     for (const b of document.querySelectorAll(".mapview button")) b.classList.toggle("on", b.dataset.view === mapView);
     show($("map"));
@@ -1396,7 +1396,20 @@
   let isoLib = null;
   const isoViews = new Map(); // element -> { view, data }
   const nick = (name) => (String(name).match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || String(name).split(" ")[0]).toUpperCase();
-  const isoData = (people) => ({ layout: S.config.map, rooms: S.config.rooms, people: Object.fromEntries(Object.entries(people).map(([room, names]) => [room, names.map(nick)])) });
+  const isoData = (people) => ({ station: withCast(S.station), layout: S.config.map, rooms: S.config.rooms, editable: true, people: Object.fromEntries(Object.entries(people).map(([room, names]) => [room, names.map(nick)])) });
+  // The 3D view fills the height its panel has left (less whatever follows the map in it).
+  function fitIso(el) {
+    const box = el.querySelector(":scope > .iso");
+    if (!box) return;
+    let sc = el.parentElement;
+    while (sc && sc !== document.body && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+    const sibs = [...el.parentElement.children], after = sibs.slice(sibs.indexOf(el) + 1).reduce((n, s) => n + s.getBoundingClientRect().height, 0);
+    const [top, height] = !sc || sc === document.body ? [box.getBoundingClientRect().top, innerHeight]
+      : [box.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop,
+        // (a dialog grows to fit what's in it: as tall as it's allowed to be)
+        Math.max(sc.clientHeight, parseFloat(getComputedStyle(sc).maxHeight) || 0) - (parseFloat(getComputedStyle(sc).paddingBottom) || 0)];
+    box.style.height = `${Math.max(320, height - top - after - 16)}px`;
+  }
   function showIso(el, data) {
     let v = isoViews.get(el);
     if (!v || !el.contains(v.box)) {
@@ -1409,9 +1422,10 @@
     }
     v.data = data;
     v.view?.update(data);
+    fitIso(el);
   }
   function dropIso(el) { isoViews.get(el)?.view?.dispose(); isoViews.delete(el); }
-  for (const b of document.querySelectorAll(".isoShow")) b.onclick = () => send({ t: "isoShow", on: !S.isoShown });
+  for (const b of document.querySelectorAll(".mapShow")) b.onclick = () => send({ t: "mapShow", view: S.mapShown === mapView ? "" : mapView });
   for (const seg of document.querySelectorAll(".mapview")) {
     seg.addEventListener("click", (e) => {
       const v = e.target.closest("[data-view]")?.dataset.view;

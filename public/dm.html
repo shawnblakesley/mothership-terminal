@@ -9,6 +9,7 @@
 
   <link rel="icon" href="warden.svg" type="image/svg+xml">
   <link rel="stylesheet" href="dm.css">
+  <link rel="stylesheet" href="stationmap.css">
 </head>
 <body>
   <!-- ================= START: create or reopen a session ================= -->
@@ -212,8 +213,8 @@
     <div class="row">
       <h2 class="grow" id="mapTitle">Station map</h2>
       <span class="muted small">Click a door, light, camera or value to change it.</span>
-      <span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">Drawing</button><button data-view="status">Status</button><button data-view="iso">3D</button></span>
-      <button class="isoShow" hidden title="Show the 3D map on the players' screens: the layout and where they are, nothing else">Show players</button>
+      <span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">2D</button><button data-view="status">Status</button><button data-view="iso">3D</button></span>
+      <button class="mapShow" title="Show this view of the map on the players' screens (without who of the cast is where)">Show players</button>
       <button id="mapClose" class="ghost" aria-label="Close">✕</button>
     </div>
     <div id="mapBig" class="smap"></div>
@@ -429,8 +430,8 @@
       </div>
 
       <div class="tabpanel" data-tabs="side" data-panel="map">
-        <div class="row" id="mapPanel"><span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">Drawing</button><button data-view="status">Status</button><button data-view="iso">3D</button></span>
-          <span class="grow"></span><button class="isoShow" hidden title="Show the 3D map on the players' screens: the layout and where they are, nothing else">Show players</button><button id="mapExpand" class="ghost" title="Open the full map">⤢ Expand</button></div>
+        <div class="row" id="mapPanel"><span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">2D</button><button data-view="status">Status</button><button data-view="iso">3D</button></span>
+          <span class="grow"></span><button class="mapShow" title="Show this view of the map on the players' screens (without who of the cast is where)">Show players</button><button id="mapExpand" class="ghost" title="Open the full map">⤢ Expand</button></div>
         <div id="map" class="smap compact"></div>
       <details class="edit-only">
         <summary>Station state <span class="muted">(agent-editable)</span></summary>

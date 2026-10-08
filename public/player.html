@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="player.css">
+  <link rel="stylesheet" href="stationmap.css">
 </head>
 <body class="theme-green">
   <div id="crt">
@@ -151,8 +152,8 @@
   <div id="rollfx" class="rollfx" hidden aria-live="assertive"><div class="rf-dice"></div><div class="rf-out"></div></div>
   <!-- A room's floor plan the Warden is showing: the layout only. -->
   <div id="planfx" class="planfx" hidden role="dialog" aria-label="Room layout"><div class="pf-title"></div><div class="pf-plan"></div><div class="pf-hint">[ ESC OR CLICK TO CLOSE ]</div></div>
-  <!-- The station in 3D, while the Warden shows it (isomap.js): the layout and where the crew are. -->
-  <div id="isofx" class="planfx isofx" hidden role="dialog" aria-label="Station map"><div class="pf-title">STATION MAP</div><div class="if-map"></div><button type="button" class="p-btn pf-hint if-close">[ DRAG TO TURN · ESC TO CLOSE ]</button></div>
+  <!-- The station map, while the Warden shows it: 2D, status board or 3D (stationmap.js, isomap.js). -->
+  <div id="isofx" class="planfx isofx mapfx" hidden role="dialog" aria-label="Station map"><div class="pf-title">STATION MAP</div><div class="if-map"></div><button type="button" class="p-btn pf-hint if-close">[ DRAG TO TURN · ESC TO CLOSE ]</button></div>
 
   <div id="boot">
     <pre id="boot-text"></pre>
