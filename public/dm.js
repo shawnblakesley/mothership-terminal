@@ -2482,7 +2482,6 @@
   $("sessionCode").onclick = () => copy(playerLink(), "Player link");
   $("copyPlayer").onclick = () => copy(playerLink(), "Player link");
   $("copyWarden").onclick = async () => (await sure("Copy the Warden link?", "Anyone with it can run your session.", "Copy link", "primary")) && copy(wardenLink(), "Warden link");
-  $("openStream").onclick = () => S?.streamKey && window.open(streamLink(), "_blank", "noopener");
   $("copyStream").onclick = () => S?.streamKey && copy(streamLink(), "Stream link");
   $("allSessions").onclick = () => { location.href = "dm"; };
   $("endSession").onclick = async () => {
