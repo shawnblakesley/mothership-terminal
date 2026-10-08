@@ -1,7 +1,7 @@
-// Documents and audio logs lying in rooms (config.roomDocs), part of the story,
-// until someone finds them: a player at a terminal in that room takes one (FILES on
-// their screen), the agent hands one over when the players search, or the Warden
-// does. Found, it becomes a handout (session.js "handouts") and is gone from the room.
+// Documents and audio logs in rooms (config.roomDocs), part of the story. Where one
+// is tells the agent what it can hand the players while they're in that room (when
+// they search it, or pull it up on a terminal there); the Warden can give any of them.
+// Given, it becomes a handout (session.js "handouts"), everyone's unless it's for one.
 //   { id, room, title, text, voice }  voice: "" for a document; else an audio log's
 //   speaker (a voice id, or "cast:<id>"), and text is what's said, a line at a time,
 //   "NAME: ..." starting someone else's lines (session.js logParts).

@@ -772,7 +772,8 @@
       ${numbersCard("STATS", c.stats, rollHint())}
       ${numbersCard("SAVES", c.saves)}
       <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((s) => `<div><span>${escH(s.name)}</span><span class="cs-bonus">+${s.bonus}</span></div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
-      <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length || docs.length ? `<div class="cs-chips">${c.items.map((x) => `<span>${chipText(x)}</span>`).join("")}${docs.map(docChip).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
+      <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length || docs.some((d) => d.to) ? `<div class="cs-chips">${c.items.map((x) => `<span>${chipText(x)}</span>`).join("")}${docs.filter((d) => d.to).map(docChip).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
+      ${docs.some((d) => !d.to) ? `<div class="cs-card cs-shared"><div class="cs-title">SHARED</div><div class="cs-chips">${docs.filter((d) => !d.to).map(docChip).join("")}</div></div>` : ""}
       <div class="cs-card cs-story">
         ${c.crime ? `<div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>` : ""}
         ${c.backstory ? `<div class="p-text">${escH(c.backstory)}</div>` : ""}
@@ -917,7 +918,8 @@
   // Handouts: a new one opens on arrival, and they're kept with the player's items on
   // their sheet. Without a sheet (no character picked), DOCS in the header lists them.
   function docsButton() {
-    $("hdr-docs").hidden = $("hdr-docs-sep").hidden = !docs.length || spectate || !!mine();
+    // (On the stream page, every handout: open one to show it, or play an audio log for the viewers.)
+    $("hdr-docs").hidden = $("hdr-docs-sep").hidden = !docs.length || (spectate && !stream) || !!mine();
     $("hdr-docs").textContent = docs.length ? `DOCS (${docs.length})` : "DOCS";
   }
   function setDocs(list) {
@@ -927,32 +929,9 @@
     if (!$("crewfile").hidden) renderFile();
     if (!$("docs").hidden && $("docs-body").hidden) showDocList();
   }
-  // ---- files: documents and recordings lying in the room this screen's terminal is in. TAKE
-  // one and it's this character's (it opens, and joins their documents).
-  let files = [], docsMode = "docs";
-  function setFiles(list) {
-    files = list || [];
-    $("hdr-files").hidden = $("hdr-files-sep").hidden = !files.length || spectate;
-    $("hdr-files").textContent = `FILES (${files.length})`;
-    if (!$("docs").hidden && docsMode === "files") files.length ? showFiles() : openPanel(null);
-  }
-  function showFiles() {
-    stopLog();
-    docsMode = "files";
-    $("docs-title").innerHTML = sq("FILES IN THIS ROOM");
-    $("docs-list").hidden = false;
-    $("docs-body").hidden = $("docs-back").hidden = true;
-    $("docs-list").innerHTML = files.map((f, i) => `<li><button type="button" class="p-btn" data-take="${escH(f.id)}">[${i + 1}] ${escH(f.title.toUpperCase())}</button><span class="p-dim"> · ${f.audio ? "AUDIO" : "TEXT"} · TAKE</span></li>`).join("");
-    openPanel("docs");
-  }
-  function take(id) {
-    ws?.readyState === 1 && ws.send(JSON.stringify({ t: "take", id }));
-    FX.Sound.beep(660, 0.06, 0.05);
-  }
-  $("hdr-files").onclick = () => ($("docs").hidden || docsMode !== "files" ? showFiles() : openPanel(null));
   function gotDoc(h) {
     setDocs([...docs.filter((d) => d.id !== h.id), h]);
-    if (spectate) return;
+    if (spectate && !stream) return;
     FX.Sound.beep(880, 0.08);
     showDoc(h.id);
   }
@@ -961,7 +940,6 @@
     $("docs-list").hidden = false;
     $("docs-body").hidden = $("docs-back").hidden = true;
     stopLog();
-    docsMode = "docs";
     $("docs-list").innerHTML = docs.map((d, i) => `<li><button type="button" class="p-btn" data-doc="${escH(d.id)}">[${i + 1}] ${escH(d.title.toUpperCase())}</button>${d.audio ? ' <span class="p-dim">· AUDIO</span>' : ""}</li>`).join("") || '<li class="p-dim">NONE YET.</li>';
     openPanel("docs");
   }
@@ -972,7 +950,6 @@
     $("docs-list").hidden = true;
     $("docs-body").hidden = false;
     stopLog();
-    docsMode = "docs";
     $("docs-body").innerHTML = d.audio ? logHtml(d) : renderMd(d.text);
     $("docs-back").hidden = docs.length < 2;
     openPanel("docs");
@@ -1037,21 +1014,13 @@
     }
   });
   $("hdr-docs").onclick = () => ($("docs").hidden ? showDocList() : openPanel(null));
-  $("docs-list").addEventListener("click", (e) => {
-    const t = e.target.closest("[data-take]")?.dataset.take;
-    if (t) return take(t);
-    const id = e.target.closest("[data-doc]")?.dataset.doc;
-    if (id) showDoc(id);
-  });
+  $("docs-list").addEventListener("click", (e) => { const id = e.target.closest("[data-doc]")?.dataset.doc; if (id) showDoc(id); });
   $("docs-close").onclick = () => openPanel(null);
   $("docs-back").onclick = showDocList;
   addEventListener("keydown", (e) => {
     if ($("docs").hidden) return;
     if (e.key === "Escape") return openPanel(null);
-    if ($("docs-list").hidden || !/^[1-9]$/.test(e.key)) return;
-    const n = Number(e.key) - 1;
-    if (docsMode === "files" && files[n]) { e.preventDefault(); take(files[n].id); }
-    else if (docsMode === "docs" && docs[n]) { e.preventDefault(); showDoc(docs[n].id); }
+    if (!$("docs-list").hidden && /^[1-9]$/.test(e.key) && docs[Number(e.key) - 1]) { e.preventDefault(); showDoc(docs[Number(e.key) - 1].id); }
   });
 
   // ------------------------------------------------------------ clocks
@@ -1713,7 +1682,6 @@
           showRoll(msg.roll || null);
           setClocks(msg.clocks);
           setDocs(msg.handouts);
-          setFiles(msg.files);
           // A game without a Warden: the stories on offer until one is playing.
           applySolo(msg.solo);
           // First visit, or a new story replaced the crew: reclaim a remembered file or pick one.
@@ -1725,7 +1693,6 @@
         case "clocks": setClocks(msg.clocks); break;
         case "handout": gotDoc(msg.handout); break;
         case "handouts": setDocs(msg.handouts); break;
-        case "files": setFiles(msg.files); break;
         case "handoutGone": setDocs(docs.filter((d) => d.id !== msg.id)); break;
         case "pilotInfo": setPilot(msg); break;
         case "notice": notice(msg.text); break;

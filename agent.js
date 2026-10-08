@@ -244,14 +244,14 @@ function buildSchema(voices) {
       },
       found_docs: {
         type: "array",
-        description: "Documents and recordings lying in rooms (see FILES IN ROOMS) that the players find now: when they search where one is, or pull it up on a terminal there. It's handed to them to read or play, and gone from the room. Usually empty.",
+        description: "Documents and recordings in rooms (see FILES IN ROOMS) that the players find now: only one in a room they're in, when they search it or pull it up on a terminal there. It's handed to them to read or play. Usually empty.",
         items: {
           type: "object",
           additionalProperties: false,
           required: ["id", "for"],
           properties: {
             id: { type: "string", description: "Its id, from FILES IN ROOMS." },
-            for: { type: "string", description: "The crew member who finds it; empty for everyone." },
+            for: { type: "string", description: "Empty: it goes to everyone (almost always). Only name a crew member if it truly can't be shared." },
           },
         },
       },
@@ -741,7 +741,7 @@ function buildContext(state, steer, aside = false) {
   // What's lying in rooms to be found (hand one over with found_docs when they search there).
   const found = new Set(state.found || []);
   const lying = (state.config.roomDocs || []).filter((d) => !found.has(d.id));
-  if (lying.length) ctx.push(`FILES IN ROOMS (not found yet; players at a terminal in the room can also take them themselves):\n${lying.map((d) => `- ${d.id} [${d.room}] ${d.title} (${d.voice ? "audio recording" : "document"}): ${d.text.replace(/\s+/g, " ").slice(0, 140)}`).join("\n")}`);
+  if (lying.length) ctx.push(`FILES IN ROOMS (not found yet; you may hand the players one that's in the room they're in, when they search it or pull it up on a terminal there):\n${lying.map((d) => `- ${d.id} [${d.room}] ${d.title} (${d.voice ? "audio recording" : "document"}): ${d.text.replace(/\s+/g, " ").slice(0, 140)}`).join("\n")}`);
   if (state.clocks?.length) ctx.push(`CLOCKS (countdowns on the players' screens, running now):\n${state.clocks.map((c) => `- ${c.label}: ${c.paused ? `${c.left}s left, paused by the Warden` : `${Math.max(0, Math.round((c.ends - Date.now()) / 1000))}s left`}`).join("\n")}`);
   if (state.config.terminals?.length) {
     const at = (state.screens || []).map((s) => `- ${s.character || "a screen with no crew file"}: ${state.config.terminals.find((t) => t.id === s.terminal)?.name || s.terminal}`);

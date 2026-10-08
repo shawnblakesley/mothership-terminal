@@ -693,7 +693,6 @@ export class Session {
     this.send("dm", { t: "state", state: this.dmView() });
     this.syncStreams();
     this.syncIso();
-    this.syncFiles();
   }
 
   // The station map on the players' screens, while the Warden shows it, in the view they
@@ -767,8 +766,7 @@ export class Session {
       iso: this.isoView(),
       ...(ws?.stream ? { map: this.streamMap() } : {}),
       clocks: this.publicClocks(),
-      handouts: ws?.stream ? [] : this.handoutsFor(ws),
-      files: this.filesFor(ws, true),
+      handouts: this.handoutsFor(ws),
       solo: this.soloView(), // a game without a Warden: choosing a story, building it, or playing
       claims: this.claims(),
       busy: !!this.state.pending,
@@ -1004,7 +1002,6 @@ export class Session {
     // A game without a Warden: its pilot (holding the session's token) runs the AI.
     if (msg.t === "pilot") return this.pilotAuth(ws, msg.token);
     if (String(msg.t).startsWith("pilot")) return ws.pilot && this.handlePilot(ws, msg);
-    if (msg.t === "take") return this.takeFile(ws, String(msg.id || ""));
     if (msg.t === "input" && this.state.solo && this.state.solo.phase !== "play") return; // (still choosing the story)
     if (["input", "roll", "selfRoll", "vitals"].includes(msg.t)) this.storyBegins();
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
@@ -2589,10 +2586,11 @@ export class Session {
   }
   showHandout(h) {
     const data = JSON.stringify({ t: "handout", handout: this.handoutView(h) });
-    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && (!h.to || c.character === h.to)) c.send(data);
+    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && (c.stream || !h.to || c.character === h.to)) c.send(data);
   }
+  // A screen's handouts: everyone's, and its character's own. (The stream page: all of them.)
   handoutsFor(ws) {
-    return (this.state.handouts || []).filter((h) => !h.to || h.to === ws?.character).map((h) => this.handoutView(h));
+    return (this.state.handouts || []).filter((h) => ws?.stream || !h.to || h.to === ws?.character).map((h) => this.handoutView(h));
   }
   // An audio log's speaker: a voice ("terminal", "intercom") or someone of the cast ("cast:<id>").
   // How it sounds: the voice with its effects; the cast through their channel's (recorded off the comms).
@@ -2649,7 +2647,8 @@ export class Session {
   }
 
   // ---------------------------------------------------------------- room documents
-  // Documents and audio logs lying in rooms (config.roomDocs, roomdocs.js) until someone finds them.
+  // Documents and audio logs in rooms (config.roomDocs, roomdocs.js): where they are tells the
+  // agent what it can hand the players while they're there; the Warden can give any of them.
   roomName(id) {
     const m = String(this.state.config.map || "").match(new RegExp(`\\b${id}\\s*=\\s*([^,\\n@]+)`));
     return m ? m[1].trim() : String(id).replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
@@ -2665,27 +2664,7 @@ export class Session {
     this.state.found.push(id);
     this.giveHandout({ title: d.title, text: d.text, voice: d.voice, to }, "found", finder ? `${finder} found "${d.title}" in ${this.roomName(d.room)}` : "");
   }
-  // What a player screen can take from its terminal's room (FILES on the screen).
-  filesFor(ws, remember = false) {
-    const room = ws && !ws.stream && ws.terminal ? this.roomOfSocket(ws) : "";
-    const files = room ? this.roomDocsIn(room).map((d) => ({ id: d.id, title: d.title, audio: !!d.voice })) : [];
-    if (remember && ws) ws.filesSent = JSON.stringify(files);
-    return files;
-  }
-  syncFiles() {
-    for (const ws of this.sockets) {
-      if (ws.role !== "player" || ws.readyState !== 1) continue;
-      const files = this.filesFor(ws), j = JSON.stringify(files);
-      if (j !== ws.filesSent) { ws.filesSent = j; ws.send(`{"t":"files","files":${j}}`); }
-    }
-  }
-  // A player takes something from the room their terminal's in: theirs (or everyone's, without a crew file).
-  takeFile(ws, id) {
-    if (!this.filesFor(ws).some((f) => f.id === id)) return;
-    const pc = this.characterOf(ws);
-    this.findRoomDoc(id, pc?.id || "", pc?.name || "Someone");
-    this.syncDm();
-  }
+
 
   // ---------------------------------------------------------------- clocks
   // Countdowns on every player's screen (a breach, oxygen, a self-destruct).
