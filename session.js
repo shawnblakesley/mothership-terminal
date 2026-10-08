@@ -50,10 +50,12 @@ REACTOR STATUS: core efficiency 70% (rated minimum 99%). HV-CORE reports an unex
 MAINTENANCE TICKET #4471 (filed 23 days ago): reactor running below rated efficiency. Hollis-Vane dispatched a convict maintenance crew (the PLAYERS) on the prison tug SECOND CHANCE to service the Deck 4 reactor. They have just docked and are standing in Airlock A, at its terminal, with tools for a routine reactor service. The inner airlock door to the station is SEALED: getting it open is their first job, and their work order carries the maintenance override code for it (4471-MAINT). Everything in RECENT EVENTS happened while they were in transit: nobody briefed them, and they are not equipped for it.
 DEPARTURE CONDITION: the SECOND CHANCE is slaved to station control and built so it cannot undock until the station approves the job. HV-CORE must verify the reactor running at 99% efficiency or better, then transmit departure clearance. Until then the crew is not going home.`;
 // The crew start aboard their tug, at its own terminal.
-const DEFAULT_LORE = LORE_V3.replace(
+const PREV_DEFAULT_LORE = LORE_V3.replace(
   "They have just docked and are standing in Airlock A, at its terminal, with tools for a routine reactor service. The inner airlock door to the station is SEALED:",
   "They have just docked at Airlock A and are still aboard the tug, at its own terminal (the SECOND CHANCE's flight computer, not on the station network), with tools for a routine reactor service. Through the docking collar, Airlock A's inner door to the station is SEALED:",
 );
+// (and the tug "locked-down to station control", not "slaved")
+const DEFAULT_LORE = PREV_DEFAULT_LORE.replace("SECOND CHANCE is slaved to station control", "SECOND CHANCE is locked-down to station control");
 // Earlier defaults, upgraded when a saved session still has one unedited.
 const LORE_V2 = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
 CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
@@ -315,7 +317,7 @@ function migrateGame(saved) {
     config.upgrades.push("ship");
   }
   // Once: an unedited KESTREL-9 story starts the crew aboard the tug (its terminal first).
-  if (config.lore === LORE_V3) config.lore = DEFAULT_LORE;
+  if (config.lore === LORE_V3 || config.lore === PREV_DEFAULT_LORE) config.lore = DEFAULT_LORE;
   if (!config.upgrades.includes("start-ship")) {
     if (config.lore === DEFAULT_LORE) config.terminals = startAboardShip(config.terminals);
     config.upgrades.push("start-ship");
@@ -419,6 +421,12 @@ function migrateGame(saved) {
     }
     config.upgrades.push("room-docs");
   }
+  // The work order's tug "locked-down to station control" (it said "slaved"), in the story and in hand.
+  const ss = saved.storyStart?.config;
+  if (ss && (ss.lore === PREV_DEFAULT_LORE || ss.lore === LORE_V3)) ss.lore = DEFAULT_LORE; // (what Restart story goes back to)
+  for (const d of [...(saved.config?.startDocs || []), ...(saved.handouts || []), ...(ss?.startDocs || [])]) {
+    if (d?.id === WORK_ORDER.id && typeof d.text === "string") d.text = d.text.replace("SECOND CHANCE is slaved to station control", "SECOND CHANCE is locked-down to station control");
+  }
   // Once: an original KESTREL-9 story starts the crew with their work order.
   config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];
   if (!config.upgrades.includes("work-order")) {
@@ -475,7 +483,7 @@ function migrateGame(saved) {
 }
 
 // The default story's starting documents: the crew's work order, in everyone's DOCS.
-const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 4471-MAINT", text: "# HOLLIS-VANE EXTRACTION CO.\n## WORK ORDER 4471 - REACTOR SERVICE\n\n**VESSEL:** Penal tug SECOND CHANCE\n**ASSIGNED:** Convict maintenance crew (4)\n**STATION:** KESTREL-9, rimward ice platform\n**FILED:** 23 days prior - STATUS: OVERDUE\n**PRIORITY:** 2 / ROUTINE\n\n**TASK:** Service Deck 4 reactor. Core efficiency 70%. Rated minimum **99%**. Find the bleed, restore rated output.\n\n**TOOLS:** As issued at tender. Nothing is to be drawn from station stores.\n\n**ACCESS**\n- Airlock A inner door (Deck 1): **OVERRIDE CODE 4471-MAINT**. Entry logs to Administrator's console.\n- Reactor access, Deck 4: standard crew hatch.\n\n**DEPARTURE**\nSECOND CHANCE is slaved to station control. She will not undock until HV-CORE verifies the reactor at **99% or better** and transmits departure clearance. No exceptions, no overrides.\n\n~~Hazard pay authorised for duration of job.~~\n\n**DO NOT** interfere with station operations. Do not alter Deck 3 cargo configuration.\n\nHV-CORE // verified // 4471-MAINT", to: "", at: 0 };
+const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 4471-MAINT", text: "# HOLLIS-VANE EXTRACTION CO.\n## WORK ORDER 4471 - REACTOR SERVICE\n\n**VESSEL:** Penal tug SECOND CHANCE\n**ASSIGNED:** Convict maintenance crew (4)\n**STATION:** KESTREL-9, rimward ice platform\n**FILED:** 23 days prior - STATUS: OVERDUE\n**PRIORITY:** 2 / ROUTINE\n\n**TASK:** Service Deck 4 reactor. Core efficiency 70%. Rated minimum **99%**. Find the bleed, restore rated output.\n\n**TOOLS:** As issued at tender. Nothing is to be drawn from station stores.\n\n**ACCESS**\n- Airlock A inner door (Deck 1): **OVERRIDE CODE 4471-MAINT**. Entry logs to Administrator's console.\n- Reactor access, Deck 4: standard crew hatch.\n\n**DEPARTURE**\nSECOND CHANCE is locked-down to station control. She will not undock until HV-CORE verifies the reactor at **99% or better** and transmits departure clearance. No exceptions, no overrides.\n\n~~Hazard pay authorised for duration of job.~~\n\n**DO NOT** interfere with station operations. Do not alter Deck 3 cargo configuration.\n\nHV-CORE // verified // 4471-MAINT", to: "", at: 0 };
 
 // The built-in story, always on offer in a game without a Warden (no build needed).
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
