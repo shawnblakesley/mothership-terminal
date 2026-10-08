@@ -233,9 +233,10 @@ function buildSchema(voices) {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["title", "text", "for"],
+          required: ["title", "text", "for", "voice"],
           properties: {
             title: { type: "string", description: "What the document is, e.g. MEDICAL LOG: DR. SALK, DAY 19." },
+            voice: { type: "string", description: "Empty for a written document. For an audio recording they can play (an audio log, a voicemail, a black box, a distress call): who speaks it, a character's name or a voice's name; then text is exactly what's said, plain words, one sentence per line, no Markdown or stage directions." },
             text: { type: "string", description: "Its full text, as written in the world, in Markdown: # headings, **bold**, *italic*, __underlined__ (here __text__ means underline), ~~crossed out~~, - lists, > quotes, --- between entries. Used as the document itself would, not overdone." },
             for: { type: "string", description: "A crew member's name if only they get it; empty for everyone." },
           },
@@ -822,7 +823,7 @@ export function parseReply(text, voices) {
     handouts: (Array.isArray(r?.handouts) ? r.handouts : [])
       .filter((h) => h && String(h.title ?? "").trim() && String(h.text ?? "").trim())
       .slice(0, 3)
-      .map((h) => ({ title: scrub(h.title).trim().slice(0, 120), text: scrub(h.text).slice(0, 6000), for: String(h.for ?? "").trim().slice(0, 60) })),
+      .map((h) => ({ title: scrub(h.title).trim().slice(0, 120), text: scrub(h.text).slice(0, 6000), for: String(h.for ?? "").trim().slice(0, 60), voice: String(h.voice ?? "").trim().slice(0, 60) })),
     station_changes: (Array.isArray(r?.station_changes) ? r.station_changes : [])
       .filter((c) => c && typeof c.path === "string" && c.path.trim())
       .map((c) => ({ path: c.path.trim(), value: String(c.value ?? "") })),

@@ -24,7 +24,10 @@ const SCHEMA = {
   properties: { title: { type: "string" }, text: { type: "string" } },
 };
 
-export function handoutRequest(state, brief, title = "") {
+// The transcript of an audio recording instead, when it has a speaker.
+const AUDIO = `\n\nTHIS ONE IS AN AUDIO RECORDING (an audio log, a voicemail, a black box), not a written document. The players will hear it spoken in SPEAKER's voice and read along. text is exactly what's said: plain words, one sentence (or broken-off fragment) per line, in SPEAKER's own voice and state of mind. No Markdown, no stage directions or [bracketed] cues (they would be read out); let what's said carry it: hesitations, a sentence cut off, a time-stamp spoken aloud. Under 120 words. title: what the recording is called on screen (e.g. AUDIO LOG: DR. I. SALK, DAY 19).`;
+
+export function handoutRequest(state, brief, title = "", speaker = "") {
   const c = state.config;
   const cast = c.voices.flatMap((v) => (v.characters || []).map((ch) => `- ${ch.name} (via ${v.name})${ch.notes ? `: ${ch.notes}` : ""}`));
   const log = state.log.filter((e) => !e.cut && e.text && !["note"].includes(e.kind)).slice(-RECENT);
@@ -37,9 +40,9 @@ export function handoutRequest(state, brief, title = "") {
     log.length ? `WHAT HAS HAPPENED LATELY (the comms log, oldest first):\n${log.map((e) => logLine(e, c.voices)).join("\n")}` : "The story hasn't started yet.",
   ].filter(Boolean).join("\n\n");
   return {
-    system: SYSTEM,
+    system: SYSTEM + (speaker ? AUDIO : ""),
     context,
-    messages: [{ role: "user", content: `BRIEF: ${brief}${title ? `\nTITLE (keep it, or refine it): ${title}` : ""}\n\nWrite the document.` }],
+    messages: [{ role: "user", content: `BRIEF: ${brief}${title ? `\nTITLE (keep it, or refine it): ${title}` : ""}${speaker ? `\nSPEAKER: ${speaker}` : ""}\n\nWrite the ${speaker ? "recording" : "document"}.` }],
     schema: SCHEMA,
     example: { title: "MEDICAL LOG: DR. I. SALK", text: "DAY 14 / 06:10\n..." },
   };

@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, OLD_COLD_PICTURES } from "./voices.js";
-import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
+import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName } from "./sounds.js";
@@ -1288,11 +1288,11 @@ export class Session {
         this.touch();
         return; // (no redraw: the Warden is typing in the card)
       }
-      case "handout": // the Warden gives the players a document (everyone, or one character)
-        this.giveHandout({ title: msg.title, text: msg.text, to: msg.to }, "dm");
+      case "handout": // the Warden gives the players a document, or an audio log (voice), to everyone or one character
+        this.giveHandout({ title: msg.title, text: msg.text, to: msg.to, voice: msg.voice }, "dm");
         break;
       case "handoutWrite": // the agent drafts one from the Warden's brief (back to the Warden to edit, not to the players)
-        if (!this.handoutBusy) this.writeHandout(String(msg.brief || "").slice(0, 2000), String(msg.title || "").slice(0, 120));
+        if (!this.handoutBusy) this.writeHandout(String(msg.brief || "").slice(0, 2000), String(msg.title || "").slice(0, 120), String(msg.voice || ""));
         return;
       case "handoutAgain": { // show it again (it pops up on their screens)
         const h = s.handouts.find((x) => x.id === msg.id);
@@ -2095,7 +2095,11 @@ export class Session {
     // The story's over (in a game without a Warden; with one, the Warden decides).
     if (reply?.story_end?.ended && this.state.solo?.phase === "play") setTimeout(() => this.soloEnd(reply.story_end.how), 0);
     for (const c of reply?.clocks || []) c.action === "stop" ? this.stopClock(c.label) : this.startClock(c.label, c.seconds, "agent");
-    for (const h of reply?.handouts || []) this.giveHandout({ title: h.title, text: h.text, to: findCharacterId(this.state.config.crew, h.for) }, "agent");
+    for (const h of reply?.handouts || []) {
+      // (an audio log: spoken by someone of the cast, or one of the voices)
+      const member = h.voice && findCast(this.state.config.cast, h.voice), vid = h.voice && !member && resolveVoice(h.voice, this.state.config.voices);
+      this.giveHandout({ title: h.title, text: h.text, to: findCharacterId(this.state.config.crew, h.for), voice: member ? `cast:${member.id}` : vid || "" }, "agent");
+    }
   }
 
   // The map changes in an agent reply that really change something: a new
@@ -2518,23 +2522,26 @@ export class Session {
   // ---------------------------------------------------------------- handouts
   // Documents in the players' hands (a log, a memo, a manifest): they pop up on
   // the screens they're for, and stay under DOCS. to: a crew id, or "" for all.
-  giveHandout({ title, text, to = "" }, source) {
+  // An audio log is one with a voice: its text is what's said, one line at a time,
+  // and the players play it on their screens (the audio comes from handoutAudio).
+  giveHandout({ title, text, to = "", voice = "" }, source) {
     const clean = (v, n) => String(v ?? "").replace(/\r/g, "").trim().slice(0, n);
     const h = { id: `doc${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, title: clean(title, 120), text: clean(text, 6000), to: this.state.config.crew.some((c) => c.id === to) ? to : "", at: Date.now() };
+    if (voice && this.logVoice(voice)) h.voice = String(voice);
     if (!h.title || !h.text) return;
     this.state.handouts.push(h);
     if (this.state.handouts.length > 60) this.state.handouts.shift();
     const who = h.to ? this.state.config.crew.find((c) => c.id === h.to)?.name : "everyone";
-    this.addLog("note", `Handout${source === "agent" ? " from the agent" : ""} to ${who}: ${h.title}`);
+    this.addLog("note", `${h.voice ? "Audio log" : "Handout"}${source === "agent" ? " from the agent" : ""} to ${who}: ${h.title}`);
     this.showHandout(h);
     this.touch();
   }
-  async writeHandout(brief, title) {
+  async writeHandout(brief, title, voice = "") {
     if (!brief.trim() && !title.trim()) return;
     this.handoutBusy = true;
     this.send("dm", { t: "handoutWriting", busy: true });
     try {
-      const h = normalizeHandout(await this.ask(handoutRequest(this.state, brief || title, title), "handout"));
+      const h = normalizeHandout(await this.ask(handoutRequest(this.state, brief || title, title, this.logVoice(voice)?.name || ""), "handout"));
       this.send("dm", { t: "handoutDraft", ...h });
     } catch (err) {
       console.error(`[${this.code}] handout failed:`, err?.message || err);
@@ -2544,11 +2551,34 @@ export class Session {
     this.send("dm", { t: "handoutWriting", busy: false });
   }
   showHandout(h) {
-    const data = JSON.stringify({ t: "handout", handout: h });
+    const data = JSON.stringify({ t: "handout", handout: this.handoutView(h) });
     for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && (!h.to || c.character === h.to)) c.send(data);
   }
   handoutsFor(ws) {
-    return (this.state.handouts || []).filter((h) => !h.to || h.to === ws?.character);
+    return (this.state.handouts || []).filter((h) => !h.to || h.to === ws?.character).map((h) => this.handoutView(h));
+  }
+  // An audio log's speaker: a voice ("terminal", "intercom") or someone of the cast ("cast:<id>").
+  // How it sounds: the voice with its effects; the cast through their channel's (recorded off the comms).
+  logVoice(ref) {
+    const c = this.state.config, r = String(ref || "");
+    if (r.startsWith("cast:")) {
+      const m = (c.cast || []).find((x) => x.id === r.slice(5));
+      if (!m) return null;
+      return { base: castVoice(m), fx: c.voices.find((v) => v.id === channelOf(c))?.fx || {}, name: m.name };
+    }
+    const v = c.voices.find((x) => x.id === r);
+    return v ? { base: v.voice, fx: v.fx, name: shownName(v) } : null;
+  }
+  // A handout as the players get it: an audio log says who speaks, how it sounds and how many lines it has.
+  handoutView(h) {
+    const { voice, ...rest } = h, lv = voice && this.logVoice(voice);
+    return lv ? { ...rest, audio: { speaker: lv.name, fx: lv.fx, parts: speechParts(h.text).length } } : rest;
+  }
+  // One line of an audio log, spoken (a WAV; null if there's no such line).
+  handoutAudio(id, part) {
+    const h = (this.state.handouts || []).find((x) => x.id === id), lv = h?.voice && this.logVoice(h.voice);
+    const text = lv && speechParts(h.text)[part];
+    return text ? synthesize(text, lv.base) : Promise.resolve(null);
   }
 
   // ---------------------------------------------------------------- clocks

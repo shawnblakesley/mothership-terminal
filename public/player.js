@@ -626,6 +626,7 @@
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
   function openPanel(id) {
+    if (id !== "docs") stopLog(); // (an audio log stops when its panel closes)
     for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "solopick", "docs", "ending"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
     // (Not before power-on: the key that wakes the terminal would also press the button.)
@@ -747,7 +748,9 @@
   const skillBonus = (pc, name) => (name && pc.skills.find((s) => s.name.toLowerCase() === name.toLowerCase())?.bonus) || 0;
   // A document they hold, among their items: a file you can open.
   const FILE_ICON = '<svg class="cs-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
-  const docChip = (d) => `<button type="button" class="cs-doc" data-doc="${escH(d.id)}" title="Open">${FILE_ICON}${chipText(d.title.toUpperCase())}</button>`;
+  // An audio log, among their items: a cassette.
+  const TAPE_ICON = '<svg class="cs-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><circle cx="16" cy="11" r="2"/><path d="M8 13h8"/><path d="M6 19l2-3h8l2 3"/></svg>';
+  const docChip = (d) => `<button type="button" class="cs-doc" data-doc="${escH(d.id)}" title="${d.audio ? "Play" : "Open"}">${d.audio ? TAPE_ICON : FILE_ICON}${chipText(d.title.toUpperCase())}</button>`;
   // A pill's text: one line; too long for the pill, it fades at the end and scrolls across on hover (fitChips).
   const chipText = (t) => `<span class="cs-cw"><span class="cs-ct">${escH(t)}</span></span>`;
   function fitChips(root) {
@@ -934,7 +937,8 @@
     $("docs-title").innerHTML = sq("DOCUMENTS");
     $("docs-list").hidden = false;
     $("docs-body").hidden = $("docs-back").hidden = true;
-    $("docs-list").innerHTML = docs.map((d, i) => `<li><button type="button" class="p-btn" data-doc="${escH(d.id)}">[${i + 1}] ${escH(d.title.toUpperCase())}</button></li>`).join("") || '<li class="p-dim">NONE YET.</li>';
+    stopLog();
+    $("docs-list").innerHTML = docs.map((d, i) => `<li><button type="button" class="p-btn" data-doc="${escH(d.id)}">[${i + 1}] ${escH(d.title.toUpperCase())}</button>${d.audio ? ' <span class="p-dim">· AUDIO</span>' : ""}</li>`).join("") || '<li class="p-dim">NONE YET.</li>';
     openPanel("docs");
   }
   function showDoc(id) {
@@ -943,10 +947,71 @@
     $("docs-title").innerHTML = sq(escH(d.title.toUpperCase()));
     $("docs-list").hidden = true;
     $("docs-body").hidden = false;
-    $("docs-body").innerHTML = renderMd(d.text);
+    stopLog();
+    $("docs-body").innerHTML = d.audio ? logHtml(d) : renderMd(d.text);
     $("docs-back").hidden = docs.length < 2;
     openPanel("docs");
   }
+
+  // ---- audio logs: a handout with a voice. PLAY speaks it a line at a time, with the voice's
+  // effects, lighting up each line of the transcript as it's said; STOP (or closing it) stops it.
+  const logLines = (text) => String(text).split(/\n+/).map((s) => s.trim()).filter(Boolean); // (as the server splits it: voices.js speechParts)
+  let log = null; // { id, gen, clip } while one plays
+  let logGen = 0;
+  const logHtml = (d) => `<div class="alog" data-alog="${escH(d.id)}">
+      <div class="alog-head"><span>VOICE: ${escH(d.audio.speaker.toUpperCase())}</span><span class="alog-state">READY</span></div>
+      <div class="alog-ctl"><button type="button" class="p-btn" data-alog-play>[ PLAY ]</button> <button type="button" class="p-btn" data-alog-stop hidden>[ STOP ]</button></div>
+      <div class="alog-lines">${logLines(d.text).map((l, i) => `<div class="alog-line" data-i="${i}">${escH(l)}</div>`).join("")}</div>
+    </div>`;
+  function stopLog() {
+    logGen++;
+    log?.clip?.stop();
+    log = null;
+  }
+  async function playLog(d) {
+    stopLog();
+    FX.Sound.unlock();
+    const gen = logGen, box = $("docs-body").querySelector(".alog"), lines = [...box.querySelectorAll(".alog-line")];
+    log = { id: d.id, clip: null };
+    const state = (t) => { box.querySelector(".alog-state").textContent = t; };
+    const buttons = (playing) => { box.querySelector("[data-alog-play]").hidden = playing; box.querySelector("[data-alog-stop]").hidden = !playing; };
+    buttons(true);
+    for (const l of lines) l.classList.remove("now", "said");
+    const fetchPart = (i) => (i < lines.length ? Voice.load(`api/sessions/${code}/handouts/${encodeURIComponent(d.id)}/audio/${i}`) : null);
+    let next = fetchPart(0);
+    for (let i = 0; i < lines.length; i++) {
+      state(`LOADING ${i + 1}/${lines.length}`);
+      const buf = await next;
+      if (gen !== logGen) return;
+      next = fetchPart(i + 1); // (the next line loads while this one plays)
+      lines[i].classList.add("now");
+      lines[i].scrollIntoView({ block: "nearest" });
+      state(`PLAYING ${i + 1}/${lines.length}`);
+      if (buf) {
+        log.clip = Voice.playClip(buf, d.audio.fx);
+        if (!(await log.clip.done) || gen !== logGen) return;
+      }
+      lines[i].classList.replace("now", "said");
+      await new Promise((r) => setTimeout(r, 350));
+      if (gen !== logGen) return;
+    }
+    state("END OF RECORDING");
+    buttons(false);
+    log = null;
+  }
+  $("docs-body").addEventListener("click", (e) => {
+    const box = e.target.closest(".alog");
+    const d = box && docs.find((x) => x.id === box.dataset.alog);
+    if (!d) return;
+    if (e.target.closest("[data-alog-play]")) playLog(d);
+    if (e.target.closest("[data-alog-stop]")) {
+      stopLog();
+      box.querySelector(".alog-state").textContent = "STOPPED";
+      box.querySelector("[data-alog-play]").hidden = false;
+      box.querySelector("[data-alog-stop]").hidden = true;
+      for (const l of box.querySelectorAll(".alog-line.now")) l.classList.remove("now");
+    }
+  });
   $("hdr-docs").onclick = () => ($("docs").hidden ? showDocList() : openPanel(null));
   $("docs-list").addEventListener("click", (e) => { const id = e.target.closest("[data-doc]")?.dataset.doc; if (id) showDoc(id); });
   $("docs-close").onclick = () => openPanel(null);

@@ -263,6 +263,23 @@
     sources.forEach((x) => x.start(when));
     src.start(when);
   }
+  // One clip on its own, with a voice's effects (an audio log the player plays): { done, stop }.
+  // done resolves when it ends (true) or is stopped (false).
+  function playClip(buffer, fx = {}) {
+    const c = ctx(), src = c.createBufferSource();
+    src.buffer = buffer;
+    const sources = chain(c, src, getMaster(), fx, buffer.duration);
+    let stopped = false;
+    const done = new Promise((resolve) => {
+      src.onended = () => {
+        resolve(!stopped);
+        setTimeout(() => sources.forEach((x) => { try { x.stop(); } catch {} }), 6000); // (let tails ring out)
+      };
+    });
+    sources.forEach((x) => x.start());
+    src.start();
+    return { done, stop() { stopped = true; try { src.stop(); } catch {} } };
+  }
   const cutLive = () => { for (const x of live) { try { x.stop(); } catch {} } live.clear(); busyUntil = 0; };
 
   function stop() {
@@ -288,6 +305,7 @@
     load,
     decode,
     playNow,
+    playClip,
     // e.g. Voice.setBlocked(() => FX.has("blackout")): nothing speaks while it's true.
     setBlocked(fn) { blocked = fn; },
   };

@@ -2405,9 +2405,11 @@
     const opts = [["", "Everyone"], ...S.config.crew.map((c) => [c.id, c.name])];
     const key = JSON.stringify(opts);
     if (to.dataset.key !== key) { to.dataset.key = key; const was = to.value; to.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(""); to.value = opts.some(([v]) => v === was) ? was : ""; }
+    // An audio log's speaker: none (a written document), a voice, or someone of the cast.
+    fillSelect($("docVoice"), [["", "None (written)"], ...S.config.voices.map((v) => [v.id, v.name]), ...(S.config.cast || []).map((c) => [`cast:${c.id}`, c.name])], $("docVoice").value || "");
     const list = (S.handouts || []).slice().reverse();
     const nameOf = (id) => S.config.crew.find((c) => c.id === id)?.name || "everyone";
-    $("docList").innerHTML = list.length ? list.map((h) => `<li title="${esc(h.text.slice(0, 300))}"><span class="grow">${esc(h.title)} <span class="muted">· ${esc(h.to ? nameOf(h.to) : "everyone")}</span></span><button data-doc-again="${esc(h.id)}" class="ghost" title="Show again">↻</button><button data-doc-del="${esc(h.id)}" class="ghost" title="Take it back">✕</button></li>`).join("") : '<li class="muted small">None given yet.</li>';
+    $("docList").innerHTML = list.length ? list.map((h) => `<li title="${esc(h.text.slice(0, 300))}"><span class="grow">${esc(h.title)} <span class="muted">· ${h.voice ? "audio log · " : ""}${esc(h.to ? nameOf(h.to) : "everyone")}</span></span><button data-doc-again="${esc(h.id)}" class="ghost" title="Show again">↻</button><button data-doc-del="${esc(h.id)}" class="ghost" title="Take it back">✕</button></li>`).join("") : '<li class="muted small">None given yet.</li>';
   }
   // The agent writes it from the description in the text box (and the title, if any).
   function handoutWriting(busy) {
@@ -2417,13 +2419,16 @@
   $("docWrite").onclick = () => {
     const title = $("docTitle").value.trim(), brief = $("docText").value.trim();
     if (!brief && !title) return toast("Describe the document first.", "error");
-    send({ t: "handoutWrite", brief, title });
+    send({ t: "handoutWrite", brief, title, voice: $("docVoice").value });
   };
   $("docSend").onclick = () => {
     const title = $("docTitle").value.trim(), text = $("docText").value.trim();
     if (!title || !text) return toast("Add a title and text.", "error");
-    send({ t: "handout", title, text, to: $("docTo").value });
+    send({ t: "handout", title, text, to: $("docTo").value, voice: $("docVoice").value });
     $("docTitle").value = $("docText").value = "";
+  };
+  $("docVoice").onchange = () => {
+    $("docText").placeholder = $("docVoice").value ? "What's said, a line each, or describe it and press Write it" : "Text, or describe it and press Write it";
   };
   $("docList").addEventListener("click", (e) => {
     const again = e.target.closest("[data-doc-again]")?.dataset.docAgain, del = e.target.closest("[data-doc-del]")?.dataset.docDel;
