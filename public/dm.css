@@ -23,7 +23,8 @@
 * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
-body { background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+/* Everything in the console in the monospaced face (a little smaller: its letters are wider). */
+body { background: var(--bg); color: var(--fg); font: 13px/1.5 var(--mono); display: flex; flex-direction: column; }
 
 /* ---- controls ---- */
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -405,7 +406,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
 
 /* ---- per-player variants ---- */
 .entry .var { margin-top: 5px; padding: 4px 0 0 10px; border-top: 1px dashed var(--line2); white-space: pre-wrap; }
-.entry .vfor { font-family: system-ui, sans-serif; font-size: 11px; letter-spacing: 0.04em; color: var(--warden); text-transform: uppercase; }
+.entry .vfor { font-size: 11px; letter-spacing: 0.04em; color: var(--warden); text-transform: uppercase; }
 .dline .dvars { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .dvar { display: grid; grid-template-columns: minmax(110px, 0.35fr) 1fr auto; gap: 4px; width: 100%; padding: 4px; border-radius: 6px; background: color-mix(in srgb, var(--warden) 8%, transparent); }
 .dvar input, .dvar textarea { font-size: 12.5px; padding: 4px 6px; }
