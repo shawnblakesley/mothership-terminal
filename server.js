@@ -171,7 +171,29 @@ const router = express.Router();
 const pub = path.join(here, "public");
 const noStore = (res) => res.set("Cache-Control", "no-store");
 
-router.get("/", (_req, res) => { track("PageView", { Page: "player" }); noStore(res).sendFile(path.join(pub, "player.html")); });
+// Link previews (Discord, Slack, messages): the player page's title, description and picture,
+// naming the game when the link has its code (?s=). The picture needs a full address: PUBLIC_URL
+// (the address players use, e.g. https://shawnofthe.dev/mothership; deploy/update.sh sets it), else this request's.
+const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/+$/, "");
+const escAttr = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+function previewTags(req) {
+  const base = PUBLIC_URL || `${req.protocol}://${req.get("host")}${BASE}`;
+  const s = sessions.get(normCode(req.query.s));
+  const title = s ? `Join the crew aboard ${s.state.config.stationName}` : "Station Terminal";
+  const desc = s
+    ? `A Mothership session is under way. Session code ${s.code}: open the link and pick your crew file.`
+    : "A Mothership RPG terminal: an AI runs the station, its voices and its horrors. Join a game with its code, or start one.";
+  const og = [["og:type", "website"], ["og:site_name", "Mothership Terminal"], ["og:title", title], ["og:description", desc],
+    ["og:url", s ? `${base}/?s=${s.code}` : `${base}/`], ["og:image", `${base}/og-image.jpg`], ["og:image:width", "1200"], ["og:image:height", "630"],
+    ["og:image:alt", "JOIN THE CREW, on a green terminal screen over a heart monitor going flat"]];
+  return [...og.map(([p, c]) => `<meta property="${p}" content="${escAttr(c)}">`),
+    `<meta name="description" content="${escAttr(desc)}">`, '<meta name="twitter:card" content="summary_large_image">', '<meta name="theme-color" content="#3bff7a">'].join("\n  ");
+}
+router.get("/", (req, res) => {
+  track("PageView", { Page: "player" });
+  const html = fs.readFileSync(path.join(pub, "player.html"), "utf8").replace("<!-- link preview -->", previewTags(req));
+  noStore(res).type("html").send(html);
+});
 router.get("/dm", (_req, res) => { track("PageView", { Page: "warden" }); noStore(res).sendFile(path.join(pub, "dm.html")); });
 // The Warden's stream page: the player screen, showing everything (player.js: stream).
 router.get("/stream", (_req, res) => { track("PageView", { Page: "stream" }); noStore(res).sendFile(path.join(pub, "player.html")); });

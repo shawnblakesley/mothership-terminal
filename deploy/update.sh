@@ -63,6 +63,11 @@ setup_telemetry || echo "Telemetry setup failed (the app runs without it)." >&2
 # into a root-only file the unit loads; nothing secret is in the repo or the
 # deploy. If they can't be fetched, the ones from the last deploy stay.
 mkdir -p /etc/systemd/system/mothership.service.d
+# The address players use, for link previews' pictures (server.js previewTags). Once: edit the file to change it.
+[ -f /etc/systemd/system/mothership.service.d/public-url.conf ] || cat > /etc/systemd/system/mothership.service.d/public-url.conf <<'CONF'
+[Service]
+Environment=PUBLIC_URL=https://shawnofthe.dev/mothership
+CONF
 cat > /etc/systemd/system/mothership.service.d/secrets.conf <<'CONF'
 [Service]
 EnvironmentFile=-/etc/mothership/secrets.env
