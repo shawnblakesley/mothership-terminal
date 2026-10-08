@@ -126,6 +126,22 @@ body {
 .planfx[hidden] { display: none; }
 .pf-title { letter-spacing: 0.2em; text-shadow: 0 0 6px var(--glow); }
 .pf-hint { color: var(--dim); font-size: 0.85em; animation: blink 1.2s infinite steps(1); }
+.isofx { cursor: default; padding: 3vh 3vw; }
+.isofx .if-map { flex: 1; min-height: 0; width: 100%; overflow: auto; text-shadow: none; scrollbar-width: none; }
+.isofx .if-map.iso { overflow: hidden; }
+/* The map's views (stationmap.css), in the terminal's colours. */
+.mapfx { --panel: color-mix(in srgb, var(--fg) 4%, var(--bg)); --panel2: color-mix(in srgb, var(--fg) 7%, var(--bg)); --panel3: color-mix(in srgb, var(--fg) 11%, var(--bg));
+  --line: color-mix(in srgb, var(--dim) 55%, var(--bg)); --line2: var(--dim); --muted: var(--dim); --accent: var(--fg); --accent-soft: var(--fg);
+  --danger: #ff4a3d; --warn: #ffb22e; --player: #ffffff; --mono: var(--font); }
+.mapfx .smap { display: flex; flex-direction: column; gap: 10px; }
+.mapfx .mchip { color: var(--fg); font-size: 16px; }
+.mapfx .mchip .mk { font-size: 14px; }
+.mapfx .msname, .mapfx .mrname { font-size: 15px; }
+.mapfx .mdname { font: 17px var(--font); }
+.mapfx .sv text { font-size: 15px; }
+.mapfx .sv .sv-deckname { font-size: 17px; }
+.mapfx .sv .sv-roomname { font-size: 16px; }
+.mapfx .sv .sv-val, .mapfx .sv .sv-tag { font-size: 14px; }
 .pf-plan { width: min(92vw, 900px); display: flex; justify-content: center; filter: drop-shadow(0 0 4px var(--glow)); }
 /* An adversary's picture beside the terminal (the right-hand panel), grey multiplied
    over the screen's colour, with scanlines. On narrow screens, over everything. */

@@ -294,10 +294,7 @@
       out.links.push(`<g class="sv-link${/vent|duct|air/i.test(l.label) ? " vent" : ""}"><path d="${d}"/>${l.label ? `<text class="sv-tag" x="${Math.min(W - 10, Math.max(sx, ex) + bend * 0.75 + 4)}" y="${(p.cy + q.cy) / 2}">${esc(l.label.toUpperCase())}</text>` : ""}${title(`${a.label} ↔ ${b.label}${l.label ? ` (${l.label})` : ""}`)}</g>`);
     }
 
-    const elsewhere = m.elsewhere.size
-      ? `<div class="mdecks"><section class="mdeck"><header><span class="mdname">Not on the map yet</span></header><div class="mrooms">${[...m.elsewhere.entries()].map(([id, items]) =>
-          `<div class="mroom"><div class="mrname">${esc(human(id))}</div><div class="mchips">${items.map((x) => chip(x.leaf, x.label, editable)).join("")}</div></div>`).join("")}</div></section></div>`
-      : "";
+    const elsewhere = elsewhereHtml(m, editable);
     const stripes = (id, cls) => `<pattern id="${id}" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="10" height="10" class="sv-stripe-bg"/><rect width="5" height="10" class="${cls}"/></pattern>`;
     el.innerHTML = `${systemsHtml(m, editable)}
       <svg class="sv" viewBox="0 0 ${W} ${y}" width="100%" role="img" aria-label="Station schematic">
@@ -306,6 +303,12 @@
         ${out.bands.join("")}${shaft}${out.lift.join("")}${out.links.join("")}${out.fg.join("")}
       </svg>${elsewhere}`;
   }
+
+  // Values that belong to no room on the layout yet (a new door the agent added).
+  const elsewhereHtml = (m, editable) => (m.elsewhere.size
+    ? `<div class="mdecks"><section class="mdeck"><header><span class="mdname">Not on the map yet</span></header><div class="mrooms">${[...m.elsewhere.entries()].map(([id, items]) =>
+        `<div class="mroom"><div class="mrname">${esc(human(id))}</div><div class="mchips">${items.map((x) => chip(x.leaf, x.label, editable)).join("")}</div></div>`).join("")}</div></section></div>`
+    : "");
 
   // "doors.med_bay" in room med_bay -> "DOOR"; "life_support.oxygen_pct" -> "OXYGEN"
   function labelFor(path, skip) {
@@ -362,5 +365,7 @@
     el.innerHTML = decks.length ? `<svg class="mm" viewBox="0 0 ${w + 4} ${y - 6}" role="img" aria-label="Where the crew are">${lift}${corridors.join("")}${rooms}</svg>` : "";
   }
 
-  window.StationMap = { render, draw, mini, parseLayout, parseLinks, parseDocked, choicesFor };
+  // (and for the 3D view, isomap.js: the same model, values and tones, so it shows what the 2D view does)
+  window.StationMap = { render, draw, mini, parseLayout, parseLinks, parseDocked, parseLift, choicesFor,
+    model: build, tone, liftState, labelFor, isRoster, names, chip, systemsHtml, elsewhereHtml, esc };
 })();

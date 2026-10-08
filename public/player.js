@@ -1493,6 +1493,43 @@
   $("reveal").addEventListener("click", (e) => { if (!e.target.closest("a")) closeReveal(); });
   addEventListener("keydown", (e) => { if (e.key === "Escape") closeReveal(); });
   $("planfx").addEventListener("click", () => { $("planfx").hidden = true; });
+
+  // ---- the station map, while the Warden shows it: the view they picked (2D, or 3D:
+  // isomap.js, loaded when first needed). Never who of the cast is where (the server leaves that out).
+  // It opens when the Warden shows it; closed here, it stays closed until they show it again.
+  let isoOn = false, isoView = null, isoData = null, isoLib = null;
+  function setIso(map) {
+    const box = $("isofx"), body = box.querySelector(".if-map");
+    if (!map) { isoOn = false; return closeIso(); }
+    isoData = { ...map, editable: false, people: Object.fromEntries(Object.entries(map.people || {}).map(([room, ids]) => [room, ids.map((id) => shortName(crew.find((c) => c.id === id) || { name: id }))])) };
+    if (!isoOn) {
+      isoOn = true;
+      box.hidden = false;
+      FX.Sound.beep(520, 0.08, 0.05);
+      setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90);
+    }
+    if (box.hidden) return;
+    body.classList.toggle("iso", map.view === "iso");
+    $("isofx").querySelector(".if-close").textContent = map.view === "iso" ? "[ DRAG TO TURN · ESC TO CLOSE ]" : "[ ESC TO CLOSE ]";
+    if (map.view !== "iso") {
+      if (isoView) { isoView.dispose(); isoView = null; }
+      body.innerHTML = '<div class="smap"></div>';
+      StationMap.draw(body.firstChild, isoData.station, isoData.layout, { editable: false, people: isoData.people });
+      return;
+    }
+    if (isoView) return isoView.update(isoData);
+    body.innerHTML = "";
+    (isoLib ||= import("./isomap.js")).then((lib) => { if (!box.hidden && !isoView && isoData.view === "iso") isoView = lib.mount(body, isoData, { labelPx: 18 }); })
+      .catch(() => { body.textContent = "MAP DATA UNAVAILABLE."; });
+  }
+  function closeIso() {
+    $("isofx").hidden = true;
+    isoView?.dispose();
+    isoView = null;
+    $("isofx").querySelector(".if-map").innerHTML = "";
+  }
+  $("isofx").querySelector(".if-close").onclick = closeIso;
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("isofx").hidden) closeIso(); });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("planfx").hidden) $("planfx").hidden = true; });
 
   // ------------------------------------------------------------ socket
@@ -1563,6 +1600,7 @@
           heldCues.clear();
           // Our crew file first: lines can read differently for it.
           if (msg.map) stationMap = msg.map;
+          setTimeout(() => setIso(msg.iso || null)); // (after the crew: it names them)
           setCrew(msg.crew, msg.claims, msg.played);
           if (mine()) ws.send(JSON.stringify({ t: "claim", id: myId }));
           // Past lines appear at once; any still playing join the schedule in step.
@@ -1608,6 +1646,7 @@
         case "crew": setCrew(msg.crew, msg.claims, msg.played); break;
         case "wardenLog": onWardenLog(msg); break;
         case "streamMap": stationMap = msg.map; renderCastbar(); break;
+        case "isoMap": setIso(msg.map); break;
         case "rollResult": showRollResult(msg); break;
         case "roomPlan": showPlan(msg); break;
         case "showImage": showImage(msg); break;

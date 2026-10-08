@@ -1,0 +1,118 @@
+/* The station map's views (stationmap.js): the status board and the 2D schematic, and
+   the 3D view's labels (isomap.js). Shared by the Warden console and the players' screens
+   (which set these colours from the terminal's: player.css .mapfx). */
+.msystems { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.msys { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.msname, .mrname { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 4px; }
+.mdecks { display: flex; flex-direction: column; gap: 6px; }
+.mdeck { position: relative; border: 1px solid var(--line2); border-radius: 10px; padding: 8px; background:
+  linear-gradient(90deg, color-mix(in srgb, var(--accent) 4%, transparent), transparent 40%), var(--panel); overflow: hidden; }
+.mdeck header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+.mdname { font: 600 12px var(--mono); letter-spacing: 0.08em; color: var(--fg); flex: 1; min-width: 120px; }
+.mdeck.dark { background: #07090a; }
+.mdeck.dark .mroom { opacity: 0.6; }
+.mdeck.flicker::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: rgba(255, 255, 255, 0.03); animation: mflick 2.4s infinite steps(1); }
+@keyframes mflick { 0%, 100% { opacity: 0; } 7% { opacity: 1; } 9% { opacity: 0; } 54% { opacity: 1; } 56% { opacity: 0; } }
+.mdeck.quarantine { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); background:
+  repeating-linear-gradient(135deg, color-mix(in srgb, var(--danger) 9%, transparent) 0 10px, transparent 10px 20px), var(--panel); }
+.mrooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.mroom { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.mroom.alarm { border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.mchips { display: flex; flex-wrap: wrap; gap: 4px; }
+.mnone { font-size: 11.5px; color: var(--muted); font-style: italic; }
+.mchip { position: relative; display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 7px; border-radius: 6px; font: 11.5px var(--mono); background: var(--panel3); border: 1px solid var(--line); overflow: hidden; }
+.mchip { white-space: normal; text-align: left; }
+.mchip:disabled { cursor: default; opacity: 1; }
+.mchip .mk { color: var(--muted); font-size: 10.5px; letter-spacing: 0.04em; }
+.mchip .mv { font-weight: 600; }
+.mchip.ok .mv { color: var(--accent-soft); }
+.mchip.warn .mv { color: var(--warn); }
+.mchip.bad { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.mchip.bad .mv { color: var(--danger); }
+.mchip .bar { position: absolute; left: 0; bottom: 0; height: 2px; width: var(--p); background: currentColor; opacity: 0.7; }
+.mchip.ok .bar { color: var(--accent-soft); } .mchip.warn .bar { color: var(--warn); } .mchip.bad .bar { color: var(--danger); }
+
+/* ---- station schematic (the 2D view) ---- */
+.sv { display: block; margin-top: 4px; font-family: var(--mono); }
+.sv text { fill: var(--fg); font-size: 11px; letter-spacing: 0.04em; }
+.sv .sv-band { fill: color-mix(in srgb, var(--accent) 3%, var(--panel)); stroke: var(--line2); }
+.sv .sv-deckname { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; fill: color-mix(in srgb, var(--fg) 85%, var(--muted)); }
+.sv .sv-tag { font-size: 10.5px; fill: var(--muted); }
+.sv .sv-corridor { stroke: color-mix(in srgb, var(--accent) 35%, var(--line2)); stroke-width: 10; stroke-linecap: round; opacity: 0.55; }
+.sv .sv-doorway { stroke: color-mix(in srgb, var(--accent) 30%, var(--line2)); stroke-width: 8; opacity: 0.5; }
+.sv .sv-shaft { fill: var(--panel3); stroke: var(--line2); }
+.sv .sv-stop { fill: var(--panel2); stroke: color-mix(in srgb, var(--accent) 45%, var(--line2)); }
+.sv .sv-lift { font-weight: 700; }
+.sv .sv-room rect { fill: var(--panel2); stroke: var(--line2); stroke-width: 1.2; }
+.sv .sv-room.alarm > rect { stroke: color-mix(in srgb, var(--danger) 65%, var(--line2)); }
+.sv .sv-room.airlock > rect { stroke-dasharray: 5 3; }
+.sv .sv-roomname { font-size: 11.5px; font-weight: 700; }
+.sv .sv-val { font-size: 10.5px; fill: var(--muted); }
+.sv .sv-more { fill: var(--muted); }
+.sv .sv-space { fill: color-mix(in srgb, var(--player) 70%, var(--muted)); }
+.sv .ok text, .sv text.ok { fill: var(--accent-soft); }
+.sv .warn text { fill: var(--warn); }
+.sv .bad text { fill: var(--danger); }
+.sv .sv-door rect { stroke: none; }
+.sv .sv-door.ok rect, .sv .sv-cam.ok rect, .sv .sv-cam.ok path { fill: var(--accent-soft); }
+.sv .sv-door.warn rect, .sv .sv-cam.warn rect, .sv .sv-cam.warn path { fill: var(--warn); }
+.sv .sv-door.bad rect, .sv .sv-cam.bad rect, .sv .sv-cam.bad path { fill: var(--danger); }
+.sv .sv-door.info rect, .sv .sv-cam.info rect, .sv .sv-cam.info path { fill: var(--muted); }
+.sv .sv-door .sv-hit { fill: transparent; }
+.sv .sv-link path { fill: none; stroke: var(--muted); stroke-width: 2; stroke-dasharray: 2 5; stroke-linecap: round; opacity: 0.8; }
+.sv .sv-link.vent path { stroke: color-mix(in srgb, var(--warn) 60%, var(--muted)); stroke-dasharray: 8 4 2 4; }
+.sv [data-path] { cursor: pointer; }
+.sv .sv-click:hover text, .sv .sv-room rect[data-path]:hover { filter: brightness(1.35); }
+.sv .sv-door:hover rect:not(.sv-hit) { filter: brightness(1.3); }
+.sv .dark .sv-band { fill: #050607; }
+.sv .dark .sv-room rect { fill: #0b0d0f; }
+.sv .dark .sv-roomname { fill: var(--muted); }
+.sv .flicker .sv-band { animation: svflick 2.6s infinite steps(1); }
+@keyframes svflick { 0%, 100% { fill-opacity: 1; } 7% { fill-opacity: 0.35; } 9% { fill-opacity: 1; } 54% { fill-opacity: 0.4; } 56% { fill-opacity: 1; } }
+.sv .quarantine .sv-band { stroke: color-mix(in srgb, var(--danger) 60%, var(--line2)); }
+.sv .sv-hatchline { fill: color-mix(in srgb, var(--danger) 14%, transparent); }
+/* The lift: stops only on the decks it reaches; yellow stripes = needs clearance, red = broken. */
+.sv .sv-stripe-bg { fill: var(--panel3); }
+.sv .sv-stripe-warn { fill: var(--warn); }
+.sv .sv-stripe-bad { fill: var(--danger); }
+.sv .sv-gate { stroke: none; opacity: 0.85; }
+.sv .sv-liftstop.perm .sv-stop { stroke: var(--warn); }
+.sv .sv-liftstop.fault .sv-stop { stroke: var(--danger); }
+.sv .sv-liftstop[data-path] { cursor: pointer; }
+/* Docked rooms (a ship on an airlock): a collar straight into the parent room. */
+.sv .sv-collar line { stroke: color-mix(in srgb, var(--accent) 40%, var(--line2)); stroke-width: 3; }
+.sv .sv-room.docked > rect { stroke: color-mix(in srgb, var(--warn) 55%, var(--line2)); stroke-dasharray: 6 3; }
+/* Rooms open the room view; who's there is counted in the corner. */
+.sv .sv-room rect[data-room] { cursor: pointer; }
+.sv .sv-room rect[data-room]:hover { stroke: color-mix(in srgb, var(--accent) 60%, var(--line2)); }
+.sv .sv-people { fill: color-mix(in srgb, var(--fg) 70%, var(--muted)); }
+.sv .sv-pc { fill: var(--player); }
+.mrname[data-room] { cursor: pointer; }
+.mrname[data-room]:hover { color: var(--accent); }
+
+/* ---- the 3D view (isomap.js): the station's systems above it, then the view with its labels ---- */
+.iso-wrap { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.iso-sys:empty, .iso-else:empty { display: none; }
+.iso-view { position: relative; flex: 1; min-height: 200px; background: #050805; border-radius: 8px; overflow: hidden; cursor: grab; }
+.iso-l { pointer-events: none; text-align: center; font-family: var(--mono, monospace); }
+.iso-l .mchip, .iso-l [data-room], .iso-l [title] { pointer-events: auto; }
+.iso-l .mchip:disabled { pointer-events: none; }
+.iso-l .mchips { justify-content: center; margin-top: 3px; flex-wrap: nowrap; }
+.iso-l .mchip { background: rgba(5, 8, 5, 0.85); font-size: calc(var(--iso-px) * 0.72); padding: 1px 5px; white-space: nowrap; cursor: pointer; }
+.iso-l .mchip:disabled { cursor: default; }
+.iso-name { font: var(--iso-px)/1 VT323, Consolas, monospace; letter-spacing: 0.06em; color: var(--iso-fg); text-shadow: 0 0 4px #000, 0 0 2px #000; white-space: nowrap; }
+.iso-name[data-room] { cursor: pointer; }
+.iso-name[data-room]:hover { text-decoration: underline; }
+.iso-room.here .iso-name { color: #fff; text-shadow: 0 0 6px var(--iso-fg), 0 0 2px #000; }
+.iso-room.alarm .iso-name { color: #ff6a5c; }
+.iso-more { font-size: calc(var(--iso-px) * 0.72); color: var(--iso-dim); align-self: center; padding: 0 3px; cursor: help; }
+.iso-deck { text-align: right; transform: translateX(-50%); }
+.iso-dname { font: calc(var(--iso-px) * 1.1)/1 VT323, Consolas, monospace; letter-spacing: 0.08em; color: var(--iso-dim); white-space: nowrap; text-shadow: 0 0 3px #000; }
+.iso-deck .mchips { justify-content: flex-end; }
+.iso-dsub { font: calc(var(--iso-px) * 0.85)/1.1 VT323, Consolas, monospace; letter-spacing: 0.06em; color: var(--iso-dim); white-space: nowrap; text-shadow: 0 0 3px #000; opacity: 0.85; }
+.iso-q { color: #ff4a3d; }
+.iso-dark { color: #8a969e; }
+.iso-small { font: calc(var(--iso-px) * 0.85)/1 VT323, Consolas, monospace; letter-spacing: 0.06em; color: var(--iso-dim); white-space: nowrap; text-shadow: 0 0 3px #000; }
+.iso-space { color: color-mix(in srgb, #6cb8ff 70%, var(--iso-dim)); }
+.iso-link { color: #c9a35a; }
+.iso-who { font: calc(var(--iso-px) * 1.05)/1 VT323, Consolas, monospace; color: #050805; background: var(--iso-fg); padding: 1px 5px; box-shadow: 0 0 8px var(--iso-fg); white-space: nowrap; }

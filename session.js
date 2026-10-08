@@ -675,6 +675,23 @@ export class Session {
   syncDm() {
     this.send("dm", { t: "state", state: this.dmView() });
     this.syncStreams();
+    this.syncIso();
+  }
+
+  // The station map on the players' screens, while the Warden shows it, in the view they
+  // picked (2D or 3D): the station state, the layout, the rooms' floor plans and where
+  // the players are; never who of the cast is where (occupants). Re-sent as any of that changes.
+  isoView() {
+    const view = this.state.mapShown;
+    if (!view) return null;
+    const { occupants, ...station } = this.state.station || {};
+    return { view, station, ...this.streamMap(), rooms: this.state.config.rooms };
+  }
+  syncIso() {
+    const map = JSON.stringify(this.isoView());
+    if (map === this.isoSent) return;
+    this.isoSent = map;
+    for (const c of this.sockets) if (c.role === "player" && c.readyState === 1) c.send(`{"t":"isoMap","map":${map}}`);
   }
 
   // The stream pages: the Warden's own entries (notes, asides, table talk), new or
@@ -729,6 +746,7 @@ export class Session {
       playing: this.state.playing.filter((p) => p.loop),
       crew: this.state.config.crew,
       played: this.played(),
+      iso: this.isoView(),
       ...(ws?.stream ? { map: this.streamMap() } : {}),
       clocks: this.publicClocks(),
       handouts: ws?.stream ? [] : this.handoutsFor(ws),
@@ -1325,6 +1343,9 @@ export class Session {
         else delete s.config.rooms[id];
         break;
       }
+      case "mapShow": // the Warden shows the players the map in one of its views, or takes it away
+        s.mapShown = ["draw", "iso"].includes(msg.view) ? msg.view : "";
+        break;
       case "roomDraft":
         if (!this.roomBusy) this.draftRoom(msg);
         return;
