@@ -1,6 +1,8 @@
 // Screen effects for the player terminal. Exposes window.FX.
 (() => {
   const layer = () => document.getElementById("fx");
+  // A player who asked for less flicker (body.calm: player.js): effects hold still, or change slowly.
+  const calm = () => document.body.classList.contains("calm");
   const crt = () => document.getElementById("crt");
   const active = new Map(); // id -> { effect, el, stop() }
 
@@ -846,12 +848,12 @@
       const c = document.createElement("canvas");
       c.className = "fx-canvas fx-static";
       c.width = 320; c.height = 200;
-      c.style.opacity = String(0.12 + fx.intensity * 0.1);
+      c.style.opacity = String((0.12 + fx.intensity * 0.1) * (calm() ? 0.45 : 1));
       const ctx = c.getContext("2d");
       const img = ctx.createImageData(c.width, c.height);
       let raf, f = 0;
       const step = () => {
-        if (f++ % 2 === 0) {
+        if (f++ % (calm() ? 12 : 2) === 0) {
           for (let i = 0; i < img.data.length; i += 4) {
             const v = Math.random() * 255;
             img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
@@ -947,7 +949,9 @@
       }
       return document.querySelectorAll("#side .cr-t, #crewfile-body .cr-t");
     };
+    let tick = 0;
     const iv = setInterval(() => {
+      if (calm() && tick++ % 6) return; // (less flicker: the text rots a few times a second, not ten)
       for (const t of sheetText()) t.innerHTML = rot(t.dataset.t);
       for (const card of document.querySelectorAll(SHEET)) {
         if (Math.random() < 0.05 * k) card.style.setProperty("--cs", `${rand(-10, 10) * k}px`), card.classList.add("cr-shift");

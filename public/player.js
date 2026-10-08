@@ -1233,6 +1233,22 @@
 
   // The rules: a readable modal over the terminal (Esc or ✕ closes it).
   $("hdr-rules").onclick = () => $("rules").showModal();
+  // FLICKER: less flicker, blinking and flashing on this screen (remembered on this device). Off
+  // to start with for anyone whose system asks for reduced motion.
+  let calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  try { const v = localStorage.getItem("calm"); if (v !== null) calm = v === "1"; } catch {}
+  function applyCalm() {
+    document.body.classList.toggle("calm", calm);
+    $("hdr-calm").textContent = calm ? "FLICKER: OFF" : "FLICKER: ON";
+    $("hdr-calm").setAttribute("aria-pressed", String(calm));
+  }
+  $("hdr-calm").onclick = () => {
+    calm = !calm;
+    try { localStorage.setItem("calm", calm ? "1" : "0"); } catch {}
+    applyCalm();
+    input.focus();
+  };
+  applyCalm();
   $("rules-close").onclick = () => $("rules").close();
   $("rules").addEventListener("click", (e) => { if (e.target === $("rules")) $("rules").close(); }); // (outside the sheet)
   // While it's open the terminal's own shortcuts (number keys, typing, Esc) stand down;

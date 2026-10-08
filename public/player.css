@@ -641,6 +641,13 @@ button.cs-num:focus-visible { outline: none; }
 
 /* Terminal looks (a terminal's own condition; blood/goo/crack are drawn as effects). */
 body.look-flicker #screen, body.look-flicker #side { animation: lookflicker 5s infinite steps(1); }
+/* Less flicker (each player's own choice: FLICKER in the header, player.js): the screen holds
+   still. Nothing flickers, rolls, blinks, flashes or pulses; a glitch doesn't shake the screen
+   (its text still rots, slowly: effects.js); static is faint and slow. */
+body.calm *, body.calm *::before, body.calm *::after { animation: none !important; }
+body.calm #crt.glitching #screen, body.calm #crt.glitching #hdr { transform: none; clip-path: none; }
+body.calm #crt.glitch-3, body.calm #crt.glitch-3 #hdr, body.calm #crt.glitch-3 #clocks, body.calm #crt.glitch-3 #mainrow { filter: none; }
+body.calm .crt-glass .roll { display: none; }
 @keyframes lookflicker { 0%, 100% { opacity: 1; } 3% { opacity: 0.55; } 4% { opacity: 1; } 41% { opacity: 0.8; } 42% { opacity: 1; } 77% { opacity: 0.4; } 78.5% { opacity: 1; } }
 body.look-dim #crt { filter: brightness(0.62) saturate(0.8); }
 body.look-grime #crt::after {
