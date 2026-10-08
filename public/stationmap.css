@@ -106,8 +106,6 @@
 .iso-room.here .iso-name { color: #fff; text-shadow: 0 0 6px var(--iso-fg), 0 0 2px #000; }
 .iso-room.alarm .iso-name { color: #ff6a5c; }
 .iso-more { font-size: calc(var(--iso-px) * 0.72); color: var(--iso-dim); align-self: center; padding: 0 3px; cursor: help; }
-.iso-people { font-size: calc(var(--iso-px) * 0.8); color: var(--iso-fg); margin-top: 2px; text-shadow: 0 0 3px #000; cursor: help; }
-.iso-people .pc { color: #fff; }
 .iso-deck { text-align: right; transform: translateX(-50%); }
 .iso-dname { font: calc(var(--iso-px) * 1.1)/1 VT323, Consolas, monospace; letter-spacing: 0.08em; color: var(--iso-dim); white-space: nowrap; text-shadow: 0 0 3px #000; }
 .iso-deck .mchips { justify-content: flex-end; }

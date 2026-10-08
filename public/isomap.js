@@ -3,7 +3,7 @@
 // the lift, each deck's rooms either side of its corridor, a docked ship outside the
 // room it's docked at, vents and shafts between rooms. A room with a floor plan
 // (rooms.js) is built from it: walls, windows, doors and furniture; one without is an
-// outline. Over each room: its name, its values (camera first), who's there. Doors,
+// outline. Over each room: its name and its values (camera first). Doors,
 // cameras and the lift take their value's colour (doors also lie open or stand shut),
 // dark decks are dark and flickering ones flicker, quarantined ones red: so the lights,
 // the lift and the doors aren't labelled. The station's own systems are listed above the view and
@@ -177,15 +177,13 @@ function build(data, colors) {
       const z0 = r.north ? r.z + r.h : -CORR / 2, z1 = r.north ? -CORR / 2 : r.z;
       if (z1 > z0) box(deck, r.x + r.w / 2 - 0.5, r.y - 0.12, z0, 1, 0.12, z1 - z0, cDim.clone().multiplyScalar(0.55));
     }
-    // Over the room: its name (the Warden: click for the room view), values (camera first,
-    // two of them, then how many more), and who and what is there (counted; listed on hover).
+    // Over the room: its name (the Warden: click for the room view; who and what is there on hover)
+    // and its values (camera first, two of them, then how many more). No head counts: the 2D view has those.
     const roster = [...pcs.map((n) => `${n} (player)`), ...who, ...(what.length ? ["-", ...what] : [])].join("\n");
     const more = rest.slice(2).map((x) => `${x.label} ${x.leaf.value}`).join("\n");
-    const counts = [pcs.length && `<span class="pc">${pcs.length}&#9670;</span>`, who.length && `${who.length}&#9679;`, what.length && `${what.length}&#9642;`].filter(Boolean).join(" ");
     const head = editable ? ` data-room="${esc(r.id)}" data-label="${esc(r.label)}" data-deck="${esc(r.dock ? `docked at ${r.dock.label}` : r.deck.label)}"` : "";
     group.add(tag(`<div class="iso-name"${head} title="${esc(`${r.label}${editable ? " (click for the room view)" : ""}${roster ? `\n${roster}` : ""}`)}">${esc(r.label.toUpperCase())}</div>
-      ${rest.length ? `<div class="mchips">${rest.slice(0, 2).map((x) => SM.chip(x.leaf, x.label, editable)).join("")}${rest.length > 2 ? `<span class="iso-more" title="${esc(more)}">+${rest.length - 2}</span>` : ""}</div>` : ""}
-      ${counts ? `<div class="iso-people" title="${esc(roster)}">${counts}</div>` : ""}`,
+      ${rest.length ? `<div class="mchips">${rest.slice(0, 2).map((x) => SM.chip(x.leaf, x.label, editable)).join("")}${rest.length > 2 ? `<span class="iso-more" title="${esc(more)}">+${rest.length - 2}</span>` : ""}</div>` : ""}`,
     `iso-room${pcs.length ? " here" : ""}${alarm ? " alarm" : ""}`, new THREE.Vector3(r.x + r.w / 2, r.y + WALL_H + 1.2, r.z + r.h / 2)));
     if (/airlock/.test(r.id)) group.add(tag("&#9656; SPACE", "iso-small iso-space", new THREE.Vector3(r.x + r.w / 2, r.y + 0.4, r.north ? r.z - 1.2 : r.z + r.h + 1.2)));
     // The players' characters there: a marker and their names.
