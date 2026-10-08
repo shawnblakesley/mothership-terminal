@@ -119,10 +119,12 @@ Deck 3 · Cargo / Refinery: cargo_bay_deck3=Cargo Bay
 Deck 4 · Reactor: reactor_access=Reactor Access
 Link: med_bay - cargo_bay_deck3 (air vents)
 Link: cargo_bay_deck3 - reactor_access (maintenance shaft)`;
-const DEFAULT_MAP = `${SHIP_DOCKED}\n${MAP_V2.replace("\nLink:", `\n${LIFT}\nLink:`)}`;
+const MAP_V3 = `${SHIP_DOCKED}\n${MAP_V2.replace("\nLink:", `\n${LIFT}\nLink:`)}`;
+// (and an air vent from the med bay up to command)
+const DEFAULT_MAP = MAP_V3.replace("\nLink: med_bay - cargo_bay_deck3", "\nLink: med_bay - command_deck (air vents)\nLink: med_bay - cargo_bay_deck3");
 // Earlier default layouts, upgraded when unedited: without links, without the
-// tug, then with the tug as its own deck.
-const OLD_DEFAULT_MAPS = [MAP_V2.split("\nLink:")[0], MAP_V2, `${SHIP_DECK}\n${MAP_V2}\n${SHIP_LINK}`];
+// tug, then with the tug as its own deck, then without the vent to command.
+const OLD_DEFAULT_MAPS = [MAP_V2.split("\nLink:")[0], MAP_V2, `${SHIP_DECK}\n${MAP_V2}\n${SHIP_LINK}`, MAP_V3];
 
 // Who is where and what's there (the agent keeps these current), and where
 // the lift can go (RESTRICTED and LOCKED: not allowed; FAULT, OFFLINE: broken).
