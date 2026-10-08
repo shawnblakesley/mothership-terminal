@@ -679,7 +679,7 @@ export class Session {
   }
 
   // The station map on the players' screens, while the Warden shows it, in the view they
-  // picked (2D, status or 3D): the station state, the layout, the rooms' floor plans and where
+  // picked (2D or 3D): the station state, the layout, the rooms' floor plans and where
   // the players are; never who of the cast is where (occupants). Re-sent as any of that changes.
   isoView() {
     const view = this.state.mapShown;
@@ -1344,7 +1344,7 @@ export class Session {
         break;
       }
       case "mapShow": // the Warden shows the players the map in one of its views, or takes it away
-        s.mapShown = ["draw", "status", "iso"].includes(msg.view) ? msg.view : "";
+        s.mapShown = ["draw", "iso"].includes(msg.view) ? msg.view : "";
         break;
       case "roomDraft":
         if (!this.roomBusy) this.draftRoom(msg);

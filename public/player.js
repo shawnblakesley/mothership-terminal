@@ -1494,7 +1494,7 @@
   addEventListener("keydown", (e) => { if (e.key === "Escape") closeReveal(); });
   $("planfx").addEventListener("click", () => { $("planfx").hidden = true; });
 
-  // ---- the station map, while the Warden shows it: the view they picked (2D, status board, or 3D:
+  // ---- the station map, while the Warden shows it: the view they picked (2D, or 3D:
   // isomap.js, loaded when first needed). Never who of the cast is where (the server leaves that out).
   // It opens when the Warden shows it; closed here, it stays closed until they show it again.
   let isoOn = false, isoView = null, isoData = null, isoLib = null;
@@ -1514,7 +1514,7 @@
     if (map.view !== "iso") {
       if (isoView) { isoView.dispose(); isoView = null; }
       body.innerHTML = '<div class="smap"></div>';
-      (map.view === "status" ? StationMap.render : StationMap.draw)(body.firstChild, isoData.station, isoData.layout, { editable: false, people: isoData.people });
+      StationMap.draw(body.firstChild, isoData.station, isoData.layout, { editable: false, people: isoData.people });
       return;
     }
     if (isoView) return isoView.update(isoData);

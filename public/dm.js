@@ -1332,7 +1332,7 @@
   // ------------------------------------------------------------ station map
   let mapKey = "";
   // Drawing (schematic) or Status (board); remembered on this device.
-  let mapView = store.get("mapView") || "draw";
+  let mapView = store.get("mapView") === "iso" ? "iso" : "draw"; // 2D or 3D
   // The station state with each character added to their room's occupants (for the map).
   function withCast(station, cast = S.config.cast) {
     const st = structuredClone(station || {});
@@ -1348,7 +1348,7 @@
     if (!force && key === mapKey) return;
     mapKey = key;
     const show = (el) => (mapView === "iso" ? showIso(el, isoData(people))
-      : (dropIso(el), (mapView === "status" ? StationMap.render : StationMap.draw)(el, withCast(S.station), S.config.map, { people })));
+      : (dropIso(el), StationMap.draw(el, withCast(S.station), S.config.map, { people })));
     // Show players: this view (none of the cast's whereabouts); shown, Hide; another view shown, switch to this one.
     for (const b of document.querySelectorAll(".mapShow")) {
       b.textContent = S.mapShown === mapView ? "Hide from players" : S.mapShown ? "Show players this view" : "Show players";

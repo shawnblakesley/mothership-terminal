@@ -3,9 +3,10 @@
 // the lift, each deck's rooms either side of its corridor, a docked ship outside the
 // room it's docked at, vents and shafts between rooms. A room with a floor plan
 // (rooms.js) is built from it: walls, windows, doors and furniture; one without is an
-// outline. Over each room: its name, its values (door and camera first), who's there.
-// Doors, cameras and the lift take their value's colour; dark decks are dark,
-// quarantined ones red. The station's own systems are listed above the view and
+// outline. Over each room: its name, its values (camera first), who's there. Doors,
+// cameras and the lift take their value's colour (doors also lie open or stand shut),
+// dark decks are dark and flickering ones flicker, quarantined ones red: so the lights,
+// the lift and the doors aren't labelled. The station's own systems are listed above the view and
 // anything not on the map yet below it, as in the 2D view.
 // Drag to turn it, scroll to zoom, right-drag to move it. It starts looking from the
 // south, a little east, so the corridors run across the view.
@@ -30,6 +31,7 @@ const TONES = { warn: "#ffb22e", bad: "#ff4a3d", info: "#8a969e" }; // (ok: the 
 // Which of a room's values is its door, and its camera (as the 2D view decides).
 const isDoor = (x) => /door|hatch|airlock|access|gate|lock/i.test(x.leaf.path[0]) || /^door|hatch/i.test(x.label);
 const isCam = (x) => /camera|cctv|feed/i.test(x.leaf.path.join("."));
+const LIGHTS = /light|power/i, LIFT = /lift|elevator/i; // (a deck's lights and its lift stop, as the 2D view finds them)
 
 // Words over the map, the same size on screen however far it's zoomed (HTML, drawn by CSS2DRenderer).
 // right: anchored by its right edge (it reads leftwards from the point), not its middle.
@@ -96,14 +98,15 @@ function build(data, colors) {
     const look = deckLooks.get(D.deck.id), id = D.deck.id;
     const red = new THREE.Color(TONES.bad);
     box(id, -2, D.y - 0.15, -CORR / 2, D.len + 2, 0.15, CORR, look.quarantine ? red.clone().multiplyScalar(0.55) : cDim.clone().multiplyScalar(0.55));
-    const tags = (m.byDeck.get(id) || []).map((x) => SM.chip(x.leaf, x.label, editable)).join("");
-    const state = [look.quarantine && '<span class="iso-q">QUARANTINE</span>', look.dark && '<span class="iso-dark">DARK</span>', look.flicker && '<span class="iso-dark">FLICKERING</span>'].filter(Boolean).join(" ");
+    // (Its lights and its lift stop show in the drawing: dimmed or flickering, the stop's colour. Only its other values are labelled.)
+    const tags = (m.byDeck.get(id) || []).filter((x) => !LIGHTS.test(x.leaf.path.join(".")) && !LIFT.test(x.leaf.path[0])).map((x) => SM.chip(x.leaf, x.label, editable)).join("");
+    const state = look.quarantine ? '<span class="iso-q">QUARANTINE</span>' : "";
     // (its name on two lines, "DECK 2" over "HABITATION / MED BAY": narrower beside the lift)
     const [name, ...what] = D.deck.label.toUpperCase().split(/\s*[·:|]\s*|\s+-\s+/);
     group.add(tag(`<div class="iso-dname">${esc(name)}${state ? ` ${state}` : ""}</div>${what.length ? `<div class="iso-dsub">${esc(what.join(" · "))}</div>` : ""}${tags ? `<div class="mchips">${tags}</div>` : ""}`, "iso-deck", new THREE.Vector3(-7.5, D.y + 0.5, 0), { right: true }));
     // Where the lift meets this deck: its own value's colour (restricted, fault).
     if (D.served) {
-      const leaf = (m.byDeck.get(id) || []).find((x) => /lift|elevator/i.test(x.leaf.path[0]))?.leaf;
+      const leaf = (m.byDeck.get(id) || []).find((x) => LIFT.test(x.leaf.path[0]))?.leaf;
       const ls = leaf ? SM.liftState(leaf.value) : "";
       box(id, -6, D.y - 0.15, -1.6, 3.2, 0.5, 3.2, ls ? new THREE.Color(ls === "perm" ? TONES.warn : TONES.bad) : cDim);
       box(id, -2.8, D.y - 0.15, -0.6, 0.8, 0.15, 1.2, cDim.clone().multiplyScalar(0.55)); // (to the corridor)
@@ -128,7 +131,8 @@ function build(data, colors) {
     const items = m.byRoom.get(r.id) || [];
     const door = items.find(isDoor)?.leaf, cam = items.find(isCam)?.leaf;
     const values = items.filter((x) => !SM.isRoster(x.leaf));
-    const rest = [...values.filter((x) => x.leaf === door || x.leaf === cam), ...values.filter((x) => x.leaf !== door && x.leaf !== cam)];
+    // (The door shows in the drawing: its colour, open or shut. The rest are labelled, camera first.)
+    const rest = [...values.filter((x) => x.leaf === cam), ...values.filter((x) => x.leaf !== door && x.leaf !== cam)];
     const alarm = values.some((x) => SM.tone(x.leaf.path, x.leaf.value) === "bad");
     const who = SM.names(items.find((x) => x.leaf.path[0] === "occupants")?.leaf.value);
     const what = SM.names(items.find((x) => x.leaf.path[0] === "contents")?.leaf.value);
@@ -173,7 +177,7 @@ function build(data, colors) {
       const z0 = r.north ? r.z + r.h : -CORR / 2, z1 = r.north ? -CORR / 2 : r.z;
       if (z1 > z0) box(deck, r.x + r.w / 2 - 0.5, r.y - 0.12, z0, 1, 0.12, z1 - z0, cDim.clone().multiplyScalar(0.55));
     }
-    // Over the room: its name (the Warden: click for the room view), values (door and camera first,
+    // Over the room: its name (the Warden: click for the room view), values (camera first,
     // two of them, then how many more), and who and what is there (counted; listed on hover).
     const roster = [...pcs.map((n) => `${n} (player)`), ...who, ...(what.length ? ["-", ...what] : [])].join("\n");
     const more = rest.slice(2).map((x) => `${x.label} ${x.leaf.value}`).join("\n");
