@@ -326,6 +326,7 @@
     renderRoll();
     renderSounds();
     renderClocks();
+    renderHazards();
     renderHandouts();
     renderCastLists();
     renderMap();
@@ -833,9 +834,16 @@
         <label>Wounds <input type="number" data-c="wounds.current" value="${c.wounds.current}" min="0" max="99"> / ${c.wounds.max}</label>
         <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"></label>
       </div>
-      ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
+      ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${condLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
     </div>`;
   }
+  const COND_ACTIONS = [["puncture", "Puncture suit"], ["patch", "Patch suit"], ["air", "Breathing again"], ["putout", "Put out fire"], ["bleed", "+1 Bleeding"], ["stopbleed", "Stop bleeding (First Aid Kit)"], ["ate", "Has eaten"], ["thirst", "Water at the minimum (toggle)"], ["strenuouscheck", "Strenuous activity on minimum water"], ["strenuous", "Strenuous activity (toggle)"], ["rest", "Rested 8 hours"], ["cryosleep", "Into cryosleep"], ["wake", "Wake from cryosleep"], ["stimpak", "Stimpak (cures cryosickness)"], ["pills", "Radiation Pills"], ["clearrad", "Clear radiation penalty"], ["cleartags", "Clear story conditions"]];
+  const condLine = (c) => `<div class="conds"><span class="k">Conditions:</span> ${(S.conds?.[c.id] || []).map((x) => `<span class="chip">${esc(x)}</span>`).join("") || '<span class="muted">none</span>'}
+    <select data-cond-pick aria-label="Condition for ${esc(c.name)}">${COND_ACTIONS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select><button data-cond-go="${esc(c.id)}">Apply</button></div>`;
+  $("crew").addEventListener("click", (e) => {
+    const go = e.target.closest("[data-cond-go]");
+    if (go) send({ t: "condition", pc: go.dataset.condGo, action: go.parentElement.querySelector("[data-cond-pick]").value });
+  });
   const itemsLine = (c) => `<div class="items"><span class="k">Items:</span> ${c.items.map((x, j) => `<span class="chip">${esc(x)}<button data-item-del="${j}" title="Drop it" aria-label="Drop ${esc(x)}">✕</button></span>`).join("")}<input data-item-add placeholder="+ add" aria-label="Add an item" size="10"></div>`;
   const openCrew = new Set();
   const whereIs = (crewId) => {
@@ -1601,9 +1609,47 @@
     }
     const vals = stationLeaves().filter(([q]) => q.includes(room.id) && !["occupants", "contents"].includes(q[0]));
     $("roomValues").innerHTML = vals.length ? vals.map(([p, v]) => `<button class="ghost small" data-path="${esc(JSON.stringify(p))}" title="${esc(p.join("."))}">${esc(p.filter((x) => x !== room.id).join(" ").replace(/_/g, " "))}: <b>${esc(v)}</b></button>`).join("") : `<span class="muted small">Nothing tracked here.</span>`;
+    renderRoomHazard();
     const terms = S.config.terminals.filter((t) => t.room === room.id);
     $("roomTerminals").innerHTML = terms.length ? terms.map((t) => `<div><b>${esc(t.name)}</b>: ${esc(t.notes)}</div>`).join("") : "None.";
   }
+
+  function renderRoomHazard() {
+    const sel = $("hazType"), now = S.station?.hazards?.[room.id];
+    if (!sel.options.length) {
+      const group = (label, kind) => `<optgroup label="${label}">${Object.entries(S.hazardTypes).filter(([, v]) => v.kind === kind).map(([k, v]) => `<option value="${k}">${esc(v.name)}</option>`).join("")}</optgroup>`;
+      sel.innerHTML = `<option value="">None</option>${group("Mothership rules (PSG)", "psg")}${group("Story hazards (not Mothership rules)", "story")}`;
+    }
+    if (!room.hazDirty) {
+      sel.value = now?.type || "";
+      $("hazLevel").value = now?.level || "";
+      $("hazSupply").value = now?.type === "oxygen" ? now.supply : "";
+    }
+    hazForm();
+    $("hazClear").disabled = !now;
+  }
+  function hazForm() {
+    const i = S.hazardTypes[$("hazType").value];
+    $("hazLevelBox").hidden = !i?.levels;
+    $("hazSupplyBox").hidden = $("hazType").value !== "oxygen";
+    $("hazTrigger").hidden = !i || !["event", "exposure"].includes(i.per);
+    $("hazTrigger").disabled = S.station?.hazards?.[room.id]?.type !== $("hazType").value;
+    if (i?.levels) {
+      $("hazLevel").min = i.levels[0];
+      $("hazLevel").max = i.levels[1];
+      if (!$("hazLevel").value) $("hazLevel").value = i.levels[0];
+      $("hazLevelBox").title = i.levelLabel;
+    }
+    $("hazRule").innerHTML = i ? `<b>${esc(i.name)}</b> (${esc(hazardTag(i))}; ${esc(i.source)}${i.levelLabel ? `; level ${esc(i.levelLabel)}` : ""}). ${esc(i.rule)}${i.protect ? ` Protects: ${esc(i.protect)}.` : ""}${i.kind === "story" ? " A story hazard is not a Mothership rule." : ""}` : "";
+  }
+  $("hazType").addEventListener("change", () => { room.hazDirty = true; $("hazLevel").value = ""; hazForm(); });
+  for (const id of ["hazLevel", "hazSupply"]) $(id).addEventListener("input", () => { room.hazDirty = true; });
+  $("hazSet").onclick = () => {
+    room.hazDirty = false;
+    send({ t: "hazard", room: room.id, type: $("hazType").value || "none", level: Number($("hazLevel").value) || null, supply: $("hazSupply").value === "" ? undefined : Number($("hazSupply").value) });
+  };
+  $("hazClear").onclick = () => { room.hazDirty = false; send({ t: "hazard", room: room.id, type: "none" }); };
+  $("hazTrigger").onclick = () => send({ t: "hazardTrigger", room: room.id });
 
   function paintAt(el) {
     const g = el?.closest("[data-x]");
@@ -2516,6 +2562,27 @@
     }).join("") : '<li class="muted small">None running.</li>';
   }
   setInterval(() => S?.clocks?.some((c) => !c.paused) && renderClocks(), 1000);
+  const hazardTag = (i) => (i.kind === "psg" ? "Mothership rule" : "story hazard");
+  function renderHazards() {
+    const rooms = roomLabels();
+    const hz = Object.entries(S.station?.hazards || {});
+    $("hazardList").innerHTML = hz.length ? hz.map(([id, h]) => {
+      const i = S.hazardTypes[h.type];
+      return `<li><span class="grow"><b>${esc(String(rooms.get(id) || id).split(",")[0])}</b>: ${esc(i.name)}${h.level ? ` ${h.level}` : ""}${h.type === "oxygen" ? `, supply ${h.supply}` : ""} <span class="muted">· ${hazardTag(i)} · ${h.rounds} rounds, ${h.hours} h</span></span>
+        <button data-haz-room="${esc(id)}" class="ghost" title="Open the room view">Room</button><button data-haz-end="${esc(id)}" class="ghost danger" title="End this hazard">End</button></li>`;
+    }).join("") : '<li class="muted small">No hazards in play. Click a room on the Map to set one.</li>';
+    const waiting = S.roll?.status === "waiting" && S.roll.hazard;
+    $("hazardQueue").textContent = [waiting && `Waiting for a hazard roll: ${S.roll.reason}`, S.hazardWork && `${S.hazardWork} step${S.hazardWork > 1 ? "s" : ""} queued`].filter(Boolean).join(" · ");
+    $("hazardRollAll").hidden = !waiting;
+  }
+  $("nextRound").onclick = () => send({ t: "nextRound" });
+  for (const b of document.querySelectorAll("[data-pass]")) b.onclick = () => send({ t: "passTime", hours: Number(b.dataset.pass) });
+  $("hazardRollAll").onclick = () => send({ t: "hazardRollAll" });
+  $("hazardList").addEventListener("click", (e) => {
+    const end = e.target.closest("[data-haz-end]")?.dataset.hazEnd, open = e.target.closest("[data-haz-room]")?.dataset.hazRoom;
+    if (end) send({ t: "hazard", room: end, type: "none" });
+    if (open) openRoom(open, roomLabels().get(open) || open, "");
+  });
   $("clockStart").onclick = () => {
     const label = $("clockLabel").value.trim();
     const mins = Number($("clockMins").value);

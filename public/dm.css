@@ -609,3 +609,7 @@ details.sec > summary:hover h2 { color: var(--fg); }
 .cmplegend .lg.cur { border-color: var(--accent); background: var(--accent-ink); }
 .cmplegend .lg.ship { border: none; background: none; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 11px solid #7fe0ff; }
 @media (max-width: 900px) { .cmpgrid { display: flex; flex-direction: column; overflow-y: auto; } .cmpmapcol, .cmpside { overflow: visible; min-height: auto; flex: none; } }
+.pcsheet .conds { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.pcsheet .conds .chip { background: color-mix(in srgb, var(--warn) 12%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: 99px; padding: 1px 9px; font-size: 12px; }
+.pcsheet .conds select { width: auto; max-width: 14em; padding: 1px 6px; font-size: 12px; }
+#hazardList li .grow { white-space: normal; }

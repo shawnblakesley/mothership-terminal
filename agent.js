@@ -3,6 +3,7 @@ import { BUILTIN, SPEAKERS, shownName, ABBREVIATION, SENTENCE, HIDDEN_DOT } from
 import { channelOf, attitudeLabel } from "./cast.js";
 import { CHECKS, PANIC, ADVANTAGE } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
+import { HAZARDS, hazardBrief } from "./hazards.js";
 import { terminalsBrief, netOf, systemsOf, systemName, screensBrief } from "./terminals.js";
 import { TILES } from "./rooms.js";
 import { roomId } from "./clean.js";
@@ -107,7 +108,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "item_changes", "moves", "cast_changes", "clocks", "handouts", "found_docs", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "item_changes", "hazards", "time_passes", "moves", "cast_changes", "clocks", "handouts", "found_docs", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -172,6 +173,27 @@ function buildSchema(voices) {
             why: { type: "string", description: "A few words for the Warden's log." },
           },
         },
+      },
+      hazards: {
+        type: "array",
+        description: "Environmental hazards starting, changing or ending in a room because of this reply (see HAZARDS IN PLAY). The app runs their rules. Usually empty.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["room", "type", "level"],
+          properties: {
+            room: { type: "string", description: "A room id from the map." },
+            type: { type: "string", enum: [...Object.keys(HAZARDS), "none"], description: "The hazard, or none to end the one in that room." },
+            level: { type: "integer", description: "Radiation 1-3; corrosive or acid 1-10; crush, collapse or machinery severity 1-3. 0 for the others." },
+          },
+        },
+      },
+      time_passes: {
+        type: "object",
+        additionalProperties: false,
+        required: ["hours"],
+        description: "Hours that pass in the fiction when the story skips ahead (travel, waiting, a long job). The app runs the hourly and daily rules (extreme cold or heat, exhaustion, hunger, life support). 0 when no time skips.",
+        properties: { hours: { type: "integer" } },
       },
       moves: {
         type: "array",
@@ -312,6 +334,8 @@ const REPLY_EXAMPLE = {
   station_changes: [{ path: "quarantine", value: "DECK 3" }],
   crew_changes: [],
   item_changes: [],
+  hazards: [],
+  time_passes: { hours: 0 },
   moves: [],
   cast_changes: [{ name: "Dr. Imre Salk", room: "", notes: "", attitude_change: 1, why: "they promised medicine for Webb", stress_change: 0, panic_check: false }],
   clocks: [],
@@ -435,6 +459,7 @@ CREW CONDITION (the players' characters: Health, Wounds, Stress)
 - Only for consequences that actually happened in this reply and that the Warden left to you. Failed rolls already add 1 stress automatically: don't add it again. When unsure, leave it to the Warden.
 - Each character at most once per event: if you name someone, don't also include them through a class or "Humans" for the same thing.
 - Their current condition is under CREW CONDITION in the per-turn context.
+- Environmental hazards: the app runs the rules for hazards in a room (vacuum, toxic or corrosive atmosphere, radiation, extreme cold or heat, fire, explosions and hull breaches, life support offline, and the story hazards), and for exhaustion, hunger, thirst, bleeding and cryosickness. When the fiction starts, changes or ends one, record it in hazards (room, type, level; type "none" ends it), and don't also apply its damage, Stress or penalties through crew_changes: the Warden's Next round and Pass time controls and the players' rolls handle those. When the story skips ahead (a long trip, a night's wait, a long job), set time_passes.hours. HAZARDS IN PLAY in the per-turn context lists what is running now and each rule; narrate by it, and never invent rules for them. Hazards marked story hazard are not Mothership rules.
 - outcome_check: see RULE OF COOL. needed=false whenever nothing uncertain is left for the Warden.
 
 SCREEN EFFECTS (you can trigger these yourself)
@@ -546,7 +571,7 @@ function buildMessages(state) {
   for (const e of state.log.filter((x) => x.kind !== "note" && !x.cut).slice(-HISTORY_ENTRIES)) {
     const role = USER_KINDS.has(e.kind) ? "user" : "assistant";
     let last = turns.at(-1);
-    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], moves: [], cast: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
+    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], hazards: [], hours: 0, moves: [], cast: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
     if (e.kind === "player") last.inputs.push(`${playerTag(e)} ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
@@ -563,6 +588,8 @@ function buildMessages(state) {
       last.changes.push(...(e.changes || []));
       last.crew.push(...(e.crewChanges || []));
       last.items.push(...(e.itemChanges || []));
+      last.hazards.push(...(e.hazardChanges || []));
+      last.hours += e.timePasses || 0;
       last.moves.push(...(e.moves || []));
       last.cast.push(...(e.castChanges || []));
       last.clocks.push(...(e.clockChanges || []));
@@ -577,7 +604,7 @@ function buildMessages(state) {
   return turns.map((t) =>
     t.role === "user"
       ? { role: "user", content: t.inputs.join("\n") }
-      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, moves: t.moves, cast_changes: t.cast, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
+      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, hazards: t.hazards, time_passes: { hours: t.hours }, moves: t.moves, cast_changes: t.cast, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
   );
 }
 
@@ -682,6 +709,8 @@ function buildContext(state, steer, aside = false) {
   const plans = Object.entries(state.config.rooms || {});
   if (plans.length) ctx.push(`ROOM FLOOR PLANS (now):\n${plans.map(([id, p]) => `${id}:\n${p.rows.join("\n")}`).join("\n\n")}`);
   if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
+  const hz = hazardBrief(state.station, state.config.crew || []);
+  ctx.push(`HAZARDS IN PLAY (now):\n${hz.lines.join("\n") || "- none"}${hz.sick.length ? `\n\nCHARACTERS' HAZARD CONDITIONS (tracked by the app):\n${hz.sick.join("\n")}` : ""}\n\nHazard types you can start with the hazards field: ${Object.entries(HAZARDS).map(([k, h]) => `${k}${h.kind === "story" ? " (story hazard)" : ""}`).join(", ")}.`);
   const found = new Set(state.found || []);
   const lying = (state.config.roomDocs || []).filter((d) => !found.has(d.id));
   if (lying.length) ctx.push(`FILES IN ROOMS (not found yet; you may hand the players one that's in the room they're in, when they search it or pull it up on a terminal there):\n${lying.map((d) => `- ${d.id} [${d.room}] ${d.title} (${d.voice ? "audio recording" : "document"}): ${d.text.replace(/\s+/g, " ").slice(0, 140)}`).join("\n")}`);
@@ -761,6 +790,11 @@ export function parseReply(text, voices) {
       .filter((c) => c && c.for && ["add", "remove"].includes(c.action) && String(c.item ?? "").trim())
       .slice(0, 12)
       .map((c) => ({ for: String(c.for).slice(0, 60), action: c.action, item: String(c.item).trim().slice(0, 60), why: String(c.why ?? "").slice(0, 120) })),
+    hazards: (Array.isArray(r?.hazards) ? r.hazards : [])
+      .filter((h) => h && roomId(h.room) && (h.type === "none" || HAZARDS[String(h.type).toLowerCase()]))
+      .slice(0, 8)
+      .map((h) => ({ room: roomId(h.room), type: String(h.type).toLowerCase(), level: Number.isFinite(Number(h.level)) && Number(h.level) > 0 ? Math.round(Number(h.level)) : null })),
+    time_passes: { hours: Math.max(0, Math.min(72, Math.round(Number(r?.time_passes?.hours) || 0))) },
     moves: (Array.isArray(r?.moves) ? r.moves : [])
       .filter((m) => m && String(m.for ?? "").trim() && String(m.terminal ?? "").trim())
       .slice(0, 8)

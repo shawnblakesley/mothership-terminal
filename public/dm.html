@@ -251,6 +251,20 @@
         <label class="field"><span>Who else</span><textarea id="roomOccupants" rows="2" placeholder="Names, comma separated"></textarea></label>
         <label class="field"><span>What's here</span><textarea id="roomContents" rows="2" placeholder="Items, comma separated"></textarea></label>
         <div class="row"><span class="grow"></span><button id="roomSaveWho">Save</button></div>
+        <h2>Hazard <span class="hint" title="Mothership rules (PSG) run exactly as written. Story hazards are not Mothership rules: a Save or Check, and on a failure +1 Stress and the consequence the story names.">?</span></h2>
+        <div id="roomHazard" class="stack">
+          <div class="row wrap">
+            <select id="hazType" aria-label="Hazard"></select>
+            <label class="small muted" id="hazLevelBox">Level <input id="hazLevel" type="number" min="1" max="10" value="1" aria-label="Level"></label>
+            <label class="small muted" id="hazSupplyBox">Oxygen supply <input id="hazSupply" type="number" min="0" aria-label="Oxygen supply"></label>
+          </div>
+          <div class="row wrap">
+            <button id="hazSet" class="primary">Set hazard</button>
+            <button id="hazClear" class="ghost">Clear</button>
+            <button id="hazTrigger" class="ghost" title="Roll the Save or Check again for everyone exposed (explosions, hull breaches, story hazards)">Trigger again</button>
+          </div>
+          <div id="hazRule" class="small muted"></div>
+        </div>
         <h2>Room state</h2>
         <div id="roomValues" class="chips"></div>
         <h2>Terminals</h2>
@@ -333,6 +347,20 @@
       </div>
       <div class="tabpanel" data-tabs="side" data-panel="actions">
         <p id="noKeyNote" class="muted small" hidden>No AI key. Use Speak, or add a key in Settings.</p>
+
+        <h2>Rounds and hazards <span class="hint" title="A round is about 10 seconds. Next round runs the per-round rules (bleeding, fire, vacuum, toxic and corrosive atmospheres, radiation) for everyone exposed; Pass time runs the hourly and daily ones (extreme cold and heat, exhaustion, hunger, life support). Hazards are set per room in the room view (click a room on the map). Players at terminals in a hazardous room are exposed.">?</span></h2>
+        <div class="card stack" id="hazardCard">
+          <div class="row wrap">
+            <button id="nextRound" class="primary" title="Advance one round (about 10 seconds)">Next round</button>
+            <span class="grow"></span>
+            <span class="small muted">Pass time</span>
+            <button data-pass="1" title="Advance 1 hour">1 hour</button>
+            <button data-pass="6" title="Advance 6 hours">6 hours</button>
+            <button data-pass="24" title="Advance 24 hours">24 hours</button>
+          </div>
+          <div class="row wrap"><span id="hazardQueue" class="muted small grow"></span><button id="hazardRollAll" class="ghost" hidden title="Roll every waiting hazard save with server dice and carry on">Roll for them</button></div>
+          <ul id="hazardList" class="fxlist"></ul>
+        </div>
 
         <h2>Roll <span class="hint" title="Each character rolls on their own screen.">?</span></h2>
         <div class="stack">

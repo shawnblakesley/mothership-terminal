@@ -546,7 +546,7 @@
   volBtn.addEventListener("click", () => { muted = !muted; applyVolume(); input.focus(); });
   applyVolume();
 
-  let crew = [], claims = {}, myId = null;
+  let crew = [], claims = {}, myId = null, conds = {};
   let played = [];
   const crewKey = () => `crew:${code}`;
   const mine = () => crew.find((c) => c.id === myId) || null;
@@ -717,6 +717,7 @@
   const sheetCards = (c) => `
       ${sheetHead(c)}
       ${statusCard(c)}
+      ${conds[c.id]?.length ? `<div class="cs-card cs-conds-card"><div class="cs-title">CONDITIONS</div><div class="cs-conds">${conds[c.id].map((x) => `<span>${escH(x.toUpperCase())}</span>`).join("")}</div></div>` : ""}
       ${numbersCard("STATS", c.stats, rollHint())}
       ${numbersCard("SAVES", c.saves)}
       <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((s) => `<div><span>${escH(s.name)}</span><span class="cs-bonus">+${s.bonus}</span></div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
@@ -1344,9 +1345,10 @@
 
   function rollTargetText(roll, pc) {
     if (roll.panic) return `YOUR STRESS: ${pc.stress} · ROLL ABOVE IT ON A D20 TO KEEP YOUR COOL`;
-    const stat = pc.stats[roll.check] ?? pc.saves[roll.check];
+    const rad = pc.cond?.rad || 0;
+    const stat = Math.max(1, (pc.stats[roll.check] ?? pc.saves[roll.check]) - rad);
     const bonus = skillBonus(pc, roll.skillName);
-    return `YOUR ${roll.check.toUpperCase()}: ${stat}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}`;
+    return `YOUR ${roll.check.toUpperCase()}: ${stat}${rad ? ` (-${rad} RADIATION)` : ""}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}`;
   }
 
   function showRoll(roll) {
@@ -1560,6 +1562,7 @@
           heldCues.clear();
           if (msg.map) stationMap = msg.map;
           setTimeout(() => setIso(msg.iso || null));
+          conds = msg.conds || {};
           setCrew(msg.crew, msg.claims, msg.played);
           if (mine()) ws.send(JSON.stringify({ t: "claim", id: myId }));
           for (const e of msg.log) {
@@ -1598,7 +1601,7 @@
         case "busy": busy = msg.busy; updateBusy(); break;
         case "effect": onEffect(msg.effect); break;
         case "roll": showRoll(msg.roll); break;
-        case "crew": setCrew(msg.crew, msg.claims, msg.played); break;
+        case "crew": conds = msg.conds || {}; setCrew(msg.crew, msg.claims, msg.played); break;
         case "wardenLog": onWardenLog(msg); break;
         case "streamMap": stationMap = msg.map; renderCastbar(); break;
         case "talking": talking = new Set(msg.ids); wardenTalking = !!msg.warden; showTalking(); break;
