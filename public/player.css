@@ -716,3 +716,8 @@ body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #
 #chargen .cg-keys { margin-top: 0.6em; font-size: 0.85em; }
 #chargen .cs { max-width: 100%; }
 @media (max-width: 600px) { #chargen .cg-k { display: block; } }
+.cs-combat { display: flex; flex-direction: column; gap: 0.15em; margin-top: 0.5em; color: var(--dim); font-size: 0.72em; letter-spacing: 0.08em; text-align: center; }
+.cs-combat .cs-bad, .cs-deceased { color: #ff5a4e; }
+.cs-deceased { text-align: center; font-weight: bold; letter-spacing: 0.3em; border: 1px solid #ff5a4e; padding: 0.2em; margin-top: 0.5em; }
+.cs-conds { display: flex; flex-wrap: wrap; gap: 0.3em; }
+.cs-conds > span { border: 2px solid var(--fg); border-radius: 999px; padding: 2px calc(0.45em + 2px); font-size: 0.85em; }

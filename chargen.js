@@ -2,7 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { CLASSES, STATS, SAVES, MAX_CREW, GONE, playable, maxWoundsFor, traumaResponse, sanitizeCrew, skillOf } from "./crew.js";
+import { CLASSES, STATS, SAVES, MAX_CREW, playable, goneWord, newCond, maxWoundsFor, traumaResponse, sanitizeCrew, skillOf } from "./crew.js";
 import { slug } from "./clean.js";
 import { PORTRAIT_FILE } from "./cast.js";
 
@@ -318,7 +318,7 @@ export function handleChargen(sess, ws, msg) {
   if (msg.t === "cgStart") {
     const replaces = str(msg.replaces, 30), old = replaces && sess.crewById(replaces);
     if (replaces) {
-      if (!old || !old.status || old.replacedBy || s.newChars.some((n) => n.replaces === replaces)) return fail("That character has no replacement to make.");
+      if (!old || playable(old) || old.replacedBy || s.newChars.some((n) => n.replaces === replaces)) return fail("That character has no replacement to make.");
     } else if (!cfg.playerCreate) return fail("The Warden has not allowed new characters.");
     else if (active(cfg.crew) + s.newChars.filter((n) => !n.replaces).length >= MAX_CREW) return fail("The crew is full.");
     ws.cg = newDraft(replaces);
@@ -356,6 +356,18 @@ export function resend(sess, ws) {
   ws.send(JSON.stringify({ t: "cg", view: ws.cg ? viewOf(ws.cg, ctx(sess)) : null }));
 }
 
+// The Crew tab's "Standing": playing, deceased (combat's pc.cond.dead) or retired (Panic Table 20).
+export function setCrewState(sess, id, state) {
+  const pc = sess.crewById(id);
+  if (!pc) return;
+  pc.cond ||= newCond();
+  pc.cond.dead = state === "deceased" ? pc.cond.dead || "Warden" : "";
+  pc.retired = state === "retired";
+  sess.addLog("note", `${pc.name} is ${goneWord(pc) || "playing again"}.`);
+  sess.touch();
+  sess.crewChanged();
+}
+
 // A Warden (or, in a game with no Warden, the pilot) accepts or rejects a submitted character. Returns an error text, or "".
 export function decideCharacter(sess, accept, id, note = "") {
   const s = sess.state, i = s.newChars.findIndex((n) => n.id === id);
@@ -386,7 +398,7 @@ export function decideCharacter(sess, accept, id, note = "") {
   sheet.id = n;
   const join = (list) => {
     const at = pending.replaces ? list.findIndex((c) => c.id === pending.replaces) : -1;
-    const next = list.map((c) => (c.id === pending.replaces ? { ...c, status: c.status || old?.status || "retired", replacedBy: n } : c));
+    const next = list.map((c) => (c.id === pending.replaces ? { ...c, replacedBy: n } : c));
     next.splice(at >= 0 ? at : next.length, 0, sheet);
     return sanitizeCrew(next);
   };
@@ -394,11 +406,11 @@ export function decideCharacter(sess, accept, id, note = "") {
   if (s.campaign) s.campaign.crew = join(s.campaign.crew || []);
   if (owner?.ws.readyState === 1) {
     owner.ws.character = n;
-    owner.ws.send(JSON.stringify({ t: "cgAccepted", id: n }));
   }
   sess.addLog("note", `New character accepted: ${sheet.name} (${sheet.className})${old ? `, replacing ${old.name}` : ""}.`);
   sess.addLog("warden", `A new crewmember, ${sheet.name} (${sheet.className}), has joined the crew${old ? ` in place of ${old.name}` : ""}. Their arrival is the Warden's to stage: do not narrate how or when they appear, and do not describe their arrival yourself.`);
   sess.crewChanged();
+  if (owner?.ws.readyState === 1) owner.ws.send(JSON.stringify({ t: "cgAccepted", id: n }));
   done();
   return "";
 }

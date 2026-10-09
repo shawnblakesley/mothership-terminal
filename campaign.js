@@ -1,6 +1,7 @@
 import { RIM_HAULERS } from "./campaigns/rim-haulers.js";
 import { APP_BRIEF, DRAFT_SCHEMA, SPEAKER_LIST } from "./builder.js";
-import { sanitizeCrew } from "./crew.js";
+import { sanitizeCrew, newCond } from "./crew.js";
+import { HAZARDS } from "./hazards.js";
 import { sanitizeCast, findCast, PORTRAIT_FILE } from "./cast.js";
 import { SPEAKERS, fromPreset } from "./voices.js";
 
@@ -132,9 +133,11 @@ function storyBible(c, story) {
     `SECRETS (added automatically; build on them, don't repeat them):`,
     ...story.secrets.map((x) => `- ${x}`),
     `FACTIONS INVOLVED: ${story.factions.map((f) => c.factions.find((x) => x.id === f)?.name).filter(Boolean).join(", ")}.`,
-    story.hazards?.length ? `HAZARDS: ${story.hazards.join(", ")}.` : "",
+    story.hazards?.length ? `HAZARDS IN THIS STORY (the app runs these rules in play; build the setting so they can happen):\n${hazardRules(story).join("\n")}` : "",
   ].filter(Boolean).join("\n");
 }
+
+export const hazardRules = (story) => (story.hazards || []).filter((h) => HAZARDS[h]).map((h) => `- ${h} (${HAZARDS[h].kind === "psg" ? "Mothership rule" : "story hazard"}): ${HAZARDS[h].rule}`);
 
 function campaignContext(c, story, p) {
   const place = story.at ? loc(c, story.at) : null;
@@ -178,7 +181,7 @@ FIELDS
 - lore: what ${transit ? "MARY" : "the station's computer"} holds as public knowledge, as short labelled lines: the place, the job (from THE JOB), who's here, recent events as the public knows them (never the truth), and the factions' presence.
 - secrets: bullet lines ("- ...") the computer guards by access level. The written secrets are already included word for word: write ONLY new bullets, never restate or reword them: codes and passwords the arc needs, where things are, who is lying, what the computer itself was told to hide. Keep the Banishment options findable.
 - standingOrders: short extra steering for this story's tone and pacing, or "". The arc is added automatically.
-- station: the live state as path/value pairs (15-35). access_level=GUEST. Paths: doors.<room_id>, cameras.<room_id>, occupants.<room_id>, contents.<room_id>, lights.deck_N, plus systems of your own (power.*, life_support.*, comms...).${transit ? " Start from the rig's usual state (fuel.pct, air.reserve_hours, reactor, drive, container.seal, container.temp_c, cb_radio, nav.eta_hours) and change what this story changes." : ` Include ${c.ship.room}.docked=${loc(c, story.at).dock.toUpperCase()}.`}
+- station: the live state as path/value pairs (15-35). access_level=GUEST. Paths: doors.<room_id>, cameras.<room_id>, occupants.<room_id>, contents.<room_id>, lights.deck_N, plus systems of your own (power.*, life_support.*, comms...). The story's HAZARDS are tracked by the app: for a hazard that is already in force when the story starts, add hazards.<room_id>.type=<hazard> (and hazards.<room_id>.level=<n> for radiation 1-3, corrosive or acid 1-10, crush, collapse or machinery 1-3). Only those hazards, only in a room of the map; never invent others, and leave out hazards that start later in play.${transit ? " Start from the rig's usual state (fuel.pct, air.reserve_hours, reactor, drive, container.seal, container.temp_c, cb_radio, nav.eta_hours) and change what this story changes." : ` Include ${c.ship.room}.docked=${loc(c, story.at).dock.toUpperCase()}.`}
 - computer: ${transit ? `name "MARY". persona: ONLY what is different about MARY on this trip (what she knows, what's wrong with her, what she's been told), under 80 words, addressed to her ("You ..."). Her usual persona is added automatically.` : `name "${loc(c, story.at).computer}" and its persona, addressed to it ("You are ..."): who it is, how it writes on a monochrome CRT, what it knows, how it treats access levels and hacking, and how this story has touched it.`}
 - broadcastPersona: the automated public-address voice${transit ? " (MARY's cabin alerts and proximity alarms)" : ""}; announces, never converses.
 - voices: always one with id "intercom": ${transit ? `the rig's CB radio (name "CB RADIO", preset intercom), which everyone off the rig is heard over: dispatch, other drivers, customs hails, whoever is out there; systems [].` : `the station intercom (name "INTERCOM", preset intercom), which also carries radio patched through from ${c.ship.name}'s CB; systems ["ALL"].`} Add others only if the story needs them (another ship's computer, a radio band). Never MARY, the adversary, or the recurring characters.
@@ -251,7 +254,7 @@ export function composeDraft(c, story, p, raw) {
     computer,
     broadcastPersona: d.broadcastPersona,
     voices: transit ? voices : [...voices, shipVoice],
-    adversaries: [{ name: story.adversary.name, persona: story.adversary.persona, preset: story.adversary.preset }],
+    adversaries: [{ name: story.adversary.name, persona: story.adversary.persona, preset: story.adversary.preset, ...(story.adversary.combat ? { combat: structuredClone(story.adversary.combat) } : {}) }],
     cast,
     documents: d.documents,
     terminals: transit ? [...c.ship.terminals, ...aiTerminals] : [shipTerminal, ...aiTerminals],
@@ -263,6 +266,8 @@ const roomOf = (t) => String(t?.room || "").toLowerCase().replace(/[^a-z0-9_]/g,
 // After the story is applied: the crew as they left the last story, the recurring characters as the crew left them, MARY's own voice.
 export function carryInto(config, c, story, p) {
   config.crew = sanitizeCrew(structuredClone(p.crew));
+  for (const pc of config.crew) pc.cond = { ...newCond(), cryo: pc.cond.cryo, lethal: pc.cond.lethal, dead: pc.cond.dead, tags: pc.cond.tags };
+  config.shipCrew = c.ship.crew;
   p.favours = {};
   p.nudges = {};
   for (const m of presentIn(c, config)) {

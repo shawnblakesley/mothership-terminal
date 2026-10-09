@@ -546,7 +546,7 @@
   volBtn.addEventListener("click", () => { muted = !muted; applyVolume(); input.focus(); });
   applyVolume();
 
-  let crew = [], claims = {}, myId = null;
+  let crew = [], claims = {}, myId = null, conds = {};
   let played = [];
   const crewKey = () => `crew:${code}`;
   const mine = () => crew.find((c) => c.id === myId) || null;
@@ -580,8 +580,8 @@
     input.disabled = lockedOut() || watching();
     $("watchpick").hidden = !watching();
     $("hdr-file").hidden = $("hdr-file-sep").hidden = spectate || !crew.length;
-    $("hdr-file").textContent = pc ? `FILE: ${shortName(pc)}${pc.status ? ` (${pc.status.toUpperCase()})` : ""}` : "FILE: NONE";
-    $("crewfile-new").hidden = !(pc && pc.status && !pc.replacedBy);
+    $("hdr-file").textContent = pc ? `FILE: ${shortName(pc)}${gone(pc) ? ` (${gone(pc).toUpperCase()})` : ""}` : "FILE: NONE";
+    $("crewfile-new").hidden = !(pc && gone(pc) && !pc.replacedBy);
     if (!$("crewpick").hidden) renderPicker();
     if (!$("crewfile").hidden) renderFile();
     renderSide();
@@ -642,13 +642,14 @@
     $("crewpick-list").innerHTML = crew.map((c, i) => {
       const others = (claims[c.id] || 0) - (c.id === myId ? 1 : 0);
       const cls = [c.portrait && "has-face", c.id === myId && "current"].filter(Boolean).join(" ");
-      return `<li${cls ? ` class="${cls}"` : ""} data-id="${escH(c.id)}">${portraitHtml(c.portrait, "face")}<button type="button" class="p-btn pick" data-id="${escH(c.id)}"${c.status && c.id !== myId ? " disabled" : ""}>[${i + 1}] ${escH(c.name.toUpperCase())}</button>
-        <span class="p-dim"> · ${escH(c.className.toUpperCase())} · ${escH(c.role.toUpperCase())}${c.status ? ` · <b>${escH(c.status.toUpperCase())}</b>` : ""}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>CURRENT FILE</b>" : ""}</span>
-        ${c.status && !c.replacedBy ? `<div><button type="button" class="p-btn" data-newfor="${escH(c.id)}">[ MAKE A NEW CHARACTER ]</button></div>` : ""}
+      return `<li${cls ? ` class="${cls}"` : ""} data-id="${escH(c.id)}">${portraitHtml(c.portrait, "face")}<button type="button" class="p-btn pick" data-id="${escH(c.id)}"${gone(c) && c.id !== myId ? " disabled" : ""}>[${i + 1}] ${escH(c.name.toUpperCase())}</button>
+        <span class="p-dim"> · ${escH(c.className.toUpperCase())} · ${escH(c.role.toUpperCase())}${gone(c) ? ` · <b>${escH(gone(c).toUpperCase())}</b>` : ""}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>CURRENT FILE</b>" : ""}</span>
+        ${gone(c) && !c.replacedBy ? `<div><button type="button" class="p-btn" data-newfor="${escH(c.id)}">[ MAKE A NEW CHARACTER ]</button></div>` : ""}
         <div class="p-dim p-crime">${escH(c.crime)}</div></li>`;
     }).join("") + (canCreate() ? '<li><button type="button" class="p-btn" id="crewpick-new">[N] NEW CHARACTER</button><div class="p-dim p-crime">ROLL UP A NEW CREWMEMBER. THE WARDEN APPROVES THEM.</div></li>' : "");
   }
-  const canCreate = () => !spectate && !!header.create && crew.filter((c) => !c.status).length < 4;
+  const gone = (c) => (c.cond?.dead ? "deceased" : c.retired ? "retired" : "");
+  const canCreate = () => !spectate && !!header.create && crew.filter((c) => !gone(c)).length < 4;
 
   function vitalsChange(field, d) {
     const c = mine();
@@ -683,13 +684,23 @@
   const field = (label, value, always = false) => value || always ? `<div class="cs-field"><span class="cs-k">${label}</span><b>${escH(value.toUpperCase())}</b></div>` : "";
   const sheetHead = (c) => `<div class="cs-card cs-head">
       <div class="cs-facebox">${portraitHtml(c.portrait, "cs-face") || `<span class="cs-noface">NO PHOTO</span>`}</div>
-      <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns, true)}${field("CLASS", c.className)}${field("ROLE", c.role)}${field("STATUS", c.status)}</div>
+      <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns, true)}${field("CLASS", c.className)}${field("ROLE", c.role)}${field("STATUS", c.retired ? "retired" : "")}</div>
     </div>`;
+  const combatRow = (c) => {
+    const a = c.armor;
+    const bits = [];
+    if (a) bits.push(`<span class="${a.destroyed ? "cs-bad" : ""}">ARMOR: ${escH(a.name.toUpperCase())} · AP ${a.destroyed ? 0 : a.ap}${a.dr ? ` · DR ${a.dr}` : ""}${a.destroyed ? " · DESTROYED" : ""}</span>`);
+    if (c.cond?.bleeding) bits.push(`<span class="cs-bad">BLEEDING ${c.cond.bleeding} A ROUND</span>`);
+    if (c.cond?.dying) bits.push(`<span class="cs-bad">DYING: DEAD IN ${c.cond.dying} ROUNDS WITHOUT INTERVENTION</span>`);
+    if (c.status) bits.push(`<span class="cs-bad">${escH(c.status.toUpperCase())}${c.statusNote ? ` · ${escH(c.statusNote.toUpperCase())}` : ""}</span>`);
+    if (c.deathSaveIn) bits.push(`<span class="cs-bad">DEATH SAVE IN ${c.deathSaveIn} ROUNDS UNLESS TREATED</span>`);
+    return `${c.cond?.dead ? '<div class="cs-deceased">DECEASED</div>' : ""}<div class="cs-combat">${bits.join("")}</div>`;
+  };
   const statusCard = (c) => `<div class="cs-card cs-status"><div class="cs-title">STATUS REPORT</div><div class="cs-vitals">
       ${pill("health", "HEALTH", c.health.current, c.health.max, ["CURRENT", "MAX"])}
       ${pill("wounds", "WOUNDS", c.wounds.current, c.wounds.max, ["CURRENT", "MAX"])}
       ${pill("stress", "STRESS", c.stress, undefined, ["CURRENT", `MIN ${c.minStress ?? 2}`])}
-    </div></div>`;
+    </div>${combatRow(c)}</div>`;
   const numbersCard = (title, obj, hint = "") => `<div class="cs-card cs-${title.toLowerCase()}"><div class="cs-title">${title}</div>
       <div class="cs-nums">${Object.entries(obj).map(([k, v]) => circle(k, v)).join("")}</div>${hint}</div>`;
   const rollHint = () => (header.selfRolls && !spectate ? '<div class="cs-hint">TAP A STAT OR SAVE TO ROLL IT</div>' : "");
@@ -720,6 +731,7 @@
   const sheetCards = (c) => `
       ${sheetHead(c)}
       ${statusCard(c)}
+      ${conds[c.id]?.length ? `<div class="cs-card cs-conds-card"><div class="cs-title">CONDITIONS</div><div class="cs-conds">${conds[c.id].map((x) => `<span>${escH(x.toUpperCase())}</span>`).join("")}</div></div>` : ""}
       ${numbersCard("STATS", c.stats, rollHint())}
       ${numbersCard("SAVES", c.saves)}
       <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((s) => `<div><span>${escH(s.name)}</span><span class="cs-bonus">+${s.bonus}</span></div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
@@ -815,13 +827,13 @@
     if (e.target.closest("#crewpick-new")) return Chargen.start();
     const id = e.target.closest("[data-id]")?.dataset.id;
     const c = crew.find((x) => x.id === id);
-    if (c && !(c.status && c.id !== myId)) showPicked(id);
+    if (c && !(gone(c) && c.id !== myId)) showPicked(id);
   });
   addEventListener("keydown", (e) => {
     if ($("crewpick").hidden || !bootEl.classList.contains("gone") || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key.toLowerCase() === "n" && canCreate()) { e.preventDefault(); return Chargen.start(); }
     const c = crew[Number(e.key) - 1];
-    if (c && !(c.status && c.id !== myId)) { e.preventDefault(); showPicked(c.id); $("crewfile-change").focus(); }
+    if (c && !(gone(c) && c.id !== myId)) { e.preventDefault(); showPicked(c.id); $("crewfile-change").focus(); }
   });
   Chargen.init({
     send, escH, fit: fitChips, portrait: (f) => portraitHtml(f, "cs-face"), notice: (t) => notice(t),
@@ -1374,11 +1386,13 @@
 
   function rollTargetText(roll, pc) {
     const own = myEntry(pc);
-    const mark = own && own.advantage !== roll.advantage ? ` · YOURS IS ${ADV_MARK[own.advantage]}${roll.check === "fear" ? " (AN ANDROID IS CLOSE)" : ""}` : "";
+    const why = own?.why?.length ? ` (${own.why.join(", ").toUpperCase()})` : "";
+    const mark = own && own.advantage !== roll.advantage ? ` · YOURS IS ${ADV_MARK[own.advantage]}${why}` : why ? ` ·${why}` : "";
+    const rad = pc.cond?.rad || 0;
     if (roll.panic) return `YOUR STRESS: ${pc.stress} · ROLL ABOVE IT ON A D20 TO KEEP YOUR COOL${mark}`;
-    const stat = pc.stats[roll.check] ?? pc.saves[roll.check];
+    const stat = Math.max(1, (pc.stats[roll.check] ?? pc.saves[roll.check]) - rad);
     const bonus = skillBonus(pc, roll.skillName);
-    return `YOUR ${roll.check.toUpperCase()}: ${stat}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}${mark}`;
+    return `YOUR ${roll.check.toUpperCase()}: ${stat}${rad ? ` (-${rad} RADIATION)` : ""}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}${mark}`;
   }
 
   function showRoll(roll) {
@@ -1627,6 +1641,7 @@
           heldCues.clear();
           if (msg.map) stationMap = msg.map;
           setTimeout(() => setIso(msg.iso || null));
+          conds = msg.conds || {};
           setCrew(msg.crew, msg.claims, msg.played);
           if (mine()) ws.send(JSON.stringify({ t: "claim", id: myId }));
           for (const e of msg.log) {
@@ -1666,7 +1681,7 @@
         case "busy": busy = msg.busy; updateBusy(); break;
         case "effect": onEffect(msg.effect); break;
         case "roll": showRoll(msg.roll); break;
-        case "crew": setCrew(msg.crew, msg.claims, msg.played); break;
+        case "crew": conds = msg.conds || {}; setCrew(msg.crew, msg.claims, msg.played); break;
         case "cg": Chargen.onMessage(msg); break;
         case "cgAccepted": Chargen.onAccepted(msg.id); break;
         case "wardenLog": onWardenLog(msg); break;

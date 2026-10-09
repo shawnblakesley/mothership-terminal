@@ -253,6 +253,20 @@
         <label class="field"><span>Who else</span><textarea id="roomOccupants" rows="2" placeholder="Names, comma separated"></textarea></label>
         <label class="field"><span>What's here</span><textarea id="roomContents" rows="2" placeholder="Items, comma separated"></textarea></label>
         <div class="row"><span class="grow"></span><button id="roomSaveWho">Save</button></div>
+        <h2>Hazard <span class="hint" title="Mothership rules (PSG) run exactly as written. Story hazards are not Mothership rules: a Save or Check, and on a failure +1 Stress and the consequence the story names.">?</span></h2>
+        <div id="roomHazard" class="stack">
+          <div class="row wrap">
+            <select id="hazType" aria-label="Hazard"></select>
+            <label class="small muted" id="hazLevelBox">Level <input id="hazLevel" type="number" min="1" max="10" value="1" aria-label="Level"></label>
+            <label class="small muted" id="hazSupplyBox">Oxygen supply <input id="hazSupply" type="number" min="0" aria-label="Oxygen supply"></label>
+          </div>
+          <div class="row wrap">
+            <button id="hazSet" class="primary">Set hazard</button>
+            <button id="hazClear" class="ghost">Clear</button>
+            <button id="hazTrigger" class="ghost" title="Roll the Save or Check again for everyone exposed (explosions, hull breaches, story hazards)">Trigger again</button>
+          </div>
+          <div id="hazRule" class="small muted"></div>
+        </div>
         <h2>Room state</h2>
         <div id="roomValues" class="chips"></div>
         <h2>Terminals</h2>
@@ -337,6 +351,20 @@
       <div class="tabpanel" data-tabs="side" data-panel="actions">
         <p id="noKeyNote" class="muted small" hidden>No AI key. Use Speak, or add a key in Settings.</p>
 
+        <h2>Rounds and hazards <span class="hint" title="A round is about 10 seconds. Next round runs the per-round rules (bleeding, fire, vacuum, toxic and corrosive atmospheres, radiation) for everyone exposed; Pass time runs the hourly and daily ones (extreme cold and heat, exhaustion, hunger, life support). Hazards are set per room in the room view (click a room on the map). Players at terminals in a hazardous room are exposed.">?</span></h2>
+        <div class="card stack" id="hazardCard">
+          <div class="row wrap">
+            <button id="nextRound" class="primary" title="Advance one round (about 10 seconds)">Next round</button>
+            <span class="grow"></span>
+            <span class="small muted">Pass time</span>
+            <button data-pass="1" title="Advance 1 hour">1 hour</button>
+            <button data-pass="6" title="Advance 6 hours">6 hours</button>
+            <button data-pass="24" title="Advance 24 hours">24 hours</button>
+          </div>
+          <div class="row wrap"><span id="hazardQueue" class="muted small grow"></span><button id="hazardRollAll" class="ghost" hidden title="Roll every waiting hazard save with server dice and carry on">Roll for them</button></div>
+          <ul id="hazardList" class="fxlist"></ul>
+        </div>
+
         <h2>Roll <span class="hint" title="Each character rolls on their own screen.">?</span></h2>
         <div class="stack">
         <div class="card stack" id="rollCard">
@@ -368,6 +396,24 @@
           <div class="row"><button id="rollCall" class="primary" title="Checks: d100 under target. Panic: d20 over Stress.">Call for roll</button></div>
           </div>
         </div>
+        </div>
+
+        <h2>Combat <span class="hint" title="Violent encounters (Player's Survival Guide). No initiative: players declare, you resolve everything at once. Armor, Wounds and Bleeding are tracked on the Crew tab.">?</span></h2>
+        <div class="card stack" id="combatCard">
+          <div class="rollgrid">
+            <label>Who attacks
+              <select id="atkSide"><option value="creature">An adversary</option><option value="crew">A crew member (Combat check already made)</option></select>
+            </label>
+            <label>Attacker <select id="atkBy"></select></label>
+            <label><span id="atkWithLabel">Attack</span> <select id="atkWith"></select></label>
+            <label>Target <select id="atkTarget"></select></label>
+            <label id="atkAdvWrap" hidden>Damage [+] / [−]
+              <select id="atkAdv"><option value="">Normal</option><option value="+">[+] Advantage</option><option value="-">[−] Disadvantage</option></select>
+            </label>
+          </div>
+          <div id="atkNote" class="muted small"></div>
+          <div class="row"><button id="atkGo" class="primary" title="An adversary rolls its Combat (d100 under it, 90-99 always fails) and, on a hit, the attack's damage. A crew member's weapon damage is rolled and applied to the adversary.">Roll attack</button></div>
+          <ul id="deathSaveList" class="fxlist"></ul>
         </div>
 
         <h2>Handouts <span class="hint" title="Documents that pop up on player screens and stay under DOCS. With a voice, it's an audio log: they play it, and read along.">?</span></h2>
@@ -554,6 +600,7 @@
         <h2>In this app</h2>
         <ul>
           <li><b>Actions → Roll</b> calls a check, save or Panic check. Each player rolls on their own screen; failures add Stress automatically, and a critical failure offers a one-click Panic check.</li>
+          <li><b>Actions → Combat</b>: <b>Next round</b> (under Rounds and hazards) makes everyone Bleeding take that much Damage (armor and DR don't help). <b>Roll attack</b> has an adversary roll its Combat and attack, or applies a crew member's weapon damage to an adversary. Armor: damage under its AP is ignored; damage at or over AP destroys it and the rest goes through; Anti-Armor ignores and destroys it; DR always applies first. At 0 Health a character takes a Wound (a Wounds Table roll) and Health resets to Maximum minus the carryover; at Maximum Wounds a Death Save is rolled in secret and stays hidden until you press <b>Reveal</b>.</li>
           <li><b>⚖ Your call</b>: the agent is waiting on an uncertain attempt. It shows the stakes; you say it works, fails, or roll.</li>
           <li>The agent can change Health, Wounds and Stress if Settings allow. Fix them on the Crew tab.</li>
         </ul>

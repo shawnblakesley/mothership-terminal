@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { sanitizeRequest } from "../rolls.js";
 import { CAMPAIGNS } from "../campaign.js";
-import { CLASSES, STATS, SAVES, MAX_CREW, DEFAULT_CREW, sanitizeCrew, crewBrief } from "../crew.js";
+import { CLASSES, STATS, SAVES, MAX_CREW, DEFAULT_CREW, sanitizeCrew, crewBrief, crewStatus } from "../crew.js";
 import {
   newDraft, rollFor, rollDice, setChoices, buildSheet, viewOf, applyClass, statsFrom, savesFrom, healthFrom, creditsFrom,
-  skillErrors, skillOptions, validateCharacter, parseTables, loadTables, handleChargen, decideCharacter, checkDice,
+  skillErrors, skillOptions, validateCharacter, parseTables, loadTables, handleChargen, decideCharacter, checkDice, setCrewState,
 } from "../chargen.js";
 
 const seeded = (seed) => {
@@ -279,7 +280,7 @@ test("creation needs the switch and a free slot; a dead character's player can a
   const { sess, ws, sent } = fakeSession(DEFAULT_CREW);
   run(sess, ws, { t: "cgStart" });
   assert.match(sent.at(-1).error, /full/);
-  sess.state.config.crew[1].status = "deceased";
+  sess.state.config.crew[1].cond.dead = "Death Save";
   sess.state.config.playerCreate = false;
   run(sess, ws, { t: "cgStart" });
   assert.match(sent.at(-1).error, /not allowed/);
@@ -293,11 +294,29 @@ test("creation needs the switch and a free slot; a dead character's player can a
   assert.equal(crew.length, MAX_CREW + 1);
   assert.equal(crew[1].id, ws.character, "the new character takes the slot");
   assert.equal(crew[2].id, dead);
-  assert.equal(crew[2].status, "deceased");
+  assert.ok(crew[2].cond.dead);
   assert.equal(crew[2].replacedBy, crew[1].id);
-  assert.equal(crew.filter((c) => !c.status).length, MAX_CREW);
+  assert.equal(crew.filter((c) => !c.cond.dead && !c.retired).length, MAX_CREW);
   run(sess, ws, { t: "cgStart", replaces: dead });
   assert.match(sent.at(-1).error, /no replacement/, "only once");
+});
+
+test("dead and retired characters are not playable: one notion of death (pc.cond.dead)", () => {
+  const { sess } = fakeSession(DEFAULT_CREW);
+  const [a, b, c] = sess.state.config.crew;
+  setCrewState(sess, a.id, "deceased");
+  setCrewState(sess, b.id, "retired");
+  assert.ok(a.cond.dead && !a.retired && b.retired && !b.cond.dead);
+  const req = sanitizeRequest({ pc: "all", check: "fear" }, sess.state.config.crew);
+  assert.deepEqual(req.pcs.map((p) => p.id), sess.state.config.crew.filter((x) => x !== a && x !== b).map((x) => x.id));
+  assert.throws(() => sanitizeRequest({ pc: a.id, check: "fear" }, sess.state.config.crew));
+  assert.match(crewStatus([b]), /RETIRED/);
+  assert.match(crewBrief([a]), /DECEASED: no longer playable/);
+  setCrewState(sess, a.id, "");
+  assert.ok(!a.cond.dead);
+  const old = sanitizeCrew([{ ...DEFAULT_CREW[0], status: "deceased" }, { ...DEFAULT_CREW[1], status: "retired" }]);
+  assert.ok(old[0].cond.dead && old[1].retired, "an old saved status migrates");
+  assert.ok(c);
 });
 
 test("name and pronouns are separate and never guessed", () => {
@@ -312,6 +331,6 @@ test("name and pronouns are separate and never guessed", () => {
   const b = made("Ines Okoro", "");
   assert.equal(b.name, "Ines Okoro");
   assert.equal(b.pronouns, "");
-  assert.match(crewBrief([b]), /none given: use they\/them/);
+  assert.match(crewBrief([b]), /no pronouns given: use they\/them/);
   assert.equal(sanitizeCrew([b])[0].pronouns, "");
 });
