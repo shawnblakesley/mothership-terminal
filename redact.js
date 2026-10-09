@@ -14,6 +14,14 @@ export function redact(text) {
   return s.replace(shapesAll(), "[redacted]");
 }
 
+// What the players' map may show: not the roster, and nothing the agent keeps under a secret or hidden key.
+const HIDDEN_KEY = /^(secret|hidden)([_.-].*)?$/i;
+export function playerStation(station) {
+  const walk = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !HIDDEN_KEY.test(k)).map(([k, v]) => [k, v && typeof v === "object" && !Array.isArray(v) ? walk(v) : v]));
+  const { occupants, ...rest } = station || {};
+  return walk(rest);
+}
+
 export function looksSecret(text) {
   const s = String(text);
   if (shapesAny.test(s)) return true;
