@@ -1262,6 +1262,8 @@
   }
 
   $("hdr-rules").onclick = () => $("rules").showModal();
+  $("hdr-menu").onclick = () => $("hdr-menu").setAttribute("aria-expanded", String($("hdr").classList.toggle("menu-open")));
+  $("hdr").addEventListener("click", (e) => { if (e.target.closest(".hdr-btn:not(#hdr-menu)") && $("hdr").classList.contains("menu-open")) { $("hdr").classList.remove("menu-open"); $("hdr-menu").setAttribute("aria-expanded", "false"); } });
   let calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const savedCalm = ls.get("calm");
   if (savedCalm !== null) calm = savedCalm === "1";
@@ -1641,7 +1643,7 @@
   function renderMemorial() {
     const list = crew.filter(gone);
     $("memorialfx").querySelector(".mm-body").innerHTML = list.map((c) => `<div class="mm-row">${portraitHtml(c.portrait, "mm-face")}<div>
-      <div class="mm-name">${escH(c.name.toUpperCase())}</div>
+      <div class="mm-who">${escH(c.name.toUpperCase())}</div>
       <div>${escH(c.className.toUpperCase())} · HIGH SCORE ${c.highScore || 0}</div>
       <div>${escH((c.cond?.dead ? (c.cond.dead === "Warden" ? "MARKED DECEASED BY THE WARDEN" : `DIED: ${c.cond.dead}`) : "RETIRED FROM PLAY").toUpperCase())}${c.endedIn ? ` · ${escH(c.endedIn.toUpperCase())}` : ""}</div>
       ${c.finalWords ? `<div class="mm-final">FINAL TRANSMISSION: "${escH(c.finalWords.toUpperCase())}"</div>` : ""}

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildRequest, buildPrecheck, parseReply } from "../agent.js";
 import { chatRequest, draftRequest, pitchesRequest } from "../builder.js";
-import { CAMPAIGNS, buildRequest as campaignRequest, newProgress } from "../campaign.js";
+import { CAMPAIGNS, buildRequest as campaignRequest, newProgress, factionBrief, stripFactionBrief } from "../campaign.js";
 import { synopsisRequest } from "../synopsis.js";
 import { handoutRequest } from "../handouts.js";
 import { draftRequest as roomRequest } from "../rooms.js";
@@ -273,4 +273,75 @@ test("Retcon takes back an ending the agent wrote in a game with no Warden, even
   await new Promise((r) => setTimeout(r, 5));
   assert.equal(s.state.solo.phase, "play");
   assert.ok(!s.state.solo.busy && !s.state.solo.recap, "a late recap is dropped");
+});
+
+const LONG = "One. Two. Three. Four. Five.";
+const reply = (lines) => JSON.stringify({ lines });
+
+test("the length setting trims each line as the model wrote it, before a speaker's consecutive lines are merged", () => {
+  const voices = kestrelState().config.voices;
+  const salk = (text) => ({ voice: "intercom", character: "Dr. Imre Salk", text });
+  const terse = parseReply(reply([salk(LONG), salk(LONG), salk("Six.")]), voices, "terse").lines;
+  assert.equal(terse.length, 1, "Salk's lines are still merged");
+  assert.equal(terse[0].text, "One. Two.\nOne. Two.", "2 lines of 2 sentences; the third line is dropped");
+  const brief = parseReply(reply([salk(LONG), { voice: "terminal", text: "A\nB\nC\nD\nE\nF\nG\nH\nI\nJ" }]), voices, "brief").lines;
+  assert.equal(brief[0].text, "One. Two. Three.");
+  assert.equal(brief[1].text.split("\n").length, 8, "a printout keeps 8 rows at BRIEF");
+  assert.equal(parseReply(reply([salk(LONG)]), voices, "long").lines[0].text, LONG, "EXPANSIVE has no limit");
+  assert.equal(parseReply(reply([salk(LONG)]), voices).lines[0].text, LONG, "no setting given, nothing trimmed");
+  assert.equal(parseReply(reply([salk("Dr. Okonkwo lied. Mr. Vane knew. Then it came.")]), voices, "terse").lines[0].text, "Dr. Okonkwo lied. Mr. Vane knew.", "titles don't end a sentence");
+});
+
+test("Review mode drafts are trimmed to the length setting; the Warden's own edit is delivered as written; private notes still work", async () => {
+  const s = session();
+  Object.assign(s.state.config, { mode: "review", checkFirst: false, talk: "terse" });
+  s.modelAccess = () => ({ provider: { id: "stub" }, apiKey: "x" });
+  s.callModel = async () => reply([{ voice: "terminal", text: "1\n2\n3\n4\n5\n6" }, { voice: "intercom", character: "Dr. Imre Salk", text: LONG }]);
+  s.pregenerate = () => {};
+  s.addLog("player", "status?");
+  await s.generate();
+  assert.deepEqual(s.state.pending.reply.lines.map((l) => l.text), ["1\n2\n3\n4", "One. Two."]);
+  s.handleDm({ t: "approve", reply: { lines: [{ voice: "intercom", character: "Dr. Imre Salk", text: LONG }], station_changes: [], crew_changes: [], effects: [] } });
+  assert.ok(s.state.log.some((e) => e.text.replace(/\n/g, " ") === LONG), "the Warden's edit isn't trimmed");
+  s.callModel = async () => JSON.stringify({ lines: [{ voice: "terminal", text: "1\n2\n3\n4\n5\n6" }], dm_note: "Noted, and it stays private." });
+  await s.aside("What is Salk hiding?");
+  assert.equal(s.state.log.at(-1).kind, "aside_reply");
+  assert.equal(s.state.log.at(-1).text, "Noted, and it stays private.");
+});
+
+test("a player's panic: its Stress is the Warden's when there is one; with no Warden the SOLO rules apply", () => {
+  const state = kestrelState();
+  state.log.push({ id: "p1", kind: "roll", text: "PANIC CHECK\nSTRESS 6 · ROLLED 2 (D20)\nPANIC", by: "Rook", panicEffect: "Nervous: +1 Stress." });
+  const r = buildRequest(state, "");
+  assert.match(r.messages.at(-1).content, /Nervous: \+1 Stress\. Show it in the fiction now\. Its Stress and anything lasting are the Warden's: no crew_changes/);
+  assert.match(r.context, /no crew_changes for that character/);
+  state.solo = { phase: "play" };
+  const solo = buildRequest(state, "");
+  assert.doesNotMatch(solo.messages.at(-1).content + solo.context, /no crew_changes for/);
+  assert.match(solo.system + solo.context, /apply any Stress it gives through crew_changes/);
+});
+
+test("the narrator's third person is in the protocol, so saved personas get it too; check-first knows what the station state allows", () => {
+  const state = kestrelState();
+  state.config.voices.find((v) => v.id === "narrator").persona = "A custom narrator.";
+  assert.match(buildRequest(state, "").system, /role="the narrator: the scene itself, in the third person; it never speaks to anyone or says &quot;you&quot;"/);
+  assert.match(buildPrecheck(state).system, /station state already allows: undocking once departure clearance reads GRANTED/);
+});
+
+test("saved campaign stories lose the faction standings frozen into their standing orders; the arc and the story's own orders stay", () => {
+  const c = CAMPAIGNS[0], p = newProgress(c);
+  p.factions = { union: 2 };
+  const story = c.stories.find((x) => x.finale) || c.stories[0];
+  const arc = `CAMPAIGN STORY ${story.n} of ${c.stories.length}: ${story.title}.\nTHE ADVERSARY is ${story.adversary.name}.`;
+  const old = `${arc}\n${factionBrief(c, story, p)}\n\nKeep the radio chatter salty.`;
+  assert.match(old, /THE FINALE:/);
+  assert.equal(stripFactionBrief(old), `${arc}\n\nKeep the radio chatter salty.`);
+  assert.equal(stripFactionBrief(`${arc}\n${factionBrief(c, c.stories[0], p)}`), arc);
+  const game = { config: { stationName: "WELLHEAD", standingOrders: old, upgrades: ["industrial-equipment"] }, storyStart: { config: { standingOrders: old } } };
+  const s = new Session({ code: "T3", tokenHash: "x", game }, { onChange() {}, onEnd() {} });
+  assert.equal(s.state.config.standingOrders, `${arc}\n\nKeep the radio chatter salty.`);
+  assert.equal(s.state.storyStart.config.standingOrders, `${arc}\n\nKeep the radio chatter salty.`);
+  assert.ok(s.state.config.upgrades.includes("faction-orders"));
+  const later = new Session({ code: "T4", tokenHash: "x", game: { config: { standingOrders: old, upgrades: ["faction-orders"] } } }, { onChange() {}, onEnd() {} });
+  assert.equal(later.state.config.standingOrders, old, "runs once: orders the Warden writes later are theirs");
 });
