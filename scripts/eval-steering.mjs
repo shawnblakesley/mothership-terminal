@@ -139,12 +139,12 @@ for (const t of TURNS.filter((x) => !only || x.name.toLowerCase().includes(only)
   for (let i = 0; i < runs; i++) {
     try { got.push({ ...(await runTurn(t)), must: t.must }); } catch (err) { got.push({ name: t.name, pass: false, must: t.must, error: err.message }); }
   }
-  const passed = got.filter((r) => r.pass).length;
+  const passed = got.filter((r) => r.pass).length, errors = got.filter((r) => r.error).length;
   const shown = got.find((r) => !r.pass) || got[0];
-  results.push({ ...shown, pass: passed * 2 > runs || (runs === 1 && passed === 1), passed, runs });
+  results.push({ ...shown, pass: passed * 2 > runs || (runs === 1 && passed === 1), passed, runs, errors });
 }
 if (process.argv.includes("--json")) console.log(JSON.stringify(results, null, 1));
 else {
   for (const r of results) console.log(`${r.pass ? "PASS" : "FAIL"}  ${r.name}${runs > 1 ? `  (${r.passed}/${r.runs} runs)` : ""}${r.error ? `  ERROR ${r.error}` : ""}\n      want: ${r.must}\n      got:  ${r.said ?? ""} ${r.changes ? JSON.stringify(r.changes) : ""}`);
-  console.log(`\n${results.filter((r) => r.pass).length}/${results.length} passed`);
+  console.log(`\n${results.filter((r) => r.pass).length}/${results.length} turns passed; ${results.reduce((n, r) => n + r.passed, 0)}/${results.length * runs} runs passed; ${results.reduce((n, r) => n + r.errors, 0)} calls failed (invalid JSON or API error)`);
 }

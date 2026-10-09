@@ -43,6 +43,7 @@ export const weaponByName = (name) => WEAPONS.find((x) => flat(x.name) === flat(
 export function weaponsOf(items) {
   const out = [];
   for (const item of items || []) {
+    if (/^ammo\b/i.test(String(item).trim())) continue;
     const hit = WEAPONS.filter((x) => has(item, x.name)).sort((a, b) => b.name.length - a.name.length)[0];
     if (hit && !out.includes(hit)) out.push(hit);
   }

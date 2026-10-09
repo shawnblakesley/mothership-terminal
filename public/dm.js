@@ -332,6 +332,8 @@
     renderCastLists();
     renderMap();
     renderCrew();
+    renderNewChars();
+    renderMemorial();
     renderCast();
     renderAdversaries();
     renderTerminals();
@@ -508,9 +510,10 @@
       ${p.directives?.length ? `<div class="note">⚑ Following your command${p.directives.length > 1 ? "s" : ""}: ${p.directives.map(esc).join(" · ")}</div>` : ""}
       ${r.crew_changes?.length ? `<div class="label">Crew condition</div><ul>${r.crew_changes.map((c, i) =>
         `<li><label><input type="checkbox" data-crw="${i}" ${S.config.agentCrew !== false ? "checked" : ""}> ${esc(c.for)}: ${esc(c.stat)} ${c.change > 0 ? "+" : ""}${c.change}${c.why ? ` <span class="muted">(${esc(c.why)})</span>` : ""}</label></li>`).join("")}</ul>` : ""}
-      ${r.attacks?.length || r.crew_attacks?.length || r.round || r.reveal_death_save?.length ? `<div class="label">Combat <span class="muted">rolled by the app when you send</span></div><ul>${[
+      ${r.attacks?.length || r.crew_attacks?.length || r.reloads?.length || r.round || r.reveal_death_save?.length ? `<div class="label">Combat <span class="muted">rolled by the app when you send</span></div><ul>${[
         ...(r.attacks || []).map((a) => `${esc(a.by)} attacks ${esc(a.target)}${a.attack ? ` with ${esc(a.attack)}` : ""}`),
         ...(r.crew_attacks || []).map((a) => `${esc(a.by)} hits ${esc(a.target)} with ${esc(a.weapon || "Unarmed")}`),
+        ...(r.reloads || []).map((a) => `${esc(a.by)} reloads ${esc(a.weapon || "their weapon")}`),
         ...(r.round ? ["A round passes: Bleeding hurts"] : []),
         ...(r.reveal_death_save || []).map((n) => `Death Save revealed: ${esc(n)}`),
       ].map((t) => `<li>${t}</li>`).join("")}</ul>` : ""}
@@ -609,7 +612,7 @@
       const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id);
       return `<details class="pc" data-i="${i}">
         <summary>${pickButton(c, `class="pick small" data-pcpic="${i}"`)}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
-          <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max} · AP ${c.armor?.destroyed ? 0 : c.armor?.ap ?? 0}${c.cond?.dead ? " · DECEASED" : ""}</span>
+          <span class="muted small">${esc(c.className)} · High Score ${c.highScore || 0} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max} · AP ${c.armor?.destroyed ? 0 : c.armor?.ap ?? 0}${c.cond?.dead ? " · DECEASED" : ""}${c.retired ? " · RETIRED" : ""}</span>
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(none yet)</option>') + S.config.terminals.map((t) =>
             `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></span>` : ""}</summary>
@@ -624,6 +627,8 @@
           ${num("health.current", c.health.current, "Health")}${num("health.max", c.health.max, "Max health")}
           ${num("wounds.current", c.wounds.current, "Wounds")}${num("wounds.max", c.wounds.max, "Max wounds")}
 ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress")}${num("startStress", c.startStress, "Starting stress")}
+          <label title="Sessions survived (PSG 18.3). Changes no roll.">High Score<input type="number" data-c="highScore" value="${c.highScore || 0}" min="0" max="9999"></label>
+
           ${txt("armor.name", c.armor.name, "Armor")}${num("armor.ap", c.armor.ap, "Armor AP")}${num("armor.dr", c.armor.dr, "Armor DR")}
           <label>Armor destroyed<input type="checkbox" data-c="armor.destroyed" ${c.armor.destroyed ? "checked" : ""}></label>
           ${txt("skills", c.skills.map(skillStr).join(", "), "Skills")}
@@ -634,13 +639,61 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
           ${txt("trinket", c.trinket, "Trinket")}
           ${txt("patch", c.patch, "Patch")}
           ${txt("notes", c.notes, "Warden notes, hidden from players", 2)}
+          <label>Standing<select data-cstate="${esc(c.id)}"><option value="">Playing</option>${["deceased", "retired"].map((k) => `<option value="${k}" ${(k === "deceased" ? c.cond?.dead : c.retired) ? "selected" : ""}>${cap(k)}</option>`).join("")}</select></label>
         </div>
         <div class="row edit-only"><span class="grow"></span><button data-cact="del" class="danger">Remove character</button></div>
       </details>`;
     }).join("") || `<p class="muted small">No player characters. Add some, or build a story.</p>`;
     for (const i of openCrew) panel.querySelector(`.pc[data-i="${i}"]`)?.setAttribute("open", "");
-    $("addCrew").disabled = crewDraft.length >= 4;
+    $("addCrew").disabled = crewDraft.filter((c) => !c.cond?.dead && !c.retired).length >= 4;
   }
+  // The memorial wall: a CRT crew manifest of the dead and retired, names struck through. High Score is sessions survived (PSG 18.3).
+  function memorialHtml(crew) {
+    const list = crew.filter((c) => c.cond?.dead || c.retired);
+    if (!list.length) return '<p class="muted small">Nobody yet.</p>';
+    return `<div class="memorial">${list.map((c) => `<div class="memo">
+      ${c.portrait ? `<img class="memo-pic" src="${esc(portraitUrl(c.portrait))}" alt="">` : ""}
+      <div class="memo-body"><div><s class="memo-name">${esc(c.name)}</s> <span class="muted small">${esc(c.className)}</span></div>
+        <div class="small"><span class="k">HIGH SCORE</span> <b>${c.highScore || 0}</b></div>
+        <div class="small">${esc(c.cond?.dead ? (c.cond.dead === "Warden" ? "Marked deceased by the Warden" : `Died: ${c.cond.dead}`) : "Retired from play")}${c.endedIn ? ` · ${esc(c.endedIn)}` : ""}</div>
+        ${c.finalWords ? `<div class="small memo-final">Final transmission: "${esc(c.finalWords)}"</div>` : ""}
+        <input data-epitaph="${esc(c.id)}" value="${esc(c.epitaph || "")}" placeholder="Epitaph, one line" maxlength="140" aria-label="Epitaph for ${esc(c.name)}"></div></div>`).join("")}</div>`;
+  }
+  let memorialKey = "";
+  function renderMemorial() {
+    const el = $("memorial"), crew = S.config.crew, key = JSON.stringify(crew.map((c) => [c.id, c.name, c.cond?.dead, c.retired, c.highScore, c.endedIn, c.finalWords, c.epitaph, c.portrait]));
+    if (key === memorialKey || el.contains(document.activeElement)) return;
+    memorialKey = key;
+    el.innerHTML = memorialHtml(crew);
+  }
+  document.addEventListener("change", (e) => {
+    const id = e.target.closest?.("[data-epitaph]")?.dataset.epitaph;
+    if (id) send({ t: "epitaph", pc: id, text: e.target.value });
+  });
+  $("endNight").onclick = () => send({ t: "endNight" });
+  let newCharsKey = "";
+  function renderNewChars() {
+    const list = S.newChars || [], key = JSON.stringify(list);
+    if (key === newCharsKey) return;
+    newCharsKey = key;
+    const nums = (o) => Object.entries(o).map(([k, v]) => `${cap(k)} ${v}`).join(", ");
+    $("newChars").innerHTML = list.map((n) => {
+      const c = n.sheet, old = n.replaces && S.config.crew.find((x) => x.id === n.replaces);
+      return `<div class="pc newchar" data-id="${esc(n.id)}"><h3>New character waiting: ${esc(c.name)}</h3>
+        <div class="muted small">${esc(c.className)}${esc(c.pronouns ? `, ${c.pronouns}` : "")}${old ? `. Replaces ${esc(old.name)} (${old.cond?.dead ? "deceased" : "retired"}).` : ""}</div>
+        <div class="small">Stats: ${esc(nums(c.stats))}<br>Saves: ${esc(nums(c.saves))}<br>Health ${c.health.max}, Wounds ${c.wounds.max}, Stress ${c.stress} (min ${c.minStress}).<br>Skills: ${esc(c.skills.map(skillStr).join(", "))}<br>Loadout: ${esc(c.loadout || "(not filled in)")}<br>Trinket: ${esc(c.trinket || "(not filled in)")}<br>Patch: ${esc(c.patch || "(not filled in)")}<br>${esc(c.notes)}</div>
+        <details><summary class="muted small">Every roll</summary><ul class="small">${n.history.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></details>
+        <div class="row wrap"><button data-cg="accept" class="primary">Accept</button><input data-cg-note placeholder="Note for the player, if rejecting" size="28" aria-label="Rejection note"><button data-cg="reject" class="danger">Reject with a note</button></div></div>`;
+    }).join("");
+  }
+  $("crew").addEventListener("change", (e) => {
+    const id = e.target.dataset?.cstate;
+    if (id) send({ t: "crewState", pc: id, state: e.target.value });
+  });
+  $("newChars").addEventListener("click", (e) => {
+    const act = e.target.closest("[data-cg]")?.dataset.cg, card = e.target.closest(".newchar");
+    if (act && card) send({ t: act === "accept" ? "cgAccept" : "cgReject", id: card.dataset.id, note: card.querySelector("[data-cg-note]").value });
+  });
   let castDraft = null, castTimer = null, castSentAt = 0;
   const ATTITUDES = [[-3, "Hostile"], [-2, "Resentful"], [-1, "Wary"], [0, "Neutral"], [1, "Friendly"], [2, "Trusting"], [3, "Loyal"]];
   const portraitUrl = (file) => (file.startsWith("kit/") ? `portraits/${file.slice(4)}` : `api/sessions/${code}/portraits/${file}`);
@@ -946,7 +999,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
         <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"> Min <input type="number" data-c="minStress" value="${c.minStress}" min="0" max="20" title="Minimum Stress: Stress never goes below it" aria-label="Minimum Stress"></label>
       </div>
       ${combatLine(c)}
-      ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${condLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}${line("Trauma response", S.traumaResponses?.[c.className])}
+      ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${condLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Credits", `${(c.credits || 0).toLocaleString("en-US")}cr`)}${line("Notes", c.notes)}${line("Trauma response", S.traumaResponses?.[c.className])}
     </div>`;
   }
   const combatLine = (c) => {
@@ -959,14 +1012,16 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     if (c.deathSaveIn) bits.push(`<b class="bad">Death Save due in ${c.deathSaveIn} rounds</b>`);
     if (S.deathSaves?.[c.id]) bits.push("<b>Death Save rolled (hidden)</b>", btn("reveal", "Reveal", "Someone spent a turn checking their vitals: reveal and apply the result"));
     if (c.deathSaveIn || c.cond?.dying || c.status) bits.push(btn("dealt", "Dealt with", "Clear the countdown and the status"));
+    for (const w of S.ammo?.[c.id] || []) bits.push(`<span><span class="k">${esc(w.name)}:</span> <b class="${w.loaded ? "" : "bad"}">${w.loaded}/${w.shots}</b> shots, ${w.spare} spare</span> <button type="button" class="small" data-cmb="reload" data-pc="${esc(c.id)}" data-weapon="${esc(w.name)}" title="Reloading is an action: swap in a spare magazine (Ammo is 50cr a magazine)" ${w.spare && w.loaded < w.shots ? "" : "disabled"}>Reload</button>`);
     return `<div class="combatline">${bits.join(" ")}</div>`;
   };
-  const COND_ACTIONS = [["puncture", "Puncture suit"], ["patch", "Patch suit"], ["air", "Breathing again"], ["putout", "Put out fire"], ["bleed", "+1 Bleeding"], ["stopbleed", "Stop bleeding (First Aid Kit)"], ["ate", "Has eaten"], ["thirst", "Water at the minimum (toggle)"], ["strenuouscheck", "Strenuous activity on minimum water"], ["strenuous", "Strenuous activity (toggle)"], ["rest", "Rested 8 hours"], ["cryosleep", "Into cryosleep"], ["wake", "Wake from cryosleep"], ["stimpak", "Stimpak (cures cryosickness)"], ["pills", "Radiation Pills"], ["clearrad", "Clear radiation penalty"], ["cleartags", "Clear story conditions"]];
+  const COND_ACTIONS = [["puncture", "Puncture suit"], ["patch", "Patch suit"], ["air", "Breathing again"], ["putout", "Put out fire"], ["bleed", "+1 Bleeding"], ["stopbleed", "Stop bleeding (First Aid Kit)"], ["ate", "Has eaten"], ["thirst", "Water at the minimum (toggle)"], ["strenuouscheck", "Strenuous activity on minimum water"], ["strenuous", "Strenuous activity (toggle)"], ["rest", "Rested 8 hours"], ["cryosleep", "Into cryosleep"], ["wake", "Wake from cryosleep"], ["stimpak", "Use a stimpak (PSG effect, overdose roll)"], ["tankout", "Oxygen tank used up"],["pills", "Radiation Pills"], ["clearrad", "Clear radiation penalty"], ["cleartags", "Clear story conditions"]];
   const condLine = (c) => `<div class="conds"><span class="k">Conditions:</span> ${(S.conds?.[c.id] || []).map((x) => `<span class="chip">${esc(x)}</span>`).join("") || '<span class="muted">none</span>'}
     <select data-cond-pick aria-label="Condition for ${esc(c.name)}">${COND_ACTIONS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select><button data-cond-go="${esc(c.id)}">Apply</button></div>`;
   $("crew").addEventListener("click", (e) => {
     const b = e.target.closest("[data-cmb]");
-    if (b) {
+    if (b?.dataset.cmb === "reload") send({ t: "reload", pc: b.dataset.pc, weapon: b.dataset.weapon });
+    else if (b) {
       const t = { repair: "repairArmor", stop: "stopBleeding", reveal: "revealDeathSave", dealt: "dealtWith" }[b.dataset.cmb];
       if (t) send({ t, pc: b.dataset.pc });
     }
@@ -1044,7 +1099,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     sendCrewNow();
   });
   $("addCrew").onclick = () => {
-    if (crewDraft.length >= 4) return;
+    if (crewDraft.filter((c) => !c.cond?.dead && !c.retired).length >= 4) return;
     crewDraft.push({
       name: "New convict", pronouns: "", className: "Teamster", role: "", crime: "", backstory: "",
       stats: { strength: 30, speed: 30, intellect: 30, combat: 30 }, saves: { sanity: 25, fear: 25, body: 25 },
@@ -1139,6 +1194,48 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   const STANDING = { "-3": "Enemy", "-2": "Hostile", "-1": "Wary", 0: "Neutral", 1: "Friendly", 2: "Trusted", 3: "Ally" };
   const signed = (n) => (n > 0 ? `+${n}` : String(n));
   let cmpTicks = new Set();
+  // Pay, debt and dues are campaign house rules; the formulas mirror money.js.
+  let cmpFin = { delivery: "full", late: false, skipDues: false, fee: "" };
+  let cmpMove = { from: "", to: "rig", amount: "", what: "" };
+  const DELIVERY = { full: ["Delivered in full", 1], partly: ["Delivered in part (half the fee)", 0.5], none: ["Not delivered", 0] };
+  const kcr = (n) => (Math.abs(n) >= 1000 ? `${+(n / 1000).toFixed(2)}kcr` : `${Math.round(n)}cr`);
+  const acctName = (p, a) => (a === "rig" ? "Rig account" : a === "debt" ? "Gallow-Mercer note" : p.crew.find((x) => x.id === a)?.name || "Outside the crew");
+  function finishView(s, p) {
+    const paid = p.upfront?.[s.id] || 0;
+    const total = s.late && cmpFin.late ? 0 : Math.round((s.pay || 0) * DELIVERY[cmpFin.delivery][1]);
+    const left = Math.max(0, total - paid);
+    const fee = cmpFin.fee === "" ? left : Math.max(0, Math.round(Number(cmpFin.fee) || 0));
+    const dues = Math.round(fee * 0.04);
+    return { paid, total, left, fee, dues, net: fee - (cmpFin.skipDues ? 0 : dues) };
+  }
+  function cmpFinishBox(c, s, p) {
+    const o = (k) => `<label class="cmpfx"><input type="radio" name="cmpDelivery" data-fin="delivery" value="${k}" ${cmpFin.delivery === k ? "checked" : ""}> ${DELIVERY[k][0]}</label>`;
+    if (s.payoff) {
+      const cleared = Math.round(p.debt * DELIVERY[cmpFin.delivery][1]);
+      return `<div class="small"><b>The finale's pay</b> <span class="muted">(house rule: it pays off the note to Gallow-Mercer Finance instead of a fee)</span>${Object.keys(DELIVERY).map(o).join("")}
+        <div>The note: ${cr(p.debt)} owed${cleared ? `; this clears ${cr(cleared)}` : "; nothing is cleared"}.</div></div>`;
+    }
+    const v = finishView(s, p);
+    return `<div class="small"><b>Pay</b> <span class="muted">(house rule: the fee goes to the rig account less ${4}% union dues)</span>${Object.keys(DELIVERY).map(o).join("")}
+      ${s.late ? `<label class="cmpfx"><input type="checkbox" data-fin="late" ${cmpFin.late ? "checked" : ""}> Delivered late (this job's fee is void if late)</label>` : ""}
+      <label class="cmpfx"><input type="checkbox" data-fin="skipDues" ${cmpFin.skipDues ? "checked" : ""}> Skip dues (keeps the 4%, costs The Union -1 standing)</label>
+      <div class="row"><label class="grow">Fee to pay now <span class="muted">(blank: ${cr(v.left)})</span></label><input type="number" min="0" style="width:7em" data-fin="fee" value="${esc(cmpFin.fee)}" placeholder="${v.left}" aria-label="Fee to pay now"></div>
+      <div class="mono">Fee for the job ${cr(v.total)}${v.paid ? ` · paid up front ${cr(v.paid)}` : ""} · now ${cr(v.fee)}<br>Union dues ${cmpFin.skipDues ? "skipped" : `-${cr(v.dues)}`}<br>To the rig account ${cr(v.net)}</div></div>`;
+  }
+  function cmpMoney(c, p) {
+    const sel = (key, extra) => `<select data-move="${key}">${extra}${[["rig", "Rig account"], ...p.crew.map((x) => [x.id, x.name])].map(([id, n]) => `<option value="${esc(id)}" ${cmpMove[key] === id ? "selected" : ""}>${esc(n)}${id === "rig" ? ` (${cr(p.money)})` : ` (${cr(p.crew.find((x) => x.id === id).credits || 0)})`}</option>`).join("")}</select>`;
+    const out = (key, label) => `<option value="" ${cmpMove[key] === "" ? "selected" : ""}>${label}</option>`;
+    const left = DEBT_EVERY - (p.finished % DEBT_EVERY);
+    const rows = [...(p.ledger || [])].reverse().slice(0, 24).map((e) => `<tr><td>${esc(acctName(p, e.acct))}</td><td class="num ${e.amount < 0 ? "bad" : ""}">${e.amount > 0 ? "+" : "-"}${Math.abs(e.amount).toLocaleString("en-US")}cr</td><td class="num">${e.bal.toLocaleString("en-US")}cr</td><td class="small">${esc(e.what)}</td></tr>`).join("");
+    return `<details open><summary>Money <span class="muted small">(pay, debt and dues are house rules; credits and starting credits are PSG)</span></summary>
+      <div class="bcard"><div class="row wrap"><b>Rig account ${cr(p.money)}</b><span class="small">Debt ${cr(p.debt)} to Gallow-Mercer Finance</span></div>
+        <div class="small muted">House rule: ${cr(6000)} is due every ${DEBT_EVERY} finished stories (${p.debt > 0 ? `next after ${left} more` : "paid off"}); a missed payment costs Gallow-Mercer standing -1 and sends a letter${p.missed ? `. Missed so far: ${p.missed}` : ""}.</div>
+        <div class="small">${p.crew.map((x) => `${esc(x.name)} ${cr(x.credits || 0)}`).join(" · ")}</div></div>
+      <div class="bcard"><div class="small muted">Move credits (the Warden's call): income, expenses, shore leave, medical treatment, ammo at 50cr a magazine, a payment on the note.</div>
+        <div class="row wrap"><label class="small">From ${sel("from", out("from", "Outside the crew (income)"))}</label><label class="small">To <select data-move="to">${out("to", "Outside the crew (expense)")}<option value="debt" ${cmpMove.to === "debt" ? "selected" : ""}>Gallow-Mercer note (${cr(p.debt)})</option>${[["rig", "Rig account"], ...p.crew.map((x) => [x.id, x.name])].map(([id, n]) => `<option value="${esc(id)}" ${cmpMove.to === id ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label></div>
+        <div class="row"><input type="number" min="1" style="width:7em" data-move="amount" value="${esc(cmpMove.amount)}" placeholder="credits" aria-label="Credits"><input class="grow" data-move="what" value="${esc(cmpMove.what)}" placeholder="What for" aria-label="What for"><button data-move-go>Move credits</button></div></div>
+      <div class="bcard"><b>Ledger</b>${rows ? `<table class="small ledger"><tbody>${rows}</tbody></table>` : '<p class="muted small">Nothing yet.</p>'}</div></details>`;
+  }
 
   function sectorSvg(c, p) {
     const done = new Set(p.done.map((d) => d.id));
@@ -1178,17 +1275,69 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     return `<button class="cmplink${p.current === s.id ? " current" : ""}" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b> <span class="muted">${esc(s.event)}${d ? " · played" : p.current === s.id ? " · now playing" : ""}</span></button>`;
   }
 
+  const BUY = { fuel: ["Fuel (units)", null], ammo: ["Ammo (magazines)", 50], aid: ["First aid kit", 75], stimpak: ["Stimpak", 1000], mre: ["MREs (pack of 7)", 70], tank: ["Oxygen tank", 50] };
+  const cmpBuy = { lines: {}, ammoFor: "", fuelPrice: 500, to: "", pay: "rig" };
+  const fuelCostOf = (days) => Math.max(1, Math.ceil(days / 3));
+  const cr = (n) => `${Number(n).toLocaleString("en-US")}cr`;
+  function buyTotal() {
+    const rs = S.resupply;
+    if (!rs?.trade) return 0;
+    const q = (k) => Math.max(0, Math.round(Number(cmpBuy.lines[k]) || 0));
+    return q("fuel") * Math.round((Number(cmpBuy.fuelPrice) || 0) * rs.fuelFactor) + ["ammo", "aid", "stimpak", "mre", "tank"].reduce((n, k) => n + q(k) * rs.prices[k], 0);
+  }
+  function cmpRig(c, p) {
+    const r = p.current && S.rig ? { fuel: S.rig.fuel, stores: S.rig.stores } : p.resources, rs = S.resupply, idle = !p.current;
+    const lanes = c.lanes.filter((l) => l.a === p.at || l.b === p.at);
+    const stores = Object.entries({ parts: "Parts", explosives: "Explosives", flares: "Flares", rations: "Rations (MREs)" }).map(([k, n]) => `${n} ${r.stores[k]}`).join(" · ");
+    const travel = lanes.map((l) => {
+      const to = cmpLoc(c, l.a === p.at ? l.b : l.a), cost = fuelCostOf(l.days);
+      return `<div class="row"><span class="grow small">${esc(l.name)} to ${esc(to.name)}: ${l.days} days, ${cost} fuel${l.dark ? " (uncharted)" : ""}</span><button class="small" data-travel="${to.id}" ${!idle || r.fuel < cost ? "disabled" : ""} title="${!idle ? "Finish the story being played first" : r.fuel < cost ? "Not enough fuel" : "Move the rig; no story"}">Travel</button></div>`;
+    }).join("");
+    const row = ([k, [label, base]]) => {
+      const unit = k === "fuel" ? Math.round((Number(cmpBuy.fuelPrice) || 0) * (rs.fuelFactor || 0)) : rs.prices[k];
+      return `<div class="row"><label class="grow small">${label} <span class="muted">${k === "fuel" ? `${cr(unit)} each (base price set below)` : `${cr(unit)} each (PSG ${cr(base)})`}</span></label><input type="number" min="0" max="20" size="3" style="width:4.5em" data-buy="${k}" value="${cmpBuy.lines[k] || 0}" aria-label="${esc(label)}"></div>`;
+    };
+    const shop = !rs ? "" : !rs.trade ? `<p class="small bad">${esc(rs.name)} won't trade with the crew.</p>` : `
+      <div class="small muted">Prices at ${esc(rs.name)}: the PSG price x port class ${esc(rs.portClass || "?")} (x${rs.classMult}, house rule) x the faction's standing (house rule). The price is taken from the account you pick.</div>
+      ${Object.entries(BUY).map(row).join("")}
+      <div class="row"><label class="grow small">Fuel price per unit, before the port's multiplier <span class="muted">(house rule: the PSG has no fuel price; 500cr unless you change it)</span></label><input type="number" min="0" style="width:6em" data-buy-fuelprice value="${cmpBuy.fuelPrice || 0}" aria-label="Base fuel price per unit"></div>
+      <div class="row"><label class="small grow">Ammo for <select data-buy-ammofor>${rs.firearms.map((w) => `<option ${cmpBuy.ammoFor === w ? "selected" : ""}>${esc(w)}</option>`).join("")}</select></label>
+        <label class="small grow">Carried by <select data-buy-to>${p.crew.map((pc) => `<option value="${esc(pc.id)}" ${cmpBuy.to === pc.id ? "selected" : ""}>${esc(pc.name)}</option>`).join("")}</select></label>
+        <label class="small grow">Paid from <select data-buy-pay><option value="rig" ${cmpBuy.pay === "rig" ? "selected" : ""}>Rig account (${cr(p.money)})</option>${p.crew.map((pc) => `<option value="${esc(pc.id)}" ${cmpBuy.pay === pc.id ? "selected" : ""}>${esc(pc.name)} (${cr(pc.credits || 0)})</option>`).join("")}</select></label></div>
+      <div class="row"><b class="grow" id="cmpBuyTotal">Total ${cr(buyTotal())}</b><button class="primary" data-buy-go ${idle ? "" : "disabled"} title="${idle ? "Adds the goods to the rig and the crew's sheets" : "Finish the story being played first"}">Buy</button></div>`;
+    return `<details open><summary>The rig: fuel and supplies <span class="muted small">(house rules, except the PSG gear prices)</span></summary>
+      <div class="bcard"><div class="row wrap"><b>Fuel ${r.fuel} of ${TANK_UNITS}</b><span class="small muted">house rule: a lane costs 1 unit per started 3 days (3 days = 1, 9 days = 3)</span></div>
+        ${r.fuel <= 0 ? '<div class="small bad">Out of fuel: the rig is stranded until it is refuelled.</div>' : ""}
+        <div class="small">${stores}</div></div>
+      <h3 class="cmph">Travel from ${esc(cmpLoc(c, p.at)?.name || "")}</h3>${travel || '<p class="muted small">No lanes.</p>'}
+      <h3 class="cmph">Resupply</h3>${shop}
+    </details>`;
+  }
+  const TANK_UNITS = 10, DEBT_EVERY = 2, DUES_PCT = 4;
+
   function cmpOverview(c, p) {
     const played = p.done.map((d) => ({ d, s: c.stories.find((x) => x.id === d.id) })).filter((x) => x.s);
     return `<div class="btitle">${esc(c.title)}</div>
       <p class="muted"><i>${esc(c.tagline)}</i></p><p>${esc(c.pitch)}</p>
       <p class="small muted">Offer jobs to put them on the players' job board, then Show players; their votes appear on the map. Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
+      ${cmpRig(c, p)}
+      ${cmpMoney(c, p)}
+      ${cmpRecords(p)}
       <details open><summary>Played (${played.length} of ${c.stories.length})</summary>${played.length ? played.map(({ d, s }) => `<div class="bcard"><button class="cmplink" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b></button><div class="small">${esc(d.outcome || "No notes.")}</div></div>`).join("") : '<p class="muted small">Nothing yet. A good first job: 1. FIRST SHIFT at Port Gallow, where the rig starts.</p>'}</details>
       <details open><summary>Factions <span class="muted small">(house rule: standing with the crew)</span></summary>
         <p class="small muted">Mothership 1e has no faction rules; this is a campaign house rule. At +2 or more their people give the crew [+] on social rolls, a one-off favour per story and better prices at their ports; at -2 or less, [-], trouble and worse prices; at -3 they won't trade. Their recurring characters start a step friendlier or cooler.</p>
         ${c.factions.map((f) => { const n = p.factions?.[f.id] || 0; return `<div class="bcard"><div class="row"><b class="grow" style="color:${f.color}">${esc(f.name)}</b><span class="stand-pill s${Math.sign(n)}">${STANDING[n]} ${signed(n)}</span><button class="small" data-faction="${f.id}" data-delta="-1" ${n <= -3 ? "disabled" : ""} aria-label="Lower ${esc(f.short)}">-</button><button class="small" data-faction="${f.id}" data-delta="1" ${n >= 3 ? "disabled" : ""} aria-label="Raise ${esc(f.short)}">+</button></div><div class="small">${esc(f.about)}</div>${p.current && n >= 2 ? `<div class="row"><span class="small muted grow">One favour this story (a forged permit, a docking slot, a tip-off, a hiding place).</span><button class="small" data-favour="${f.id}">${p.favours?.[f.id] ? "Favour used" : "Mark favour used"}</button></div>` : ""}</div>`; }).join("")}</details>
       <details><summary>Recurring characters</summary>${c.cast.map((m) => `<div class="bcard"><b>${esc(m.name)}</b> <span class="muted small">${esc(cmpFaction(c, m.faction)?.short || "")}${p.cast[m.id] ? ` · ${esc(attLabel(p.cast[m.id].attitude))}` : ""}</span><div class="small">${esc(m.notes)}</div>${p.cast[m.id]?.history ? `<div class="small muted">${esc(p.cast[m.id].history)}</div>` : ""}</div>`).join("")}</details>
-      <details><summary>The crew</summary>${p.crew.map((pc) => `<div class="bcard"><b>${esc(pc.name)}</b> <span class="muted small">${esc([pc.className, pc.role].filter(Boolean).join(" · "))}</span><div class="small mono">HP ${pc.health.current}/${pc.health.max} · Wounds ${pc.wounds.current}/${pc.wounds.max} · Stress ${pc.stress}</div></div>`).join("")}<p class="small muted">They carry their condition, items and stress from story to story. Edit them on the Crew tab while a story is playing.</p></details>`;
+      <details><summary>The crew</summary>${p.crew.map((pc) => `<div class="bcard"><b>${esc(pc.name)}</b> <span class="muted small">${esc([pc.className, pc.role].filter(Boolean).join(" · "))}</span><div class="small mono">HP ${pc.health.current}/${pc.health.max} · Wounds ${pc.wounds.current}/${pc.wounds.max} · Stress ${pc.stress} · ${cr(pc.credits || 0)}</div></div>`).join("")}<p class="small muted">They carry their condition, items and stress from story to story. Edit them on the Crew tab while a story is playing.</p></details>`;
+  }
+  // Campaign records and the memorial wall. High Score is sessions survived (PSG 18.3) and changes no roll.
+  function cmpRecords(p) {
+    const crew = S.config.crew.length ? S.config.crew : p.crew;
+    const best = crew.reduce((b, c) => ((c.highScore || 0) > (b?.highScore || 0) ? c : b), null);
+    const gone = crew.filter((c) => c.cond?.dead || c.retired).length;
+    return `<div class="bcard"><div class="small"><span class="k">SESSIONS PLAYED</span> <b>${p.sessions || 0}</b> · <span class="k">LONGEST SURVIVOR</span> <b>${best ? `${esc(best.name)}, High Score ${best.highScore}` : "nobody yet"}</b></div>
+      <div class="small muted">High Score is the number of sessions a character has survived (PSG 18.3). It affects no roll.</div></div>
+      <details open><summary>Memorial wall (${gone})</summary>${memorialHtml(crew)}</details>`;
   }
   const attLabel = (n) => ({ "-3": "Hostile", "-2": "Resentful", "-1": "Wary", 0: "Neutral", 1: "Friendly", 2: "Trusting", 3: "Loyal" })[n] || "Neutral";
 
@@ -1222,7 +1371,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       <div class="row wrap">${action}${offer}</div>
       ${d ? `<div class="bcard"><b>Played</b><div class="small">${esc(d.outcome || "No notes.")}</div></div>` : ""}
       <p>${esc(s.hook)}</p>
-      <div class="bcard"><b>The job</b><div class="small">${esc(s.job)}</div></div>
+      <div class="bcard"><b>The job</b><div class="small">${esc(s.job)}</div><div class="small muted">${s.payoff ? "Pay (house rule): it pays off the note to Gallow-Mercer Finance." : `Pay (house rule): ${cr(s.pay || 0)}${s.upfront ? `, ${s.upfront === 1 ? "all" : "half"} paid up front` : ""}${s.late ? ", void if delivered late" : ""}; ${DUES_PCT}% union dues come off.`}</div></div>
       <div class="small"><b>Event:</b> ${esc(s.event)} · <b>Horror:</b> ${esc(s.horror)}</div>
       <div class="chips">${s.factions.map((id) => cmpFaction(c, id)).filter(Boolean).map((f) => `<span class="pill" style="color:${f.color}">${esc(f.name)}</span>`).join("")}</div>
       <details open><summary>Adversary: ${esc(s.adversary.name)} <span class="muted">(${esc(s.adversary.type)})</span></summary><div class="small">${esc(s.adversary.persona)}</div></details>
@@ -1237,8 +1386,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   function renderCampaign() {
     if (!$("campaignDialog").open || !campaignData) return;
     const p = S.campaign, c = p && campaignData.campaigns.find((x) => x.id === p.id);
-    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes]);
-    if (key === campaignKey) return;
+    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes, S.rig, cmpFin, cmpMove.from, cmpMove.to, S.config.crew.map((x) => [x.id, x.cond?.dead, x.retired, x.highScore, x.endedIn, x.finalWords, x.epitaph])]);
+    if (key === campaignKey || document.activeElement?.matches?.("#cmpBody [data-epitaph]")) return;
     campaignKey = key;
     $("cmpLeave").hidden = !c;
     if (!c) {
@@ -1252,11 +1401,12 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     }
     const now = c.stories.find((s) => s.id === p.current);
     $("cmpTitle").textContent = c.title;
-    $("cmpStatus").textContent = `${p.done.length} of ${c.stories.length} played · ${c.ship.name} at ${cmpLoc(c, p.at)?.name || "?"}`;
+    $("cmpStatus").textContent = `${p.done.length} of ${c.stories.length} played · ${c.ship.name} at ${cmpLoc(c, p.at)?.name || "?"} · fuel ${(p.current && S.rig ? S.rig.fuel : p.resources.fuel)}/${TANK_UNITS}`;
     const banner = now
       ? `<div class="bcard cmpnow"><div><b>Now playing:</b> ${now.n}. ${esc(now.title)} <span class="muted">(${esc(cmpPlace(c, now))})</span></div>
           <textarea id="cmpOutcome" rows="2" placeholder="How did it end? Who lived, what they did, what they owe. Later stories are built on it."></textarea>
           ${now.affinity?.length ? `<div class="small"><b>Faction standing</b> <span class="muted">(house rule; tick what happened)</span>${now.affinity.map((a, i) => `<label class="cmpfx"><input type="checkbox" data-aff="${i}" ${cmpTicks.has(i) ? "checked" : ""}> <span style="color:${cmpFaction(c, a.faction)?.color}">${esc(cmpFaction(c, a.faction)?.short)}</span> ${signed(a.change)}: ${esc(a.when)}</label>`).join("")}</div>` : ""}
+          ${cmpFinishBox(c, now, p)}
           <div class="row"><span class="small muted grow">Finishing keeps the crew's sheets and the recurring characters' attitudes, and moves the rig.</span><button id="cmpFinish" class="primary">Finish story</button></div></div>`
       : `<div class="small muted">${S.campaignBusy ? `<span class="spinner"></span>Building a story…` : "No campaign story is being played. Pick a job on the map."}</div>`;
     const side = cmpSel.kind === "story" ? cmpStory(c, c.stories.find((s) => s.id === cmpSel.id), p)
@@ -1290,6 +1440,21 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     renderCampaign();
     return true;
   };
+  $("cmpBody").addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.dataset.buy) cmpBuy.lines[t.dataset.buy] = Number(t.value) || 0;
+    else if (t.matches("[data-buy-fuelprice]")) cmpBuy.fuelPrice = Number(t.value) || 0;
+    else if (t.matches("[data-buy-ammofor]")) cmpBuy.ammoFor = t.value;
+    else if (t.matches("[data-buy-to]")) cmpBuy.to = t.value;
+    else if (t.matches("[data-buy-pay]")) cmpBuy.pay = t.value;
+    else if (t.dataset.move) cmpMove[t.dataset.move] = t.value;
+    else if (t.dataset.fin) {
+      cmpFin[t.dataset.fin] = t.type === "checkbox" ? t.checked : t.value;
+      if (t.dataset.fin !== "fee") { campaignKey = ""; renderCampaign(); } else campaignKey = "";
+      return;
+    } else return;
+    if ($("cmpBuyTotal")) $("cmpBuyTotal").textContent = `Total ${cr(buyTotal())}`;
+  });
   $("cmpBody").addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.matches("g[role=button]")) { e.preventDefault(); cmpPick(e); } });
   $("cmpBody").addEventListener("click", async (e) => {
     const start = e.target.closest("[data-start]")?.dataset.start;
@@ -1301,6 +1466,23 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     if (sec) {
       send({ t: "campaignShow", hide: sec === "hide" });
       if (sec === "show") toast("Showing the players the sector map and job board.");
+      return;
+    }
+    if (e.target.closest("[data-move-go]")) {
+      send({ t: "campaignMoney", ...cmpMove });
+      cmpMove.amount = "";
+      cmpMove.what = "";
+      campaignKey = "";
+      return;
+    }
+    const trav = e.target.closest("[data-travel]")?.dataset.travel;
+    if (trav) return send({ t: "campaignTravel", to: trav });
+    if (e.target.closest("[data-buy-go]")) {
+      const total = buyTotal();
+      if (!(await sure("Buy these supplies?", `Total ${cr(total)} at ${S.resupply.name}. The goods go onto the rig and the character's sheet now, and the price is taken from ${cmpBuy.pay === "rig" ? "the rig account" : (S.campaign.crew.find((x) => x.id === cmpBuy.pay)?.name || "the rig account")}.`, "Buy", "primary"))) return;
+      send({ t: "campaignBuy", to: cmpBuy.to || S.campaign.crew[0]?.id, ammoFor: cmpBuy.ammoFor || S.resupply.firearms[0], fuelPrice: cmpBuy.fuelPrice, pay: cmpBuy.pay, lines: cmpBuy.lines });
+      cmpBuy.lines = {};
+      campaignKey = "";
       return;
     }
     const offer = e.target.closest("[data-offer]")?.dataset.offer;
@@ -1325,9 +1507,10 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       return;
     }
     if (e.target.id === "cmpFinish") {
-      send({ t: "campaignFinish", outcome: $("cmpOutcome").value, affinity: [...cmpTicks] });
+      send({ t: "campaignFinish", outcome: $("cmpOutcome").value, affinity: [...cmpTicks], delivery: cmpFin.delivery, late: cmpFin.late, skipDues: cmpFin.skipDues, ...(cmpFin.fee === "" ? {} : { fee: Number(cmpFin.fee) || 0 }) });
       cmpOutcome = "";
       cmpTicks = new Set();
+      cmpFin = { delivery: "full", late: false, skipDues: false, fee: "" };
       toast("Story finished. Pick the next job on the map.");
       return;
     }
@@ -2001,7 +2184,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   $("soundPlaying").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList.contains("volpct")) e.target.blur(); });
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
-  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals"];
+  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "panicScreens", "playerTerminals"];
 
   const voicesOn = () => (S.config.discordTalk ? "discord" : S.config.tts !== false ? "screens" : "off");
   function renderVoicesOn() {
@@ -2032,6 +2215,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     }
     growStory();
     for (const id of SETTING_SWITCHES) $(id).checked = c[id] !== false;
+    for (const id of ["playerCreate", "createRerolls"]) $(id).checked = c[id] === true;
     renderVoicesOn();
     if (!dirty.has("station") && document.activeElement !== $("station")) $("station").value = JSON.stringify(S.station, null, 2);
   }
@@ -2049,7 +2233,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     el.addEventListener("blur", () => dirty.has(id) && save());
   }
   for (const id of ["theme", "talk", "provider", "model", "effort"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.value } }));
-  for (const id of SETTING_SWITCHES) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.checked } }));
+  $("panicTryGo").onclick = () => send({ t: "panicShow", n: Number($("panicTry").value) });
+  for (const id of [...SETTING_SWITCHES, "playerCreate", "createRerolls"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.checked } }));
   $("settingsBtn").onclick = () => $("settingsDialog").showModal();
 
   $("station").addEventListener("input", () => { dirty.add("station"); $("stationErr").textContent = "unsaved changes"; });
@@ -2740,13 +2925,15 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const hz = Object.entries(S.station?.hazards || {});
     $("hazardList").innerHTML = hz.length ? hz.map(([id, h]) => {
       const i = S.hazardTypes[h.type];
-      return `<li><span class="grow"><b>${esc(String(rooms.get(id) || id).split(",")[0])}</b>: ${esc(i.name)}${h.level ? ` ${h.level}` : ""}${h.type === "oxygen" ? `, supply ${h.supply}` : ""} <span class="muted">· ${hazardTag(i)} · ${h.rounds} rounds, ${h.hours} h</span></span>
+      return `<li><span class="grow"><b>${esc(id === "rig" ? "The whole rig" : String(rooms.get(id) || id).split(",")[0])}</b>: ${esc(i.name)}${h.level ? ` ${h.level}` : ""}${h.type === "oxygen" ? `, supply ${h.supply}` : ""} <span class="muted">· ${hazardTag(i)} · ${h.rounds} rounds, ${h.hours} h</span></span>
         <button data-haz-room="${esc(id)}" class="ghost" title="Open the room view">Room</button><button data-haz-end="${esc(id)}" class="ghost danger" title="End this hazard">End</button></li>`;
     }).join("") : '<li class="muted small">No hazards in play. Click a room on the Map to set one.</li>';
     const waiting = S.roll?.status === "waiting" && S.roll.hazard;
     $("hazardQueue").textContent = [waiting && `Waiting for a hazard roll: ${S.roll.reason}`, S.hazardWork && `${S.hazardWork} step${S.hazardWork > 1 ? "s" : ""} queued`].filter(Boolean).join(" · ");
     $("hazardRollAll").hidden = !waiting;
+    $("rationing").checked = !!S.rationing;
   }
+  $("rationing").onchange = (e) => send({ t: "rationing", on: e.target.checked });
   $("nextRound").onclick = () => send({ t: "nextRound" });
   for (const b of document.querySelectorAll("[data-pass]")) b.onclick = () => send({ t: "passTime", hours: Number(b.dataset.pass) });
   $("hazardRollAll").onclick = () => send({ t: "hazardRollAll" });

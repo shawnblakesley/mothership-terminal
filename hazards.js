@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { newCond, applyDamage, gainWound } from "./crew.js";
+import { newCond, applyDamage, gainWound, setVital, playable } from "./crew.js";
 import { WOUND_TYPES, WOUND_LABELS } from "./wounds.js";
 import { roomId, clampInt } from "./clean.js";
 
@@ -83,6 +83,10 @@ export function penalties(pc, { thinAir = false } = {}) {
 }
 export const withDisadvantage = (base, reasons) => (!reasons.length ? base : base === "advantage" ? "none" : "disadvantage");
 
+const airText = (pc) => {
+  const a = airLeft(pc);
+  return a ? `OWN AIR (${a.name}): ${a.left >= 1 ? `${Math.round(a.left * 10) / 10} hours` : `${Math.round(a.left * 60)} minutes`} left` : "OWN AIR USED UP";
+};
 export function conditionText(pc) {
   const c = pc.cond || newCond();
   const days = Math.ceil(c.lethal / 24);
@@ -99,6 +103,9 @@ export function conditionText(pc) {
     c.pills > 0 && "RADIATION PILLS: Level -1",
     c.lethal > 0 && `LETHAL RADIATION DOSE: dies in ${days} day${days > 1 ? "s" : ""}`,
     c.cryo > 0 && `[-] CRYOSICKNESS: ${Math.ceil(c.cryo / 24)} day${c.cryo > 24 ? "s" : ""} left`,
+    c.boost > 0 && `[+] STIMPAK: about ${Math.ceil(c.boost / 6)} minute${c.boost > 6 ? "s" : ""} left`,
+    c.stims.length > 0 && `STIMPAK DOSES in the last 24 hours: ${c.stims.length}`,
+    c.air > 0 && airText(pc),
     c.cryosleep && "IN CRYOSLEEP",
     c.active >= 24 ? "[-] EXHAUSTED: 24+ hours without rest" : c.active > 12 && "EXHAUSTED: Body Save every hour",
     c.fed >= 504 ? "STARVING: about 3 weeks without food" : c.fed >= 24 && "[-] NO FOOD for 24+ hours",
@@ -131,10 +138,37 @@ export const radLevel = (c, level) => Math.max(0, level - (c.pills > 0 ? 1 : 0))
 export const takePills = (c, rng = d) => { c.pills = 6 * rollDice(2, 10, rng); return rollDice(1, 5, rng); };
 export const wake = (c) => { c.cryosleep = false; c.cryo = 168; };
 export const stimpak = (c) => { c.cryo = 0; };
+// PSG Stimpak: -1 Stress, +1d10 Health, [+] on all rolls for 1d10 minutes, cures cryosickness. A dose after the first in 24 hours: roll 1d10 (0-9);
+// under the number of doses in the past 24 hours (this one included) is a Death Save. rng(sides) reads 1..sides.
+export function useStimpak(pc, rng = d) {
+  const c = pc.cond;
+  c.stims = [...c.stims.filter((a) => a < 24), 0];
+  const heal = rollDice(1, 10, rng), before = pc.health.current;
+  pc.health.current = Math.min(pc.health.max, before + heal);
+  const [, stress] = setVital(pc, "stress", pc.stress - 1);
+  stimpak(c);
+  const minutes = rollDice(1, 10, rng);
+  c.boost = Math.max(c.boost, 6 * minutes);
+  const doses = c.stims.length;
+  const overdose = doses > 1 ? { roll: rng(10) - 1, doses } : null;
+  if (overdose) overdose.deathSave = overdose.roll < doses;
+  return { heal: pc.health.current - before, rolled: heal, stress, minutes, doses, overdose };
+}
+export const STIMPAK_RULE = "Stimpak (PSG): -1 Stress, +1d10 Health, [+] on all rolls for 1d10 minutes, cures cryosickness. More than one in a day: roll 1d10; under the number of doses in the past 24 hours is a Death Save.";
+
+// Hours of own air left, from the best source the character is on: a suit's tank (vaccsuit 12 h, hazard suit 1 h, advanced battle dress 1 h) or an oxygen tank (12 h normally, 4 h under strain).
+export function airLeft(pc) {
+  const c = pc.cond || newCond();
+  const sources = [
+    ...(c.leak ? [] : suitsOf(pc).map((s) => ({ name: s.name, hours: s.hours }))),
+    ...(hasGear(pc, /oxygen tank/i) ? [{ name: "oxygen tank", hours: c.strenuous ? TANK_HOURS.strain : TANK_HOURS.normal }] : []),
+  ].map((s) => ({ ...s, left: Math.max(0, s.hours * 3600 - c.air) / 3600 })).sort((a, b) => b.left - a.left);
+  return sources[0] || null;
+}
 export const rest = (c, hours) => { if (hours >= 8) c.active = 0; };
 
 export const oxygenStart = (maxCrew, rng = d) => rng(10) * maxCrew;
-export const breathing = (crew) => crew.filter((p) => !isAndroid(p) && !p.cond?.cryosleep && !p.cond?.dead);
+export const breathing = (crew) => crew.filter((p) => !isAndroid(p) && !p.cond?.cryosleep && playable(p));
 export function oxygenState(supply, nBreathing) {
   return { low: supply < 2 * nBreathing, save: supply < nBreathing, gone: supply <= 0 };
 }
@@ -173,6 +207,7 @@ export function roundTick(pc, here, rng = d) {
   if (types.has("fire") && !c.fire) { c.fire = true; events.push("is on fire"); }
   if (c.fire) damage.push({ n: rollDice(2, 10, rng), type: "fire", why: "on fire" });
   if (c.pills > 0) c.pills--;
+  if (c.boost > 0) c.boost--;
   if (c.dying > 0 && --c.dying === 0) { c.dead = "dying"; events.push("dead"); }
 
   const airless = types.has("vacuum") || c.spaced || here.some((h) => h.type === "oxygen" && h.supply <= 0);
@@ -203,11 +238,13 @@ export function roundTick(pc, here, rng = d) {
 }
 
 // One hour for one character. Per-round hazards other than vacuum are not run for a whole hour: the caller says so.
-export function hourTick(pc, here, rng = d) {
+export function hourTick(pc, here, rng = d, { food = true } = {}) {
   const c = pc.cond;
   const events = [], needs = [], damage = [], skipped = [];
   if (c.dead) return { events, needs, damage, skipped };
-  if (!c.cryosleep) { c.active += 1; c.fed += 1; }
+  if (!c.cryosleep) { c.active += 1; if (food) c.fed += 1; }
+  c.stims = c.stims.map((a) => a + 1).filter((a) => a < 24);
+  c.boost = Math.max(0, c.boost - 360);
   if (c.cryo > 0) c.cryo--;
   if (c.lethal > 0 && --c.lethal === 0) { c.dead = "lethal radiation dose"; events.push("dead of the lethal radiation dose"); }
   if (c.dying > 0) { c.dead = "dying"; c.dying = 0; events.push("dead"); }
@@ -229,7 +266,7 @@ export function hourTick(pc, here, rng = d) {
 // A hazard that happens once when it starts, or each time it is triggered (explosion, hull breach and the story hazards).
 export function eventNeeds(pc, h, rng = d) {
   const info = HAZARDS[h.type];
-  if (!info || pc.cond?.dead || !["event", "exposure"].includes(info.per)) return [];
+  if (!info || !playable(pc) || !["event", "exposure"].includes(info.per)) return [];
   const level = clampInt(h.level, 1, 3, 1);
   const dmg = /level d10/.test(info.damage || "") ? rollDice(level, 10, rng) : info.damage === "1d10" ? rollDice(1, 10, rng) : 0;
   return [need(pc, h.type, info.check, { advantage: info.advantage, dmg, reason: `${info.name.toUpperCase()}${info.kind === "story" ? " (STORY HAZARD)" : ""}` })];

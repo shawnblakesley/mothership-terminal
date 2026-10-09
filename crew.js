@@ -3,21 +3,23 @@ import { slug, clampInt as int } from "./clean.js";
 import { mitigate, deathSaveOutcome } from "./combat.js";
 import { rollWound, WOUNDS } from "./wounds.js";
 import { rollDice, randInt } from "./dice.js";
-import { armorFrom } from "./weapons.js";
+import { armorFrom, weaponsOf } from "./weapons.js";
+import { ammoOf, ammoItem, mergeAmmo, sanitizeAmmo, ammoLine } from "./resources.js";
 
 export const MAX_CREW = 4;
 export const CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
 export const STATS = ["strength", "speed", "intellect", "combat"];
 export const SAVES = ["sanity", "fear", "body"];
 
-const COND_NUMBERS = { vac: 0, deadAt: 0, air: 0, puncture: 0, rad: 0, pills: 0, lethal: 0, bleeding: 0, active: 0, fed: 0, cryo: 0, dying: 0 };
+const COND_NUMBERS = { vac: 0, deadAt: 0, air: 0, puncture: 0, rad: 0, pills: 0, lethal: 0, bleeding: 0, active: 0, fed: 0, cryo: 0, dying: 0, boost: 0 };
 const COND_FLAGS = ["out", "leak", "fire", "thirsty", "cryosleep", "strenuous", "spaced"];
-export const newCond = () => ({ ...COND_NUMBERS, ...Object.fromEntries(COND_FLAGS.map((k) => [k, false])), dead: "", tags: [] });
+export const newCond = () => ({ ...COND_NUMBERS, ...Object.fromEntries(COND_FLAGS.map((k) => [k, false])), dead: "", tags: [], stims: [] });
 export function sanitizeCond(c) {
   const out = newCond();
   for (const k of Object.keys(COND_NUMBERS)) out[k] = int(c?.[k], 0, 1e7, 0);
   for (const k of COND_FLAGS) out[k] = c?.[k] === true;
   out.dead = str(c?.dead, 40);
+  out.stims = (Array.isArray(c?.stims) ? c.stims : []).map((a) => int(a, 0, 23, 24)).filter((a) => a < 24).slice(0, 20);
   out.tags = (Array.isArray(c?.tags) ? c.tags : []).map((t) => str(t, 60).trim()).filter(Boolean).slice(0, 8);
   return out;
 }
@@ -30,6 +32,31 @@ export const TRAUMA_RESPONSES = {
 export const traumaResponse = (pc) => TRAUMA_RESPONSES[pc?.className] || "";
 export const maxWoundsFor = (className) => (className === "Marine" || className === "Android" ? 3 : 2);
 const MAX_STRESS = 20;
+// Not playable: dead (pc.cond.dead) or retired (Panic Table 20). pc.status is combat's unconscious/comatose, a different thing.
+export const isGone = (c) => !!c.cond?.dead || !!c.retired;
+export const playable = (c) => !isGone(c);
+// High Score (PSG 18.3): sessions survived. It has no mechanical effect and nothing in the rules code reads it.
+// End session: every living character's High Score goes up by 1. Returns who it went up for.
+export function endSession(crew) {
+  const living = crew.filter(playable);
+  for (const c of living) c.highScore = Math.min(9999, (c.highScore || 0) + 1);
+  return living;
+}
+// Records where a character's story ended (the memorial's "story") the first time they are gone; clears it if the Warden puts them back in play.
+// Returns the characters newly gone.
+export function settleEndings(crew, where) {
+  const fresh = [];
+  for (const c of crew) {
+    if (isGone(c) && !c.endedIn) { c.endedIn = String(where || "Unknown").slice(0, 80); fresh.push(c); }
+    else if (!isGone(c) && (c.endedIn || c.finalWords)) { c.endedIn = ""; c.finalWords = ""; }
+  }
+  return fresh;
+}
+export const memorialOf = (crew) => crew.filter(isGone).map((c) => ({ id: c.id, name: c.name, className: c.className, highScore: c.highScore || 0, retired: !c.cond?.dead, how: c.cond?.dead === "Warden" ? "Marked deceased by the Warden" : c.cond?.dead || "Retired from play", story: c.endedIn || "", epitaph: c.epitaph || "", finalWords: c.finalWords || "", portrait: c.portrait || "" }));
+// The crew member (living or not) with the highest High Score, or null if nobody has survived a session.
+export const longestSurvivor = (crew) => crew.reduce((best, c) => ((c.highScore || 0) > (best?.highScore || 0) ? c : best), null);
+export const goneWord = (c) => (c.cond?.dead ? "deceased" : c.retired ? "retired" : "");
+const legacy = (cond, status) => (status === "deceased" && !cond.dead ? { ...cond, dead: "Warden" } : cond);
 
 export const DEFAULT_CREW = [
   {
@@ -114,6 +141,14 @@ for (const c of DEFAULT_CREW) c.portrait = `kit/sfcp-${DEFAULT_FACES[c.id]}.png`
 
 const str = (v, n) => String(v ?? "").slice(0, n);
 
+// Credits are their own field. Older sheets kept them in the notes as "Credits: Ncr.": move that over.
+const NOTE_CREDITS = /\s*Credits:\s*([\d,]+)\s*cr\.?/i;
+function creditsOf(c) {
+  const note = str(c.notes, 1000), found = NOTE_CREDITS.exec(note);
+  const have = Number.isFinite(Number(c.credits)) && c.credits !== "" && c.credits !== null;
+  return { credits: have ? int(c.credits, 0, 999999999, 0) : found ? int(found[1].replace(/,/g, ""), 0, 999999999, 0) : 0, notes: (found ? note.replace(NOTE_CREDITS, "") : note).trim() };
+}
+
 export function sanitizeCrew(list) {
   const out = [];
   const seen = new Set();
@@ -123,7 +158,7 @@ export function sanitizeCrew(list) {
     let id = slug(c.id || name) || `pc${out.length + 1}`;
     while (seen.has(id)) id += "x";
     seen.add(id);
-    const items = Array.isArray(c.items) ? c.items.map((s) => str(s, 60).trim()).filter(Boolean).slice(0, MAX_ITEMS) : itemsFrom(c.loadout);
+    const items = mergeAmmo(Array.isArray(c.items) ? c.items.map((s) => str(s, 60).trim()).filter(Boolean) : itemsFrom(c.loadout)).slice(0, MAX_ITEMS);
     const minStress = int(c.minStress, 0, MAX_STRESS, 2);
     out.push({
       id,
@@ -144,15 +179,22 @@ export function sanitizeCrew(list) {
       loadout: str(c.loadout, 400),
       items,
       armor: sanitizeArmor(c.armor, items),
+      ammo: sanitizeAmmo(c.ammo),
       ...(STATUSES.includes(c.status) ? { status: c.status, statusNote: str(c.statusNote, 120) } : {}),
       ...(int(c.deathSaveIn, 0, 99, 0) ? { deathSaveIn: int(c.deathSaveIn, 0, 99, 0) } : {}),
       trinket: str(c.trinket, 160),
       patch: str(c.patch, 80),
-      notes: str(c.notes, 1000),
-      cond: sanitizeCond(c.cond),
+      ...creditsOf(c),
+      cond: legacy(sanitizeCond(c.cond), c.status),
       portrait: PORTRAIT_FILE.test(c.portrait || "") ? c.portrait : "",
+      retired: !!c.retired || c.status === "retired",
+      replacedBy: str(c.replacedBy, 30),
+      highScore: int(c.highScore, 0, 9999, 0),
+      epitaph: str(c.epitaph, 140),
+      endedIn: str(c.endedIn, 80),
+      finalWords: str(c.finalWords, 240),
     });
-    if (out.length >= MAX_CREW) break;
+    if (out.filter(playable).length >= MAX_CREW || out.length >= MAX_CREW * 3) break;
   }
   return out;
 }
@@ -312,10 +354,11 @@ export const closeCrew = (pc, crew, roomOf) => {
   return room ? crew.filter((c) => c.id !== pc.id && roomOf(c.id) === room) : [];
 };
 
+const ammoNote = (pc) => { const a = ammoLine(pc, weaponsOf(pc.items)); return a ? `. Ammunition: ${a}` : ""; };
 export function crewStatus(crew) {
   return crew.map((c) => {
-    const extra = [c.armor && `Armor ${armorText(c.armor)}`, c.cond?.bleeding && `BLEEDING ${c.cond.bleeding} per round`, c.cond?.dead && `DECEASED (${c.cond.dead})`, c.cond?.dying && `DYING: dead in ${c.cond.dying} rounds without intervention`, c.status && `${c.status.toUpperCase()}${c.statusNote ? ` (${c.statusNote})` : ""}`, c.deathSaveIn && `a Death Save is due in ${c.deathSaveIn} rounds unless they are treated`].filter(Boolean);
-    return `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}${extra.length ? `, ${extra.join(", ")}` : ""}. Carrying: ${c.items.join(", ") || "nothing"}`;
+    const extra = [c.armor && `Armor ${armorText(c.armor)}`, c.cond?.bleeding && `BLEEDING ${c.cond.bleeding} per round`, c.cond?.dead && `DECEASED (${c.cond.dead})`, c.retired && "RETIRED (no longer played)", c.cond?.dying && `DYING: dead in ${c.cond.dying} rounds without intervention`, c.status && `${c.status.toUpperCase()}${c.statusNote ? ` (${c.statusNote})` : ""}`, c.deathSaveIn && `a Death Save is due in ${c.deathSaveIn} rounds unless they are treated`].filter(Boolean);
+    return `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}${extra.length ? `, ${extra.join(", ")}` : ""}. Carrying: ${c.items.join(", ") || "nothing"}${ammoNote(c)}`;
   }).join("\n");
 }
 
@@ -325,6 +368,7 @@ export function freshen(pc) {
   pc.stress = Math.max(pc.startStress, pc.minStress ?? 0);
   pc.items = itemsFrom(pc.loadout);
   pc.armor = armorFrom(pc.items);
+  pc.ammo = {};
   stabilise(pc);
   pc.cond = newCond();
 }
@@ -337,17 +381,34 @@ function itemsFrom(loadout) {
 export function changeItem(pc, action, rawItem) {
   const item = String(rawItem || "").trim().slice(0, 60);
   if (!item) return null;
+  const mag = ammoOf(item);
   if (action === "add") {
+    if (mag) {
+      const at = pc.items.findIndex((x) => ammoOf(x)?.weapon === mag.weapon);
+      if (at >= 0) pc.items[at] = ammoItem(mag.weapon, Math.min(99, ammoOf(pc.items[at]).n + mag.n));
+      else if (pc.items.length >= MAX_ITEMS) return null;
+      else pc.items.push(ammoItem(mag.weapon, mag.n));
+      return `picked up ${item}`;
+    }
     if (pc.items.length >= MAX_ITEMS) return null;
     pc.items.push(item[0].toUpperCase() + item.slice(1));
     return `picked up ${item}`;
+  }
+  const verb = action === "use" ? "used" : "lost";
+  if (mag) {
+    const at = pc.items.findIndex((x) => ammoOf(x)?.weapon === mag.weapon);
+    if (at < 0) return null;
+    const left = ammoOf(pc.items[at]).n - mag.n;
+    if (left > 0) pc.items[at] = ammoItem(mag.weapon, left);
+    else pc.items.splice(at, 1);
+    return `${verb} ${item}`;
   }
   const want = item.toLowerCase();
   const i = pc.items.findIndex((x) => x.toLowerCase() === want);
   const j = i >= 0 ? i : pc.items.findIndex((x) => x.toLowerCase().includes(want) || want.includes(x.toLowerCase()));
   if (j < 0) return null;
   const [gone] = pc.items.splice(j, 1);
-  return `lost ${gone}`;
+  return `${verb} ${gone}`;
 }
 
 export const SKILL_BONUSES = [10, 15, 20];
@@ -376,5 +437,5 @@ export const skillText = (s) => `${s.name} +${s.bonus}`;
 export const findSkill = (pc, name) => (name ? (pc?.skills || []).find((s) => s.name.toLowerCase() === String(name).toLowerCase()) : null) || null;
 
 export function crewBrief(crew, { trauma = true } = {}) {
-  return crew.map((c) => `- ${c.name} (${c.pronouns ? `pronouns ${c.pronouns}` : "no pronouns given: use they/them"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout}${trauma ? ` Trauma response (${c.className}): ${traumaResponse(c)}` : ""}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
+  return crew.map((c) => `- ${c.name} (${c.pronouns ? `pronouns ${c.pronouns}` : "no pronouns given: use they/them"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} ${c.cond?.dead ? "[DECEASED: no longer playable] " : c.retired ? "[RETIRED: no longer playable] " : ""}Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout}${trauma ? ` Trauma response (${c.className}): ${traumaResponse(c)}` : ""}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
 }

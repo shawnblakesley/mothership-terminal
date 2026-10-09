@@ -138,6 +138,18 @@ body {
 .sf-hook { color: var(--dim); font-size: 0.85em; }
 .sf-none, .sf-played { color: var(--dim); }
 @media (max-width: 800px) { .sf-body { grid-template-columns: minmax(0, 1fr); } }
+.mm-body { display: flex; flex-direction: column; gap: 1em; width: 100%; max-width: 760px; }
+.mm-row { display: flex; gap: 1em; border: 1px solid var(--dim); padding: 0.6em 0.8em; }
+.mm-row .mm-face { flex: none; width: 5em; height: 5em; filter: grayscale(1); }
+.mm-name { text-decoration: line-through; letter-spacing: 0.15em; text-shadow: 0 0 6px var(--glow); }
+.mm-final, .mm-epitaph { color: var(--dim); margin-top: 0.3em; }
+.flatfx { z-index: 95; cursor: default; background: #000; }
+.fl-trace { width: 100%; height: 30vh; }
+.fl-trace polyline { fill: none; stroke: #ff5a4e; stroke-width: 1.5; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 4px #ff5a4e); }
+.fl-title { color: #ff5a4e; letter-spacing: 0.4em; font-weight: bold; }
+.fl-form { display: flex; flex-direction: column; align-items: center; gap: 0.6em; width: 100%; max-width: 640px; }
+.fl-form input { width: 100%; box-sizing: border-box; background: transparent; color: var(--fg); border: 1px solid var(--fg); font: inherit; padding: 0.3em 0.5em; }
+.fl-form[hidden], .fl-title[hidden] { display: none; }
 .isofx { cursor: default; padding: 3vh 3vw; }
 .isofx .if-map { flex: 1; min-height: 0; width: 100%; overflow: auto; text-shadow: none; scrollbar-width: none; }
 .isofx .if-map.iso { overflow: hidden; }
@@ -684,6 +696,38 @@ body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #
 .line.meta { color: var(--dim); text-transform: uppercase; }
 .line.meta.table, .line.meta.heard, .line.meta.warden { color: var(--fg); }
 .line .var { color: var(--dim); margin-top: 0.15em; }
+
+#chargen:focus { outline: none; }
+#chargen .cg-rows { margin: 0.5em 0; }
+#chargen .cg-row { padding: 0.1em 0; }
+#chargen .cg-k { color: var(--dim); display: inline-block; min-width: 9ch; }
+#chargen .cg-num { font-weight: normal; border: 1px solid var(--fg); padding: 0 0.4em; }
+#chargen .cg-die { display: inline-block; min-width: 2ch; text-align: center; border-bottom: 1px solid var(--dim); }
+#chargen .cg-acts { margin: 0.5em 0; display: flex; gap: 1.5em; flex-wrap: wrap; align-items: baseline; }
+#chargen .cg-list li { padding: 0.25em 0.4em; }
+#chargen .cg-list li.cg-on { outline: 1px solid var(--fg); }
+#chargen .cg-cur:not(.cg-skill) { background: rgba(255, 255, 255, 0.06); }
+#chargen .cg-skill.cg-cur { background: var(--fg); color: var(--bg); text-shadow: none; }
+#chargen .cg-pick { background: var(--fg); color: var(--bg); text-shadow: none; }
+#chargen .cg-tier { margin-top: 0.6em; color: var(--dim); border-bottom: 1px solid var(--dim); }
+#chargen .cg-skills { display: flex; flex-direction: column; align-items: flex-start; }
+#chargen .cg-skill.locked, #chargen .cg-skill.class { color: var(--dim); cursor: default; }
+#chargen .cg-skill:disabled:hover { background: none; color: var(--dim); }
+#chargen .cg-gear { margin: 0.6em 0; padding-bottom: 0.4em; border-bottom: 1px dashed var(--dim); }
+#chargen input { background: transparent; color: var(--fg); border: 1px solid var(--dim); font: inherit; padding: 0.2em 0.4em; width: 100%; max-width: 40em; margin-top: 0.3em; text-shadow: inherit; }
+#chargen input:focus { outline: none; border-color: var(--fg); }
+#chargen .cg-label { display: block; margin: 0.6em 0; }
+#chargen .cg-type input { width: 14em; }
+#chargen .cg-faces { display: flex; flex-wrap: wrap; gap: 0.4em; max-height: 14em; overflow-y: auto; margin: 0.5em 0; }
+#chargen .cg-faces button { background: none; border: 1px solid var(--dim); padding: 0; cursor: pointer; width: 4em; height: 4em; }
+#chargen .cg-faces button.on, #chargen .cg-faces button:focus-visible { border-color: var(--fg); outline: 2px solid var(--fg); }
+#chargen .cg-faces img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#chargen .cg-facepreview { display: inline-block; width: 4em; height: 4em; vertical-align: middle; }
+#chargen .cg-err, #chargen .cg-problems { color: var(--fg); min-height: 1.2em; }
+#chargen .cg-pend { margin: 0.6em 0 1.2em; padding-bottom: 0.6em; border-bottom: 1px dashed var(--dim); }
+#chargen .cg-keys { margin-top: 0.6em; font-size: 0.85em; }
+#chargen .cs { max-width: 100%; }
+@media (max-width: 600px) { #chargen .cg-k { display: block; } }
 .cs-combat { display: flex; flex-direction: column; gap: 0.15em; margin-top: 0.5em; color: var(--dim); font-size: 0.72em; letter-spacing: 0.08em; text-align: center; }
 .cs-combat .cs-bad, .cs-deceased { color: #ff5a4e; }
 .cs-deceased { text-align: center; font-weight: bold; letter-spacing: 0.3em; border: 1px solid #ff5a4e; padding: 0.2em; margin-top: 0.5em; }

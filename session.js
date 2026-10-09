@@ -3,18 +3,21 @@ import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLike
 import { warmNeural } from "./tts.js";
 import { VoiceRelay } from "./voicerelay.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, COLD_STATS, OLD_COLD_PICTURES } from "./voices.js";
-import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
+import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, finalVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
-import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, stabilise, deathSaveCountdown, isDead, armorText } from "./crew.js";
+import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings } from "./crew.js";
 import { combatCheck, damageAdversary, rollDeathSave, deathSaveText, sanitizeStats, statsLine } from "./combat.js";
 import { rollDice, rollWithAdv, cancelAdv } from "./dice.js";
 import { woundText } from "./wounds.js";
 import { weaponsOf, weaponByName, weaponDamage } from "./weapons.js";
-import { HAZARDS, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, oxygenNeed, settle, hazardDamage, hazardWound, normalizeHazards, oxygenStart, oxygenDay, oxygenState, breathing, protection, penalties, conditionText, puncture, patch, airRestored, takePills, wake, stimpak, rest } from "./hazards.js";
+import { HAZARDS, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, oxygenNeed, settle, hazardDamage, hazardWound, normalizeHazards, oxygenStart, oxygenDay, oxygenState, breathing, protection, penalties, conditionText, puncture, patch, airRestored, takePills, wake, stimpak, rest, useStimpak } from "./hazards.js";
+import { loaded, magazines, spendShot, reload, TANK, STORES } from "./resources.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
-import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel } from "./campaign.js";
+import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
+import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory } from "./campaign.js";
+import { transfer, ledgerLine, exact, DEBT_PAYMENT, DEBT_EVERY } from "./money.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
@@ -24,6 +27,7 @@ import { rememberSecret } from "./redact.js";
 import { discordStatus, stopListening, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { panicMessage, nearMessage } from "./panicscreen.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, effectiveAdvantage, PANIC, checkInfo } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, effectType, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -35,6 +39,7 @@ const INTROS = {
 };
 
 const MAX_LOG = 1000;
+const RIG = "rig";
 const MAX_SOCKETS = 40;
 const PLAYER_INPUT_GAP_MS = 1200;
 const WARDEN_ACTIONS = {
@@ -172,6 +177,9 @@ export function defaultGame(keys = {}) {
       talk: "brief",
       playerVitals: true,
       playerRolls: true,
+      panicScreens: true,
+      playerCreate: false,
+      createRerolls: false,
       tts: true,
       discordTalk: false,
       voices: defaultVoices().map((v) => ({ ...v, systems: ["*"] })),
@@ -199,6 +207,7 @@ export function defaultGame(keys = {}) {
     synopses: {},
     offers: [],
     panicPlus: {},
+    newChars: [],
   };
 }
 
@@ -433,6 +442,7 @@ function migrateGame(saved) {
     roll: Array.isArray(saved.roll?.pcs) ? saved.roll : null,
     outcomeCheck: saved.outcomeCheck ?? null,
     offers: Array.isArray(saved.offers) ? saved.offers : [],
+    newChars: Array.isArray(saved.newChars) ? saved.newChars : [],
     panicPlus: saved.panicPlus && typeof saved.panicPlus === "object" ? saved.panicPlus : {},
     sounds,
     builder: { messages: Array.isArray(saved.builder?.messages) ? saved.builder.messages.slice(-60) : [], draft: saved.builder?.draft ?? null },
@@ -445,6 +455,7 @@ function migrateGame(saved) {
     clocks: Array.isArray(saved.clocks) ? saved.clocks : [],
     storyStart: saved.storyStart && saved.storyStart.config ? saved.storyStart : null,
     campaign: saved.campaign ? sanitizeProgress(saved.campaign) : null,
+    rationing: saved.rationing === true,
     solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
 }
@@ -454,8 +465,8 @@ const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
-const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
-const STORY_ACTIONS = new Set(["nextRound", "attack", "passTime", "hazard", "command", "inject", "note", "heard", "rollRequest", "rollFor", "offerRoll", "generate", "approve", "outcome", "handout", "clockStart"]);
+const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "panicScreens", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
+const STORY_ACTIONS = new Set(["nextRound", "attack", "reload", "passTime", "hazard", "command", "inject", "note", "heard", "rollRequest", "rollFor", "offerRoll", "generate", "approve", "outcome", "handout", "clockStart"]);
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
   return n ? crew.find((c) => c.name.toLowerCase() === n || c.name.toLowerCase().includes(n))?.id || "" : "";
@@ -765,10 +776,33 @@ export class Session {
       terminals: c.terminals.map((t) => ({ id: t.id, name: t.name, look: t.look, theme: t.theme, system: t.system, os: t.os, open: reachable(t, this.state.station) })),
       moveTerminals: c.playerTerminals,
       selfRolls: c.playerRolls,
+      create: !!c.playerCreate,
       trauma: TRAUMA_RESPONSES,
       voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: shownName(v), style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
       portraits: Object.fromEntries((c.cast || []).filter((m) => m.portrait).map((m) => [m.name.toLowerCase(), m.portrait])),
       portraitCredit: [...(c.cast || []), ...c.crew].some((m) => m.portrait?.startsWith("kit/")),
+      rig: this.rigView(),
+    };
+  }
+
+  resupplyOf() {
+    const p = this.state.campaign, c = campaignById(p?.id);
+    return c ? resupplyView(c, p) : null;
+  }
+
+  // The rig's fuel and stores for MARY's own terminals: live from the story's station state, else as saved between stories.
+  rigView() {
+    const p = this.state.campaign, c = campaignById(p?.id);
+    if (!c) return null;
+    const story = c.stories.find((x) => x.id === p.current), live = this.state.station?.rig;
+    const num = (v, def) => (Number.isFinite(Number(v)) ? Number(v) : def);
+    const r = p.resources;
+    return {
+      name: c.ship.name, system: c.ship.system, transit: !!story && isTransit(story),
+      fuel: story && live ? num(live.fuel_units, r.fuel) : r.fuel, capacity: TANK,
+      stores: Object.fromEntries(STORES.map((k) => [k, story && live ? num(live[k], r.stores[k]) : r.stores[k]])),
+      lifeSupport: String(live?.life_support ?? "ONLINE").toUpperCase(),
+      rationing: !!this.state.rationing,
     };
   }
 
@@ -787,6 +821,8 @@ export class Session {
       effects: this.state.effects.filter((e) => this.effectRunning(e)),
       builderBusy: this.builderBusy,
       campaignBusy: this.campaignBusy,
+      resupply: this.resupplyOf(),
+      rig: this.rigView(),
       sectorShown: this.sectorShown,
       sectorVotes: this.sectorTally(true),
       roomBusy: this.roomBusy,
@@ -801,6 +837,7 @@ export class Session {
       panicTable: PANIC_TABLE.slice(1),
       deathSaves: Object.fromEntries(Object.keys(this.state.deathSaves || {}).map((id) => [id, true])),
       weaponsOf: Object.fromEntries(this.state.config.crew.map((c) => [c.id, weaponsOf(c.items).map((w) => w.name)])),
+      ammo: Object.fromEntries(this.state.config.crew.map((c) => [c.id, weaponsOf(c.items).filter((w) => w.shots).map((w) => ({ name: w.name, shots: w.shots, loaded: loaded(c, w), spare: magazines(c, w) }))])),
       traumaResponses: TRAUMA_RESPONSES,
     };
   }
@@ -955,11 +992,51 @@ export class Session {
     return this.state.config.crew.filter((c) => out.has(c.id)).map((c) => ({ id: c.id, by: out.get(c.id) }));
   }
 
+  // A character newly dead or retired goes on the memorial; the dead player's screen flatlines and offers a final transmission.
+  noteEndings() {
+    const s = this.state, c = campaignById(s.campaign?.id);
+    const where = (c && s.campaign.current && c.stories.find((x) => x.id === s.campaign.current)?.title) || s.config.title || s.config.stationName;
+    for (const pc of settleEndings(s.config.crew, where)) {
+      this.addLog("note", `${pc.name} ${pc.cond?.dead ? `died: ${pc.cond.dead}` : "retired"}. Their file goes on the memorial (High Score ${pc.highScore}).`);
+      if (pc.cond?.dead) this.toPlayersIf((w) => w.character === pc.id, { t: "flatline", id: pc.id });
+    }
+  }
+
+  // The dead character's last line, spoken on every screen in a voice of their own.
+  finalWords(ws, raw) {
+    const pc = this.characterOf(ws), text = String(raw || "").replace(/\s+/g, " ").trim().slice(0, 240);
+    if (!pc || !text || !pc.cond?.dead || pc.finalWords) return;
+    pc.finalWords = text;
+    const cfg = this.state.config, voice = channelOf(cfg), kind = kindOf(voice);
+    this.addLog(kind, text, { source: "final", net: ALL_NET, character: pc.name, voiceSpeaker: finalVoice(pc, cfg.cast), ...(kind === "entity" ? { entity: voice } : {}) });
+    this.crewChanged();
+  }
+
+  // End session: High Score (PSG 18.3, sessions survived; no effect on play) goes up by 1 for each living character.
+  endNight() {
+    const s = this.state, up = endSession(s.config.crew);
+    if (s.campaign) { endSession(s.campaign.crew); s.campaign.sessions = (s.campaign.sessions || 0) + 1; }
+    this.addLog("note", `Game night ended. High Score +1: ${up.map((c) => `${c.name} (${c.highScore})`).join(", ") || "nobody is alive"}. (PSG 18.3: it counts sessions survived and changes no roll.)`);
+    this.crewChanged();
+  }
+
   crewChanged() {
+    this.noteEndings();
     this.toPlayers({ t: "crew", crew: this.state.config.crew, conds: this.condMap(), claims: this.claims(), played: this.played() });
     this.syncDm();
     const x = this.state.solo;
     if (x?.phase === "play" && !x.opened && Object.keys(this.claims()).length) this.soloOpen();
+  }
+
+  // The campaign's money lives on its own sheets; the story's copies follow it.
+  moneySync() {
+    const p = this.state.campaign;
+    if (!p) return;
+    for (const pc of this.state.config.crew) {
+      const q = p.crew.find((x) => x.id === pc.id);
+      if (q) pc.credits = q.credits;
+    }
+    this.crewChanged();
   }
 
   crewById(id) { return this.state.config.crew.find((c) => c.id === id); }
@@ -974,9 +1051,11 @@ export class Session {
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
     if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() }));
     if (msg.t === "sectorVote") return this.sectorVote(ws, String(msg.story || ""));
+    if (msg.t === "finalWords") return this.finalWords(ws, msg.text);
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
+    if (String(msg.t).startsWith("cg")) return handleChargen(this, ws, msg);
     if (msg.t === "claim") {
       ws.character = this.state.config.crew.some((c) => c.id === msg.id) ? msg.id : null;
       ws.send(JSON.stringify({ t: "handouts", handouts: this.handoutsFor(ws) }));
@@ -1017,7 +1096,7 @@ export class Session {
     if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "panicScreens", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
@@ -1085,6 +1164,12 @@ export class Session {
         const pic = v.adversary.picture;
         this.toPlayers({ t: "showImage", title: v.name, src: this.pictureSrc(pic), credit: v.adversary.credit || "" });
         this.addLog("note", `Showed the players ${v.name}.`);
+        break;
+      }
+      case "panicShow": {
+        const n = Math.round(Number(msg.n));
+        const mine = s.config.crew.filter((x) => [...this.sockets].some((w) => w.role === "player" && w.character === x.id));
+        if (n >= 1 && n <= 20) for (const pc of mine) this.panicScreens(pc, n, n === 18 ? "Compounding problems (7: Nightmares + 9: Deflated)" : "", { force: true });
         break;
       }
       case "castPanic": {
@@ -1274,6 +1359,15 @@ export class Session {
       case "condition":
         this.crewCondition(msg.pc, msg.action, msg.value);
         break;
+      case "reload":
+        this.reloadWeapon(this.crewById(msg.pc), msg.weapon);
+        break;
+      case "rationing":
+        s.rationing = !!msg.on;
+        this.addLog("note", s.rationing ? "Rationing (food and water are cut off): hunger is tracked every hour and the penalties apply (PSG 32.5)." : "Rationing ended: food and water are no longer tracked.");
+        this.syncDm();
+        this.sendHeader();
+        break;
       case "attack": {
         const a = msg.attack || {};
         if (a.side === "crew") this.crewAttack({ pc: this.crewById(a.pc), weapon: a.weapon, target: a.target, damageAdv: a.damageAdv });
@@ -1438,6 +1532,9 @@ export class Session {
         this.sectorVotes.clear();
         this.sectorSync();
         this.addLog("note", `Campaign started: ${c.title}. Pick its first story on the sector map.`);
+        for (const e of s.campaign.ledger) this.addLog("note", ledgerLine(s.campaign, e));
+        this.addLog("note", `The rig carries a ${exact(s.campaign.debt)} note to Gallow-Mercer Finance, ${exact(DEBT_PAYMENT)} due every ${DEBT_EVERY} finished stories (house rule).`);
+        this.moneySync();
         break;
       }
       case "campaignPlay":
@@ -1445,11 +1542,53 @@ export class Session {
         return;
       case "campaignFinish": {
         const c = campaignById(s.campaign?.id);
-        const done = c && finishInto(s.campaign, c, s.config, msg.outcome, msg.affinity);
+        const done = c && finishInto(s.campaign, c, s.config, msg.outcome, msg.affinity, s.station);
         if (done) {
           const { story, changes } = done;
+          const paid = settleStory(s.campaign, c, story, { delivery: msg.delivery, late: !!msg.late, skipDues: !!msg.skipDues, fee: msg.fee });
+          changes.push(...paid.changes);
+          for (const line of paid.lines) this.addLog("note", line);
+          for (const e of paid.entries) this.addLog("note", ledgerLine(s.campaign, e));
+          if (paid.handout) this.giveHandout(paid.handout);
+          this.moneySync();
           this.addLog("note", `Campaign story finished: ${story.title}.${s.campaign.done.at(-1).outcome ? ` ${s.campaign.done.at(-1).outcome}` : ""}`);
           for (const ch of changes) this.addLog("note", `Faction standing (house rule): ${ch.name} ${standingLabel(ch.from)} to ${standingLabel(ch.to)}${ch.why ? ` (${ch.why})` : ""}.`);
+        }
+        break;
+      }
+      case "campaignTravel": {
+        const c = campaignById(s.campaign?.id);
+        const r = c && travelTo(s.campaign, c, String(msg.to || ""));
+        if (!r) break;
+        if (!r.ok) this.send("dm", { t: "toast", level: "error", text: r.error });
+        else {
+          const at = (id) => c.locations.find((l) => l.id === id).name;
+          this.addLog("note", `${c.ship.name} travels ${at(r.from)} to ${at(s.campaign.at)} along ${r.lane.name} (${r.lane.days} days): ${r.cost} fuel (house rule: 1 unit per started 3 days), ${r.left} left.`);
+          this.sectorSync();
+          this.sendHeader();
+        }
+        break;
+      }
+      case "campaignBuy": {
+        const c = campaignById(s.campaign?.id);
+        const r = c && resupply(s.campaign, c, { to: String(msg.to || ""), lines: msg.lines, ammoFor: String(msg.ammoFor || ""), fuelPrice: msg.fuelPrice, pay: String(msg.pay || "rig") });
+        if (!r) break;
+        if (!r.ok) this.send("dm", { t: "toast", level: "error", text: r.error });
+        else {
+          this.addLog("note", `Resupply at ${r.at}: ${r.bought.join(", ") || "nothing"}${r.to ? ` (carried by ${r.to})` : ""}. Total ${exact(r.total)}.${r.fuelFree ? " (No fuel price was set: the fuel was free.)" : ""}`);
+          for (const e of r.entries) this.addLog("note", ledgerLine(s.campaign, e));
+          this.moneySync();
+          this.sendHeader();
+        }
+        break;
+      }
+      case "campaignMoney": {
+        const p = s.campaign, r = p && transfer(p, { from: String(msg.from || ""), to: String(msg.to || ""), amount: msg.amount, what: String(msg.what || "") });
+        if (!r) break;
+        if (!r.ok) this.send("dm", { t: "toast", level: "error", text: r.error });
+        else {
+          for (const e of r.entries) this.addLog("note", ledgerLine(p, e));
+          this.moneySync();
         }
         break;
       }
@@ -1483,10 +1622,32 @@ export class Session {
       case "moveScreens":
         for (const ws of this.sockets) if (ws.role === "player" && ws.character && ws.character === msg.character) this.playerTerminal(ws, msg.terminal, "warden");
         break;
+      case "endNight":
+        this.endNight();
+        break;
+      case "epitaph": {
+        const pc = this.crewById(String(msg.pc)), text = String(msg.text || "").replace(/\s+/g, " ").trim().slice(0, 140);
+        if (!pc) break;
+        pc.epitaph = text;
+        const kept = s.campaign?.crew?.find((x) => x.id === pc.id);
+        if (kept) kept.epitaph = text;
+        this.crewChanged();
+        break;
+      }
+      case "crewState":
+        setCrewState(this, String(msg.pc), String(msg.state));
+        break;
+      case "cgAccept":
+      case "cgReject": {
+        const bad = decideCharacter(this, msg.t === "cgAccept", String(msg.id), msg.note);
+        if (bad) this.send("dm", { t: "toast", level: "error", text: bad });
+        break;
+      }
       case "crew": {
-        const conds = new Map(s.config.crew.map((c) => [c.id, c.cond]));
+        const was = new Map(s.config.crew.map((c) => [c.id, c]));
         s.config.crew = sanitizeCrew(msg.crew);
-        for (const pc of s.config.crew) if (conds.has(pc.id)) pc.cond = conds.get(pc.id);
+        for (const pc of s.config.crew) if (was.has(pc.id)) Object.assign(pc, { cond: was.get(pc.id).cond, endedIn: was.get(pc.id).endedIn, finalWords: was.get(pc.id).finalWords, epitaph: was.get(pc.id).epitaph });
+        if (s.campaign) for (const pc of s.config.crew) pc.credits = s.campaign.crew.find((x) => x.id === pc.id)?.credits ?? pc.credits;
         this.crewChanged();
         break;
       }
@@ -1808,13 +1969,21 @@ export class Session {
         }
       }
       if (this.state.campaign !== p) throw new Error("the campaign was left while the story was being built");
-      this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config) => carryInto(config, c, story, p));
+      let carried;
+      this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config, station) => { carried = carryInto(config, c, story, p, station); });
       p.current = story.id;
+      const up = payUpfront(p, c, story);
       p.offered = (p.offered || []).filter((x) => x !== story.id);
       this.sectorVotes.clear();
       this.sectorShown = false;
       this.sectorSync();
       this.addLog("note", `${c.title}, story ${story.n}: ${story.title} (${placeOf(c, story)}). The arc is in the standing orders.`);
+      if (carried?.lane) this.addLog("note", `The lane ${carried.lane.name} (${carried.lane.days} days) burns ${carried.burned} fuel (house rule); the rig has ${p.resources.fuel} left.${p.resources.fuel <= 0 ? " The rig is out of fuel: stranded." : ""}`);
+      for (const line of up.lines) this.addLog("note", line);
+      for (const e of up.entries) this.addLog("note", ledgerLine(p, e));
+      if (up.entries.length) this.moneySync();
+      this.syncHazards();
+      this.sendHeader();
     } catch (err) {
       console.error(`[${this.code}] campaign story failed:`, err?.message || err);
       this.send("dm", { t: "toast", level: "error", text: `Couldn't build ${story.title}: ${err?.message || err}` });
@@ -1831,7 +2000,7 @@ export class Session {
     this.genCounter++;
     this.playhead = 0;
     Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] });
-    patch?.(s.config);
+    patch?.(s.config, station);
     s.config.roomDocs = sanitizeRoomDocs(config.roomDocs);
     Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, synopses: {} });
     this.endAllEffects();
@@ -1917,6 +2086,7 @@ export class Session {
     }
     const fx = result.panic && !result.success ? panicEntry(result.used) : null;
     this.toPlayers({ t: "rollResult", result, label: checkLabel(req), who: pc.name, effect: fx?.name || "" });
+    if (fx) this.panicScreens(pc, result.used, fx.name);
     this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(req, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
     this.afterRoll(pc, req, result, fx);
     if (r.hazard?.[pc.id]) this.settleHazard(pc, r.hazard[pc.id], result);
@@ -1924,6 +2094,21 @@ export class Session {
     else {
       this.toPlayers({ t: "roll", roll: this.publicRoll() });
       this.syncDm();
+    }
+  }
+
+  // The panicking player's own screen panics with them (presentation only). Close crew see a flash if the result was Jumpy.
+  panicScreens(pc, used, name, { force = false } = {}) {
+    if (this.state.config.panicScreens === false && !force) return;
+    const pics = this.state.config.voices.filter((v) => v.adversary?.picture).map((v) => v.adversary.picture);
+    const picture = pics.length ? this.pictureSrc(pics[Math.floor(Math.random() * pics.length)]) : "";
+    const own = panicMessage({ used, name, android: pc.className === "Android", picture });
+    if (!own) return;
+    const near = nearMessage(own.seq), nearIds = near ? new Set(this.closeTo(pc).map((x) => x.id)) : null;
+    for (const ws of this.sockets) {
+      if (ws.role !== "player" || ws.readyState !== 1 || !ws.character) continue;
+      if (ws.character === pc.id) ws.send(JSON.stringify(own));
+      else if (near && nearIds.has(ws.character)) ws.send(JSON.stringify(near));
     }
   }
 
@@ -2119,7 +2304,8 @@ export class Session {
     const st = adv?.adversary.stats;
     if (!pc || !adv) return this.addLog("note", `Attack not made: ${!pc ? "no such crew member" : `no adversary named "${target}" with combat numbers`}.`);
     if (isDead(pc)) return this.addLog("note", `Attack not made: ${pc.name} is dead.`);
-    const w = weaponsOf(pc.items).find((x) => keyOf(x.name) === keyOf(weapon)) || weaponByName(weapon) || weaponsOf(pc.items)[0];
+    const w = this.crewWeapon(pc, weapon);
+    if (!spendShot(pc, w)) return this.addLog("note", `Attack not made: ${pc.name}'s ${w.name} is out of shots (0/${w.shots}). Reloading is an action.`);
     const expr = weaponDamage(w, pc.stats.strength);
     const d = rollWithAdv(expr, cancelAdv(damageAdv));
     const was = st.wounds;
@@ -2130,9 +2316,23 @@ export class Session {
     if (m.armorIgnored) lines.push(`ITS ARMOR ABSORBS IT`);
     if (m.armorDestroyed) lines.push(`ITS ARMOR IS DESTROYED${w.aa ? " (ANTI-ARMOR)" : ""}`);
     lines.push(m.dead ? `${who} IS DEAD OR DESTROYED` : m.woundsLost ? `${who} LOSES ${m.woundsLost === 1 ? "A WOUND" : `${m.woundsLost} WOUNDS`}` : `${m.dealt} THROUGH`);
+    if (w.shots) lines.push(`${w.name.toUpperCase()}: ${loaded(pc, w)} OF ${w.shots} SHOTS LEFT${loaded(pc, w) ? "" : ", RELOAD NEEDED"}`);
     this.addLog("roll", lines.join("\n"), { combat: true, by: pc.name });
     this.addLog("note", `${adv.name}: ${statsLine(st)} (was ${was} Wounds).`);
-    this.syncDm();
+    this.crewChanged();
+  }
+
+  crewWeapon(pc, weapon) {
+    return weaponsOf(pc.items).find((x) => keyOf(x.name) === keyOf(weapon)) || weaponByName(weapon) || weaponsOf(pc.items)[0];
+  }
+
+  // Reloading is an action (PSG): swap in a spare magazine.
+  reloadWeapon(pc, weapon) {
+    if (!pc || isDead(pc)) return;
+    const w = this.crewWeapon(pc, weapon);
+    const r = reload(pc, w);
+    this.addLog("note", r.ok ? `${pc.name} reloads the ${w.name}: ${r.left}/${w.shots} shots, ${r.spare} spare magazine${r.spare === 1 ? "" : "s"} left.` : `${pc.name} can't reload: ${r.why}`);
+    this.crewChanged();
   }
 
   syncHazards() {
@@ -2142,20 +2342,34 @@ export class Session {
     for (const [room, h] of Object.entries(hz)) if (h.type === "oxygen" && raw[room]?.supply === undefined) h.supply = this.oxygenStart();
     if (Object.keys(hz).length) s.station.hazards = hz;
     else if (s.station) delete s.station.hazards;
+    this.syncLifeSupport();
   }
   oxygenStart() { return oxygenStart(this.state.config.shipCrew || this.state.config.crew.length || 1); }
 
   hazardsFor(pc) {
-    const h = this.state.station.hazards?.[roomId(this.roomOfPc(pc.id))];
-    return h ? [h] : [];
+    const hz = this.state.station.hazards || {};
+    return [hz[roomId(this.roomOfPc(pc.id))], this.onRig(pc) && hz[RIG]].filter(Boolean);
+  }
+  // The rig's own life support is a hazard keyed "rig": it reaches everyone aboard (the whole rig in transit, the rig's rooms when docked).
+  onRig(pc) {
+    const p = this.state.campaign, c = campaignById(p?.id), story = c?.stories.find((x) => x.id === p?.current);
+    return !!story && (isTransit(story) || c.ship.rooms.includes(roomId(this.roomOfPc(pc.id))));
+  }
+  syncLifeSupport() {
+    const s = this.state, rig = s.station?.rig;
+    if (!s.campaign || !rig) return;
+    const off = /offline/i.test(String(rig.life_support ?? ""));
+    const on = s.station.hazards?.[RIG]?.type === "oxygen";
+    if (off && !on) this.setHazard(RIG, "oxygen");
+    else if (!off && on) this.setHazard(RIG, "none");
   }
   thinAir(pc) {
     const live = breathing(this.state.config.crew).length;
     return this.hazardsFor(pc).some((h) => h.type === "oxygen" && oxygenState(h.supply, live).low) && !protection(pc, "oxygen");
   }
   condWhy(pc, req) { return req.check === PANIC ? [] : penalties(pc, { thinAir: this.thinAir(pc) }); }
-  advOpts(pc, req, plus = false) { return { close: this.closeTo(pc), plus, more: this.condWhy(pc, req).length ? ["disadvantage"] : [] }; }
-  advWhy(pc, req) { return [...(req.check === "fear" && this.closeTo(pc).some((c) => c.className === "Android") ? ["an Android is close"] : []), ...this.condWhy(pc, req)]; }
+  advOpts(pc, req, plus = false) { return { close: this.closeTo(pc), plus, more: [...(this.condWhy(pc, req).length ? ["disadvantage"] : []), ...(pc.cond?.boost > 0 ? ["advantage"] : [])] }; }
+  advWhy(pc, req) { return [...(req.check === "fear" && this.closeTo(pc).some((c) => c.className === "Android") ? ["an Android is close"] : []), ...this.condWhy(pc, req), ...(pc.cond?.boost > 0 ? ["a stimpak ([+])"] : [])]; }
   condMap() { return Object.fromEntries(this.state.config.crew.map((pc) => [pc.id, conditionText(pc)])); }
   hazardWork() { return this.hazardUnits.length + this.hazardNeeds.length; }
 
@@ -2232,7 +2446,7 @@ export class Session {
     }
     const hour = unit.u === "hour";
     for (const pc of crew) {
-      const res = (hour ? hourTick : roundTick)(pc, this.hazardsFor(pc));
+      const res = hour ? hourTick(pc, this.hazardsFor(pc), undefined, { food: !this.state.campaign || this.state.rationing }) : roundTick(pc, this.hazardsFor(pc));
       for (const e of res.events) note(pc, e);
       for (const t of res.skipped || []) note(pc, `${HAZARDS[t].name} is a per-round hazard and wasn't run for the hour: use Next round, or rule it`);
       for (const d of res.damage) this.hazardDamage(pc, d.n, d.type, d.why);
@@ -2254,7 +2468,7 @@ export class Session {
     h.supply = r.supply;
     this.addLog("note", `Life support offline in ${room}: oxygen supply ${r.supply} after 24 hours (${r.breathing} breathing, ${r.use} used).${r.gone ? " Supply gone: as no oxygen." : r.save ? " Under the breathing crew: Body Save or Death Save." : r.low ? " Under twice the breathing crew: [-] on all rolls." : ""}`);
     if (!r.save) return;
-    for (const pc of breathing(crew)) if (roomId(this.roomOfPc(pc.id)) === room && !protection(pc, "oxygen")) this.hazardNeeds.push(oxygenNeed(pc));
+    for (const pc of breathing(crew)) if (this.hazardsFor(pc).includes(h) && !protection(pc, "oxygen")) this.hazardNeeds.push(oxygenNeed(pc));
   }
 
   startHazardRoll() {
@@ -2263,7 +2477,7 @@ export class Session {
     const first = this.hazardNeeds[0];
     const group = this.hazardNeeds.filter((n) => key(n) === key(first));
     this.hazardNeeds = this.hazardNeeds.filter((n) => key(n) !== key(first));
-    const who = group.map((n) => this.crewById(n.pc)).filter((pc) => pc && !pc.cond.dead);
+    const who = group.map((n) => this.crewById(n.pc)).filter((pc) => pc && playable(pc));
     if (!who.length) return;
     const req = sanitizeRequest({ pc: "all", check: first.check, advantage: first.advantage, reason: first.reason }, who);
     req.hazard = Object.fromEntries(group.map((n) => [n.pc, n]));
@@ -2309,18 +2523,47 @@ export class Session {
       case "putout": c.fire = false; say("fire put out"); break;
       case "bleed": c.bleeding = Math.min(99, c.bleeding + (Number(value) || 1)); say(`Bleeding ${c.bleeding}`); break;
       case "stopbleed": c.bleeding = 0; say("bleeding stopped (First Aid Kit)"); break;
-      case "ate": c.fed = 0; say("has eaten"); break;
+      case "ate": {
+        const rig = this.state.station.rig;
+        if (this.state.campaign && this.state.rationing && rig) {
+          if (!(Number(rig.rations) > 0)) { this.send("dm", { t: "toast", level: "error", text: "The rig has no rations (MREs) left." }); break; }
+          rig.rations = Number(rig.rations) - 1;
+          this.sendHeader();
+        }
+        c.fed = 0;
+        say("has eaten");
+        break;
+      }
       case "thirst": c.thirsty = !c.thirsty; say(c.thirsty ? "water at the minimum" : "has water"); break;
       case "rest": rest(c, 8); say("rested 8 hours"); break;
       case "strenuous": c.strenuous = !c.strenuous; say(c.strenuous ? "strenuous activity" : "not strenuous"); break;
       case "strenuouscheck": if (c.thirsty) { this.hazardNeeds.push(strenuousNeed(pc)); this.pumpHazards(); } break;
       case "cryosleep": c.cryosleep = true; say("goes into cryosleep"); break;
       case "wake": if (!c.cryosleep) return; wake(c); say("wakes from cryosleep: [-] on all rolls for a week (cryosickness)"); break;
-      case "stimpak": if (changeItem(pc, "remove", "stimpak")) { stimpak(c); say("used a stimpak: cryosickness cured"); } else this.send("dm", { t: "toast", level: "error", text: `${pc.name} has no stimpak.` }); break;
+      case "stimpak": if (changeItem(pc, "use", "stimpak")) this.takeStimpak(pc); else this.send("dm", { t: "toast", level: "error", text: `${pc.name} has no stimpak.` }); break;
+      case "tankout": {
+        if (!changeItem(pc, "use", "oxygen tank")) { this.send("dm", { t: "toast", level: "error", text: `${pc.name} has no oxygen tank.` }); break; }
+        const more = pc.items.some((x) => /oxygen tank/i.test(x));
+        if (more) c.air = 0;
+        say(more ? "swaps to a fresh oxygen tank" : "the last oxygen tank is used up");
+        break;
+      }
       case "pills": { const n = takePills(c); say("takes Radiation Pills: Radiation Level -1 for 2d10 minutes"); this.hazardDamage(pc, n, "pills", "Radiation Pills"); break; }
       case "clearrad": c.rad = 0; say("radiation penalty cleared"); break;
       case "cleartags": c.tags = []; say("conditions cleared"); break;
       default: return;
+    }
+    this.crewChanged();
+  }
+
+  // The PSG stimpak effect and the overdose roll for a dose whose item has already been used up.
+  takeStimpak(pc) {
+    if (isDead(pc)) return;
+    const r = useStimpak(pc);
+    this.addLog("note", `${pc.name} uses a stimpak: Stress ${r.stress}, +${r.heal} Health (1d10 rolled ${r.rolled}), [+] on all rolls for ${r.minutes} minute${r.minutes > 1 ? "s" : ""}, cryosickness cured.`);
+    if (r.overdose) {
+      this.addLog("note", `Stimpak overdose roll (dose ${r.doses} in 24 hours): 1d10 rolled ${r.overdose.roll}, ${r.overdose.deathSave ? `under ${r.doses}: Death Save` : `not under ${r.doses}: no effect`}.`);
+      if (r.overdose.deathSave) this.callDeathSave(pc, "a stimpak overdose");
     }
     this.crewChanged();
   }
@@ -2331,9 +2574,12 @@ export class Session {
       const pc = crew.find((c) => c.id === crewTargets(a.by, crew)[0]);
       const got = pc && s.roll?.check === "combat" && s.roll.results?.[pc.id];
       if (!got?.result.success || got.attacked) { this.addLog("note", `${pc?.name || a.by}'s attack was not applied: no successful, unspent Combat check.`); continue; }
+      const w = this.crewWeapon(pc, a.weapon);
+      if (w.shots && loaded(pc, w) <= 0) { this.addLog("note", `${pc.name}'s attack was not applied: the ${w.name} is out of shots (0/${w.shots}); reloading is an action.`); continue; }
       got.attacked = true;
       this.crewAttack({ pc, weapon: a.weapon, target: a.target });
     }
+    for (const r of reply?.reloads || []) this.reloadWeapon(crew.find((c) => c.id === crewTargets(r.by, crew)[0]), r.weapon);
     for (const a of reply?.attacks || []) this.creatureAttack(a);
     for (const name of reply?.reveal_death_save || []) {
       const pc = crew.find((c) => c.id === crewTargets(name, crew)[0]);
@@ -2399,7 +2645,8 @@ export class Session {
         const did = changeItem(pc, c.action, c.item);
         if (!did) continue;
         this.addLog("note", `${pc.name} ${did}${c.why ? ` (${c.why})` : ""}.`);
-        if (c.action === "remove" && /first aid kit/i.test(did)) this.crewCondition(pc.id, "stopbleed");
+        if (c.action !== "add" && /first aid kit/i.test(did)) this.crewCondition(pc.id, "stopbleed");
+        if (c.action === "use" && /stimpak/i.test(did)) this.takeStimpak(pc);
         any = true;
       }
     }
@@ -2436,7 +2683,7 @@ export class Session {
       const was = undo.crew.find((x) => x.id === pc.id);
       if (!was) continue;
       for (const k of ["status", "statusNote", "deathSaveIn"]) if (k in was) pc[k] = was[k]; else delete pc[k];
-      Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, minStress: was.minStress, items: was.items, cond: was.cond, stats: was.stats, saves: was.saves, armor: was.armor });
+      Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, minStress: was.minStress, items: was.items, ammo: was.ammo, cond: was.cond, stats: was.stats, saves: was.saves, armor: was.armor });
     }
     s.deathSaves = undo.deathSaves;
     for (const [id, stats] of undo.adversaries || []) { const v = s.config.voices.find((x) => x.id === id); if (v?.adversary) v.adversary.stats = stats; }
@@ -2788,7 +3035,7 @@ export class Session {
   }
   sendPilot(ws) {
     const c = this.state.config;
-    ws.send(JSON.stringify({ t: "pilotInfo", providers: catalog(this.keys), config: { provider: c.provider, model: c.model, effort: c.effort } }));
+    ws.send(JSON.stringify({ t: "pilotInfo", providers: catalog(this.keys), config: { provider: c.provider, model: c.model, effort: c.effort }, chargen: this.state.newChars }));
   }
   handlePilot(ws, msg) {
     const x = this.state.solo;
@@ -2817,6 +3064,12 @@ export class Session {
         this.soloChanged();
         if (x.pitches.length < 2) this.soloPitches();
         break;
+      case "pilotCgAccept":
+      case "pilotCgReject": {
+        const bad = decideCharacter(this, msg.t === "pilotCgAccept", String(msg.id), msg.note);
+        if (bad) ws.send(JSON.stringify({ t: "notice", text: bad }));
+        break;
+      }
       case "pilotEnd":
         console.log(`  - session ${this.code} ended by its pilot`);
         this.onEnd?.(this);

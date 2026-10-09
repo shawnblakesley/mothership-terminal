@@ -3,6 +3,7 @@ import { BUILTIN, SPEAKERS, shownName, ABBREVIATION, SENTENCE, HIDDEN_DOT } from
 import { channelOf, attitudeLabel } from "./cast.js";
 import { CHECKS, PANIC, ADVANTAGE } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
+import { rigBrief } from "./resources.js";
 import { statsLine } from "./combat.js";
 import { WOUND_LABELS } from "./wounds.js";
 import { HAZARDS, hazardBrief } from "./hazards.js";
@@ -180,7 +181,7 @@ function buildSchema(voices, config = {}, { solo = false, files = false } = {}) 
           required: ["for", "action", "item", "why"],
           properties: {
             for: { type: "string", description: "A crew member's name." },
-            action: { type: "string", enum: ["add", "remove"] },
+            action: { type: "string", enum: ["add", "remove", "use"], description: "use: a Stimpak or First Aid Kit used for its effect; the app applies it." },
             item: { type: "string", description: "The item as listed (to remove) or a short name (to add)." },
             why: { type: "string", description: "A few words for the Warden's log." },
           },
@@ -211,6 +212,19 @@ function buildSchema(voices, config = {}, { solo = false, files = false } = {}) 
             by: { type: "string", description: "The crew member's name." },
             weapon: { type: "string", description: "A weapon they carry (from CREW CONDITION), or \"Unarmed\"." },
             target: { type: "string", description: "The adversary's name from ADVERSARIES' CONDITION." },
+          },
+        },
+      },
+      reloads: {
+        type: "array",
+        description: "A player's character reloading a firearm from a spare magazine (an action, COMBAT); the app moves the magazine and refills the shots. Usually empty.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["by", "weapon"],
+          properties: {
+            by: { type: "string", description: "The crew member's name." },
+            weapon: { type: "string", description: "The firearm, as listed under Ammunition." },
           },
         },
       },
@@ -368,6 +382,7 @@ const REPLY_EXAMPLE = {
   item_changes: [],
   attacks: [],
   crew_attacks: [],
+  reloads: [],
   round: false,
   reveal_death_save: [],
   hazards: [],
@@ -463,15 +478,16 @@ const PROTOCOL_VARIANTS = `PER-PLAYER VARIATIONS
 
 const PROTOCOL_CREW = `CREW AND COMBAT (Mothership 1e)
 - CREW CONDITION lists each character's Health, Wounds, Stress and items. They can only use what they have or find; record items picked up, handed over, used up, lost, broken or taken in item_changes. The right or wrong tool is a reason to suggest [+] or [-] in outcome_check.
-- Harm without an attack (a fall, an explosion) goes in crew_changes as negative health. The app applies it as real Damage (at 0 Health a Wound is rolled and Health resets to Maximum minus any carryover), so use realistic numbers and never add the Wound. Add +1 or +2 stress only for real horror or loss. Only for consequences that happened in this reply and that the Warden left to you; when unsure, leave it to the Warden. Failed rolls already add 1 Stress. Name each character once per event. Hazards don't go here (HAZARDS).
+- Harm without an attack (a fall, an explosion) goes in crew_changes as negative health. The app applies it as real Damage (at 0 Health a Wound is rolled and Health resets to Maximum minus any carryover), so use realistic numbers and never add the Wound. Add +1 or +2 stress only for real horror or loss. Only for consequences that happened in this reply and that the Warden left to you; when unsure, leave it to the Warden. Failed rolls already add 1 Stress. Name each character once per event.
 - Violence is very dangerous for these workers. Avoid it and let the players feel why: running, hiding, bargaining and sabotage beat fighting, and the biggest threats cannot be beaten head-on (their special line says how they are). There is no initiative: describe the threat and what happens if nobody responds, let the players declare, then resolve everything together (checks and saves first, then Damage and Wounds) and describe the new situation. A round is about 10 seconds.
 - A player's attack is a Combat Check; a failed one deals no damage and makes things worse. Only right after a character's Combat check succeeded on an adversary, set crew_attacks (a weapon from CREW CONDITION, else "Unarmed").
 - Every attack by a creature or person on a character (also one a Warden command calls for) is an entry in attacks, never crew_changes or narrated damage. The app rolls their Combat and the damage and applies armor, Health, Wounds, Wounds Table results and Bleeding: narrate from the [ROLL RESULT] entries and never invent damage numbers or Wounds. ADVERSARIES' CONDITION has each adversary's numbers; at 0 Wounds it is dead or destroyed.
+- Firearms have shots per magazine: CREW CONDITION lists rounds loaded and spare magazines (Ammunition). Each crew_attacks with a firearm spends 1 shot, and one at 0 loaded is refused, so don't set it. Reloading is an action: set reloads. A Stimpak or First Aid Kit used for its effect goes in item_changes with action "use"; the app applies it, so don't also change Health or Stress.
 - Set round=true in the reply where a round passes in a fight (Bleeding and hazard damage run then). A First Aid Kit stops Bleeding: item_changes (remove).
 - A Death Save is rolled secretly: nobody knows the result, you included. CREW CONDITION says when one is due. Don't say whether that character lives, dies or wakes. Only when someone spends a turn checking their vitals, put their name in reveal_death_save and narrate the [ROLL RESULT].`;
 
 const PROTOCOL_HAZARDS = `HAZARDS
-- The app runs hazard rules for a room, and exhaustion, hunger, thirst, Bleeding and cryosickness. When the fiction starts, changes or ends a hazard, record it in hazards (type "none" ends it). Don't also apply its damage, Stress or penalties: the Warden's Next round and Pass time controls and the players' rolls handle them. When the story skips ahead, set time_passes.hours. HAZARDS IN PLAY lists what is running with each rule: narrate by it, never invent rules. Story hazards are not Mothership rules.`;
+- The app runs the rules for hazards in a room (vacuum, toxic or corrosive air, radiation, extreme cold or heat, fire, explosion, hull breach, life support offline, and story hazards) and for exhaustion, hunger, thirst, Bleeding and cryosickness. When the fiction starts, changes or ends one (a room vented to space is vacuum), record it in hazards (type "none" ends it). Don't also apply its damage, Stress or penalties: the Warden's Next round and Pass time controls and the players' rolls handle them. When the story skips ahead, set time_passes.hours. HAZARDS IN PLAY lists what is running with each rule: narrate by it, never invent rules. Story hazards are not Mothership rules.`;
 
 const PROTOCOL_STATION = `THE STATION
 - station_changes: EVERY change in this reply (doors, lights, access_level, systems) as dot paths into LIVE STATION STATE. If a line says something changed, list it or it did not happen.`;
@@ -713,13 +729,14 @@ function buildContext(state, steer, aside = false) {
   const plans = Object.entries(state.config.rooms || {});
   if (plans.length) ctx.push(`ROOM FLOOR PLANS (now):\n${plans.map(([id, p]) => `${id}:\n${p.rows.join("\n")}`).join("\n\n")}`);
   if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
+  if (state.campaign && state.station?.rig) ctx.push(`${rigBrief(state.station)}${state.rationing ? "\n- RATIONING: food and water are cut off; the app tracks hunger every hour (PSG 32.5)." : ""}`);
   const fighters = state.config.voices.filter((v) => v.adversary?.stats);
   if (fighters.length) ctx.push(`ADVERSARIES' CONDITION (now; Warden's eyes only):\n${fighters.map((v) => {
     const s = v.adversary.stats;
     return `- ${v.name} (${v.adversary.revealed ? "revealed" : "unrevealed"}): ${statsLine(s)}. Attacks: ${s.attacks.map((a) => `${a.name} ${a.damage} ${WOUND_LABELS[a.woundType]}${a.woundAdv ? ` [${a.woundAdv}]` : ""}${a.special ? ` (${a.special})` : ""}`).join("; ") || "none"}.${s.special ? ` Special: ${s.special}` : ""}${s.note ? ` ${s.note}` : ""}`;
   }).join("\n")}`);
   const hz = hazardBrief(state.station, state.config.crew || []);
-  ctx.push(`HAZARDS IN PLAY (now):\n${hz.lines.join("\n") || "- none"}${hz.sick.length ? `\n\nCHARACTERS' HAZARD CONDITIONS (tracked by the app):\n${hz.sick.join("\n")}` : ""}\n\nStory hazards (not Mothership rules): ${Object.entries(HAZARDS).filter(([, h]) => h.kind === "story").map(([k]) => k).join(", ")}.`);
+  ctx.push(`HAZARDS IN PLAY (now):\n${hz.lines.join("\n") || "- none"}${hz.sick.length ? `\n\nCHARACTERS' HAZARD CONDITIONS (tracked by the app):\n${hz.sick.join("\n")}` : ""}`);
   const found = new Set(state.found || []);
   const lying = (state.config.roomDocs || []).filter((d) => !found.has(d.id));
   if (lying.length) ctx.push(`FILES IN ROOMS (not found yet):\n${lying.map((d) => `- ${d.id} [${d.room}] ${d.title} (${d.voice ? "audio recording" : "document"}): ${d.text.replace(/\s+/g, " ").slice(0, 40)}`).join("\n")}`);
@@ -793,7 +810,7 @@ export function parseReply(text, voices) {
       .slice(0, 12)
       .map((c) => ({ for: String(c.for).slice(0, 60), stat: c.stat, change: Math.max(-20, Math.min(20, Math.round(Number(c.change)))), why: String(c.why ?? "").slice(0, 120) })),
     item_changes: (Array.isArray(r?.item_changes) ? r.item_changes : [])
-      .filter((c) => c && c.for && ["add", "remove"].includes(c.action) && String(c.item ?? "").trim())
+      .filter((c) => c && c.for && ["add", "remove", "use"].includes(c.action) && String(c.item ?? "").trim())
       .slice(0, 12)
       .map((c) => ({ for: String(c.for).slice(0, 60), action: c.action, item: String(c.item).trim().slice(0, 60), why: String(c.why ?? "").slice(0, 120) })),
     attacks: (Array.isArray(r?.attacks) ? r.attacks : [])
@@ -804,6 +821,10 @@ export function parseReply(text, voices) {
       .filter((a) => a && String(a.by ?? "").trim() && String(a.target ?? "").trim())
       .slice(0, 4)
       .map((a) => ({ by: String(a.by).trim().slice(0, 60), weapon: String(a.weapon ?? "").trim().slice(0, 60), target: String(a.target).trim().slice(0, 60) })),
+    reloads: (Array.isArray(r?.reloads) ? r.reloads : [])
+      .filter((a) => a && String(a.by ?? "").trim())
+      .slice(0, 4)
+      .map((a) => ({ by: String(a.by).trim().slice(0, 60), weapon: String(a.weapon ?? "").trim().slice(0, 60) })),
     round: r?.round === true,
     reveal_death_save: (Array.isArray(r?.reveal_death_save) ? r.reveal_death_save : []).map((x) => String(x ?? "").trim().slice(0, 60)).filter(Boolean).slice(0, 4),
     hazards: (Array.isArray(r?.hazards) ? r.hazards : [])

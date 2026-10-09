@@ -14,7 +14,7 @@ import { kestrelState, haulersState, promptSize } from "../scripts/steering-fixt
 // make parseReply handle it, add a SAMPLE for it below, and raise the budget only on purpose.
 
 // Size of one normal reply's prompt (system + context + history + schema and example), in characters: the measured size plus 10%.
-const BUDGET = { kestrel: 56500, haulers: 52400 };
+const BUDGET = { kestrel: 57500, haulers: 53500 };
 
 test("a roll of 90-99 that is under the target is told to the agent as the failure it is", () => {
   const state = kestrelState();
@@ -52,6 +52,7 @@ const SAMPLE = {
   item_changes: [{ for: "Rook", action: "add", item: "Flare", why: "found" }],
   attacks: [{ by: "THE COLD", target: "Rook", attack: "" }],
   crew_attacks: [{ by: "Rook", weapon: "Crowbar", target: "THE COLD" }],
+  reloads: [{ by: "Rook", weapon: "Revolver" }],
   round: true,
   reveal_death_save: ["Rook"],
   hazards: [{ room: "med_bay", type: "radiation", level: 2 }],

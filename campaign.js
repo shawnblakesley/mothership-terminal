@@ -4,6 +4,9 @@ import { sanitizeCrew, newCond } from "./crew.js";
 import { HAZARDS } from "./hazards.js";
 import { sanitizeCast, findCast, PORTRAIT_FILE } from "./cast.js";
 import { SPEAKERS, fromPreset } from "./voices.js";
+import { sanitizeResources, rigStation, resourcesFrom, fuelCost, portMult, PRICES, MRE_PACK, TANK, firearms, addMagazines } from "./resources.js";
+import { weaponByName } from "./weapons.js";
+import { sanitizeMoney, startingCredits, DEBT_PAYMENT, DEBT_EVERY, DELIVERY, finalFee, upfrontOf, duesOf, debtDue, book, spend, exact, debtLetter, DUES_PCT } from "./money.js";
 
 export const CAMPAIGNS = [RIM_HAULERS];
 export const campaignById = (id) => CAMPAIGNS.find((c) => c.id === id) || null;
@@ -30,8 +33,16 @@ export const isTransit = (story) => !story.at;
 export const placeOf = (c, story) => (story.at ? loc(c, story.at).name : `${loc(c, story.from).name} to ${loc(c, story.to).name}`);
 export const endsAt = (story) => story.at || story.to;
 
-export function newProgress(c) {
-  return { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew: sanitizeCrew(structuredClone(c.crew)), cast: {}, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {} };
+export function newProgress(c, rng) {
+  const crew = sanitizeCrew(structuredClone(c.crew));
+  const p = { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew, cast: {}, sessions: 0, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {}, resources: sanitizeResources(c.ship.resources, c.ship.resources), ...sanitizeMoney({}, c, crew) };
+  // Starting credits are 2d10x10 per character, rolled once here (PSG), and shown in the ledger.
+  for (const pc of p.crew) {
+    const r = startingCredits(rng);
+    pc.credits = 0;
+    book(p, pc.id, r.total, `starting credits, 2d10x10: (${r.dice[0]}+${r.dice[1]})x10`);
+  }
+  return p;
 }
 
 export function sanitizeProgress(p) {
@@ -49,18 +60,22 @@ export function sanitizeProgress(p) {
       history: String(x.history || "").slice(-600),
     };
   }
+  const crew = sanitizeCrew(Array.isArray(p.crew) && p.crew.length ? p.crew : structuredClone(c.crew));
   return {
     id: c.id,
     startedAt: Number(p.startedAt) || Date.now(),
     at: loc(c, p.at) ? p.at : c.start,
     current: has(p.current) ? p.current : "",
+    sessions: Math.max(0, Math.min(9999, Math.round(Number(p.sessions) || 0))),
     offered: [...new Set(Array.isArray(p.offered) ? p.offered : [])].filter(has).slice(0, 9),
     done: (Array.isArray(p.done) ? p.done : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, outcome: String(d.outcome || "").slice(0, 1500), at: Number(d.at) || 0 })).slice(-100),
-    crew: sanitizeCrew(Array.isArray(p.crew) && p.crew.length ? p.crew : structuredClone(c.crew)),
+    crew,
     cast,
     factions: Object.fromEntries(c.factions.map((f) => [f.id, clampStanding(p.factions?.[f.id])])),
     favours: Object.fromEntries(c.factions.filter((f) => p.favours?.[f.id]).map((f) => [f.id, true])),
     nudges: Object.fromEntries(c.cast.map((m) => [m.id, Math.max(-1, Math.min(1, Math.round(Number(p.nudges?.[m.id]) || 0)))]).filter(([, n]) => n)),
+    resources: sanitizeResources(p.resources, c.ship.resources),
+    ...sanitizeMoney(p, c, crew),
   };
 }
 
@@ -181,7 +196,7 @@ FIELDS
 - lore: what ${transit ? "MARY" : "the station's computer"} holds as public knowledge, as short labelled lines: the place, the job (from THE JOB), who's here, recent events as the public knows them (never the truth), and the factions' presence.
 - secrets: bullet lines ("- ...") the computer guards by access level. The written secrets are already included word for word: write ONLY new bullets, never restate or reword them: codes and passwords the arc needs, where things are, who is lying, what the computer itself was told to hide. Keep the Banishment options findable.
 - standingOrders: short extra steering for this story's tone and pacing, or "". The arc is added automatically.
-- station: the live state as path/value pairs (15-35). access_level=GUEST. Paths: doors.<room_id>, cameras.<room_id>, occupants.<room_id>, contents.<room_id>, lights.deck_N, plus systems of your own (power.*, life_support.*, comms...). The story's HAZARDS are tracked by the app: for a hazard that is already in force when the story starts, add hazards.<room_id>.type=<hazard> (and hazards.<room_id>.level=<n> for radiation 1-3, corrosive or acid 1-10, crush, collapse or machinery 1-3). Only those hazards, only in a room of the map; never invent others, and leave out hazards that start later in play.${transit ? " Start from the rig's usual state (fuel.pct, air.reserve_hours, reactor, drive, container.seal, container.temp_c, cb_radio, nav.eta_hours) and change what this story changes." : ` Include ${c.ship.room}.docked=${loc(c, story.at).dock.toUpperCase()}.`}
+- station: the live state as path/value pairs (15-35). access_level=GUEST. Paths: doors.<room_id>, cameras.<room_id>, occupants.<room_id>, contents.<room_id>, lights.deck_N, plus systems of your own (power.*, life_support.*, comms...). The story's HAZARDS are tracked by the app: for a hazard that is already in force when the story starts, add hazards.<room_id>.type=<hazard> (and hazards.<room_id>.level=<n> for radiation 1-3, corrosive or acid 1-10, crush, collapse or machinery 1-3). Only those hazards, only in a room of the map; never invent others, and leave out hazards that start later in play.${transit ? " Start from the rig's usual state (air.reserve_hours, reactor, drive, container.seal, container.temp_c, cb_radio, nav.eta_hours) and change what this story changes. The rig's fuel, stores and life support are added automatically as rig.*: leave them out." : ` Include ${c.ship.room}.docked=${loc(c, story.at).dock.toUpperCase()}.`}
 - computer: ${transit ? `name "MARY". persona: ONLY what is different about MARY on this trip (what she knows, what's wrong with her, what she's been told), under 80 words, addressed to her ("You ..."). Her usual persona is added automatically.` : `name "${loc(c, story.at).computer}" and its persona, addressed to it ("You are ..."): who it is, how it writes on a monochrome CRT, what it knows, how it treats access levels and hacking, and how this story has touched it.`}
 - broadcastPersona: the automated public-address voice${transit ? " (MARY's cabin alerts and proximity alarms)" : ""}; announces, never converses.
 - voices: always one with id "intercom": ${transit ? `the rig's CB radio (name "CB RADIO", preset intercom), which everyone off the rig is heard over: dispatch, other drivers, customs hails, whoever is out there; systems [].` : `the station intercom (name "INTERCOM", preset intercom), which also carries radio patched through from ${c.ship.name}'s CB; systems ["ALL"].`} Add others only if the story needs them (another ship's computer, a radio band). Never MARY, the adversary, or the recurring characters.
@@ -264,7 +279,7 @@ export function composeDraft(c, story, p, raw) {
 const roomOf = (t) => String(t?.room || "").toLowerCase().replace(/[^a-z0-9_]/g, "");
 
 // After the story is applied: the crew as they left the last story, the recurring characters as the crew left them, MARY's own voice.
-export function carryInto(config, c, story, p) {
+export function carryInto(config, c, story, p, station) {
   config.crew = sanitizeCrew(structuredClone(p.crew));
   for (const pc of config.crew) pc.cond = { ...newCond(), cryo: pc.cond.cryo, lethal: pc.cond.lethal, dead: pc.cond.dead, tags: pc.cond.tags };
   config.shipCrew = c.ship.crew;
@@ -284,13 +299,26 @@ export function carryInto(config, c, story, p) {
   if (mary) Object.assign(mary, { ...fromPreset("human"), preset: "human" }, { voice: { ...fromPreset("human").voice, speaker: SPEAKERS.af_bella ? "af_bella" : fromPreset("human").voice.speaker } });
   const channel = config.voices.find((v) => v.id === config.castChannel);
   if (channel && !isTransit(story)) channel.systems = ["*"];
+  // The rig's resources go into the story's station state (rig.*). A transit story burns the lane's fuel (house rule) unless it is being rebuilt.
+  const lane = isTransit(story) && laneBetween(c, story.from, story.to);
+  const burned = lane && p.current !== story.id ? Math.min(p.resources.fuel, fuelCost(lane.days)) : 0;
+  p.resources.fuel -= burned;
+  if (station) {
+    station.rig = rigStation(p.resources);
+    if (station.fuel) {
+      delete station.fuel.pct;
+      if (!Object.keys(station.fuel).length) delete station.fuel;
+    }
+  }
+  return { burned, lane };
 }
 
 // When a story is finished: remember how it ended, where the rig is, the crew's sheets and how the recurring characters feel.
 // `ticked` are the indexes of the story's affinity entries that happened; only those change a standing. Returns the story and the changes.
-export function finishInto(p, c, config, outcome, ticked = []) {
+export function finishInto(p, c, config, outcome, ticked = [], station = null) {
   const story = c.stories.find((s) => s.id === p.current);
   if (!story) return null;
+  p.resources = resourcesFrom(station, p.resources);
   const changes = [...new Set(Array.isArray(ticked) ? ticked : [])].map((i) => Number.isInteger(i) && story.affinity?.[i]).filter(Boolean)
     .map((a) => shiftStanding(p, c, a.faction, a.change, a.when)).filter(Boolean);
   p.favours = {};
@@ -312,6 +340,65 @@ export function finishInto(p, c, config, outcome, ticked = []) {
 
 export const campaignList = () => CAMPAIGNS;
 
+// ---- Travel and resupply (campaign house rules; the PSG prices are in resources.js)
+export const laneBetween = (c, a, b) => c.lanes.find((l) => (l.a === a && l.b === b) || (l.a === b && l.b === a)) || null;
+
+// The rig moves along a lane between stories; it burns 1 fuel unit per started 3 days of the lane.
+export function travelTo(p, c, to) {
+  const lane = laneBetween(c, p.at, to);
+  if (p.current) return { ok: false, error: "Finish the story being played first." };
+  if (!lane) return { ok: false, error: "There is no lane from here to there." };
+  const cost = fuelCost(lane.days), have = p.resources.fuel;
+  if (have < cost) return { ok: false, error: `Not enough fuel: ${lane.name} needs ${cost} unit${cost > 1 ? "s" : ""} and the rig has ${have}. Refuel first.` };
+  const from = p.at;
+  p.resources.fuel -= cost;
+  p.at = to;
+  return { ok: true, lane, cost, from, left: p.resources.fuel };
+}
+
+// Prices at the port the rig is at: PSG base price x the port class (house rule) x the faction's standing; null when they won't trade.
+export function resupplyView(c, p) {
+  const l = loc(c, p.at);
+  const cls = l ? portMult(l.portClass) : 1;
+  const m = priceMultiplier(clampStanding(p.factions?.[l?.faction]));
+  const price = (base) => (m === null ? null : priceAt(c, p, p.at, base * cls));
+  return {
+    at: p.at, name: l?.name || "", portClass: l?.portClass || "", classMult: cls, trade: m !== null,
+    prices: { ammo: price(PRICES.ammo), aid: price(PRICES.aid), stimpak: price(PRICES.stimpak), mre: price(PRICES.mre), tank: price(PRICES.tank) },
+    fuelFactor: m === null ? null : cls * m,
+    firearms: firearms.map((w) => w.name),
+  };
+}
+
+// Buys supplies for the rig and one character, paid from the rig account or a character (`pay`). lines: counts of fuel, ammo (for `ammoFor`), aid, stimpak, mre, tank.
+export function resupply(p, c, { to, lines = {}, ammoFor = "", fuelPrice = 0, pay = "rig" } = {}) {
+  if (p.current) return { ok: false, error: "Finish the story being played first." };
+  const v = resupplyView(c, p);
+  if (!v.trade) return { ok: false, error: `${v.name} won't trade with the crew.` };
+  const n = (k) => Math.max(0, Math.min(20, Math.round(Number(lines[k]) || 0)));
+  const want = Object.fromEntries(["fuel", "ammo", "aid", "stimpak", "mre", "tank"].map((k) => [k, n(k)]));
+  const pc = p.crew.find((x) => x.id === to) || p.crew[0];
+  const gun = weaponByName(ammoFor);
+  if (want.ammo && !gun?.shots) return { ok: false, error: "Pick the firearm the ammo is for." };
+  if (p.resources.fuel + want.fuel > TANK) return { ok: false, error: `The tank holds ${TANK} units; the rig has ${p.resources.fuel}.` };
+  const slots = want.aid + want.stimpak + want.tank + (want.ammo ? 1 : 0);
+  if (slots && !pc) return { ok: false, error: "No crew to carry them." };
+  if (pc && pc.items.length + slots > 24) return { ok: false, error: `${pc.name} can't carry that many items.` };
+  const fuelEach = Math.round(Math.max(0, Number(fuelPrice) || 0) * v.fuelFactor);
+  const total = want.fuel * fuelEach + want.ammo * v.prices.ammo + want.aid * v.prices.aid + want.stimpak * v.prices.stimpak + want.mre * v.prices.mre + want.tank * v.prices.tank;
+  const paid = spend(p, pay, total, `resupply at ${v.name}`);
+  if (!paid.ok) return paid;
+  const bought = [];
+  if (want.fuel) { p.resources.fuel += want.fuel; bought.push(`${want.fuel} fuel`); }
+  if (want.mre) { p.resources.stores.rations = Math.min(99, p.resources.stores.rations + want.mre * MRE_PACK); bought.push(`${want.mre * MRE_PACK} MREs for the rig`); }
+  if (want.ammo) { addMagazines(pc, gun, want.ammo); bought.push(`${want.ammo} magazine${want.ammo > 1 ? "s" : ""} for the ${gun.name}`); }
+  for (const [k, item] of [["aid", "first aid kit"], ["stimpak", "stimpak"], ["tank", "oxygen tank"]]) {
+    for (let i = 0; i < want[k]; i++) pc.items.push(item[0].toUpperCase() + item.slice(1));
+    if (want[k]) bought.push(`${want[k]} ${item}${want[k] > 1 ? "s" : ""}`);
+  }
+  return { ok: true, total, bought, to: pc?.name || "", at: v.name, fuelFree: want.fuel > 0 && !fuelEach, entries: paid.entries };
+}
+
 // What the players' screens get of the sector: a whitelist, so nothing of a story's arc, adversary, secrets, cast or description can leak.
 export function sectorPayload(c, p) {
   const at = loc(c, p.at) || loc(c, c.start);
@@ -326,4 +413,69 @@ export function sectorPayload(c, p) {
     played: p.done.map((d) => story(d.id)).filter(Boolean).map(({ id, title }) => ({ id, title })),
     offered: (p.offered || []).map(story).filter(Boolean).map(({ id, title, hook, job }) => ({ id, title, hook, job, ...(({ x, y }) => ({ x, y }))(spot(story(id))) })),
   };
+}
+
+// ---- Pay, debt and union dues (campaign house rules; credits notation and starting credits are PSG)
+
+// A story's fee goes to the rig account, less the union's dues (house rule: 4% of the pay). Skipping the dues keeps the 4% and costs Union standing.
+function payIn(p, c, story, gross, why, skipDues) {
+  const out = { lines: [], entries: [], changes: [] };
+  if (gross <= 0) return out;
+  const dues = duesOf(gross);
+  out.entries.push(book(p, "rig", gross, `${story.title}: fee, ${why}`));
+  if (!skipDues && dues) out.entries.push(book(p, "rig", -dues, `${story.title}: union dues, ${DUES_PCT}% (house rule)`));
+  out.lines.push(`Pay for ${story.title} (house rule): ${exact(gross)} fee, ${skipDues ? "union dues skipped (kept " + exact(dues) + ")" : `less ${DUES_PCT}% union dues ${exact(dues)}`}, ${exact(gross - (skipDues ? 0 : dues))} to the rig account.`);
+  if (skipDues && dues) {
+    const ch = shiftStanding(p, c, "union", -1, "skipped the union dues");
+    if (ch) out.changes.push(ch);
+  }
+  return out;
+}
+
+// When a story is played: any part of its fee paid up front goes in at once (dues taken), once per play.
+export function payUpfront(p, c, story) {
+  const out = { lines: [], entries: [], changes: [] };
+  const amount = upfrontOf(story);
+  if (!amount || p.upfront?.[story.id]) return out;
+  p.upfront = { ...p.upfront, [story.id]: amount };
+  return payIn(p, c, story, amount, "paid up front", false);
+}
+
+// When a story is finished: the fee by how it was delivered, the debt's schedule, and the finale's payoff.
+// o: { delivery: full|partly|none, late, skipDues, fee } (fee overrides the computed remainder). Call after finishInto.
+export function settleStory(p, c, story, o = {}) {
+  const delivery = DELIVERY[o.delivery] === undefined ? "full" : o.delivery;
+  const paid = p.upfront?.[story.id] || 0;
+  const out = { lines: [], entries: [], changes: [], handout: null, delivery };
+  const take = (r) => { out.lines.push(...r.lines); out.entries.push(...r.entries); out.changes.push(...r.changes); };
+  if (story.payoff) {
+    const owed = p.debt, cleared = Math.round(owed * DELIVERY[delivery]);
+    if (cleared) {
+      book(p, "debt", -cleared, `${story.title}: the finale ${delivery === "full" ? "pays off" : "pays down"} the note`);
+      out.entries.push(p.ledger.at(-1));
+      out.lines.push(`${story.title} (house rule): ${delivery === "full" ? "the note to Gallow-Mercer Finance is paid off" : `half the note is paid off (${exact(cleared)})`}.`);
+    } else out.lines.push(`${story.title}: not delivered, so the note stands at ${exact(p.debt)}.`);
+  } else {
+    const fee = o.fee === undefined || o.fee === "" || o.fee === null ? finalFee(story, delivery, !!o.late, paid) : Math.max(0, Math.round(Number(o.fee) || 0));
+    if (story.late && o.late) out.lines.push(`${story.title}: delivered late, which voids the fee (house rule).`);
+    if (fee) take(payIn(p, c, story, fee, DELIVERY[delivery] < 1 ? (delivery === "none" ? "not delivered" : "delivered in part, half the fee") : "delivered in full", !!o.skipDues));
+    else if (!(story.late && o.late)) out.lines.push(`${story.title}: no fee to pay${paid ? ` (${exact(paid)} was paid up front)` : ""}.`);
+  }
+  delete p.upfront?.[story.id];
+  p.finished = (p.finished || 0) + 1;
+  if (debtDue(p.finished, p.debt) && !story.payoff) {
+    const due = Math.min(DEBT_PAYMENT, p.debt);
+    if (p.money >= due) {
+      out.entries.push(book(p, "rig", -due, "payment on the Gallow-Mercer Finance note"), book(p, "debt", -due, "scheduled payment"));
+      p.missed = 0;
+      out.lines.push(`Debt payment due (house rule: ${exact(DEBT_PAYMENT)} every ${DEBT_EVERY} finished stories): ${exact(due)} paid from the rig account; ${exact(p.debt)} still owed to Gallow-Mercer Finance.`);
+    } else {
+      p.missed++;
+      const ch = shiftStanding(p, c, "gallow_mercer", -1, "missed a payment");
+      if (ch) out.changes.push(ch);
+      out.handout = debtLetter(p, c, due);
+      out.lines.push(`Debt payment MISSED (house rule): ${exact(due)} was due and the rig account has ${exact(p.money)}. Gallow-Mercer Finance has sent a letter; ${exact(p.debt)} still owed.`);
+    }
+  }
+  return out;
 }

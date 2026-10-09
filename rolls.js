@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { findSkill } from "./crew.js";
+import { findSkill, playable } from "./crew.js";
 import { clampInt } from "./clean.js";
 
 export const CHECKS = {
@@ -25,7 +25,7 @@ export function sanitizeRequest(raw, crew = []) {
   const panic = check === PANIC;
   const skill = panic ? "" : String(raw?.skill || "").trim().slice(0, 40);
   const some = Array.isArray(raw?.pc);
-  const who = raw?.pc === "all" ? crew : crew.filter((c) => (some ? raw.pc.includes(c.id) : c.id === raw?.pc));
+  const who = crew.filter((c) => playable(c) && (raw?.pc === "all" || (some ? raw.pc.includes(c.id) : c.id === raw?.pc)));
   if (!who.length) throw new Error("Choose who rolls.");
   const bonus = raw?.pc === "all" || some ? 0 : findSkill(who[0], skill)?.bonus ?? 0;
   return {
