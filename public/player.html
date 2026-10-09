@@ -30,6 +30,8 @@
       <span class="sep">//</span>
       <button id="hdr-term" class="hdr-btn" type="button" title="Your terminal" hidden>TERM</button>
       <span class="sep" id="hdr-term-sep" hidden>//</span>
+      <button id="hdr-msg" class="hdr-btn" type="button" title="Message a crewmate's terminal (or type /msg NAME TEXT)" hidden>MSG</button>
+      <span class="sep" id="hdr-msg-sep" hidden>//</span>
       <button id="hdr-file" class="hdr-btn" type="button" title="Your crew file" hidden>FILE</button>
       <span class="sep" id="hdr-file-sep" hidden>//</span>
       <button id="hdr-docs" class="hdr-btn" type="button" title="Your documents" hidden>DOCS</button>
@@ -77,6 +79,12 @@
         <div class="p-dim" id="termpick-note">SELECT A TERMINAL (PRESS 1-9).</div>
         <ol id="termpick-list"></ol>
         <button type="button" id="termpick-close" class="p-btn">[ STAY HERE ]</button>
+      </section>
+      <section id="msgpick" class="panel" hidden>
+        <div class="p-title"><span class="sq">■</span> CREW MESSAGE <span class="sq">■</span></div>
+        <div class="p-dim">TERMINAL TO TERMINAL, SAME SYSTEM ONLY. PICK WHO (PRESS 1-9), THEN TYPE IT.</div>
+        <ol id="msgpick-list"></ol>
+        <button type="button" id="msgpick-close" class="p-btn">[ CANCEL ]</button>
       </section>
       <section id="selfroll" class="panel" hidden>
         <div class="p-title" id="sr-title"></div>

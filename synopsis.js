@@ -59,6 +59,7 @@ export function logLine(e, voices) {
     case "table": return `[${e.playing ? `${e.playing}'S PLAYER` : "PLAYER"} ${e.speaker || ""}, said aloud at the table (table talk, not in the fiction)] ${clip(e.text)}`;
     case "aside_reply": return `[AGENT TO WARDEN, private] ${clip(e.text)}`;
     case "note": return `[CONSOLE NOTE, private] ${clip(e.text)}`;
+    case "msg": return `[CREW MESSAGE, private] ${e.from} to ${e.to}: ${clip(e.text)}${e.by === "player" ? "" : " (forged)"}`;
     default: {
       const voice = voices.find((v) => v.id === voiceIdOf(e))?.name || e.entity || e.kind;
       const who = [voice, e.character].filter(Boolean).join(" · ").toUpperCase();

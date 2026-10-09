@@ -240,6 +240,19 @@ Each player's screen is a physical terminal somewhere on the station, or a porta
 - **The agent knows where everyone is** and answers from that place (local cameras, doors, what happened there; the portable unit has remote-only access). With players at different terminals, per-player variants can give each their own view.
 - Set them up under **Terminals** in the console: name, room on the map, look, colour, whether players can reach it, the door it **opens with** (it becomes reachable once that door is OPEN: the med bay once the airlock is open), and notes for the agent, with who's at each one. Restarting the story puts everyone back at the first reachable terminal. The story builder creates terminals for new stories.
 
+## Crew messages
+
+When the crew are split across terminals they can message each other, terminal to terminal. This is the app's own feature, not a Mothership rule, so there are no rolls in it.
+
+- **Sending:** a player types `/msg ROOK Meet me at the cargo bay`, or taps **MSG** in the header, picks a crewmate and types the text. It arrives on that crewmate's terminal only, in its own style: `FROM ROOK @ CARGO BAY TERMINAL: Meet me at the cargo bay`. The sender sees their own line (`TO TICK: ...`). Nobody else sees it, and it isn't on the stream. It goes only to a crewmate on the same system, the way voices do; to anyone on another system it fails with `NO ROUTE`, and to someone dead, retired or not at a terminal with `NO SIGNAL`. Dead or retired characters can't send (they get final words only), and a message is at most 500 characters.
+- **The Warden sees everything.** Every message is in the Comms log, marked private between the two, with the terminal it came from, and in the new **Crew messages** card (Actions tab).
+- **Hold:** pick a player, a delay in seconds and **Hold**: that player's next message is held back. With a delay it arrives late on its own; with 0 it waits until you **Release** it; **never arrives** drops it. The sender sees it go either way. A hold covers one message; **Cancel** takes it off.
+- **Change:** edit the text in the Recent messages list and press **Change**. Its reader sees your words (on a message that's held, from the start; on one that has already arrived, the line on their screen changes in place). The sender's own line keeps what they typed, and the log shows both.
+- **Forge:** choose who it appears to come from and who gets it, type it and press **Forge it**. The sender is told nothing.
+- **A forged or changed message looks exactly like a real one** to the players (it carries the sender's real terminal name). Only your log marks it ("forged by you", "changed by you").
+- **The agent** reads every message as private player-to-player talk (it knows what they said to each other, and which were forged or changed), and can forge or rewrite one itself through its `crew_message` field. It's told to do so rarely, only when an adversary or a compromised system plausibly could. With **Review** mode on, the draft card lists it ("Crew message forged as ...") and it goes out when you send the draft. **Retcon** takes back a message the agent forged and restores one it rewrote.
+- **Bad screens garble it:** on a flickering, cracked or dim terminal, an arriving message comes with the odd corrupted character (always the same ones for the same message; the Warden's log has the clean text).
+
 ## All screens in step
 
 Every player hears a line at the same moment. The server makes each voice clip once, measures it, puts every line and spoken sentence on one timeline, and sends the audio itself with the line to every screen (nothing to download). Each screen syncs its clock with the server and plays to that schedule. Clips always play in full: a screen that's a moment behind starts a clip a moment late rather than skipping its beginning, and never talks over its previous clip. Beats such as a blackout are part of the schedule, and a player who reloads mid-speech rejoins in step.
@@ -250,7 +263,7 @@ Every password attempt, and anything else the players try that could go either w
 
 ## Retcon
 
-**↶ Retcon last response** (under the Speak button) undoes the agent's last response: its lines are removed from the players' screens, your log and the agent's memory, its station and crew-condition changes are reverted (damage, Wounds, armor, Bleeding and adversary damage included), and its effects end; clocks it started or stopped, handouts and found files it gave out, and screens it moved are put back. In a game with no Warden, a response that ended the story is taken back with its ending: the story is in play again, and anything the ending did (the recap, the campaign's pay, faction changes and downtime) is undone. Press it again to go back further (up to five responses). The player input or roll that prompted it stays, so you can prompt the agent again or narrate it yourself.
+**↶ Retcon last response** (under the Speak button) undoes the agent's last response: its lines are removed from the players' screens, your log and the agent's memory, its station and crew-condition changes are reverted (damage, Wounds, armor, Bleeding and adversary damage included), and its effects end; clocks it started or stopped, handouts and found files it gave out, crew messages it forged or rewrote, and screens it moved are put back. In a game with no Warden, a response that ended the story is taken back with its ending: the story is in play again, and anything the ending did (the recap, the campaign's pay, faction changes and downtime) is undone. Press it again to go back further (up to five responses). The player input or roll that prompted it stays, so you can prompt the agent again or narrate it yourself.
 
 ## Interrupting
 
