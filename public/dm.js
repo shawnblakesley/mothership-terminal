@@ -2106,7 +2106,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   $("soundPlaying").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList.contains("volpct")) e.target.blur(); });
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
-  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals"];
+  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "panicScreens", "playerTerminals"];
 
   const voicesOn = () => (S.config.discordTalk ? "discord" : S.config.tts !== false ? "screens" : "off");
   function renderVoicesOn() {
@@ -2155,6 +2155,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     el.addEventListener("blur", () => dirty.has(id) && save());
   }
   for (const id of ["theme", "talk", "provider", "model", "effort"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.value } }));
+  $("panicTryGo").onclick = () => send({ t: "panicShow", n: Number($("panicTry").value) });
   for (const id of [...SETTING_SWITCHES, "playerCreate", "createRerolls"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.checked } }));
   $("settingsBtn").onclick = () => $("settingsDialog").showModal();
 

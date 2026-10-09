@@ -1737,6 +1737,7 @@
         case "talking": talking = new Set(msg.ids); wardenTalking = !!msg.warden; showTalking(); break;
         case "isoMap": setIso(msg.map); break;
         case "rollResult": showRollResult(msg); break;
+        case "panicFx": PanicFx.play(msg, { me: mine(), crew, input, focusInput: () => { if (!spectate && !input.disabled && document.body.classList.contains("panel-open") === false) input.focus(); } }); break;
         case "roomPlan": showPlan(msg); break;
         case "sector": showSector(msg); break;
         case "flatline": if (msg.id === myId) flatline(); break;
