@@ -17,7 +17,7 @@ import { loaded, magazines, spendShot, reload, TANK, STORES } from "./resources.
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
 import { restAndRecover, downtimeLines } from "./downtime-lite.js";
-import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, crewIntoCampaign, crewFromCampaign, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory } from "./campaign.js";
+import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, crewIntoCampaign, crewFromCampaign, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory, stripFactionBrief } from "./campaign.js";
 import { transfer, ledgerLine, exact, DEBT_PAYMENT, DEBT_EVERY } from "./money.js";
 import { downtimeReady, planRoll, settleRoll, mirror, passDays, treat, treatmentList, shoreText, applyConversion } from "./downtime.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
@@ -32,7 +32,7 @@ import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRe
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { panicMessage, nearMessage } from "./panicscreen.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, effectiveAdvantage, PANIC, checkInfo } from "./rolls.js";
-import { ALL_EFFECTS, AGENT_EFFECTS, effectType, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
+import { ALL_EFFECTS, AGENT_EFFECTS, effectType, buildRequest, buildPrecheck, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
 const FREE_CALLS_PER_DAY = Number(process.env.FREE_CALLS_PER_DAY || 150);
 
@@ -197,7 +197,7 @@ export function defaultGame(keys = {}) {
       rooms: structuredClone(DEFAULT_ROOMS),
       startDocs: [WORK_ORDER],
       roomDocs: structuredClone(DEFAULT_ROOM_DOCS),
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "portraits-2", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", "trauma-notes", "industrial-equipment", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "portraits-2", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", "trauma-notes", "industrial-equipment", "faction-orders", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -404,6 +404,10 @@ function migrateGame(saved) {
       if (v && config.stationName === "KESTREL-9") v.adversary.stats = structuredClone(COLD_STATS);
     }
     config.upgrades.push("cold-combat");
+  }
+  if (!config.upgrades.includes("faction-orders")) {
+    for (const c of [config, saved.storyStart?.config].filter(Boolean)) if (typeof c.standingOrders === "string") c.standingOrders = stripFactionBrief(c.standingOrders);
+    config.upgrades.push("faction-orders");
   }
   config.roomDocs = sanitizeRoomDocs(config.roomDocs);
   if (!config.upgrades.includes("room-docs")) {
@@ -2169,7 +2173,7 @@ export class Session {
       let reply;
       for (let attempt = 1; ; attempt++) {
         try {
-          reply = limitLength(parseReply(await this.callModel(provider, request, "note"), s.config.voices), s.config.talk);
+          reply = parseReply(await this.callModel(provider, request, "note"), s.config.voices, s.config.talk);
           break;
         } catch (err) {
           if (!err.malformed || attempt >= 2) throw err;
@@ -3040,7 +3044,7 @@ export class Session {
       let reply;
       for (let attempt = 1; ; attempt++) {
         try {
-          reply = parseReply(await this.callModel(provider, request, "reply"), s.config.voices);
+          reply = parseReply(await this.callModel(provider, request, "reply"), s.config.voices, s.config.talk);
           break;
         } catch (err) {
           if (!err.malformed || attempt >= (provider.serverKeyOnly ? 3 : 2) || myGen !== this.genCounter) throw err;
