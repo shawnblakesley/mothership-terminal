@@ -609,3 +609,6 @@ details.sec > summary:hover h2 { color: var(--fg); }
 .cmplegend .lg.cur { border-color: var(--accent); background: var(--accent-ink); }
 .cmplegend .lg.ship { border: none; background: none; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 11px solid #7fe0ff; }
 @media (max-width: 900px) { .cmpgrid { display: flex; flex-direction: column; overflow-y: auto; } .cmpmapcol, .cmpside { overflow: visible; min-height: auto; flex: none; } }
+
+.sector .story.offered rect { stroke: var(--accent); stroke-width: 2.5; }
+.sector .story .vote { fill: var(--warn); font-size: 12px; }

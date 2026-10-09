@@ -21,7 +21,7 @@ export const placeOf = (c, story) => (story.at ? loc(c, story.at).name : `${loc(
 export const endsAt = (story) => story.at || story.to;
 
 export function newProgress(c) {
-  return { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew: sanitizeCrew(structuredClone(c.crew)), cast: {} };
+  return { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew: sanitizeCrew(structuredClone(c.crew)), cast: {}, offered: [] };
 }
 
 export function sanitizeProgress(p) {
@@ -44,6 +44,7 @@ export function sanitizeProgress(p) {
     startedAt: Number(p.startedAt) || Date.now(),
     at: loc(c, p.at) ? p.at : c.start,
     current: has(p.current) ? p.current : "",
+    offered: [...new Set(Array.isArray(p.offered) ? p.offered : [])].filter(has).slice(0, 9),
     done: (Array.isArray(p.done) ? p.done : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, outcome: String(d.outcome || "").slice(0, 1500), at: Number(d.at) || 0 })).slice(-100),
     crew: sanitizeCrew(Array.isArray(p.crew) && p.crew.length ? p.crew : structuredClone(c.crew)),
     cast,
@@ -231,3 +232,19 @@ export function finishInto(p, c, config, outcome) {
 }
 
 export const campaignList = () => CAMPAIGNS;
+
+// What the players' screens get of the sector: a whitelist, so nothing of a story's arc, adversary, secrets, cast or description can leak.
+export function sectorPayload(c, p) {
+  const at = loc(c, p.at) || loc(c, c.start);
+  const spot = (s) => (s.at ? loc(c, s.at) : { x: (loc(c, s.from).x + loc(c, s.to).x) / 2, y: (loc(c, s.from).y + loc(c, s.to).y) / 2 });
+  const story = (id) => c.stories.find((s) => s.id === id);
+  return {
+    t: "sector",
+    title: c.title,
+    ports: c.locations.map(({ id, name, kind, x, y, theme }) => ({ id, name, kind, x, y, theme })),
+    lanes: c.lanes.map(({ a, b, name, days, dark }) => ({ a, b, name, days, dark: !!dark })),
+    rig: { name: c.ship.name, at: at.id, x: at.x, y: at.y },
+    played: p.done.map((d) => story(d.id)).filter(Boolean).map(({ id, title }) => ({ id, title })),
+    offered: (p.offered || []).map(story).filter(Boolean).map(({ id, title, hook, job }) => ({ id, title, hook, job, ...(({ x, y }) => ({ x, y }))(spot(story(id))) })),
+  };
+}
