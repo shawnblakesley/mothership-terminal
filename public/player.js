@@ -743,6 +743,7 @@
         ${c.crime ? `<div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>` : ""}
         ${c.backstory ? `<div class="p-text">${escH(c.backstory)}</div>` : ""}
         ${c.trinket ? `<div><span class="cs-k">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
+        ${c.credits ? `<div><span class="cs-k">CREDITS</span> ${c.credits.toLocaleString("en-US")} CR</div>` : ""}
         ${c.patch ? `<div><span class="cs-k">PATCH</span> ${escH(c.patch)}</div>` : ""}
         ${header.trauma?.[c.className] ? `<div><span class="cs-k">TRAUMA RESPONSE</span> ${escH(header.trauma[c.className])}</div>` : ""}
       </div>`;
@@ -1090,7 +1091,7 @@
         <div class="p-dim p-crime">${escH(j.hook)}</div><div class="p-dim p-crime">${escH(j.job)}</div></li>`;
     }).join("") + `<li class="p-dim">TRAVEL (HOUSE RULE: 1 FUEL PER STARTED 3 DAYS)${jobs.low ? " · FUEL IS BELOW THE CHEAPEST LANE: REFUEL" : ""}</li>` + jobs.lanes.map((l) =>
       `<li>${isPilot ? `<button type="button" class="p-btn" data-travel="${escH(l.to)}">[ TRAVEL: ${escH(l.dest)} ]</button>` : `TRAVEL: ${escH(l.dest)}`}<span class="p-dim tags"> · ${escH(l.lane.toUpperCase())}, ${l.days} DAYS, ${l.cost} FUEL${l.short ? " · NOT ENOUGH FUEL" : ""}</span></li>`).join("")
-      + (isPilot && jobs.canRefuel ? `<li><button type="button" class="p-btn" data-refuel="1">[ REFUEL ${jobs.fuel}/${jobs.capacity} ]</button><span class="p-dim tags"> · FILLS THE TANK (HOUSE RULE, FREE WHILE CREDITS AREN'T TRACKED)</span></li>` : "");
+      + (isPilot && jobs.canRefuel ? `<li><button type="button" class="p-btn" data-refuel="1">[ REFUEL ${jobs.fuel}/${jobs.capacity} ]</button><span class="p-dim tags"> · ${jobs.fuelEach.toLocaleString("en-US")}CR A UNIT (HOUSE RULE), FROM THE RIG ACCOUNT&#58; ${jobs.money.toLocaleString("en-US")}CR</span></li>` : "");
     $("solopick-list").innerHTML = building ? "" : jobs ? board() : solo.pitches.map((p, i) => {
       const name = `[${i + 1}] ${escH(p.title.toUpperCase())}`;
       return `<li>${isPilot ? `<button type="button" class="p-btn pick" data-pick="${i}">${name}</button>` : name}<span class="p-dim tags"> · ${escH(p.tags.toUpperCase())}</span>
@@ -1109,7 +1110,7 @@
     const x = solo;
     $("ending-verdict").textContent = (x.recap?.verdict || "").toUpperCase();
     $("ending-how").textContent = x.ending ? x.ending.toUpperCase() : "";
-    const after = x.after && [...(x.after.factions.length ? [["Faction standing", x.after.factions.join("\n")]] : []), ["Downtime (short-term recovery and a Rest Save, rolled for the crew)", x.after.rest.join("\n")]];
+    const after = x.after && [...(x.after.pay?.length ? [["Pay", x.after.pay.join("\n")]] : []), ...(x.after.factions.length ? [["Faction standing", x.after.factions.join("\n")]] : []), ["Downtime (short-term recovery and a Rest Save, rolled for the crew)", x.after.rest.join("\n")]];
     $("ending-recap").innerHTML = [...(x.recap?.sections || []).map((s) => [s.heading, s.text]), ...(after || [])].map(([h, t]) => `<div class="rc-h">${escH(h.toUpperCase())}</div><div class="rc-t">${escH(t)}</div>`).join("");
     $("ending-status").innerHTML = x.busy === "recap" ? 'WRITING THE RECAP<span class="dots"></span>' : escH((x.error || "").toUpperCase());
     $("ending-again").hidden = !isPilot;

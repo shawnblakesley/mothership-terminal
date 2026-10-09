@@ -6,7 +6,7 @@ import { restAndRecover, downtimeLines } from "../downtime-lite.js";
 import { sanitizeCrew } from "../crew.js";
 
 const BANNED = ["acts", "adversary", "secrets", "affinity", "cast", "description", "persona", "factions", "faction", "crew", "notes", "outcome", "event", "horror", "tier"];
-const ALLOWED = ["port", "rig", "fuel", "capacity", "low", "canRefuel", "jobs", "lanes", "id", "title", "hook", "job", "where", "lane", "days", "cost", "short", "to", "dest"];
+const ALLOWED = ["port", "rig", "fuel", "capacity", "low", "canRefuel", "jobs", "lanes", "id", "title", "hook", "job", "where", "lane", "days", "cost", "short", "to", "dest", "money", "fuelEach"];
 const keys = (v, out = new Set()) => {
   if (Array.isArray(v)) v.forEach((x) => keys(x, out));
   else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { out.add(k); keys(x, out); }
@@ -102,6 +102,11 @@ test("the pilot can travel a lane, refuel, and is refused a lane the rig can't a
   s.handlePilot({ send() {} }, { t: "pilotJob", id: "deadhead" });
   assert.equal(x.phase, "pick");
   assert.match(x.error, /NOT ENOUGH FUEL/);
+  p.money = s.soloJobs().fuelEach * 2;
+  s.handlePilot({ send() {} }, { t: "pilotRefuel" });
+  assert.equal(p.resources.fuel, 2);
+  assert.equal(p.money, 0);
+  p.money = 100000;
   s.handlePilot({ send() {} }, { t: "pilotRefuel" });
   assert.equal(p.resources.fuel, 10);
   assert.equal(s.soloJobs().canRefuel, false);

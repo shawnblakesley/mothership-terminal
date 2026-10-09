@@ -16,8 +16,9 @@ import { HAZARDS, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, 
 import { loaded, magazines, spendShot, reload, TANK, STORES } from "./resources.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
-import { jobsAt, refuel, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView } from "./campaign.js";
 import { restAndRecover, downtimeLines } from "./downtime-lite.js";
+import { jobsAt, refuel, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory } from "./campaign.js";
+import { transfer, ledgerLine, exact, DEBT_PAYMENT, DEBT_EVERY } from "./money.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
@@ -1029,6 +1030,17 @@ export class Session {
     if (x?.phase === "play" && !x.opened && Object.keys(this.claims()).length) this.soloOpen();
   }
 
+  // The campaign's money lives on its own sheets; the story's copies follow it.
+  moneySync() {
+    const p = this.state.campaign;
+    if (!p) return;
+    for (const pc of this.state.config.crew) {
+      const q = p.crew.find((x) => x.id === pc.id);
+      if (q) pc.credits = q.credits;
+    }
+    this.crewChanged();
+  }
+
   crewById(id) { return this.state.config.crew.find((c) => c.id === id); }
   characterOf(ws) { return this.crewById(ws.character) || null; }
 
@@ -1522,6 +1534,9 @@ export class Session {
         this.sectorVotes.clear();
         this.sectorSync();
         this.addLog("note", `Campaign started: ${c.title}. Pick its first story on the sector map.`);
+        for (const e of s.campaign.ledger) this.addLog("note", ledgerLine(s.campaign, e));
+        this.addLog("note", `The rig carries a ${exact(s.campaign.debt)} note to Gallow-Mercer Finance, ${exact(DEBT_PAYMENT)} due every ${DEBT_EVERY} finished stories (house rule).`);
+        this.moneySync();
         break;
       }
       case "campaignPlay":
@@ -1532,6 +1547,12 @@ export class Session {
         const done = c && finishInto(s.campaign, c, s.config, msg.outcome, msg.affinity, s.station);
         if (done) {
           const { story, changes } = done;
+          const paid = settleStory(s.campaign, c, story, { delivery: msg.delivery, late: !!msg.late, skipDues: !!msg.skipDues, fee: msg.fee });
+          changes.push(...paid.changes);
+          for (const line of paid.lines) this.addLog("note", line);
+          for (const e of paid.entries) this.addLog("note", ledgerLine(s.campaign, e));
+          if (paid.handout) this.giveHandout(paid.handout);
+          this.moneySync();
           this.addLog("note", `Campaign story finished: ${story.title}.${s.campaign.done.at(-1).outcome ? ` ${s.campaign.done.at(-1).outcome}` : ""}`);
           for (const ch of changes) this.addLog("note", `Faction standing (house rule): ${ch.name} ${standingLabel(ch.from)} to ${standingLabel(ch.to)}${ch.why ? ` (${ch.why})` : ""}.`);
         }
@@ -1552,12 +1573,24 @@ export class Session {
       }
       case "campaignBuy": {
         const c = campaignById(s.campaign?.id);
-        const r = c && resupply(s.campaign, c, { to: String(msg.to || ""), lines: msg.lines, ammoFor: String(msg.ammoFor || ""), fuelPrice: msg.fuelPrice });
+        const r = c && resupply(s.campaign, c, { to: String(msg.to || ""), lines: msg.lines, ammoFor: String(msg.ammoFor || ""), fuelPrice: msg.fuelPrice, pay: String(msg.pay || "rig") });
         if (!r) break;
         if (!r.ok) this.send("dm", { t: "toast", level: "error", text: r.error });
         else {
-          this.addLog("note", `Resupply at ${r.at}: ${r.bought.join(", ") || "nothing"}${r.to ? ` (carried by ${r.to})` : ""}. Total ${r.total.toLocaleString("en-US")}cr: the Warden takes the credits.${r.fuelFree ? " (No fuel price was set: the fuel was free.)" : ""}`);
+          this.addLog("note", `Resupply at ${r.at}: ${r.bought.join(", ") || "nothing"}${r.to ? ` (carried by ${r.to})` : ""}. Total ${exact(r.total)}.${r.fuelFree ? " (No fuel price was set: the fuel was free.)" : ""}`);
+          for (const e of r.entries) this.addLog("note", ledgerLine(s.campaign, e));
+          this.moneySync();
           this.sendHeader();
+        }
+        break;
+      }
+      case "campaignMoney": {
+        const p = s.campaign, r = p && transfer(p, { from: String(msg.from || ""), to: String(msg.to || ""), amount: msg.amount, what: String(msg.what || "") });
+        if (!r) break;
+        if (!r.ok) this.send("dm", { t: "toast", level: "error", text: r.error });
+        else {
+          for (const e of r.entries) this.addLog("note", ledgerLine(p, e));
+          this.moneySync();
         }
         break;
       }
@@ -1616,6 +1649,7 @@ export class Session {
         const was = new Map(s.config.crew.map((c) => [c.id, c]));
         s.config.crew = sanitizeCrew(msg.crew);
         for (const pc of s.config.crew) if (was.has(pc.id)) Object.assign(pc, { cond: was.get(pc.id).cond, endedIn: was.get(pc.id).endedIn, finalWords: was.get(pc.id).finalWords, epitaph: was.get(pc.id).epitaph });
+        if (s.campaign) for (const pc of s.config.crew) pc.credits = s.campaign.crew.find((x) => x.id === pc.id)?.credits ?? pc.credits;
         this.crewChanged();
         break;
       }
@@ -1951,12 +1985,16 @@ export class Session {
     let carried;
     this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config, station) => { carried = carryInto(config, c, story, p, station); }, true);
     p.current = story.id;
+    const up = payUpfront(p, c, story);
     p.offered = (p.offered || []).filter((x) => x !== story.id);
     this.sectorVotes.clear();
     this.sectorShown = false;
     this.sectorSync();
     this.addLog("note", `${c.title}, story ${story.n}: ${story.title} (${placeOf(c, story)}). The arc is in the standing orders.`);
     if (carried?.lane) this.addLog("note", `The lane ${carried.lane.name} (${carried.lane.days} days) burns ${carried.burned} fuel (house rule); the rig has ${p.resources.fuel} left.${p.resources.fuel <= 0 ? " The rig is out of fuel: stranded." : ""}`);
+    for (const line of up.lines) this.addLog("note", line);
+    for (const e of up.entries) this.addLog("note", ledgerLine(p, e));
+    if (up.entries.length) this.moneySync();
     this.syncHazards();
     this.sendHeader();
   }
@@ -2928,6 +2966,9 @@ export class Session {
     this.state.campaign = newProgress(c);
     Object.assign(x, { campaign: true, error: "", after: null });
     this.addLog("note", `Campaign started: ${c.title} (no Warden). The pilot picks the jobs.`);
+    for (const e of this.state.campaign.ledger) this.addLog("note", ledgerLine(this.state.campaign, e));
+    this.addLog("note", `The rig carries a ${exact(this.state.campaign.debt)} note to Gallow-Mercer Finance, ${exact(DEBT_PAYMENT)} due every ${DEBT_EVERY} finished stories (house rule).`);
+    this.moneySync();
     this.soloChanged();
     this.syncDm();
   }
@@ -2966,16 +3007,22 @@ export class Session {
     if (!done) return;
     this.addLog("note", `Campaign story finished: ${story.title}.${p.done.at(-1).outcome ? ` ${p.done.at(-1).outcome}` : ""}`);
     const factions = done.changes.map((ch) => `${ch.name}: ${standingLabel(ch.from)} to ${standingLabel(ch.to)}${ch.why ? ` (${ch.why})` : ""}.`);
+    const paid = settleStory(p, c, story, { delivery: x.delivery?.delivery ?? "none", late: !!x.delivery?.late });
+    factions.push(...paid.changes.map((ch) => `${ch.name}: ${standingLabel(ch.from)} to ${standingLabel(ch.to)}${ch.why ? ` (${ch.why})` : ""}.`));
     for (const l of factions) this.addLog("note", `Faction standing (house rule): ${l}`);
+    for (const line of paid.lines) this.addLog("note", line);
+    for (const e of paid.entries) this.addLog("note", ledgerLine(p, e));
+    if (paid.handout) this.giveHandout(paid.handout);
+    this.moneySync();
     const rest = downtimeLines(restAndRecover(p.crew));
     this.addLog("note", `Downtime between stories (short-term recovery and a Rest Save for each, rolled for them):\n${rest.join("\n")}`);
-    x.after = { factions, rest };
+    x.after = { factions, rest, pay: paid.lines };
   }
 
   async soloEnd(how) {
     const x = this.state.solo;
     if (!x || x.phase !== "play") return;
-    Object.assign(x, { phase: "ended", ending: String(how || "").slice(0, 300), recap: null, earned: [], after: null, busy: "recap", error: "" });
+    Object.assign(x, { phase: "ended", ending: String(how || "").slice(0, 300), recap: null, earned: [], delivery: null, after: null, busy: "recap", error: "" });
     this.dropReply();
     for (const c of [...this.state.clocks]) this.stopClock(c.id, true);
     this.clocksChanged();
@@ -2984,9 +3031,10 @@ export class Session {
     try {
       const p = this.state.campaign, c = campaignById(p?.id), story = x.campaign && c?.stories.find((t) => t.id === p.current);
       const stakes = story ? (story.affinity || []).map((a) => ({ ...a, name: c.factions.find((f) => f.id === a.faction)?.name || a.faction })) : [];
-      const raw = await this.ask(recapRequest(this.state, x.ending, stakes), "synopsis");
+      const raw = await this.ask(recapRequest(this.state, x.ending, story && { stakes, job: story.job, late: !!story.late }), "synopsis");
       x.recap = normalizeRecap(raw);
       x.earned = Array.isArray(raw?.earned) ? raw.earned.map(Number) : [];
+      x.delivery = { delivery: raw?.delivery, late: raw?.late === true };
     } catch (err) {
       x.error = `Couldn't write the recap (${err?.message || err}).`;
     }
@@ -3073,7 +3121,9 @@ export class Session {
           const at = (id) => c.locations.find((l) => l.id === id).name;
           this.addLog("note", r.lane
             ? `${c.ship.name} noses out of ${at(r.from)} and runs ${r.lane.name} (${r.lane.days} days) to ${at(p.at)}: ${r.cost} fuel (house rule), ${r.left} left.`
-            : `${c.ship.name} takes on ${r.added} units of fuel at ${r.at} (house rule: free until credits are tracked); the tank is full.`);
+            : `${c.ship.name} takes on ${r.added} units of fuel at ${r.at} (house rule: 500cr a unit, times the port's multiplier). Total ${exact(r.total)}.`);
+          for (const e of r.entries || []) this.addLog("note", ledgerLine(p, e));
+          if (r.entries) this.moneySync();
         }
         this.soloChanged();
         this.syncDm();
