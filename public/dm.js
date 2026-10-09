@@ -98,7 +98,7 @@
     const r = Speech.ready, on = localVoices();
     $("localVoices").checked = on;
     $("localVoicesNote").textContent = !on ? "off: the server makes them"
-      : `${r.espeak ? "ready" : "starting"}; human voices ${r.neural ? "ready" : "loading (a one-time download)"}`;
+      : `${r.espeak ? "ready" : "starting"}; human voices ${r.neural ? "ready" : r.neuralFailed ? "made by the server (they didn't sound right in this browser)" : "loading (a one-time download)"}`;
     if (!on) return send({ t: "voiceEngine", on: false });
     Speech.start(announceVoices);
     send({ t: "voiceEngine", on: r.espeak, neural: r.neural });
