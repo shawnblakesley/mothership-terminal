@@ -158,6 +158,11 @@
     const div = document.createElement("div");
     div.className = `line ${entry.kind}`;
     div.dataset.id = entry.id;
+    if (entry.kind === "msg") {
+      div.classList.add("style-label", entry.dir);
+      div.dataset.label = entry.dir === "in" ? `FROM ${shortName({ name: entry.peer })} @ ${entry.at}: ` : `TO ${shortName({ name: entry.peer })}: `;
+      return div;
+    }
     if (entry.kind === "player") {
       if (stream) whereTag(entry);
       div.dataset.prompt = stream ? `${entry.by ? shortName({ name: entry.by }) : "CREW"}@${sysOf(entry.net) || header.stationName}> ` : `${promptText()} `;
@@ -290,10 +295,47 @@
     const entry = forMe(raw);
     if (!entry) return;
     const div = makeLine(entry);
-    textOf(div).textContent = entry.text;
+    textOf(div).textContent = shownText(entry);
+    if (entry.kind === "msg") div.dataset.raw = entry.text;
     if (stream) addVariants(div, entry);
     div.classList.add("done");
     linesEl.append(div);
+  }
+
+  // A message on a flickering, cracked or dim screen arrives with the odd corrupted character (the same ones every time it is drawn).
+  const GLITCH = "#%&@?/*|<>";
+  function shownText(entry) {
+    if (entry.kind !== "msg" || entry.dir !== "in" || !(myTerm()?.look || []).some((l) => ["flicker", "crack", "dim"].includes(l))) return entry.text;
+    let h = (Number(entry.id) * 2654435761) >>> 0;
+    return [...entry.text].map((ch) => {
+      h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+      return /\s/.test(ch) || (h >>> 4) % 22 ? ch : GLITCH[(h >>> 12) % GLITCH.length];
+    }).join("");
+  }
+  const peers = () => crew.filter((c) => c.id !== myId && !gone(c));
+  function msgNote(text, cls) {
+    const div = document.createElement("div");
+    div.className = `line msg ${cls}`;
+    div.dataset.label = "> ";
+    div.classList.add("style-label");
+    div.textContent = text;
+    linesEl.append(div);
+    scrollDown();
+  }
+  function showMsg(entry) {
+    renderInstant(entry);
+    scrollDown();
+    if (entry.dir === "in") FX.Sound.beep(880, 0.12, 0.08);
+  }
+  function sendMsg(rest) {
+    const text = rest.trim();
+    const names = peers().flatMap((c) => [c.name, shortName(c)]).sort((a, b) => b.length - a.length);
+    const low = text.toLowerCase();
+    const full = names.find((n) => low.startsWith(`${n.toLowerCase()} `));
+    const to = full || text.split(/\s+/)[0] || "";
+    const body = text.slice(to.length).trim();
+    if (!to || !body) return msgNote("USAGE: /MSG NAME TEXT", "fail");
+    send({ t: "msg", to, text: body });
   }
 
   let lineGen = 0;
@@ -492,6 +534,8 @@
     placeCaret();
     FX.Sound.beep(1400, 0.03, 0.04);
     if (/^(clear|cls)$/i.test(text)) { linesEl.innerHTML = ""; return; }
+    const m = /^\/(?:msg|m)(?:\s+(.*))?$/i.exec(text);
+    if (m) return sendMsg(m[1] || "");
     send({ t: "input", text });
     sentAt = Date.now();
     updateBusy();
@@ -573,7 +617,7 @@
 
   function openPanel(id) {
     if (id !== "docs") stopLog();
-    for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "solopick", "docs", "ending", "chargen"]) $(p).hidden = p !== id;
+    for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "msgpick", "solopick", "docs", "ending", "chargen"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
     renderDead();
     if (id === "crewpick" && bootEl.classList.contains("gone")) focusPick();
@@ -602,6 +646,7 @@
     $("hdr-file").hidden = $("hdr-file-sep").hidden = spectate || !crew.length;
     $("hdr-file").textContent = pc ? `FILE: ${shortName(pc)}${gone(pc) ? ` (${gone(pc).toUpperCase()})` : ""}` : "FILE: NONE";
     $("hdr-memo").hidden = $("hdr-memo-sep").hidden = spectate || !crew.some(gone);
+    $("hdr-msg").hidden = $("hdr-msg-sep").hidden = spectate || !pc || !!gone(pc) || !peers().length;
     if (!$("memorialfx").hidden) renderMemorial();
     $("crewfile-new").hidden = !(pc && gone(pc) && !pc.replacedBy);
     renderDead();
@@ -1355,6 +1400,29 @@
     $("termpick-list").querySelector("button")?.focus();
   };
   $("termpick-close").onclick = () => openPanel(null);
+  function renderMsgPick() {
+    $("msgpick-list").innerHTML = peers().map((c, i) => `<li><button type="button" class="p-btn" data-msg-to="${escH(shortName(c))}">[${i + 1}] ${escH(shortName(c))}</button></li>`).join("");
+  }
+  function pickMsg(name) {
+    openPanel(null);
+    input.value = `/msg ${name} `;
+    input.focus();
+    placeCaret();
+  }
+  $("hdr-msg").onclick = () => {
+    if (!$("msgpick").hidden) return openPanel(null);
+    renderMsgPick();
+    openPanel("msgpick");
+    $("msgpick-list").querySelector("button")?.focus();
+  };
+  $("msgpick-close").onclick = () => openPanel(null);
+  $("msgpick-list").addEventListener("click", (e) => { const n = e.target.closest("[data-msg-to]")?.dataset.msgTo; if (n) pickMsg(n); });
+  addEventListener("keydown", (e) => {
+    if ($("msgpick").hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === "Escape") return openPanel(null);
+    const c = peers()[Number(e.key) - 1];
+    if (c) { e.preventDefault(); pickMsg(shortName(c)); }
+  });
   function pickTerm(id) {
     const t = terminals().find((x) => x.id === id);
     if (!t || !t.open || header.moveTerminals === false) return;
@@ -1862,6 +1930,13 @@
           break;
         case "coldopen": playColdOpen(msg); break;
         case "line": enqueue(msg.entry); break;
+        case "msg": showMsg(msg.entry); break;
+        case "msgEdit": {
+          const div = linesEl.querySelector(`.line.msg[data-id="${msg.id}"]`);
+          if (div) textOf(div).textContent = shownText({ id: msg.id, kind: "msg", dir: "in", text: msg.text });
+          break;
+        }
+        case "msgFail": msgNote(`MESSAGE NOT SENT: ${msg.text}`, "fail"); FX.Sound.beep(200, 0.15, 0.08); break;
         case "part": onPart(msg); break;
         case "interrupt": onInterrupt(msg); break;
         case "terminalSet": setTerminal(msg.id, false); break;

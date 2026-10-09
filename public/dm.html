@@ -396,6 +396,12 @@
                 <option value="disadvantage">[−] Disadvantage</option>
               </select>
             </label>
+            <label id="rollWeaponWrap" hidden>Weapon
+              <select id="rollWeapon" title="Only for a Combat check by one character"></select>
+            </label>
+            <label id="rollRangeWrap" hidden>Range
+              <select id="rollRange" title="A Smart Rifle has [-] on the Combat check at Close Range"><option value="">Not stated</option><option value="adjacent">Adjacent</option><option value="close">Close</option><option value="long">Long</option><option value="extreme">Extreme</option></select>
+            </label>
             <label>What for (players see this)
               <input id="rollReason" placeholder="bypass a lock">
             </label>
@@ -416,6 +422,9 @@
             <label>Attacker <select id="atkBy"></select></label>
             <label><span id="atkWithLabel">Attack</span> <select id="atkWith"></select></label>
             <label>Target <select id="atkTarget"></select></label>
+            <label id="atkRangeWrap" hidden>Range
+              <select id="atkRange" title="A Combat Shotgun does 1d10 at Long Range or further"><option value="">Not stated</option><option value="adjacent">Adjacent</option><option value="close">Close</option><option value="long">Long</option><option value="extreme">Extreme</option></select>
+            </label>
             <label id="atkAdvWrap" hidden>Damage [+] / [−]
               <select id="atkAdv"><option value="">Normal</option><option value="+">[+] Advantage</option><option value="-">[−] Disadvantage</option></select>
             </label>
@@ -445,6 +454,20 @@
             <button id="clockStart">Start</button>
           </div>
           <ul id="clockList" class="fxlist"></ul>
+        </div>
+
+        <h2>Crew messages <span class="hint" title="Players message each other's terminals (same system only). You see every one here. Hold a player's next message, change what its reader sees (the sender never knows), or forge one from any crew member. A forged or changed message looks exactly like a real one to the players.">?</span></h2>
+        <div class="card stack" id="msgCard">
+          <div class="row wrap small muted">Hold the next message from <select id="msgHoldPc" aria-label="Player"></select>
+            <label>delay <input id="msgHoldSecs" type="number" min="0" max="3600" value="30" aria-label="Seconds"> s</label>
+            <label title="0 seconds holds it until you release it"><input id="msgHoldNever" type="checkbox"> never arrives</label>
+            <button id="msgHold">Hold</button></div>
+          <ul id="msgHolds" class="fxlist"></ul>
+          <div class="row wrap small muted">Forge one: from <select id="msgAs" aria-label="Appears to come from"></select> to <select id="msgTo" aria-label="Goes to"></select></div>
+          <textarea id="msgText" rows="2" maxlength="500" placeholder="What it says" aria-label="Forged message"></textarea>
+          <div class="row"><button id="msgForge">Forge it</button></div>
+          <div class="small muted">Recent messages</div>
+          <ul id="msgList" class="fxlist"></ul>
         </div>
 
         <h2>Effects <span class="hint" title="Screen effects on every player's screen.">?</span></h2>

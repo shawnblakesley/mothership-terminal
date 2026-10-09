@@ -7,16 +7,16 @@ export const ROUND_SECONDS = 10;
 const SURVIVAL = "PSG 32-33 (Survival)";
 const STORY = "story hazard";
 
-// kind "psg" is a Mothership 1e rule (RULES.md); "story" hazards are not Mothership rules: the generic rule applies (a Save or Check; failure = +1 Stress and the consequence the story names).
+// kind "psg" is a Mothership 1e rule (RULES.md); "house" is this campaign's own ruling where RULES.md is silent; "story" hazards are not Mothership rules: the generic rule applies (a Save or Check; failure = +1 Stress and the consequence the story names).
 export const HAZARDS = {
-  vacuum: { name: "Vacuum", kind: "psg", source: SURVIVAL, per: "round", check: null, protect: "a sealed vaccsuit, hazard suit or advanced battle dress while its air lasts; androids need no oxygen", rule: "No oxygen: 15 seconds, then unconscious. 1d5 minutes later, dead. A punctured vaccsuit decompresses within 1d5 rounds." },
-  oxygen: { name: "Life support offline", kind: "psg", source: SURVIVAL, per: "24 hours", check: "body", protect: "androids, people in cryosleep, anyone on their own oxygen (sealed suit, oxygen tank)", rule: "Oxygen supply = 1d10 x the ship's max crew. Every 24 hours subtract the breathing crew (2 more each for strenuous activity). Supply under 2x breathing crew: [-] on all rolls. Under the breathing crew: Body Save or Death Save. Supply gone: as no oxygen." },
-  toxic: { name: "Toxic atmosphere", kind: "psg", source: SURVIVAL, per: "round", check: "body", damage: "1d10", protect: "a rebreather, a sealed suit or own oxygen", rule: "Without a rebreather or own oxygen: 1d10 Damage per round; a Body Save halves it." },
+  vacuum: { name: "Vacuum", kind: "psg", source: SURVIVAL, per: "round", check: null, protect: "a vaccsuit, hazard suit or advanced battle dress that is worn (not carried), sealed, while its air lasts; androids need no oxygen", rule: "No oxygen: 15 seconds, then unconscious. 1d5 minutes later, dead. A punctured vaccsuit decompresses within 1d5 rounds." },
+  oxygen: { name: "Life support offline", kind: "psg", source: SURVIVAL, per: "24 hours", check: "body", protect: "androids, people in cryosleep, anyone on their own oxygen (a worn sealed suit, oxygen tank)", rule: "Oxygen supply = 1d10 x the ship's max crew. Every 24 hours subtract the breathing crew (2 more each for strenuous activity). Supply under 2x breathing crew: [-] on all rolls. Under the breathing crew: Body Save or Death Save. Supply gone: as no oxygen." },
+  toxic: { name: "Toxic atmosphere", kind: "psg", source: SURVIVAL, per: "round", check: "body", damage: "1d10", protect: "a rebreather, a worn sealed suit or own oxygen", rule: "Without a rebreather or own oxygen: 1d10 Damage per round; a Body Save halves it." },
   corrosive: { name: "Corrosive atmosphere", kind: "psg", source: SURVIVAL, per: "round", check: null, damage: "level", levels: [1, 10], levelLabel: "1 mild to 10 high", rule: "1 (mild) to 10 (high) Damage per round." },
-  radiation: { name: "Radiation", kind: "psg", source: SURVIVAL, per: "round", check: "body", levels: [1, 3], levelLabel: "1 trace, 2 acute, 3 lethal", protect: "armor with radiation shielding (vaccsuit, hazard suit, advanced battle dress)", rule: "Level 1 Trace: nothing immediate. Level 2 Acute: all Stats and Saves -1 every round. Level 3 Lethal: every round a Body Save or a lethal dose (death in 1d5 days). Radiation Pills: 1d5 Damage, Radiation Level -1 for 2d10 minutes." },
+  radiation: { name: "Radiation", kind: "psg", source: SURVIVAL, per: "round", check: "body", levels: [1, 3], levelLabel: "1 trace, 2 acute, 3 lethal", protect: "worn armor with radiation shielding (vaccsuit, hazard suit, advanced battle dress)", rule: "Level 1 Trace: nothing immediate. Level 2 Acute: all Stats and Saves -1 every round. Level 3 Lethal: every round a Body Save or a lethal dose (death in 1d5 days). Radiation Pills: 1d5 Damage, Radiation Level -1 for 2d10 minutes." },
   cold: { name: "Extreme cold", kind: "psg", source: SURVIVAL, per: "hour", check: "body", protect: "a hazard suit", rule: "Sub-zero and not dressed for it: Body Save every hour or succumb. This app reads succumb as a Death Save on a failure." },
   heat: { name: "Extreme heat", kind: "psg", source: SURVIVAL, per: "hour", check: "body", protect: "a hazard suit", rule: "Over 40 C: Body Save every hour or succumb. This app reads succumb as a Death Save on a failure." },
-  fire: { name: "Fire", kind: "psg", source: "PSG 14-15, 29 (flamethrower, Wounds Table)", per: "round", check: null, damage: "2d10", wound: "fire", rule: "This app's reading of the flamethrower's burning: anyone in the room is set on fire, 2d10 Damage per round (Fire & Explosives) until put out." },
+  fire: { name: "Fire", kind: "house", source: "PSG 14-15, 29 (the Flamethrower and the Wounds Table; the Guide has no room-fire rule)", per: "round", check: "body", advantage: "disadvantage", damage: "2d10", wound: "fire", rule: "This app's house rule, borrowed from the Flamethrower (Body Save [-] or set on fire, 2d10 Damage per round): the Player's Survival Guide has no room-fire rule. Each round anyone in the room who is not already burning makes a Body Save [-] or is set on fire: 2d10 Damage per round (Fire & Explosives), 3d10 after a Body on fire Wound, until put out. Armor and DR apply to the burning (only Bleeding ignores them)." },
   explosion: { name: "Explosion", kind: "psg", source: "SBT Hull Breach (secondary summary)", per: "event", check: "body", wound: "fire", rule: "This app uses the SBT Hull Breach result for an explosion: everyone in the room makes a Body Save or takes 1 Wound (Fire & Explosives); a Critical Failure is sucked into space (vacuum)." },
   breach: { name: "Hull breach", kind: "psg", source: "SBT Hull Breach (secondary summary)", per: "event", check: "body", wound: "fire", rule: "Everyone aboard: Body Save or take 1 Wound (Fire & Explosives). A Critical Failure is sucked into space (vacuum)." },
   contagion: { name: "Contagion", kind: "story", source: STORY, per: "exposure", check: "body", rule: "Body Save on each exposure. Failure: infected, a Condition the story defines." },
@@ -31,6 +31,7 @@ export const HAZARDS = {
   infohazard: { name: "Infohazard", kind: "story", source: STORY, per: "exposure", check: "sanity", rule: "Sanity Save on each exposure. Failure: 1 more Stress than the usual, and the story's consequence." },
   temporal: { name: "Temporal anomaly", kind: "story", source: STORY, per: "exposure", check: "sanity", rule: "Sanity Save on each loop. Failure: the story's consequence." },
 };
+export const hazardTag = (info) => (info.kind === "psg" ? "Mothership rule" : info.kind === "house" ? "house rule" : "story hazard");
 export const hazardInfo = (type) => HAZARDS[type] || null;
 export const WOUND_COLUMN = WOUND_LABELS;
 
@@ -45,13 +46,15 @@ const d = (sides) => crypto.randomInt(1, sides + 1);
 export const rollDice = (n, sides, rng = d) => Array.from({ length: n }, () => rng(sides)).reduce((a, b) => a + b, 0);
 
 const isAndroid = (pc) => pc.className === "Android";
-const gear = (pc) => [...(pc.items || []), typeof pc.armor === "string" ? pc.armor : pc.armor?.destroyed ? "" : pc.armor?.name].filter(Boolean).map(String);
+const gear = (pc) => (pc.items || []).map(String);
 const SUITS = [
   { re: /vacc?\s?suit/i, name: "vaccsuit", hours: 12, temp: false },
   { re: /hazard suit/i, name: "hazard suit", hours: 1, temp: true },
   { re: /advanced battle dress/i, name: "advanced battle dress", hours: 1, temp: false },
 ];
-const suitsOf = (pc) => gear(pc).filter((g) => !/punctured/i.test(g)).map((g) => SUITS.find((s) => s.re.test(g))).filter(Boolean);
+// Only the armor on their back seals them in: a suit in the pack, or a destroyed one, protects nothing (RULES.md Armor: one is worn at a time).
+const worn = (pc) => (typeof pc.armor === "string" ? pc.armor : pc.armor?.destroyed ? "" : pc.armor?.name) || "";
+const suitsOf = (pc) => [worn(pc)].filter((g) => g && !/punctured/i.test(g)).map((g) => SUITS.find((s) => s.re.test(g))).filter(Boolean);
 const hasGear = (pc, re) => gear(pc).some((g) => re.test(g));
 export const TANK_HOURS = { normal: 12, strain: 4 };
 
@@ -96,7 +99,7 @@ export function conditionText(pc) {
     c.out && !c.dead && "UNCONSCIOUS (no air)",
     !c.out && c.vac > 0 && `NO AIR for ${c.vac} seconds`,
     c.spaced && "SUCKED INTO SPACE",
-    c.fire && "ON FIRE: 2d10 Damage per round",
+    c.fire && `ON FIRE: ${c.burn || 2}d10 Damage per round`,
     c.bleeding > 0 && `BLEEDING ${c.bleeding}: ${c.bleeding} Damage per round`,
     c.leak ? "SUIT PUNCTURED: decompressed" : c.puncture > 0 && `SUIT PUNCTURED: decompresses in ${c.puncture} round${c.puncture > 1 ? "s" : ""}`,
     c.rad > 0 && `RADIATION: -${c.rad} to all Stats and Saves`,
@@ -105,7 +108,7 @@ export function conditionText(pc) {
     c.cryo > 0 && `[-] CRYOSICKNESS: ${Math.ceil(c.cryo / 24)} day${c.cryo > 24 ? "s" : ""} left`,
     c.boost > 0 && `[+] STIMPAK: about ${Math.ceil(c.boost / 6)} minute${c.boost > 6 ? "s" : ""} left`,
     c.stims.length > 0 && `STIMPAK DOSES in the last 24 hours: ${c.stims.length}`,
-    c.air > 0 && airText(pc),
+    c.air > 0 && !isAndroid(pc) && airText(pc),
     c.cryosleep && "IN CRYOSLEEP",
     c.active >= 24 ? "[-] EXHAUSTED: 24+ hours without rest" : c.active > 12 && "EXHAUSTED: Body Save every hour",
     c.fed >= 504 ? "STARVING: about 3 weeks without food" : c.fed >= 24 && "[-] NO FOOD for 24+ hours",
@@ -220,8 +223,8 @@ export function roundTick(pc, here, rng = d) {
   const types = new Set(here.map((h) => h.type));
   if (c.puncture > 0 && --c.puncture === 0) { c.leak = true; events.push("suit decompressed"); }
   if (c.bleeding > 0) damage.push({ n: c.bleeding, type: "bleeding", why: `Bleeding ${c.bleeding}` });
-  if (types.has("fire") && !c.fire) { c.fire = true; events.push("is on fire"); }
-  if (c.fire) damage.push({ n: rollDice(2, 10, rng), type: "fire", why: "on fire" });
+  if (types.has("fire") && !c.fire) needs.push(need(pc, "fire", "body", { advantage: HAZARDS.fire.advantage, reason: "FIRE (HOUSE RULE): BODY SAVE [-] OR SET ON FIRE" }));
+  if (c.fire) damage.push({ n: rollDice(c.burn || 2, 10, rng), type: "fire", why: "on fire", armor: true });
   if (c.pills > 0) c.pills--;
   if (c.boost > 0) c.boost--;
   if (c.dying > 0 && --c.dying === 0) { c.dead = "dying"; events.push("dead"); }
@@ -306,6 +309,9 @@ export function settle(pc, n, result, rng = d) {
       if (!ok && !c.lethal) { c.lethal = 24 * rng(5); out.text = `lethal radiation dose: dead in ${c.lethal / 24} day${c.lethal > 24 ? "s" : ""}`; }
       else if (!ok) out.text = "another lethal dose";
       break;
+    case "fire":
+      if (!ok) { c.fire = true; out.text = "is set on fire: 2d10 Damage per round until put out"; }
+      break;
     case "cold": case "heat": case "oxygen":
       if (!ok) { out.deathSave = true; out.text = `${n.kind === "oxygen" ? "short of air" : `succumbs to the ${n.kind}`}: Death Save`; }
       break;
@@ -359,7 +365,7 @@ export function hazardBrief(station, crew) {
   const hz = station?.hazards || {};
   const lines = Object.entries(hz).map(([room, h]) => {
     const info = HAZARDS[h.type];
-    return `- ${room}: ${info.name}${h.level ? ` level ${h.level}` : ""}${h.type === "oxygen" ? `, oxygen supply ${h.supply}` : ""} (${info.kind === "psg" ? "Mothership rule" : "story hazard"}): ${info.rule}`;
+    return `- ${room}: ${info.name}${h.level ? ` level ${h.level}` : ""}${h.type === "oxygen" ? `, oxygen supply ${h.supply}` : ""} (${hazardTag(info)}): ${info.rule}`;
   });
   const sick = crew.map((pc) => [pc, conditionText(pc)]).filter(([, t]) => t.length).map(([pc, t]) => `- ${pc.name}: ${t.join("; ")}`);
   return { lines, sick };

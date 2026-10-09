@@ -11,7 +11,7 @@ export const CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
 export const STATS = ["strength", "speed", "intellect", "combat"];
 export const SAVES = ["sanity", "fear", "body"];
 
-const COND_NUMBERS = { vac: 0, deadAt: 0, air: 0, puncture: 0, rad: 0, pills: 0, lethal: 0, bleeding: 0, active: 0, fed: 0, cryo: 0, dying: 0, boost: 0 };
+const COND_NUMBERS = { burn: 0, vac: 0, deadAt: 0, air: 0, puncture: 0, rad: 0, pills: 0, lethal: 0, bleeding: 0, active: 0, fed: 0, cryo: 0, dying: 0, boost: 0 };
 const COND_FLAGS = ["out", "leak", "fire", "thirsty", "cryosleep", "strenuous", "spaced"];
 export const newCond = () => ({ ...COND_NUMBERS, ...Object.fromEntries(COND_FLAGS.map((k) => [k, false])), dead: "", tags: [], stims: [] });
 export function sanitizeCond(c) {
@@ -270,7 +270,12 @@ function applyWound(pc, w, rng) {
     pc.deathSaveIn = Math.min(pc.deathSaveIn || Infinity, rollDice("1d10", rng).total);
     done.push(`Death Save in ${pc.deathSaveIn} rounds unless dealt with`);
   }
-  if (w.burn) done.push(`on fire: ${w.burn} Damage per round until put out (the Warden applies it)`);
+  if (w.burn) {
+    pc.cond ||= newCond();
+    pc.cond.fire = true;
+    pc.cond.burn = Math.max(pc.cond.burn || 2, Number.parseInt(w.burn, 10));
+    done.push(`on fire: ${pc.cond.burn}d10 Damage per round until put out`);
+  }
   return done;
 }
 

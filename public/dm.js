@@ -335,6 +335,7 @@
     renderCombat();
     renderSounds();
     renderClocks();
+    renderMessages();
     renderHazards();
     renderShip();
     renderHandouts();
@@ -437,6 +438,10 @@
     const who = (name) => (e.inPerson && e.character ? `${e.character} (in person)` : e.character ? `${name} · ${e.character}` : name);
     switch (e.kind) {
       case "player": return { name: e.by ? `Player · ${e.by}` : "Players", c: "var(--player)" };
+      case "msg": {
+        const who = (b) => (b === "agent" ? "the agent" : "you");
+        return { name: `Crew message · ${e.from} → ${e.to}`, by: [`private between the two${e.at ? `, from ${esc(e.at)}` : ""}`, e.by !== "player" ? `forged by ${who(e.by)}` : "", e.edited ? `changed by ${who(e.edited)}` : "", e.state === "held" ? "held back" : e.state === "dropped" ? "never arrives" : ""].filter(Boolean).join(" · "), c: "var(--player)" };
+      }
       case "warden": return { name: "Warden → agent", c: "var(--warden)" };
       case "aside": return { name: "Note → agent", by: "private", c: "var(--aside)" };
       case "aside_reply": return { name: "Agent → you", by: "private", c: "var(--aside)" };
@@ -476,7 +481,7 @@
       return `
       <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? `title="${e.retcon ? "Retconned: removed from screens and agent memory" : "Cut off by a player: never shown or remembered"}"` : ""}>
         <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.net ? `<span class="by" title="${e.net === "*" ? "Sent to every system" : "Shown only on this system"}">${e.net === "*" ? "to All" : `on ${esc(systemName(e.net))}`}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? `<span class="by">${e.retcon ? "retconned" : "cut off"}</span>` : ""}${when}</div>
-        <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
+        <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "msg" && e.edited && e.sent ? `<div class="chg">Sender typed: ${esc(e.sent)}</div>` : ""}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
       </div>`;
     }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew.</div>`;
     if (atBottom || S.log.length !== lastLogLen) log.scrollTop = log.scrollHeight;
@@ -523,7 +528,7 @@
         `<li><label><input type="checkbox" data-crw="${i}" ${S.config.agentCrew !== false ? "checked" : ""}> ${esc(c.for)}: ${esc(c.stat)} ${c.change > 0 ? "+" : ""}${c.change}${c.why ? ` <span class="muted">(${esc(c.why)})</span>` : ""}</label></li>`).join("")}</ul>` : ""}
       ${r.attacks?.length || r.crew_attacks?.length || r.reloads?.length || r.round || r.reveal_death_save?.length ? `<div class="label">Combat <span class="muted">rolled by the app when you send</span></div><ul>${[
         ...(r.attacks || []).map((a) => `${esc(a.by)} attacks ${esc(a.target)}${a.attack ? ` with ${esc(a.attack)}` : ""}`),
-        ...(r.crew_attacks || []).map((a) => `${esc(a.by)} hits ${esc(a.target)} with ${esc(a.weapon || "Unarmed")}`),
+        ...(r.crew_attacks || []).map((a) => `${esc(a.by)} hits ${esc(a.target)} with ${esc(a.weapon || "Unarmed")}${a.range ? ` at ${esc(a.range)} range` : ""}`),
         ...(r.reloads || []).map((a) => `${esc(a.by)} reloads ${esc(a.weapon || "their weapon")}`),
         ...(r.round ? ["A round passes: Bleeding hurts"] : []),
         ...(r.reveal_death_save || []).map((n) => `Death Save revealed: ${esc(n)}`),
@@ -556,6 +561,7 @@
       ...(r.cast_changes || []).map((c) => `${n(c)}: ${[c.room && (c.room === "none" ? "leaves the map" : `to ${esc(c.room)}`), c.notes && esc(c.notes), c.attitude_change && `attitude ${c.attitude_change > 0 ? "+" : ""}${c.attitude_change}`, c.stress_change && `Stress ${c.stress_change > 0 ? "+" : ""}${c.stress_change}`, c.panic_check && "Panic Check"].filter(Boolean).join(", ") || "no change"}`),
       ...(r.clocks || []).map((c) => (c.action === "stop" ? `Clock stops: ${esc(c.label)}` : `Clock starts: ${esc(c.label)} (${c.seconds}s)`)),
       ...(r.handouts || []).map((h) => `Handout${h.for ? ` for ${esc(h.for)}` : ""}: ${esc(h.title)}`),
+      ...(r.crew_message?.text ? [r.crew_message.alter ? `Crew message #${r.crew_message.alter} changed to: ${esc(r.crew_message.text)}` : `Crew message forged as ${esc(r.crew_message.as)} to ${esc(r.crew_message.to)}: ${esc(r.crew_message.text)}`] : []),
       ...(r.found_docs || []).map((f) => `File found: ${esc(f.id)}`),
       ...(r.layout ? ["The map layout changes"] : []),
       ...(r.room_plans || []).map((p) => `Floor plan redrawn: ${esc(p.room)}`),
@@ -906,7 +912,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     combatKey = key;
     const [by, with_, target] = [$("atkBy"), $("atkWith"), $("atkTarget")];
     const was = [by.value, with_.value, target.value];
-    $("atkAdvWrap").hidden = side !== "crew";
+    $("atkAdvWrap").hidden = $("atkRangeWrap").hidden = side !== "crew";
     $("atkWithLabel").textContent = side === "crew" ? "Weapon" : "Attack";
     const crewOpts = crew.filter((c) => !c.cond?.dead).map((c) => [c.id, c.name]);
     const advOpts = advs.filter((v) => !v.adversary.stats.dead).map((v) => [v.id, v.name]);
@@ -915,13 +921,13 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     for (const sel of [by, target]) if (sel.selectedIndex < 0 && sel.options.length) sel.selectedIndex = 0;
     attackChoices();
     $("atkGo").disabled = !by.options.length || !target.options.length;
-    $("atkNote").textContent = !advs.length ? "No adversary has combat numbers yet: add them on the Crew tab, under Adversaries." : side === "crew" ? "Use it after the character's Combat check has succeeded. Its damage is rolled and taken off the adversary. A character in a Rage (Panic Table 16) has [+] on Damage rolls for 1d10 hours: pick [+] below." : "";
+    $("atkNote").textContent = !advs.length ? "No adversary has combat numbers yet: add them on the Crew tab, under Adversaries." : side === "crew" ? "Use it after the character's Combat check has succeeded. Its damage is rolled and taken off the adversary; give the range, since a Combat Shotgun does 1d10 at Long Range or further. A character in a Rage (Panic Table 16) has [+] on Damage rolls for 1d10 hours: pick [+] below." : "";
     const saves = crew.filter((c) => S.deathSaves?.[c.id]);
     $("deathSaveList").innerHTML = saves.map((c) => `<li>Death Save rolled (hidden): ${esc(c.name)} <button data-cmb="reveal" data-pc="${esc(c.id)}" class="ghost" title="Someone spent a turn checking their vitals">Reveal</button></li>`).join("");
   }
   function attackChoices() {
     const side = $("atkSide").value, by = $("atkBy").value;
-    const opts = side === "crew" ? (S.weaponsOf?.[by] || ["Unarmed"]) : (S.config.voices.find((v) => v.id === by)?.adversary.stats?.attacks || []).map((a) => `${a.name} (${a.damage} ${a.woundType}${a.woundAdv ? ` [${a.woundAdv}]` : ""})`);
+    const opts = side === "crew" ? (S.weaponsOf?.[by] || ["Unarmed"]) : (S.config.voices.find((v) => v.id === by)?.adversary.stats?.attacks || []).map((a) => `${a.name} (${a.damage} ${a.woundType}${a.woundAdv ? ` [${a.woundAdv}]` : ""}${a.aa ? " AA" : ""})`);
     const values = side === "crew" ? opts : (S.config.voices.find((v) => v.id === by)?.adversary.stats?.attacks || []).map((a) => a.name);
     fillSelect($("atkWith"), values.map((v, i) => [v, opts[i]]), $("atkWith").value);
     if ($("atkWith").selectedIndex < 0 && $("atkWith").options.length) $("atkWith").selectedIndex = 0;
@@ -931,7 +937,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   $("atkGo").onclick = () => {
     const side = $("atkSide").value;
     send({ t: "attack", attack: side === "crew"
-      ? { side, pc: $("atkBy").value, weapon: $("atkWith").value, target: $("atkTarget").value, damageAdv: $("atkAdv").value }
+      ? { side, pc: $("atkBy").value, weapon: $("atkWith").value, target: $("atkTarget").value, damageAdv: $("atkAdv").value, range: $("atkRange").value }
       : { side, by: $("atkBy").value, attack: $("atkWith").value, target: $("atkTarget").value } });
   };
   $("deathSaveList").addEventListener("click", (e) => {
@@ -939,10 +945,10 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     if (b) send({ t: "revealDeathSave", pc: b.dataset.pc });
   });
 
-  const ATTACK_TIP ="One attack per line: Name | damage dice | wound type | [+] or [-] on its Wounds Table roll | special. Wound types: blunt, bleeding, gunshot, fire, gore.";
-  const attackLines = (s) => s.attacks.map((a) => [a.name, a.damage, a.woundType, a.woundAdv, a.special].join(" | ")).join("\n");
+  const ATTACK_TIP ="One attack per line: Name | damage dice | wound type | [+] or [-] on its Wounds Table roll | special | AA. Wound types: blunt, bleeding, gunshot, fire, gore. Put AA last for an Anti-Armor attack (it ignores and destroys armor when it hits).";
+  const attackLines = (s) => s.attacks.map((a) => [a.name, a.damage, a.woundType, a.woundAdv, a.special, a.aa ? "AA" : ""].join(" | ").replace(/( \| )+$/, "")).join("\n");
   const parseAttacks = (text) => text.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p[0] && p[1])
-    .map(([name, damage, woundType, woundAdv, special]) => ({ name, damage, woundType: (woundType || "blunt").toLowerCase(), woundAdv: woundAdv === "+" || woundAdv === "-" ? woundAdv : "", special: special || "" }));
+    .map(([name, damage, woundType, woundAdv, special, aa]) => ({ name, damage, woundType: (woundType || "blunt").toLowerCase(), woundAdv: woundAdv === "+" || woundAdv === "-" ? woundAdv : "", special: special || "", aa: /^(aa|anti-?armou?r)$/i.test(aa || "") }));
   function advStats(v) {
     const s = v.adversary.stats;
     if (!s) return `<div class="row edit-only small"><button data-aact="addstats" title="Combat, Instinct, armor, Wounds and attacks (PSG 40-41)">Add combat numbers</button></div>`;
@@ -957,7 +963,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
           ${s.dead ? '<b class="bad">DEAD OR DESTROYED</b>' : ""}
           <button data-aact="resetstats" class="ghost" title="Full Wounds, full Health, armor back">Reset</button>
         </div>
-        <div class="small advinfo">${s.attacks.map((a) => `${esc(a.name)} ${esc(a.damage)} ${esc(a.woundType)}${a.woundAdv ? ` [${a.woundAdv}]` : ""}${a.special ? ` (${esc(a.special)})` : ""}`).join(" · ") || "No attacks."}${s.special ? `<br>${esc(s.special)}` : ""}${s.note ? `<br>${esc(s.note)}` : ""}</div>
+        <div class="small advinfo">${s.attacks.map((a) => `${esc(a.name)} ${esc(a.damage)} ${esc(a.woundType)}${a.woundAdv ? ` [${a.woundAdv}]` : ""}${a.aa ? " AA" : ""}${a.special ? ` (${esc(a.special)})` : ""}`).join(" · ") || "No attacks."}${s.special ? `<br>${esc(s.special)}` : ""}${s.note ? `<br>${esc(s.note)}` : ""}</div>
         <div class="edit-only advedit">
           <div class="pcgrid">${num("combat", "Combat", 1, 300)}${num("instinct", "Instinct", 1, 300)}${num("ap", "Armor AP", 0, 99)}${num("dr", "DR", 0, 99)}${num("woundsMax", "Wounds", 1, 20)}${num("healthPerWound", "Health per Wound", 1, 999)}${num("count", "Count (groups)", 0, 99)}</div>
           <textarea data-s="attacks" rows="3" aria-label="Attacks" title="${esc(ATTACK_TIP)}" placeholder="${esc(ATTACK_TIP)}">${esc(attackLines(s))}</textarea>
@@ -2112,7 +2118,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const sel = $("hazType"), now = S.station?.hazards?.[room.id];
     if (!sel.options.length) {
       const group = (label, kind) => `<optgroup label="${label}">${Object.entries(S.hazardTypes).filter(([, v]) => v.kind === kind).map(([k, v]) => `<option value="${k}">${esc(v.name)}</option>`).join("")}</optgroup>`;
-      sel.innerHTML = `<option value="">None</option>${group("Mothership rules (PSG)", "psg")}${group("Story hazards (not Mothership rules)", "story")}`;
+      sel.innerHTML = `<option value="">None</option>${group("Mothership rules (PSG)", "psg")}${group("House rules (not in the Guide)", "house")}${group("Story hazards (not Mothership rules)", "story")}`;
     }
     if (!room.hazDirty) {
       sel.value = now?.type || "";
@@ -2960,6 +2966,12 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     $("rollTarget").innerHTML = pcs.length ? pcs.map((c) => esc(line(c))).join("<br>") : "Add crew to call for rolls.";
     $("rollCall").disabled = !pcs.length || S.roll?.status === "waiting";
     const plusAble = panic && pcs.some((c) => c.className === "Teamster" && !S.panicPlus?.[c.id]);
+    const shot = check === "combat" && who !== "all" && pcs.length === 1;
+    $("rollWeaponWrap").hidden = $("rollRangeWrap").hidden = !shot;
+    if (shot) {
+      const ws = S.weaponsOf?.[who] || ["Unarmed"], sel = $("rollWeapon"), was = sel.value;
+      if (sel.dataset.for !== who || sel.options.length !== ws.length) { sel.dataset.for = who; sel.innerHTML = ws.map((w) => `<option>${esc(w)}</option>`).join(""); if (ws.includes(was)) sel.value = was; }
+    }
     $("rollPlusRow").hidden = !plusAble;
     if (!plusAble) $("rollPlus").checked = false;
   }
@@ -3007,6 +3019,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
         skill: rollSkillName($("rollSkill").value),
         reason: $("rollReason").value,
         plus: $("rollPlus").checked,
+        ...($("rollRangeWrap").hidden ? {} : { weapon: $("rollWeapon").value, range: $("rollRange").value }),
       },
     });
     $("rollPlus").checked = false;
@@ -3091,11 +3104,39 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     }).join("") : '<li class="muted small">None running.</li>';
   }
   setInterval(() => S?.clocks?.some((c) => !c.paused) && renderClocks(), 1000);
+  function renderMessages() {
+    if ($("msgList").contains(document.activeElement) && document.activeElement.matches("input")) return;
+    const names = (S.config.crew || []).map((c) => [c.name, c.name]);
+    fillSelect($("msgHoldPc"), (S.config.crew || []).map((c) => [c.id, c.name]), $("msgHoldPc").value || S.config.crew?.[0]?.id || "");
+    fillSelect($("msgAs"), names, $("msgAs").value || names[0]?.[0] || "");
+    fillSelect($("msgTo"), names, $("msgTo").value || names[1]?.[0] || "");
+    $("msgHolds").innerHTML = Object.entries(S.msgHolds || {}).map(([id, h]) =>
+      `<li><span class="grow">Next from <b>${esc(crewName(id))}</b>: ${h.never ? "never arrives" : h.seconds ? `arrives ${h.seconds}s late` : "held until you release it"}</span><button class="ghost danger" data-msg-unhold="${esc(id)}" title="Let it through normally">Cancel</button></li>`).join("");
+    const msgs = S.log.filter((e) => e.kind === "msg" && !e.cut).slice(-8).reverse();
+    $("msgList").innerHTML = msgs.length ? msgs.map((e) => `<li class="stack"><div class="row wrap"><span class="grow"><b>${esc(e.from)}</b> → <b>${esc(e.to)}</b> <span class="muted small">${e.by !== "player" ? `forged by ${e.by === "agent" ? "the agent" : "you"}` : ""}${e.state === "held" ? ` · held${e.releaseAt ? " (arrives on its own)" : ""}` : e.state === "dropped" ? " · never arrives" : ""}</span></span>
+        ${e.state === "held" ? `<button data-msg-release="${e.id}" class="ghost">Release</button><button data-msg-discard="${e.id}" class="ghost danger">Discard</button>` : ""}</div>
+        ${e.state === "dropped" ? `<div>${esc(e.text)}</div>` : `<div class="row"><input class="grow" data-msg-text="${e.id}" value="${esc(e.text)}" maxlength="500" aria-label="What ${esc(e.to)} sees"><button data-msg-save="${e.id}" class="ghost" title="Change what ${esc(e.to)} sees. The sender never knows.">Change</button></div>`}</li>`).join("") : '<li class="muted small">None yet.</li>';
+  }
+  $("msgHold").onclick = () => send({ t: "msgHold", pc: $("msgHoldPc").value, seconds: Number($("msgHoldSecs").value) || 0, never: $("msgHoldNever").checked });
+  $("msgForge").onclick = () => {
+    const text = $("msgText").value.trim();
+    if (!text) return toast("Write the message first.", "error");
+    send({ t: "msgForge", as: $("msgAs").value, to: $("msgTo").value, text });
+    $("msgText").value = "";
+  };
+  $("msgHolds").addEventListener("click", (e) => { const id = e.target.closest("[data-msg-unhold]")?.dataset.msgUnhold; if (id) send({ t: "msgHold", pc: id, off: true }); });
+  $("msgList").addEventListener("click", (e) => {
+    const d = e.target.closest("button")?.dataset;
+    if (!d) return;
+    if (d.msgRelease) send({ t: "msgRelease", id: Number(d.msgRelease) });
+    else if (d.msgDiscard) send({ t: "msgDiscard", id: Number(d.msgDiscard) });
+    else if (d.msgSave) send({ t: "msgAlter", id: Number(d.msgSave), text: $("msgList").querySelector(`[data-msg-text="${d.msgSave}"]`).value });
+  });
   function renderShip() {
     $("shipHead").hidden = !S.ships;
     window.ShipUI?.warden($("shipCard"), S, send);
   }
-  const hazardTag = (i) => (i.kind === "psg" ? "Mothership rule" : "story hazard");
+  const hazardTag = (i) => (i.kind === "psg" ? "Mothership rule" : i.kind === "house" ? "house rule" : "story hazard");
   function renderHazards() {
     const rooms = roomLabels();
     const hz = Object.entries(S.station?.hazards || {});

@@ -30,7 +30,7 @@ const soundsNote = (sounds = []) => (sounds.length
 export function handoutRequest(state, brief, title = "", speaker = "") {
   const c = state.config;
   const cast = (c.cast || []).map((m) => `- ${m.name}${m.notes ? `: ${m.notes}` : ""}`);
-  const log = state.log.filter((e) => !e.cut && e.text && !["note"].includes(e.kind)).slice(-RECENT);
+  const log = state.log.filter((e) => !e.cut && e.text && !["note", "msg"].includes(e.kind)).slice(-RECENT);
   const context = [
     `STATION NAME: ${c.stationName}`,
     `LORE (public):\n${c.lore || "(none)"}`,
