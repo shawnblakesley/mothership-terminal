@@ -1188,7 +1188,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   }
 
   const BUY = { fuel: ["Fuel (units)", null], ammo: ["Ammo (magazines)", 50], aid: ["First aid kit", 75], stimpak: ["Stimpak", 1000], mre: ["MREs (pack of 7)", 70], tank: ["Oxygen tank", 50] };
-  const cmpBuy = { lines: {}, ammoFor: "", fuelPrice: 0, to: "" };
+  const cmpBuy = { lines: {}, ammoFor: "", fuelPrice: 500, to: "" };
   const fuelCostOf = (days) => Math.max(1, Math.ceil(days / 3));
   const cr = (n) => `${Number(n).toLocaleString("en-US")}cr`;
   function buyTotal() {
@@ -1212,7 +1212,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const shop = !rs ? "" : !rs.trade ? `<p class="small bad">${esc(rs.name)} won't trade with the crew.</p>` : `
       <div class="small muted">Prices at ${esc(rs.name)}: the PSG price x port class ${esc(rs.portClass || "?")} (x${rs.classMult}, house rule) x the faction's standing (house rule). The Warden takes the credits until money is tracked.</div>
       ${Object.entries(BUY).map(row).join("")}
-      <div class="row"><label class="grow small">Fuel price per unit, before the port's multiplier <span class="muted">(house rule: the PSG has no fuel price; you set it)</span></label><input type="number" min="0" style="width:6em" data-buy-fuelprice value="${cmpBuy.fuelPrice || 0}" aria-label="Base fuel price per unit"></div>
+      <div class="row"><label class="grow small">Fuel price per unit, before the port's multiplier <span class="muted">(house rule: the PSG has no fuel price; 500cr unless you change it)</span></label><input type="number" min="0" style="width:6em" data-buy-fuelprice value="${cmpBuy.fuelPrice || 0}" aria-label="Base fuel price per unit"></div>
       <div class="row"><label class="small grow">Ammo for <select data-buy-ammofor>${rs.firearms.map((w) => `<option ${cmpBuy.ammoFor === w ? "selected" : ""}>${esc(w)}</option>`).join("")}</select></label>
         <label class="small grow">Carried by <select data-buy-to>${p.crew.map((pc) => `<option value="${esc(pc.id)}" ${cmpBuy.to === pc.id ? "selected" : ""}>${esc(pc.name)}</option>`).join("")}</select></label></div>
       <div class="row"><b class="grow" id="cmpBuyTotal">Total ${cr(buyTotal())}</b><button class="primary" data-buy-go ${idle ? "" : "disabled"} title="${idle ? "Adds the goods to the rig and the crew's sheets" : "Finish the story being played first"}">Buy (the Warden takes the credits)</button></div>`;
