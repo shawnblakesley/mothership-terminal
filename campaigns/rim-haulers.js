@@ -9,6 +9,9 @@ const SHIP = {
   os: "HAULCOM 4.1",
   computer: "MARY",
   crew: 4,
+  // House rule: the rig carries fuel in units (tank 10) and counted stores; the app saves them between stories.
+  resources: { fuel: 10, stores: { parts: 3, explosives: 0, flares: 4, rations: 14 } },
+  rooms: ["mary", "cab", "sleeper", "galley", "engine_room", "airlock", "crawlway", "cargo_spine", "container"],
   description: "A Kessler-Pike K-12 \"Longliner\" bulk hauler, 31 years old, owned 51% by Wanda Okafor and 100% by her debt to Gallow-Mercer Finance. A blunt-nosed cab on a long cargo spine that clamps one standard 40-unit container. Three decks: the cab (cockpit, sleeper bunk, galley), engineering (engine room, airlock, crawlway) and the cargo spine.",
   persona: `You are MARY, the HAULCOM 4.1 rig computer of the Longliner bulk hauler LONG HAUL MARY. Thirty-one years on the Rim have given you opinions.
 - You talk like an old long-haul dispatcher: warm, dry, a little drawl, short sentences, plain uppercase on the cab screen. You call the crew "hon", "kid" or by their CB handles. You hate customs, love the union and tolerate Gallow-Mercer because they hold the note on you.
@@ -27,14 +30,14 @@ Lift: Deck 1, Deck 2, Deck 3
 Link: crawlway - cargo_spine (maintenance crawlway)
 Link: galley - crawlway (vent trunk)`,
   station: {
-    "fuel.pct": "78", "air.reserve_hours": "96", "reactor": "ONLINE", "drive": "CRUISE", "doors.airlock": "SEALED", "doors.container": "SEALED",
+    "air.reserve_hours": "96", "reactor": "ONLINE", "drive": "CRUISE", "doors.airlock": "SEALED", "doors.container": "SEALED",
     "container.seal": "INTACT", "container.temp_c": "4", "lights.deck_1": "ON", "lights.deck_2": "ON", "lights.deck_3": "ON", "cameras.cargo_spine": "ONLINE", "cb_radio": "ONLINE", "nav.eta_hours": "62",
   },
 };
 
 const LOCATIONS = [
   {
-    id: "port_gallow", name: "PORT GALLOW", x: 110, y: 290, theme: "amber", faction: "gallow_mercer", dock: "berth_9", computer: "YARDMASTER",
+    id: "port_gallow", portClass: "A", name: "PORT GALLOW", x: 110, y: 290, theme: "amber", faction: "gallow_mercer", dock: "berth_9", computer: "YARDMASTER",
     kind: "Corporate container port",
     description: "Gallow-Mercer Logistics' spindle port at the bright end of the Rim: forty thousand containers, nine hundred cranes, one harbourmaster. Where most contracts start and most drivers owe money. The Dock Ward is union; everything above it is company.",
     map: `Deck 1 · Harbourmaster: harbour_office=Harbourmaster's Office, yard_tower=Yard Control Tower
@@ -48,7 +51,7 @@ Link: stack_k - substation (cable duct)
 Link: dock_ward - reefer_park (service tunnel)`,
   },
   {
-    id: "tollgate", name: "TOLLGATE", x: 280, y: 110, theme: "white", faction: "rcea", dock: "inspection_bay", computer: "ASSESSOR",
+    id: "tollgate", portClass: "C", name: "TOLLGATE", x: 280, y: 110, theme: "white", faction: "rcea", dock: "inspection_bay", computer: "ASSESSOR",
     kind: "Customs checkpoint",
     description: "The Rim Customs & Excise Authority's checkpoint at the Narrows, the only charted lane between the bright Rim and the outer stations. Every legal hauler stops here, every cargo is weighed, and every driver waits. The impound lot is the size of a small moon's worth of other people's bad luck.",
     map: `Deck 1 · Command: customs_ops=Customs Operations, inspector_office=Inspector's Office
@@ -59,7 +62,7 @@ Link: evidence_vault - incinerator (disposal chute)
 Link: holding - barracks (guard corridor)`,
   },
   {
-    id: "halfway_house", name: "HALFWAY HOUSE", x: 450, y: 240, theme: "green", faction: "union", dock: "back_lot", computer: "DOLLY",
+    id: "halfway_house", portClass: "C", name: "HALFWAY HOUSE", x: 450, y: 240, theme: "green", faction: "union", dock: "back_lot", computer: "DOLLY",
     kind: "Union truck stop",
     description: "The Teamsters Local 1312 waystation in the middle of nowhere: diner, fuel, bunks, chapel and the union hall, all in a rotating drum bolted to an old fuel depot. Coffee is free for members. Dispatch runs out of here. It is the closest thing a Rim driver has to home.",
     map: `Deck 1 · Concourse: diner=The Diner, store=Fuel & Sundries, dispatch=Dispatch Office
@@ -71,7 +74,7 @@ Link: diner - bunkhouse (kitchen stairs)
 Link: chapel - records (old vestry door)`,
   },
   {
-    id: "cinder", name: "CINDER'S REACH", x: 620, y: 320, theme: "red", faction: "ardent", dock: "loading_dock", computer: "FOREMAN",
+    id: "cinder", portClass: "B", name: "CINDER'S REACH", x: 620, y: 320, theme: "red", faction: "ardent", dock: "loading_dock", computer: "FOREMAN",
     kind: "Mining refinery moon",
     description: "Ardent Mining Consortium's refinery on a volcanic moon that never stops shaking. Two hundred miners on fourteen-day rotations dig radiant ore nine levels down and smelt it where they stand. The pay is good because the dying is regular.",
     map: `Deck 1 · Admin: admin=Administration, comms_shack=Comms Shack
@@ -84,7 +87,7 @@ Link: cage_lift - level_9 (mine cage)
 Link: ore_hoppers - shaft_head (ore conveyor)`,
   },
   {
-    id: "st_brigid", name: "SAINT BRIGID'S", x: 290, y: 460, theme: "green", faction: "brigid", dock: "freight_pad", computer: "SEXTON",
+    id: "st_brigid", portClass: "C", name: "SAINT BRIGID'S", x: 290, y: 460, theme: "green", faction: "brigid", dock: "freight_pad", computer: "SEXTON",
     kind: "Agricultural dome colony",
     description: "A pious farming cooperative under nine glass domes on a cold, dim world. It feeds half the Rim and asks nothing but fair prices and quiet. The harvests have been miraculous for eleven years running, and the colonists are very, very grateful.",
     map: `Deck 1 · Steeple: steeple=Steeple (Comms Mast), elders_hall=Elders' Hall
@@ -96,7 +99,7 @@ Link: root_cellar - orchard_dome (root channels)
 Link: irrigation - wheat_dome (irrigation mains)`,
   },
   {
-    id: "boneyard", name: "THE BONEYARD", x: 820, y: 330, theme: "amber", faction: "drift_kin", dock: "visitor_dock", computer: "TALLYMAN",
+    id: "boneyard", portClass: "C", name: "THE BONEYARD", x: 820, y: 330, theme: "amber", faction: "drift_kin", dock: "visitor_dock", computer: "TALLYMAN",
     kind: "Ship-breaking salvage yard",
     description: "A drifting ship-breaking yard in a debris field where the Drift Kin salvager clans cut dead ships into parts and parts into money. Everything here is for sale, including the yard's own walls. Hesper Quill runs the auctions and the law, which are the same thing.",
     map: `Deck 1 · Yard Office: visitor_dock=Visitor Dock, quill_office=Quill's Office, auction_floor=Auction Floor
@@ -108,7 +111,7 @@ Docked: hulk=ISV TEMPERANCE (hulk) @ breaking_dock
 Link: scrap_rows - camp (crawlspaces)`,
   },
   {
-    id: "lantern", name: "LANTERN", x: 900, y: 480, theme: "red", faction: "lantern", dock: "the_mouth", computer: "LAMPLIGHTER",
+    id: "lantern", portClass: "X", name: "LANTERN", x: 900, y: 480, theme: "red", faction: "lantern", dock: "the_mouth", computer: "LAMPLIGHTER",
     kind: "Smugglers' free port",
     description: "A hollowed-out ice-and-iron asteroid with a single lit cave mouth, off every chart and on every smuggler's. No customs, no company, no questions: only Auntie Lu Bao's toll and Auntie Lu Bao's rules. The Night Bazaar sells what Tollgate seizes. Below it, the old mine shafts go deeper than anyone has mapped.",
     map: `Deck 1 · The Mouth: the_mouth=The Mouth (docking cave), toll_booth=Auntie's Toll Booth
@@ -120,7 +123,7 @@ Link: flophouse - old_shafts (smugglers' crawl)
 Link: warehouse_7 - bazaar (freight lift)`,
   },
   {
-    id: "terminus", name: "TERMINUS RELAY", x: 1010, y: 110, theme: "white", faction: "gallow_mercer", dock: "receiving", computer: "RELAY-0",
+    id: "terminus", portClass: "C", name: "TERMINUS RELAY", x: 1010, y: 110, theme: "white", faction: "gallow_mercer", dock: "receiving", computer: "RELAY-0",
     kind: "Rim-edge deep-space relay",
     description: "The last lit thing before the dark: a Gallow-Mercer listening relay and \"research outpost\" at the very edge of the charted Rim, twelve crew on a two-year posting. Nothing out here needs a relay that size. Gallow-Mercer still pays premium rates for freight delivered to it, no questions asked.",
     map: `Deck 1 · Dish Control: dish_control=Dish Control, listening_post=Listening Post
@@ -199,7 +202,7 @@ const CREW = [
     saves: { sanity: 31, fear: 35, body: 30 },
     health: { current: 15, max: 15 }, wounds: { current: 0, max: 2 }, stress: 2,
     skills: ["Industrial Equipment", "Zero-G", "Jury-Rigging", "Piloting"],
-    loadout: "Vaccsuit, revolver (mostly licensed), tool rig, union card #1312-0447, thermos of terrible coffee, 2 flares.",
+    loadout: "Vaccsuit, revolver (mostly licensed), Ammo (revolver), tool rig, union card #1312-0447, thermos of terrible coffee, 2 flares.",
     trinket: "Her husband's driving gloves, too big for her.",
     patch: "\"PAY YOUR DUES\"",
     notes: "Teamster trauma response: once per session she may take [+] on a Panic Check.",
@@ -212,7 +215,7 @@ const CREW = [
     saves: { sanity: 28, fear: 32, body: 35 },
     health: { current: 17, max: 17 }, wounds: { current: 0, max: 3 }, stress: 2,
     skills: ["Military Training", "Athletics", "Firearms"],
-    loadout: "Combat shotgun (registered to MARY), standard battle dress, vaccsuit, flashlight, RCEA boarding axe he never gave back, restraints.",
+    loadout: "Combat shotgun (registered to MARY), Ammo (combat shotgun) x2, standard battle dress, vaccsuit, flashlight, RCEA boarding axe he never gave back, restraints.",
     trinket: "His old customs badge with the number filed off.",
     patch: "\"SHOTGUN\" over a skull in a trucker cap",
     notes: "Marine trauma response: whenever he Panics, every Close friendly player must make a Fear Save.",

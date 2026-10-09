@@ -1248,6 +1248,12 @@
     $("hdr-access").textContent = accessText();
     $("hdr-os").textContent = sysTerm()?.os || `${header.voices?.terminal?.name || "TERMINAL"} OS v4.1`;
     promptEl.textContent = promptText();
+    const rig = header.rig, onRig = !!rig && !spectate && (rig.transit || sysTerm()?.system === rig.system);
+    $("hdr-rig").hidden = $("hdr-rig-sep").hidden = !onRig;
+    if (onRig) {
+      const s = rig.stores;
+      $("hdr-rig").textContent = `FUEL ${rig.fuel}/${rig.capacity} PARTS ${s.parts} EXPLOSIVES ${s.explosives} FLARES ${s.flares} RATIONS ${s.rations}${rig.lifeSupport === "ONLINE" ? "" : ` LIFE SUPPORT ${rig.lifeSupport}`}`;
+    }
   }
 
   let decor = "";

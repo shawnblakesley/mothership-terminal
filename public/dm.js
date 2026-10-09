@@ -509,9 +509,10 @@
       ${p.directives?.length ? `<div class="note">⚑ Following your command${p.directives.length > 1 ? "s" : ""}: ${p.directives.map(esc).join(" · ")}</div>` : ""}
       ${r.crew_changes?.length ? `<div class="label">Crew condition</div><ul>${r.crew_changes.map((c, i) =>
         `<li><label><input type="checkbox" data-crw="${i}" ${S.config.agentCrew !== false ? "checked" : ""}> ${esc(c.for)}: ${esc(c.stat)} ${c.change > 0 ? "+" : ""}${c.change}${c.why ? ` <span class="muted">(${esc(c.why)})</span>` : ""}</label></li>`).join("")}</ul>` : ""}
-      ${r.attacks?.length || r.crew_attacks?.length || r.round || r.reveal_death_save?.length ? `<div class="label">Combat <span class="muted">rolled by the app when you send</span></div><ul>${[
+      ${r.attacks?.length || r.crew_attacks?.length || r.reloads?.length || r.round || r.reveal_death_save?.length ? `<div class="label">Combat <span class="muted">rolled by the app when you send</span></div><ul>${[
         ...(r.attacks || []).map((a) => `${esc(a.by)} attacks ${esc(a.target)}${a.attack ? ` with ${esc(a.attack)}` : ""}`),
         ...(r.crew_attacks || []).map((a) => `${esc(a.by)} hits ${esc(a.target)} with ${esc(a.weapon || "Unarmed")}`),
+        ...(r.reloads || []).map((a) => `${esc(a.by)} reloads ${esc(a.weapon || "their weapon")}`),
         ...(r.round ? ["A round passes: Bleeding hurts"] : []),
         ...(r.reveal_death_save || []).map((n) => `Death Save revealed: ${esc(n)}`),
       ].map((t) => `<li>${t}</li>`).join("")}</ul>` : ""}
@@ -965,14 +966,16 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     if (c.deathSaveIn) bits.push(`<b class="bad">Death Save due in ${c.deathSaveIn} rounds</b>`);
     if (S.deathSaves?.[c.id]) bits.push("<b>Death Save rolled (hidden)</b>", btn("reveal", "Reveal", "Someone spent a turn checking their vitals: reveal and apply the result"));
     if (c.deathSaveIn || c.cond?.dying || c.status) bits.push(btn("dealt", "Dealt with", "Clear the countdown and the status"));
+    for (const w of S.ammo?.[c.id] || []) bits.push(`<span><span class="k">${esc(w.name)}:</span> <b class="${w.loaded ? "" : "bad"}">${w.loaded}/${w.shots}</b> shots, ${w.spare} spare</span> <button type="button" class="small" data-cmb="reload" data-pc="${esc(c.id)}" data-weapon="${esc(w.name)}" title="Reloading is an action: swap in a spare magazine (Ammo is 50cr a magazine)" ${w.spare && w.loaded < w.shots ? "" : "disabled"}>Reload</button>`);
     return `<div class="combatline">${bits.join(" ")}</div>`;
   };
-  const COND_ACTIONS = [["puncture", "Puncture suit"], ["patch", "Patch suit"], ["air", "Breathing again"], ["putout", "Put out fire"], ["bleed", "+1 Bleeding"], ["stopbleed", "Stop bleeding (First Aid Kit)"], ["ate", "Has eaten"], ["thirst", "Water at the minimum (toggle)"], ["strenuouscheck", "Strenuous activity on minimum water"], ["strenuous", "Strenuous activity (toggle)"], ["rest", "Rested 8 hours"], ["cryosleep", "Into cryosleep"], ["wake", "Wake from cryosleep"], ["stimpak", "Stimpak (cures cryosickness)"], ["pills", "Radiation Pills"], ["clearrad", "Clear radiation penalty"], ["cleartags", "Clear story conditions"]];
+  const COND_ACTIONS = [["puncture", "Puncture suit"], ["patch", "Patch suit"], ["air", "Breathing again"], ["putout", "Put out fire"], ["bleed", "+1 Bleeding"], ["stopbleed", "Stop bleeding (First Aid Kit)"], ["ate", "Has eaten"], ["thirst", "Water at the minimum (toggle)"], ["strenuouscheck", "Strenuous activity on minimum water"], ["strenuous", "Strenuous activity (toggle)"], ["rest", "Rested 8 hours"], ["cryosleep", "Into cryosleep"], ["wake", "Wake from cryosleep"], ["stimpak", "Use a stimpak (PSG effect, overdose roll)"], ["tankout", "Oxygen tank used up"],["pills", "Radiation Pills"], ["clearrad", "Clear radiation penalty"], ["cleartags", "Clear story conditions"]];
   const condLine = (c) => `<div class="conds"><span class="k">Conditions:</span> ${(S.conds?.[c.id] || []).map((x) => `<span class="chip">${esc(x)}</span>`).join("") || '<span class="muted">none</span>'}
     <select data-cond-pick aria-label="Condition for ${esc(c.name)}">${COND_ACTIONS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select><button data-cond-go="${esc(c.id)}">Apply</button></div>`;
   $("crew").addEventListener("click", (e) => {
     const b = e.target.closest("[data-cmb]");
-    if (b) {
+    if (b?.dataset.cmb === "reload") send({ t: "reload", pc: b.dataset.pc, weapon: b.dataset.weapon });
+    else if (b) {
       const t = { repair: "repairArmor", stop: "stopBleeding", reveal: "revealDeathSave", dealt: "dealtWith" }[b.dataset.cmb];
       if (t) send({ t, pc: b.dataset.pc });
     }
@@ -1184,11 +1187,51 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     return `<button class="cmplink${p.current === s.id ? " current" : ""}" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b> <span class="muted">${esc(s.event)}${d ? " · played" : p.current === s.id ? " · now playing" : ""}</span></button>`;
   }
 
+  const BUY = { fuel: ["Fuel (units)", null], ammo: ["Ammo (magazines)", 50], aid: ["First aid kit", 75], stimpak: ["Stimpak", 1000], mre: ["MREs (pack of 7)", 70], tank: ["Oxygen tank", 50] };
+  const cmpBuy = { lines: {}, ammoFor: "", fuelPrice: 0, to: "" };
+  const fuelCostOf = (days) => Math.max(1, Math.ceil(days / 3));
+  const cr = (n) => `${Number(n).toLocaleString("en-US")}cr`;
+  function buyTotal() {
+    const rs = S.resupply;
+    if (!rs?.trade) return 0;
+    const q = (k) => Math.max(0, Math.round(Number(cmpBuy.lines[k]) || 0));
+    return q("fuel") * Math.round((Number(cmpBuy.fuelPrice) || 0) * rs.fuelFactor) + ["ammo", "aid", "stimpak", "mre", "tank"].reduce((n, k) => n + q(k) * rs.prices[k], 0);
+  }
+  function cmpRig(c, p) {
+    const r = p.current && S.rig ? { fuel: S.rig.fuel, stores: S.rig.stores } : p.resources, rs = S.resupply, idle = !p.current;
+    const lanes = c.lanes.filter((l) => l.a === p.at || l.b === p.at);
+    const stores = Object.entries({ parts: "Parts", explosives: "Explosives", flares: "Flares", rations: "Rations (MREs)" }).map(([k, n]) => `${n} ${r.stores[k]}`).join(" · ");
+    const travel = lanes.map((l) => {
+      const to = cmpLoc(c, l.a === p.at ? l.b : l.a), cost = fuelCostOf(l.days);
+      return `<div class="row"><span class="grow small">${esc(l.name)} to ${esc(to.name)}: ${l.days} days, ${cost} fuel${l.dark ? " (uncharted)" : ""}</span><button class="small" data-travel="${to.id}" ${!idle || r.fuel < cost ? "disabled" : ""} title="${!idle ? "Finish the story being played first" : r.fuel < cost ? "Not enough fuel" : "Move the rig; no story"}">Travel</button></div>`;
+    }).join("");
+    const row = ([k, [label, base]]) => {
+      const unit = k === "fuel" ? Math.round((Number(cmpBuy.fuelPrice) || 0) * (rs.fuelFactor || 0)) : rs.prices[k];
+      return `<div class="row"><label class="grow small">${label} <span class="muted">${k === "fuel" ? `${cr(unit)} each (base price set below)` : `${cr(unit)} each (PSG ${cr(base)})`}</span></label><input type="number" min="0" max="20" size="3" style="width:4.5em" data-buy="${k}" value="${cmpBuy.lines[k] || 0}" aria-label="${esc(label)}"></div>`;
+    };
+    const shop = !rs ? "" : !rs.trade ? `<p class="small bad">${esc(rs.name)} won't trade with the crew.</p>` : `
+      <div class="small muted">Prices at ${esc(rs.name)}: the PSG price x port class ${esc(rs.portClass || "?")} (x${rs.classMult}, house rule) x the faction's standing (house rule). The Warden takes the credits until money is tracked.</div>
+      ${Object.entries(BUY).map(row).join("")}
+      <div class="row"><label class="grow small">Fuel price per unit, before the port's multiplier <span class="muted">(house rule: the PSG has no fuel price; you set it)</span></label><input type="number" min="0" style="width:6em" data-buy-fuelprice value="${cmpBuy.fuelPrice || 0}" aria-label="Base fuel price per unit"></div>
+      <div class="row"><label class="small grow">Ammo for <select data-buy-ammofor>${rs.firearms.map((w) => `<option ${cmpBuy.ammoFor === w ? "selected" : ""}>${esc(w)}</option>`).join("")}</select></label>
+        <label class="small grow">Carried by <select data-buy-to>${p.crew.map((pc) => `<option value="${esc(pc.id)}" ${cmpBuy.to === pc.id ? "selected" : ""}>${esc(pc.name)}</option>`).join("")}</select></label></div>
+      <div class="row"><b class="grow" id="cmpBuyTotal">Total ${cr(buyTotal())}</b><button class="primary" data-buy-go ${idle ? "" : "disabled"} title="${idle ? "Adds the goods to the rig and the crew's sheets" : "Finish the story being played first"}">Buy (the Warden takes the credits)</button></div>`;
+    return `<details open><summary>The rig: fuel and supplies <span class="muted small">(house rules, except the PSG gear prices)</span></summary>
+      <div class="bcard"><div class="row wrap"><b>Fuel ${r.fuel} of ${TANK_UNITS}</b><span class="small muted">house rule: a lane costs 1 unit per started 3 days (3 days = 1, 9 days = 3)</span></div>
+        ${r.fuel <= 0 ? '<div class="small bad">Out of fuel: the rig is stranded until it is refuelled.</div>' : ""}
+        <div class="small">${stores}</div></div>
+      <h3 class="cmph">Travel from ${esc(cmpLoc(c, p.at)?.name || "")}</h3>${travel || '<p class="muted small">No lanes.</p>'}
+      <h3 class="cmph">Resupply</h3>${shop}
+    </details>`;
+  }
+  const TANK_UNITS = 10;
+
   function cmpOverview(c, p) {
     const played = p.done.map((d) => ({ d, s: c.stories.find((x) => x.id === d.id) })).filter((x) => x.s);
     return `<div class="btitle">${esc(c.title)}</div>
       <p class="muted"><i>${esc(c.tagline)}</i></p><p>${esc(c.pitch)}</p>
       <p class="small muted">Offer jobs to put them on the players' job board, then Show players; their votes appear on the map. Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
+      ${cmpRig(c, p)}
       <details open><summary>Played (${played.length} of ${c.stories.length})</summary>${played.length ? played.map(({ d, s }) => `<div class="bcard"><button class="cmplink" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b></button><div class="small">${esc(d.outcome || "No notes.")}</div></div>`).join("") : '<p class="muted small">Nothing yet. A good first job: 1. FIRST SHIFT at Port Gallow, where the rig starts.</p>'}</details>
       <details open><summary>Factions <span class="muted small">(house rule: standing with the crew)</span></summary>
         <p class="small muted">Mothership 1e has no faction rules; this is a campaign house rule. At +2 or more their people give the crew [+] on social rolls, a one-off favour per story and better prices at their ports; at -2 or less, [-], trouble and worse prices; at -3 they won't trade. Their recurring characters start a step friendlier or cooler.</p>
@@ -1243,7 +1286,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   function renderCampaign() {
     if (!$("campaignDialog").open || !campaignData) return;
     const p = S.campaign, c = p && campaignData.campaigns.find((x) => x.id === p.id);
-    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes]);
+    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes, S.rig]);
     if (key === campaignKey) return;
     campaignKey = key;
     $("cmpLeave").hidden = !c;
@@ -1258,7 +1301,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     }
     const now = c.stories.find((s) => s.id === p.current);
     $("cmpTitle").textContent = c.title;
-    $("cmpStatus").textContent = `${p.done.length} of ${c.stories.length} played · ${c.ship.name} at ${cmpLoc(c, p.at)?.name || "?"}`;
+    $("cmpStatus").textContent = `${p.done.length} of ${c.stories.length} played · ${c.ship.name} at ${cmpLoc(c, p.at)?.name || "?"} · fuel ${(p.current && S.rig ? S.rig.fuel : p.resources.fuel)}/${TANK_UNITS}`;
     const banner = now
       ? `<div class="bcard cmpnow"><div><b>Now playing:</b> ${now.n}. ${esc(now.title)} <span class="muted">(${esc(cmpPlace(c, now))})</span></div>
           <textarea id="cmpOutcome" rows="2" placeholder="How did it end? Who lived, what they did, what they owe. Later stories are built on it."></textarea>
@@ -1296,6 +1339,15 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     renderCampaign();
     return true;
   };
+  $("cmpBody").addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.dataset.buy) cmpBuy.lines[t.dataset.buy] = Number(t.value) || 0;
+    else if (t.matches("[data-buy-fuelprice]")) cmpBuy.fuelPrice = Number(t.value) || 0;
+    else if (t.matches("[data-buy-ammofor]")) cmpBuy.ammoFor = t.value;
+    else if (t.matches("[data-buy-to]")) cmpBuy.to = t.value;
+    else return;
+    if ($("cmpBuyTotal")) $("cmpBuyTotal").textContent = `Total ${cr(buyTotal())}`;
+  });
   $("cmpBody").addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.matches("g[role=button]")) { e.preventDefault(); cmpPick(e); } });
   $("cmpBody").addEventListener("click", async (e) => {
     const start = e.target.closest("[data-start]")?.dataset.start;
@@ -1307,6 +1359,16 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     if (sec) {
       send({ t: "campaignShow", hide: sec === "hide" });
       if (sec === "show") toast("Showing the players the sector map and job board.");
+      return;
+    }
+    const trav = e.target.closest("[data-travel]")?.dataset.travel;
+    if (trav) return send({ t: "campaignTravel", to: trav });
+    if (e.target.closest("[data-buy-go]")) {
+      const total = buyTotal();
+      if (!(await sure("Buy these supplies?", `Total ${cr(total)} at ${S.resupply.name}. The goods go onto the rig and the character's sheet now; the credits are for you to take from the crew (money is not tracked yet).`, "Buy", "primary"))) return;
+      send({ t: "campaignBuy", to: cmpBuy.to || S.campaign.crew[0]?.id, ammoFor: cmpBuy.ammoFor || S.resupply.firearms[0], fuelPrice: cmpBuy.fuelPrice, lines: cmpBuy.lines });
+      cmpBuy.lines = {};
+      campaignKey = "";
       return;
     }
     const offer = e.target.closest("[data-offer]")?.dataset.offer;
@@ -2747,13 +2809,15 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const hz = Object.entries(S.station?.hazards || {});
     $("hazardList").innerHTML = hz.length ? hz.map(([id, h]) => {
       const i = S.hazardTypes[h.type];
-      return `<li><span class="grow"><b>${esc(String(rooms.get(id) || id).split(",")[0])}</b>: ${esc(i.name)}${h.level ? ` ${h.level}` : ""}${h.type === "oxygen" ? `, supply ${h.supply}` : ""} <span class="muted">· ${hazardTag(i)} · ${h.rounds} rounds, ${h.hours} h</span></span>
+      return `<li><span class="grow"><b>${esc(id === "rig" ? "The whole rig" : String(rooms.get(id) || id).split(",")[0])}</b>: ${esc(i.name)}${h.level ? ` ${h.level}` : ""}${h.type === "oxygen" ? `, supply ${h.supply}` : ""} <span class="muted">· ${hazardTag(i)} · ${h.rounds} rounds, ${h.hours} h</span></span>
         <button data-haz-room="${esc(id)}" class="ghost" title="Open the room view">Room</button><button data-haz-end="${esc(id)}" class="ghost danger" title="End this hazard">End</button></li>`;
     }).join("") : '<li class="muted small">No hazards in play. Click a room on the Map to set one.</li>';
     const waiting = S.roll?.status === "waiting" && S.roll.hazard;
     $("hazardQueue").textContent = [waiting && `Waiting for a hazard roll: ${S.roll.reason}`, S.hazardWork && `${S.hazardWork} step${S.hazardWork > 1 ? "s" : ""} queued`].filter(Boolean).join(" · ");
     $("hazardRollAll").hidden = !waiting;
+    $("rationing").checked = !!S.rationing;
   }
+  $("rationing").onchange = (e) => send({ t: "rationing", on: e.target.checked });
   $("nextRound").onclick = () => send({ t: "nextRound" });
   for (const b of document.querySelectorAll("[data-pass]")) b.onclick = () => send({ t: "passTime", hours: Number(b.dataset.pass) });
   $("hazardRollAll").onclick = () => send({ t: "hazardRollAll" });

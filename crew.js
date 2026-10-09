@@ -3,21 +3,23 @@ import { slug, clampInt as int } from "./clean.js";
 import { mitigate, deathSaveOutcome } from "./combat.js";
 import { rollWound, WOUNDS } from "./wounds.js";
 import { rollDice, randInt } from "./dice.js";
-import { armorFrom } from "./weapons.js";
+import { armorFrom, weaponsOf } from "./weapons.js";
+import { ammoOf, ammoItem, mergeAmmo, sanitizeAmmo, ammoLine } from "./resources.js";
 
 export const MAX_CREW = 4;
 export const CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
 export const STATS = ["strength", "speed", "intellect", "combat"];
 export const SAVES = ["sanity", "fear", "body"];
 
-const COND_NUMBERS = { vac: 0, deadAt: 0, air: 0, puncture: 0, rad: 0, pills: 0, lethal: 0, bleeding: 0, active: 0, fed: 0, cryo: 0, dying: 0 };
+const COND_NUMBERS = { vac: 0, deadAt: 0, air: 0, puncture: 0, rad: 0, pills: 0, lethal: 0, bleeding: 0, active: 0, fed: 0, cryo: 0, dying: 0, boost: 0 };
 const COND_FLAGS = ["out", "leak", "fire", "thirsty", "cryosleep", "strenuous", "spaced"];
-export const newCond = () => ({ ...COND_NUMBERS, ...Object.fromEntries(COND_FLAGS.map((k) => [k, false])), dead: "", tags: [] });
+export const newCond = () => ({ ...COND_NUMBERS, ...Object.fromEntries(COND_FLAGS.map((k) => [k, false])), dead: "", tags: [], stims: [] });
 export function sanitizeCond(c) {
   const out = newCond();
   for (const k of Object.keys(COND_NUMBERS)) out[k] = int(c?.[k], 0, 1e7, 0);
   for (const k of COND_FLAGS) out[k] = c?.[k] === true;
   out.dead = str(c?.dead, 40);
+  out.stims = (Array.isArray(c?.stims) ? c.stims : []).map((a) => int(a, 0, 23, 24)).filter((a) => a < 24).slice(0, 20);
   out.tags = (Array.isArray(c?.tags) ? c.tags : []).map((t) => str(t, 60).trim()).filter(Boolean).slice(0, 8);
   return out;
 }
@@ -128,7 +130,7 @@ export function sanitizeCrew(list) {
     let id = slug(c.id || name) || `pc${out.length + 1}`;
     while (seen.has(id)) id += "x";
     seen.add(id);
-    const items = Array.isArray(c.items) ? c.items.map((s) => str(s, 60).trim()).filter(Boolean).slice(0, MAX_ITEMS) : itemsFrom(c.loadout);
+    const items = mergeAmmo(Array.isArray(c.items) ? c.items.map((s) => str(s, 60).trim()).filter(Boolean) : itemsFrom(c.loadout)).slice(0, MAX_ITEMS);
     const minStress = int(c.minStress, 0, MAX_STRESS, 2);
     out.push({
       id,
@@ -149,6 +151,7 @@ export function sanitizeCrew(list) {
       loadout: str(c.loadout, 400),
       items,
       armor: sanitizeArmor(c.armor, items),
+      ammo: sanitizeAmmo(c.ammo),
       ...(STATUSES.includes(c.status) ? { status: c.status, statusNote: str(c.statusNote, 120) } : {}),
       ...(int(c.deathSaveIn, 0, 99, 0) ? { deathSaveIn: int(c.deathSaveIn, 0, 99, 0) } : {}),
       trinket: str(c.trinket, 160),
@@ -319,10 +322,11 @@ export const closeCrew = (pc, crew, roomOf) => {
   return room ? crew.filter((c) => c.id !== pc.id && roomOf(c.id) === room) : [];
 };
 
+const ammoNote = (pc) => { const a = ammoLine(pc, weaponsOf(pc.items)); return a ? `. Ammunition: ${a}` : ""; };
 export function crewStatus(crew) {
   return crew.map((c) => {
     const extra = [c.armor && `Armor ${armorText(c.armor)}`, c.cond?.bleeding && `BLEEDING ${c.cond.bleeding} per round`, c.cond?.dead && `DECEASED (${c.cond.dead})`, c.retired && "RETIRED (no longer played)", c.cond?.dying && `DYING: dead in ${c.cond.dying} rounds without intervention`, c.status && `${c.status.toUpperCase()}${c.statusNote ? ` (${c.statusNote})` : ""}`, c.deathSaveIn && `a Death Save is due in ${c.deathSaveIn} rounds unless they are treated`].filter(Boolean);
-    return `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}${extra.length ? `, ${extra.join(", ")}` : ""}. Carrying: ${c.items.join(", ") || "nothing"}`;
+    return `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}${extra.length ? `, ${extra.join(", ")}` : ""}. Carrying: ${c.items.join(", ") || "nothing"}${ammoNote(c)}`;
   }).join("\n");
 }
 
@@ -332,6 +336,7 @@ export function freshen(pc) {
   pc.stress = Math.max(pc.startStress, pc.minStress ?? 0);
   pc.items = itemsFrom(pc.loadout);
   pc.armor = armorFrom(pc.items);
+  pc.ammo = {};
   stabilise(pc);
   pc.cond = newCond();
 }
@@ -344,17 +349,34 @@ function itemsFrom(loadout) {
 export function changeItem(pc, action, rawItem) {
   const item = String(rawItem || "").trim().slice(0, 60);
   if (!item) return null;
+  const mag = ammoOf(item);
   if (action === "add") {
+    if (mag) {
+      const at = pc.items.findIndex((x) => ammoOf(x)?.weapon === mag.weapon);
+      if (at >= 0) pc.items[at] = ammoItem(mag.weapon, Math.min(99, ammoOf(pc.items[at]).n + mag.n));
+      else if (pc.items.length >= MAX_ITEMS) return null;
+      else pc.items.push(ammoItem(mag.weapon, mag.n));
+      return `picked up ${item}`;
+    }
     if (pc.items.length >= MAX_ITEMS) return null;
     pc.items.push(item[0].toUpperCase() + item.slice(1));
     return `picked up ${item}`;
+  }
+  const verb = action === "use" ? "used" : "lost";
+  if (mag) {
+    const at = pc.items.findIndex((x) => ammoOf(x)?.weapon === mag.weapon);
+    if (at < 0) return null;
+    const left = ammoOf(pc.items[at]).n - mag.n;
+    if (left > 0) pc.items[at] = ammoItem(mag.weapon, left);
+    else pc.items.splice(at, 1);
+    return `${verb} ${item}`;
   }
   const want = item.toLowerCase();
   const i = pc.items.findIndex((x) => x.toLowerCase() === want);
   const j = i >= 0 ? i : pc.items.findIndex((x) => x.toLowerCase().includes(want) || want.includes(x.toLowerCase()));
   if (j < 0) return null;
   const [gone] = pc.items.splice(j, 1);
-  return `lost ${gone}`;
+  return `${verb} ${gone}`;
 }
 
 export const SKILL_BONUSES = [10, 15, 20];
