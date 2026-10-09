@@ -242,6 +242,21 @@
           ${stripes("sv-stripes-warn", "sv-stripe-warn")}${stripes("sv-stripes-bad", "sv-stripe-bad")}</defs>
         ${out.bands.join("")}${shaft}${out.lift.join("")}${out.links.join("")}${out.fg.join("")}
       </svg>${elsewhere}`;
+    fitRooms(el);
+  }
+
+  function fitRooms(el) {
+    el.querySelectorAll(".sv-room").forEach((g) => {
+      const rect = g.querySelector("rect"), w = Number(rect?.getAttribute("width"));
+      if (!w) return;
+      g.querySelectorAll("text.sv-roomname, text.sv-val:not(.sv-people), text.sv-hazard").forEach((t) => {
+        if (t.childElementCount) return;
+        const max = w - 20 - (t.classList.contains("sv-roomname") && g.querySelector(".sv-cam") ? 24 : 0);
+        let txt = t.textContent;
+        if (!(t.getComputedTextLength?.() > max)) return;
+        while (txt.length > 1 && t.getComputedTextLength() > max) { txt = txt.slice(0, -1); t.textContent = `${txt.trimEnd()}…`; }
+      });
+    });
   }
 
   const elsewhereHtml = (m, editable) => (m.elsewhere.size

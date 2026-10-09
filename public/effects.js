@@ -635,11 +635,11 @@
       const { c, ctx, w, h } = fullCanvas();
       c.className = "fx-canvas fx-ice";
       const k = fx.intensity || 2, reach = Math.min(w, h) * (0.07 + 0.05 * k), drift = makeNoise(), bend = makeNoise(), pace = makeNoise();
-      const seconds = 110 - k * 13;
+      const seconds = 62 - k * 8;
       const puff = newCanvas(32, 32);
       const pctx = puff.getContext("2d");
       pctx.translate(16, 16);
-      pctx.fillStyle = "rgba(210,232,255,0.1)"; pctx.strokeStyle = "rgba(230,245,255,0.16)"; pctx.lineWidth = 0.8;
+      pctx.fillStyle = "rgba(210,232,255,0.2)"; pctx.strokeStyle = "rgba(230,245,255,0.3)"; pctx.lineWidth = 0.8;
       pctx.beginPath();
       for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU, r = 14 * (i % 2 ? 0.8 : 1); i ? pctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : pctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
       pctx.closePath(); pctx.fill();
@@ -656,11 +656,11 @@
       for (let y = rand(0, 20); y < h; y += rand(22, 46)) { seed(-2, y, rand(-0.45, 0.45)); seed(w + 2, y, Math.PI + rand(-0.45, 0.45)); }
       const rime = (x0, y0, x1, y1, rx, ry, rw, rh) => {
         const g = ctx.createLinearGradient(x0, y0, x1, y1);
-        g.addColorStop(0, "rgba(225,240,255,0.32)"); g.addColorStop(1, "rgba(225,240,255,0)");
+        g.addColorStop(0, "rgba(225,240,255,0.55)"); g.addColorStop(1, "rgba(225,240,255,0)");
         ctx.fillStyle = g; ctx.fillRect(rx, ry, rw, rh);
       };
-      rime(0, 0, 0, 16, 0, 0, w, 16); rime(0, h, 0, h - 16, 0, h - 16, w, 16);
-      rime(0, 0, 16, 0, 0, 0, 16, h); rime(w, 0, w - 16, 0, w - 16, 0, 16, h);
+      rime(0, 0, 0, 26, 0, 0, w, 26); rime(0, h, 0, h - 26, 0, h - 26, w, 26);
+      rime(0, 0, 26, 0, 0, 0, 26, h); rime(w, 0, w - 26, 0, w - 26, 0, 26, h);
       const glint = (x, y) => {
         const r = rand(2.5, 6);
         ctx.strokeStyle = "rgba(245,252,255,0.85)"; ctx.lineWidth = 0.7;
@@ -714,8 +714,8 @@
           }
         }
         paths.forEach((byLevel, g) => byLevel.forEach((p, lv) => {
-          ctx.strokeStyle = `rgba(222,240,255,${((0.8 - g * 0.16) * (lv + 0.5) / LEVELS).toFixed(3)})`;
-          ctx.lineWidth = Math.max(0.35, 1.3 - g * 0.32);
+          ctx.strokeStyle = `rgba(222,240,255,${Math.min(1, (1 - g * 0.16) * (lv + 0.5) / LEVELS * 1.25).toFixed(3)})`;
+          ctx.lineWidth = Math.max(0.5, 1.9 - g * 0.4);
           ctx.stroke(p);
         }));
         if ((crackle += dt) > 400 && tips.length) { crackle = 0; if (Math.random() < 0.3) Sound.burst(0.04, 0.04, rand(4000, 7000)); }
