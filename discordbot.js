@@ -1,20 +1,3 @@
-// Discord: a bot that sits in a voice channel and writes down what everyone at
-// the (virtual) table says, into a session's log, like the Warden's Listen
-// button does for one microphone. One bot serves every session; it's on when
-// the server sets DISCORD_BOT_TOKEN.
-//
-// Linking: in a voice channel, the Warden types /terminal listen code:<the session's
-// code> (the one players join with). The bot joins that channel. Whoever linked it is the Warden: their speech is logged like the
-// Listen button's (fact, for the agent). Everyone else's is table talk, under the
-// character they play once the Warden says (/terminal player), else their name.
-//
-// Speech-to-text: each speaker's audio, cut at pauses, goes to Groq's Whisper on
-// the session's own Groq key (memory only, like its LLM key).
-//
-// Talking back (the session's "discordTalk" setting): every line the players'
-// screens would speak is spoken in the channel too, at the same moment, with its
-// voice's effects rendered on the server (voicefx.js). On joining, a random one of
-// the story's voices says "NOW RECORDING".
 import { Client, GatewayIntentBits, Events, MessageFlags, ActivityType } from "discord.js";
 import { joinVoiceChannel, EndBehaviorType, VoiceConnectionStatus, entersState, createAudioPlayer, createAudioResource, StreamType, NoSubscriberBehavior, AudioPlayerStatus } from "@discordjs/voice";
 import prism from "prism-media";
@@ -27,23 +10,20 @@ export const discordEnabled = !!TOKEN;
 
 const STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 const STT_MODEL = process.env.DISCORD_STT_MODEL || "whisper-large-v3-turbo";
-const STT_LANGUAGE = process.env.DISCORD_STT_LANGUAGE ?? "en"; // "" = Whisper guesses
-const SILENCE_MS = 900; // a pause this long ends a phrase
-const BYTES_PER_SEC = 48000 * 2 * 2; // what Discord decodes to: 48 kHz, stereo, 16-bit
-const MIN_BYTES = BYTES_PER_SEC * 0.5; // shorter is a cough or a click
-const MAX_BYTES = BYTES_PER_SEC * 30; // someone talking on and on: send it in pieces
-const EMPTY_LEAVE_MS = 15_000; // nobody left in the channel: go after this long (a moment, for a dropped connection to come back)
-// Connect + Speak + View Channel. (Speak: it announces itself, and can talk back.)
+const STT_LANGUAGE = process.env.DISCORD_STT_LANGUAGE ?? "en";
+const SILENCE_MS = 900;
+const BYTES_PER_SEC = 48000 * 2 * 2;
+const MIN_BYTES = BYTES_PER_SEC * 0.5;
+const MAX_BYTES = BYTES_PER_SEC * 30;
+const EMPTY_LEAVE_MS = 15_000;
 const PERMISSIONS = 1024 + 1048576 + 2097152;
-// Whisper fills silence and noise with these; on their own they're never real.
 const HALLUCINATIONS = /^(thank you( (so much|very much))?|thanks( for watching)?|you|bye|okay|oh|um+|uh+|hmm+|so|\.+|subtitles by.*|please subscribe.*)[.!?]*$/i;
 
 let client = null;
 let getSession = () => null;
 let inviteUrl = "";
-const links = new Map(); // guild id -> { session, guildName, channelId, channelName, wardenId, wardenName, connection, chain, names, emptyTimer }
+const links = new Map();
 
-// For the Warden console: whether the bot is on, how to invite it, and where it's listening.
 export function discordStatus(sessionCode) {
   if (!discordEnabled) return null;
   const link = linkOf(sessionCode);
@@ -54,8 +34,6 @@ export function stopListening(sessionCode, why = "") {
   for (const [guildId, l] of links) if (l.session === sessionCode) leave(guildId, why);
 }
 
-// What the bot shows under its name: listening to the comms while it's in a voice
-// channel (how many, never which: one bot serves everyone's games), else waiting.
 function showPresence() {
   if (!client?.user) return;
   const n = links.size;
@@ -76,30 +54,21 @@ function leave(guildId, why = "") {
   const s = getSession(l.session);
   if (s) {
     if (why) s.send("dm", { t: "toast", level: "info", text: why });
-    s.discordMoved(); // (voices set to play on Discord fall back to the screens)
+    s.discordMoved();
   }
 }
 
-// ---------------------------------------------------------------- talking back
-
-// The channel's voice: clips (48 kHz stereo 16-bit) placed on the wall clock, mixed
-// 20 ms at a time, so a reverb tail can ring on under the next line. A voice never
-// talks over the one before it: a clip that comes late (its effects took a while)
-// waits for the last one's voice to finish, as the screens do (voice.js busyUntil).
-// It runs on silence for a moment after the last sound (Discord holds some audio
-// ahead, which a new stream would cut off), then ends; the next line starts another.
-const FRAME = 960; // samples per 20 ms
-const GRACE = 48000 * 1.5; // silence after the last sound before it ends
+const FRAME = 960;
+const GRACE = 48000 * 1.5;
 class Mixer extends Readable {
   constructor() {
     super();
     this.clips = [];
-    this.pos = 0; // samples handed to Discord so far
+    this.pos = 0;
     this.start = Date.now();
-    this.busyUntil = 0; // where the last voice (not its tail) ends
-    this.lastSound = 0; // where the last clip, tail and all, ends
+    this.busyUntil = 0;
+    this.lastSound = 0;
   }
-  // voice: how long the voice itself is (in samples), without its effects' tail.
   add(pcm, at, voice) {
     const due = Math.round((at - this.start) * 48);
     const from = Math.max(this.pos, due, this.busyUntil);
@@ -131,11 +100,8 @@ class Mixer extends Readable {
 
 const linkOf = (sessionCode) => [...links.values()].find((l) => l.session === sessionCode);
 
-// Is the bot in a voice channel for this session?
 export const discordLinked = (sessionCode) => !!linkOf(sessionCode);
 
-// Speak a clip (a dry WAV, as tts.js makes it) in the channel at `at` (ms, server
-// clock), through the voice's effects.
 export async function discordSay(sessionCode, wav, fx, at) {
   const pcm = await renderVoice(wav, fx).catch(() => null);
   const l = linkOf(sessionCode);
@@ -153,12 +119,10 @@ function play(l, pcm, wav, fx, at) {
   const voice = Math.round((wavSeconds(wav) / (fx.rate || 1)) * 48000);
   if (l.mixer && !l.mixer.ended) return l.mixer.add(pcm, at, voice);
   l.mixer = new Mixer();
-  l.mixer.add(pcm, at, voice); // (before it starts: it ends when it has nothing)
+  l.mixer.add(pcm, at, voice);
   l.player.play(createAudioResource(l.mixer, { inputType: StreamType.Raw }));
 }
 
-// Joining: a voice from the story, picked at random, says it's recording, with all
-// its effects. (Unmuted for that even when it won't talk back; muted again after.)
 async function announce(l, session) {
   const voices = session.state.config.voices || [];
   const v = voices[Math.floor(Math.random() * voices.length)];
@@ -169,24 +133,21 @@ async function announce(l, session) {
   play(l, pcm, wav, fx, Date.now());
 }
 
-// Muted unless it talks back (or is still saying something).
 function settleMute(l) {
   const mute = !l.talk && !l.mixer;
   if (links.get(l.guildId) !== l || l.connection.joinConfig.selfMute === mute) return;
   try { l.connection.rejoin({ ...l.connection.joinConfig, selfMute: mute }); } catch {}
 }
 
-// A player cut the comms off: stop speaking now (as the screens do).
 export function discordCut(sessionCode) {
   const l = linkOf(sessionCode);
   if (!l?.mixer) return;
   l.mixer.cut();
   l.mixer = null;
-  try { l.player?.stop(true); } catch {} // (what's already queued for Discord, too)
+  try { l.player?.stop(true); } catch {}
   settleMute(l);
 }
 
-// Talking back on or off: the bot unmutes itself to speak.
 export function setDiscordTalk(sessionCode, on) {
   const l = linkOf(sessionCode);
   if (!l || l.talk === !!on) return;
@@ -195,9 +156,6 @@ export function setDiscordTalk(sessionCode, on) {
   settleMute(l);
 }
 
-// ---------------------------------------------------------------- audio
-
-// 48 kHz stereo -> 16 kHz mono WAV (what Whisper wants; a third the upload).
 function toWav(pcm) {
   const frames = Math.floor(pcm.length / 4 / 3);
   const out = Buffer.alloc(44 + frames * 2);
@@ -216,7 +174,7 @@ function toWav(pcm) {
   return out;
 }
 
-const warned = new Map(); // session code + problem -> when the Warden was last told
+const warned = new Map();
 function warnOnce(session, what, text) {
   const k = `${session.code}:${what}`;
   if (Date.now() - (warned.get(k) || 0) < 120_000) return;
@@ -236,7 +194,7 @@ async function transcribe(session, pcm) {
   form.append("response_format", "verbose_json");
   form.append("temperature", "0");
   if (STT_LANGUAGE) form.append("language", STT_LANGUAGE);
-  const prompt = session.sttPrompt(); // (names it should spell right)
+  const prompt = session.sttPrompt();
   if (prompt) form.append("prompt", prompt);
   let r;
   try {
@@ -249,7 +207,6 @@ async function transcribe(session, pcm) {
   if (r.status === 429) { warnOnce(session, "429", "Groq rate limit hit: some Discord speech was missed."); return ""; }
   if (!r.ok) { warnOnce(session, "http", `Groq couldn't transcribe Discord speech (HTTP ${r.status}).`); return ""; }
   const data = await r.json().catch(() => ({}));
-  // Segments Whisper itself thinks are silence, or is guessing at, are left out.
   const segs = Array.isArray(data.segments) ? data.segments : null;
   const text = (segs ? segs.filter((g) => !(g.no_speech_prob > 0.6 && g.avg_logprob < -0.5) && g.avg_logprob > -1.2).map((g) => g.text).join(" ") : data.text || "")
     .replace(/\s+/g, " ").trim();
@@ -264,7 +221,6 @@ async function speakerName(guild, link, userId) {
   return name;
 }
 
-// One phrase from one person: decode it, and when it ends (a pause), write it down.
 function capture(guild, link, userId) {
   const receiver = link.connection.receiver;
   if (receiver.subscriptions.has(userId)) return;
@@ -277,7 +233,6 @@ function capture(guild, link, userId) {
     if (audio.length < MIN_BYTES) return;
     const s = getSession(link.session);
     if (!s) return;
-    // Started now (in parallel), delivered in the order people spoke.
     const job = Promise.all([transcribe(s, audio), speakerName(guild, link, userId)]);
     link.chain = link.chain.then(() => job).then(([text, who]) => {
       if (!text || who.bot || links.get(guild.id) !== link) return;
@@ -289,17 +244,15 @@ function capture(guild, link, userId) {
   pcm.on("data", (c) => { chunks.push(c); bytes += c.length; if (bytes >= MAX_BYTES) flush(); });
   const end = () => { if (!done) { done = true; flush(); } };
   pcm.on("end", end);
-  pcm.on("error", end); // (a corrupt packet: keep what came before it)
+  pcm.on("error", end);
   opus.on("error", end);
 }
-
-// ---------------------------------------------------------------- commands
 
 const COMMANDS = [{
   name: "terminal",
   description: "Mothership terminal: transcribe this voice channel",
-  contexts: [0], // servers only
-  integration_types: [0], // (installed to a server, not to a user: it needs to be in the server to join voice)
+  contexts: [0],
+  integration_types: [0],
   options: [
     { type: 1, name: "listen", description: "Join your voice channel and transcribe it into a session", options: [
       { type: 3, name: "code", description: "The session code players join with", required: true },
@@ -321,10 +274,10 @@ async function onListen(i) {
   if (!channel.joinable) return i.reply({ content: `Can't join ${channel.name}. Give the bot Connect and View Channel there.`, flags: MessageFlags.Ephemeral });
   await i.deferReply();
 
-  leave(i.guildId); // (one channel per server)
-  stopListening(code); // (and one channel per session)
-  const talk = !!session.state.config.discordTalk; // (it unmutes to speak the characters' lines)
-  const connection = joinVoiceChannel({ channelId: channel.id, guildId: i.guildId, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false, selfMute: false }); // (unmuted to announce itself: announce)
+  leave(i.guildId);
+  stopListening(code);
+  const talk = !!session.state.config.discordTalk;
+  const connection = joinVoiceChannel({ channelId: channel.id, guildId: i.guildId, adapterCreator: i.guild.voiceAdapterCreator, selfDeaf: false, selfMute: false });
   const link = { session: code, guildId: i.guildId, guildName: i.guild.name, channelId: channel.id, channelName: channel.name, wardenId: i.user.id, wardenName: i.member?.displayName || i.user.username, connection, talk, player: null, mixer: null, chain: Promise.resolve(), names: new Map(), emptyTimer: null };
   links.set(i.guildId, link);
   showPresence();
@@ -335,7 +288,6 @@ async function onListen(i) {
     return i.editReply("Couldn't connect to the voice channel. Try again.");
   }
   connection.receiver.speaking.on("start", (userId) => links.get(i.guildId) === link && capture(i.guild, link, userId));
-  // Dropped (moved, kicked, a network blip): wait for it to come back, or give up.
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
     try {
       await Promise.race([entersState(connection, VoiceConnectionStatus.Signalling, 5_000), entersState(connection, VoiceConnectionStatus.Connecting, 5_000)]);
@@ -345,17 +297,15 @@ async function onListen(i) {
   });
   connection.on(VoiceConnectionStatus.Destroyed, () => links.get(i.guildId) === link && leave(i.guildId));
   announce(link, session).catch((err) => { console.warn(`[discord] announcing failed: ${err.message}`); settleMute(link); });
-  session.discordMoved(); // (voices set to play on Discord move there)
+  session.discordMoved();
   session.send("dm", { t: "toast", level: "info", text: `Discord: listening in ${channel.name} (${i.guild.name}).` });
   const keyNote = session.sttKey ? "" : "\nNo Groq key yet: nothing is transcribed until the Warden adds one in Settings → Discord.";
-  // Said in the channel, for everyone: they're being transcribed.
   await i.editReply(`Listening in **${channel.name}**. Speech here is transcribed for the Warden. Anyone can stop it with \`/terminal stop\`.${keyNote}`);
 }
 
 const WARDEN = "Warden", NOBODY = "Nobody";
 const norm = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-// A crew member by name (or a word of it: "rook", "tick"), or their id.
 function findCrew(crew, ref) {
   const r = norm(ref);
   if (!r) return null;
@@ -365,7 +315,6 @@ function findCrew(crew, ref) {
   return some.length === 1 ? some[0] : null;
 }
 
-// The character box suggests the session's crew, Nobody, and (for the Warden) Warden.
 async function onAutocomplete(i) {
   const link = links.get(i.guildId);
   const s = getSession(link?.session);
@@ -378,8 +327,6 @@ async function onPlayer(i) {
   const link = links.get(i.guildId);
   const s = getSession(link?.session);
   if (!link || !s) return i.reply({ content: "Not listening in this server. Start with `/terminal listen`.", flags: MessageFlags.Ephemeral });
-  // Anyone may pick their own character; only the Warden picks for others, gives the Warden role,
-  // or moves a character someone else already plays.
   const user = i.options.getUser("user") || i.user;
   const isWarden = i.user.id === link.wardenId;
   const self = user.id === i.user.id;
@@ -387,16 +334,16 @@ async function onPlayer(i) {
   if (user.bot) return denied("That's a bot.");
   if (!self && !isWarden) return denied(`Only the Warden (${link.wardenName}) can set who others play. For yourself, leave out user.`);
   const name = (self ? i.member?.displayName : i.options.getMember("user")?.displayName) || user.globalName || user.username;
-  link.names.set(user.id, { name, bot: false }); // (their speech goes in under this name)
+  link.names.set(user.id, { name, bot: false });
   const ref = i.options.getString("character");
-  const quiet = { allowedMentions: { parse: [] } }; // (name them without pinging)
+  const quiet = { allowedMentions: { parse: [] } };
 
   if (norm(ref) === norm(WARDEN)) {
     if (!isWarden) return denied(`Only the Warden (${link.wardenName}) can pass on the Warden role.`);
     if (user.id === link.wardenId) return denied("You're already the Warden.");
     link.wardenId = user.id;
     link.wardenName = name;
-    s.assignPlayer(user.id, null); // (the Warden plays nobody)
+    s.assignPlayer(user.id, null);
     s.send("dm", { t: "toast", level: "info", text: `Discord: ${name} is the Warden now.` });
     return i.reply({ content: `<@${user.id}> is the Warden now.`, ...quiet });
   }
@@ -424,13 +371,12 @@ async function onStop(i) {
   await i.reply("Stopped listening.");
 }
 
-// Leave a channel everyone else has left (after a while: people drop and rejoin).
 function onVoiceState(oldState, newState) {
   for (const id of new Set([oldState.guild.id, newState.guild.id])) {
     const l = links.get(id);
     if (!l) continue;
     if (newState.id === client.user.id && newState.channelId && newState.channelId !== l.channelId) {
-      l.channelId = newState.channelId; // (someone moved the bot)
+      l.channelId = newState.channelId;
       l.channelName = newState.channel?.name || l.channelName;
       getSession(l.session)?.syncDm();
     }
@@ -441,16 +387,12 @@ function onVoiceState(oldState, newState) {
   }
 }
 
-// ---------------------------------------------------------------- start
-
 export function startDiscord(lookup) {
   if (!discordEnabled || client) return;
   getSession = lookup;
   client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
   client.once(Events.ClientReady, async (c) => {
     inviteUrl = `https://discord.com/oauth2/authorize?client_id=${c.user.id}&scope=bot+applications.commands&permissions=${PERMISSIONS}`;
-    // Register /terminal only when it changed: every re-registration makes Discord
-    // clients that cached the old one say "This command is outdated" for a while.
     try {
       const current = await c.application.commands.fetch();
       const same = current.size === COMMANDS.length && COMMANDS.every((d) => current.find((x) => x.name === d.name)?.equals(d, true));
@@ -468,8 +410,6 @@ export function startDiscord(lookup) {
     if (i.commandName !== "terminal") return;
     if (i.isAutocomplete()) return onAutocomplete(i).catch(() => {});
     if (!i.isChatInputCommand()) return;
-    // Only its commands were added to this server, not the bot itself (an install without the
-    // "bot" scope): it can't see voice channels or join one, so say so instead of "join a voice channel".
     if (!i.inCachedGuild()) {
       return i.reply({ content: `The bot isn't in this server yet, only its commands are, so it can't see or join voice channels. Someone who can manage the server needs to add it with this link: ${inviteUrl}`, flags: MessageFlags.Ephemeral }).catch(() => {});
     }

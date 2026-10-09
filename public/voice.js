@@ -1,18 +1,12 @@
-// Spoken lines. The server returns dry audio (eSpeak or Kokoro); this file gives each voice
-// its character with one configurable Web Audio chain (parameters in voices.js:
-// rate, band filters, drive, ring mod, comb, chorus, echo, reverb, radio noise).
-//
-// Player screens play lines on the server's schedule (load + playNow, through
-// FX.Sound's master volume); the DM console's "Test" button uses test().
 (() => {
   const queue = [];
   let playing = false;
-  let gen = 0; // bumped by stop(): any in-flight line or loop sees it and quits
+  let gen = 0;
   let master = null;
   let impulse = null;
   let ownCtx = null;
   let blocked = () => false;
-  let cutCurrent = () => {}; // stops the clip that's playing now (see play())
+  let cutCurrent = () => {};
 
   const ctx = () => window.FX?.Sound?.ctx || ownCtx || (ownCtx = new (window.AudioContext || window.webkitAudioContext)());
   const ready = () => (window.FX ? FX.Sound.ok() : true);
@@ -26,7 +20,6 @@
     return master;
   }
 
-  // Warden console: hear a voice (unsaved settings included) with sample text.
   function test(voice, text, url, token) {
     stop();
     ctx().resume?.();
@@ -52,8 +45,6 @@
     playing = true;
     const buffer = await item.audio;
     if (myGen !== gen) return;
-    // Blocked (e.g. a blackout): wait it out, then carry on speaking. (What was
-    // playing when it started was cut off by interrupt().)
     while (blocked()) {
       await new Promise((r) => setTimeout(r, 150));
       if (myGen !== gen) return;
@@ -77,9 +68,7 @@
         stopLater(sources);
       };
       src.onended = finish;
-      // interrupt() cuts just this clip; the queue carries on.
       cutCurrent = () => { try { src.stop(); } catch {} finish(); };
-      // stop() can't reach this source directly, so watch for it.
       const watch = setInterval(() => {
         if (myGen !== gen) { clearInterval(watch); try { src.stop(); } catch {} finish(); }
       }, 100);
@@ -89,13 +78,10 @@
     });
   }
 
-  // -------------------------------------------------------------- helpers
-  // A fetched clip, decoded (null if there's none, or it won't decode).
   const decodeResponse = (response) => response
     .then((r) => (r.ok && r.status !== 204 ? r.arrayBuffer() : null))
     .then((buf) => (buf ? ctx().decodeAudioData(buf) : null))
     .catch(() => null);
-  // A clip's effect sources, stopped once its reverb/echo tails have rung out.
   const stopLater = (sources) => setTimeout(() => sources.forEach((s) => { try { s.stop(); } catch {} }), 6000);
   const gain = (c, v) => { const g = c.createGain(); g.gain.value = v; return g; };
   const filter = (c, type, freq, q = 0.7) => {
@@ -123,8 +109,6 @@
     return impulse;
   }
 
-  // -------------------------------------------------------------- the chain
-  // Returns extra sources (oscillators, noise) that must start/stop with the line.
   function chain(c, src, out, fx, duration) {
     const p = {
       rate: 1, highpass: 80, lowpass: 9000, drive: 0, ringMix: 0, ringFreq: 55, comb: 0, combMs: 6,
@@ -133,11 +117,9 @@
     const extras = [];
     src.playbackRate.value = p.rate;
 
-    // Tone shaping: band-limit, then optional saturation.
     let pre = src.connect(filter(c, "highpass", p.highpass)).connect(filter(c, "lowpass", p.lowpass));
     if (p.drive > 0) pre = pre.connect(saturator(c, p.drive));
 
-    // Ring modulator blended with the clean signal into one bus.
     const bus = gain(c, 1);
     pre.connect(gain(c, 1 - p.ringMix)).connect(bus);
     if (p.ringMix > 0) {
@@ -151,7 +133,6 @@
 
     bus.connect(gain(c, p.dry)).connect(out);
 
-    // Shared reverb, fed by the voice, chorus and echoes.
     let verb = null;
     if (p.reverb > 0) {
       verb = c.createConvolver();
@@ -160,7 +141,6 @@
       bus.connect(gain(c, 0.5)).connect(verb);
     }
 
-    // Metallic comb resonance.
     if (p.comb > 0) {
       const d = c.createDelay(0.05);
       d.delayTime.value = p.combMs / 1000;
@@ -168,7 +148,6 @@
       d.connect(gain(c, p.comb)).connect(out);
     }
 
-    // Two slowly wavering delay lines: a drifting, many-voiced chorus.
     if (p.chorus > 0) {
       for (const [base, rate] of [[0.019, 0.23], [0.031, 0.31]]) {
         const d = c.createDelay(0.1);
@@ -183,7 +162,6 @@
       }
     }
 
-    // Feedback echo that darkens as it repeats.
     if (p.echo > 0) {
       const d = c.createDelay(1.5);
       d.delayTime.value = p.echoTime;
@@ -193,7 +171,6 @@
       if (verb) dark.connect(gain(c, p.echo)).connect(verb);
     }
 
-    // Radio hiss under the voice, for as long as it speaks.
     if (p.noise > 0) {
       const len = Math.ceil(c.sampleRate * 2);
       const nb = c.createBuffer(1, len, c.sampleRate);
@@ -212,13 +189,8 @@
     return extras;
   }
 
-  // ---------------------------------------------------------- scheduled playback
-  // The player screen plays lines on the server's timeline: load a clip ahead,
-  // then play it at its moment. A screen that's late starts part-way in, so
-  // every screen stays in step.
   const live = new Set();
   const load = (url) => decodeResponse(fetch(url));
-  // A clip sent inline (base64 WAV) with the line.
   function decode(b64) {
     try {
       const bin = atob(b64);
@@ -230,9 +202,7 @@
     }
   }
 
-  // Play a whole clip now, or right after the clip before it if that one is
-  // still going (a screen that started a clip late never talks over itself).
-  let busyUntil = 0; // audio-clock time the last clip ends
+  let busyUntil = 0;
   function playNow(buffer, fx = {}) {
     if (!buffer || !ready() || blocked()) return;
     const c = ctx();
@@ -250,8 +220,6 @@
     sources.forEach((x) => x.start(when));
     src.start(when);
   }
-  // One clip on its own, with a voice's effects (an audio log the player plays): { done, stop }.
-  // done resolves when it ends (true) or is stopped (false).
   function playClip(buffer, fx = {}) {
     const c = ctx(), src = c.createBufferSource();
     src.buffer = buffer;
@@ -277,7 +245,7 @@
     if (master) {
       const old = master;
       master = null;
-      old.gain.setTargetAtTime(0, ctx().currentTime, 0.03); // also silences reverb/echo tails
+      old.gain.setTargetAtTime(0, ctx().currentTime, 0.03);
       setTimeout(() => old.disconnect(), 300);
     }
   }
@@ -285,14 +253,11 @@
   window.Voice = {
     test,
     stop,
-    // Cut off whatever is being said right now, but keep the queue (lines later
-    // in the reply still speak, e.g. after a blackout beat ends).
     interrupt() { cutCurrent(); cutLive(); },
     load,
     decode,
     playNow,
     playClip,
-    // e.g. Voice.setBlocked(() => FX.has("blackout")): nothing speaks while it's true.
     setBlocked(fn) { blocked = fn; },
   };
 })();

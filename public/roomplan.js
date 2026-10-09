@@ -1,9 +1,4 @@
-// Room floor plans: a small grid of tile codes, one string per row, drawn as a
-// blueprint. Used by the Warden console (view and edit) and the players'
-// screens (when the Warden shows them a room: the layout only, never what's in it).
-// Exposes window.RoomPlan.
 (() => {
-  // code -> [name, how it's drawn]. Keep in step with rooms.js (TILES).
   const TILES = {
     " ": ["outside"],
     "#": ["wall"],
@@ -26,26 +21,24 @@
   const CODES = Object.keys(TILES);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-  // Rows padded to one width; unknown codes become floor.
   function normalize(rows) {
     const list = (Array.isArray(rows) ? rows : []).map((r) => String(r ?? ""));
     const w = Math.max(0, ...list.map((r) => r.length));
     return list.map((r) => [...r.padEnd(w, " ")].map((c) => (TILES[c] ? c : ".")).join(""));
   }
 
-  // One tile at (x, y), size s. Shapes only, coloured by CSS (currentColor).
   function tile(c, x, y, s, n) {
     const m = s * 0.18, i = s - m * 2, cx = x + s / 2, cy = y + s / 2;
     const wallish = (k) => k === "#" || k === "W";
     switch (c) {
       case "#": return `<rect class="rp-wall" x="${x}" y="${y}" width="${s}" height="${s}"/>`;
-      case "W": { // a wall with a pane through it, along the run of the wall
+      case "W": {
         const h = wallish(n.l) || wallish(n.r);
         return `<rect class="rp-wall" x="${x}" y="${y}" width="${s}" height="${s}"/>` + (h
           ? `<rect class="rp-glass" x="${x}" y="${cy - s * 0.12}" width="${s}" height="${s * 0.24}"/>`
           : `<rect class="rp-glass" x="${cx - s * 0.12}" y="${y}" width="${s * 0.24}" height="${s}"/>`);
       }
-      case "D": case "H": { // a gap in the wall with the door leaf across it
+      case "D": case "H": {
         const h = wallish(n.l) || wallish(n.r) || n.l === "D" || n.r === "D" || n.l === "H" || n.r === "H";
         const t = c === "H" ? s * 0.34 : s * 0.2;
         return `<rect class="rp-floor" x="${x}" y="${y}" width="${s}" height="${s}"/>` + (h
@@ -65,7 +58,7 @@
       case "C": return floor + `<rect class="rp-thing" x="${x + m}" y="${y + m}" width="${i}" height="${i}"/><path class="rp-line" d="M${x + m} ${y + m}L${x + m + i} ${y + m + i}M${x + m + i} ${y + m}L${x + m} ${y + m + i}"/>`;
       case "V": return floor + `<rect class="rp-thing hollow" x="${x + m}" y="${y + m}" width="${i}" height="${i}"/>` + [1, 2, 3].map((k) => `<line class="rp-line" x1="${x + m}" y1="${y + m + (i * k) / 4}" x2="${x + m + i}" y2="${y + m + (i * k) / 4}"/>`).join("");
       case "M": return floor + `<rect class="rp-thing" x="${x + m}" y="${y + m}" width="${i}" height="${i}" rx="2"/><circle class="rp-soft" cx="${cx}" cy="${cy}" r="${i * 0.26}"/>`;
-      case "R": { // one core for a whole block of R tiles, drawn from its top-left tile
+      case "R": {
         if (!n.core) return floor;
         const [bw, bh] = n.core, ccx = x + (bw * s) / 2, ccy = y + (bh * s) / 2, r = (Math.min(bw, bh) * s) / 2 - 2;
         return floor + `<circle class="rp-core" cx="${ccx}" cy="${ccy}" r="${r}"/><circle class="rp-soft" cx="${ccx}" cy="${ccy}" r="${r * 0.42}"/><circle class="rp-line" cx="${ccx}" cy="${ccy}" r="${r * 0.72}"/>`;
@@ -76,7 +69,6 @@
     return floor;
   }
 
-  // The blueprint as an SVG string. opts: { cell (px per tile), title, cls }.
   function svg(rows, { cell = 22, title = "", cls = "" } = {}) {
     const g = normalize(rows);
     const h = g.length, w = g[0]?.length || 0;
@@ -86,7 +78,7 @@
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const n = { l: at(x - 1, y), r: at(x + 1, y), u: at(x, y - 1), d: at(x, y + 1) };
-        if (g[y][x] === "R" && n.l !== "R" && n.u !== "R") { // the top-left of a reactor block: one core for all of it
+        if (g[y][x] === "R" && n.l !== "R" && n.u !== "R") {
           let bw = 1, bh = 1;
           while (at(x + bw, y) === "R") bw++;
           while (at(x, y + bh) === "R") bh++;
@@ -96,11 +88,9 @@
         hits.push(`<rect class="rp-hit" data-x="${x}" data-y="${y}" x="${x * cell}" y="${y * cell}" width="${cell}" height="${cell}"/>`);
       }
     }
-    // Tiles, then reactor cores over them, then the click targets (for editing) on top.
     return `<svg class="roomplan ${cls}" viewBox="-2 -2 ${w * cell + 4} ${h * cell + 4}" role="img" aria-label="${esc(title || "Room layout")}">${title ? `<title>${esc(title)}</title>` : ""}${parts.join("")}${cores.join("")}${hits.join("")}</svg>`;
   }
 
-  // The tiles a plan uses, for a legend: [[code, name]].
   const legend = (rows) => {
     const used = new Set(normalize(rows).join(""));
     return CODES.filter((c) => c !== " " && c !== "." && used.has(c)).map((c) => [c, TILES[c][0]]);

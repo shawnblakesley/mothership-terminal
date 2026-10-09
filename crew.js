@@ -1,6 +1,3 @@
-// The players' characters (Mothership 1e): up to four crew files a session's
-// players pick from. Each player screen claims one; the Warden sees and edits
-// them all, and the agent knows who is who.
 import { PORTRAIT_FILE } from "./cast.js";
 import { slug, clampInt as int } from "./clean.js";
 
@@ -9,8 +6,6 @@ export const CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
 export const STATS = ["strength", "speed", "intellect", "combat"];
 export const SAVES = ["sanity", "fear", "body"];
 
-// The default scenario: a convict maintenance crew, sent to KESTREL-9 to fix
-// a comms fault. Everything on the station went wrong while they were in transit.
 export const DEFAULT_CREW = [
   {
     id: "rusk",
@@ -89,14 +84,11 @@ export const DEFAULT_CREW = [
     notes: "",
   },
 ];
-// Their faces, from the portrait pack that comes with the app (public/portraits/; cast.js).
 const DEFAULT_FACES = { rusk: "94", varga: "20", moll: "45", oyelaran: "21" };
 for (const c of DEFAULT_CREW) c.portrait = `kit/sfcp-${DEFAULT_FACES[c.id]}.png`;
 
 const str = (v, n) => String(v ?? "").slice(0, n);
 
-
-// Validate crew from the console or the story builder.
 export function sanitizeCrew(list) {
   const out = [];
   const seen = new Set();
@@ -119,26 +111,20 @@ export function sanitizeCrew(list) {
       health: { current: int(c.health?.current, 0, 99, 12), max: int(c.health?.max, 1, 99, 12) },
       wounds: { current: int(c.wounds?.current, 0, 9, 0), max: int(c.wounds?.max, 1, 9, 2) },
       stress: int(c.stress, 0, 20, 2),
-      // Where their Stress starts in a fresh story (a restart puts it back here):
-      // the original crew file's, or Mothership's 2.
       startStress: int(c.startStress ?? DEFAULT_CREW.find((d) => d.id === slug(c.id || name))?.stress, 0, 20, 2),
       skills: (Array.isArray(c.skills) ? c.skills : String(c.skills || "").split(",")).map(skillOf).filter(Boolean).slice(0, 12),
       loadout: str(c.loadout, 400),
-      // What they carry now (the loadout is how they started): changes in play.
       items: Array.isArray(c.items) ? c.items.map((s) => str(s, 60).trim()).filter(Boolean).slice(0, MAX_ITEMS) : itemsFrom(c.loadout),
       trinket: str(c.trinket, 160),
       patch: str(c.patch, 80),
       notes: str(c.notes, 1000),
-      portrait: PORTRAIT_FILE.test(c.portrait || "") ? c.portrait : "", // (cast.js: an upload, or one that comes with the app)
+      portrait: PORTRAIT_FILE.test(c.portrait || "") ? c.portrait : "",
     });
     if (out.length >= MAX_CREW) break;
   }
   return out;
 }
 
-// Which crew a variant is for: a class ("Android", "androids"), "Humans" (everyone
-// but androids), or a character
-// by id, name, nickname or any part of their name. Returns crew ids.
 export function crewTargets(target, crew) {
   const t = String(target || "").trim().toLowerCase().replace(/^the\s+/, "");
   if (!t) return [];
@@ -149,12 +135,10 @@ export function crewTargets(target, crew) {
   return crew.filter((c) => c.id === t || c.name.toLowerCase() === t || words(c.name).some((w) => words(t).includes(w))).map((c) => c.id);
 }
 
-// Resolve a line's variants against the crew: [{ for, to: [ids], text }], targets that match nobody dropped.
 export function resolveVariants(list, crew) {
   return (list || []).map((v) => ({ for: v.for, to: crewTargets(v.for, crew), text: v.text })).filter((v) => v.to.length);
 }
 
-// Health, wounds and stress: set one (clamped to the sheet). Returns [old, new].
 const VITALS = ["health", "wounds", "stress"];
 export function setVital(pc, field, value) {
   const n = Math.round(Number(value));
@@ -166,13 +150,10 @@ export function setVital(pc, field, value) {
   return [old, next];
 }
 
-// Their current condition and what they carry, for the agent's per-turn context.
 export function crewStatus(crew) {
   return crew.map((c) => `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}. Carrying: ${c.items.join(", ") || "nothing"}`).join("\n");
 }
 
-// Fresh for a new start of the story: full Health, no Wounds, starting Stress,
-// and what their loadout says they carry.
 export function freshen(pc) {
   pc.health.current = pc.health.max;
   pc.wounds.current = 0;
@@ -180,13 +161,11 @@ export function freshen(pc) {
   pc.items = itemsFrom(pc.loadout);
 }
 
-// Items: a loadout's first sentence, split into things ("Vaccsuit, plasma cutter, 2 flares.").
 const MAX_ITEMS = 24;
 function itemsFrom(loadout) {
   const first = String(loadout || "").split(/\.(\s|$)/)[0];
   return first.split(/[,;]/).map((s) => s.trim().replace(/\.$/, "")).filter(Boolean).map((s) => s[0].toUpperCase() + s.slice(1)).slice(0, MAX_ITEMS);
 }
-// Add or take away one item; returns what happened, or null if nothing did.
 export function changeItem(pc, action, rawItem) {
   const item = String(rawItem || "").trim().slice(0, 60);
   if (!item) return null;
@@ -203,10 +182,6 @@ export function changeItem(pc, action, rawItem) {
   return `lost ${gone}`;
 }
 
-// ---- skills: each { name, bonus }. The bonus is the skill's tier in the Mothership 1e
-// skill tree (Trained +10, Expert +15, Master +20). A skill written with a bonus
-// ("Gambling +15") keeps it (to the nearest tier); one the book doesn't have counts as
-// Trained. Old saves (and drafts) have plain names: they're filled in from the book.
 export const SKILL_BONUSES = [10, 15, 20];
 const SKILL_TIERS = {
   10: ["Linguistics", "Zoology", "Botany", "Geology", "Industrial Equipment", "Heavy Machinery", "Jury-Rigging", "Chemistry", "Computers", "Zero-G", "Mathematics", "Art", "Archaeology", "Theology", "Military Training", "Rimwise", "Athletics"],
@@ -217,7 +192,6 @@ const skillKey = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "");
 const BOOK = new Map(Object.entries(SKILL_TIERS).flatMap(([b, list]) => list.map((s) => [skillKey(s), Number(b)])));
 const nearestTier = (n) => SKILL_BONUSES.reduce((best, b) => (Math.abs(b - n) < Math.abs(best - n) ? b : best));
 
-// A skill from a sheet, an editor or a draft: { name, bonus } or "Name" or "Name +15".
 export function skillOf(raw) {
   let name, bonus;
   if (raw && typeof raw === "object") ({ name, bonus } = raw);
@@ -233,7 +207,6 @@ export function skillOf(raw) {
 export const skillText = (s) => `${s.name} +${s.bonus}`;
 export const findSkill = (pc, name) => (name ? (pc?.skills || []).find((s) => s.name.toLowerCase() === String(name).toLowerCase()) : null) || null;
 
-// One line per character for the agent.
 export function crewBrief(crew) {
   return crew.map((c) => `- ${c.name} (${c.pronouns || "?"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
 }

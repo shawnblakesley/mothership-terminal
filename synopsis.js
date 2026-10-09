@@ -1,18 +1,9 @@
-// The Warden's synopsis, in three kinds (SYNOPSIS_KINDS):
-//   prebrief: a punchy, bulleted briefing to read or hand to the players before
-//     play (who they are, where they are, what they know, their job, their next
-//     goals), with sections for the Warden only (what's really going on, and the
-//     next obstacles to throw at them). Always the setup, as the story started.
-//   sofar: the same, brought up to date from the comms log (what has happened,
-//     where they are now), telling the players only what they have learned.
-//   wrapup: after the one-shot: the story of what happened (secrets and all), and
-//     an epilogue for each character: what became of them afterwards.
 import { crewBrief, crewStatus } from "./crew.js";
 import { terminalsBrief, screensBrief } from "./terminals.js";
 import { voiceIdOf, playerTag } from "./agent.js";
 import { attitudeLabel } from "./cast.js";
 
-const LOG_ENTRIES = 200; // most recent log entries the synopsis reads
+const LOG_ENTRIES = 200;
 const ENTRY_CHARS = 600;
 
 const SYSTEM = `You help the Warden (game master) of a Mothership (sci-fi horror TTRPG) session run through a station computer terminal: the players type to the station, and an AI voices the computer, announcements and the people on the intercom.
@@ -57,7 +48,6 @@ const SYNOPSIS_SCHEMA = {
 
 const clip = (s) => { const t = String(s ?? ""); return t.length > ENTRY_CHARS ? `${t.slice(0, ENTRY_CHARS)}…` : t; };
 
-// The log as the Warden saw it: who said what, the Warden's commands and notes.
 export function logLine(e, voices) {
   const vars = (e.variants || []).map((v) => `\n    (only ${v.for} sees: ${clip(v.text)})`).join("");
   switch (e.kind) {
@@ -88,14 +78,12 @@ Use exactly these sections, in this order, with these headings (audience "player
 Plain text, no markdown, no bullet points.`;
 
 export function synopsisRequest(state, screens = [], kind = "sofar") {
-  // The prebrief is always the setup: the story as it started, if it has.
   if (kind === "prebrief" && state.storyStart?.config) {
     state = { ...state, config: { ...state.config, ...state.storyStart.config }, station: state.storyStart.station ?? state.station };
     screens = [];
   }
   const c = state.config;
   const log = kind === "prebrief" ? [] : shownLog(state);
-  // Started = something has been typed or said at the terminal (not just Warden notes).
   const started = log.some((e) => e.kind === "player" || ["terminal", "system", "entity"].includes(e.kind));
   const feels = (m) => attitudeLabel(m.attitude).toLowerCase();
   const cast = (c.cast || []).map((m) => `- ${m.name} (${m.room ? `in ${m.room}` : "nowhere on the map"}; ${feels(m)} towards the players${m.why ? `, because ${m.why}` : ""})${m.notes ? `: ${m.notes}` : ""}`);
@@ -134,9 +122,6 @@ export function synopsisRequest(state, screens = [], kind = "sofar") {
   };
 }
 
-// ---------------------------------------------------------------- the end
-// When a game without a Warden ends: the recap the players see on the END
-// screen. Now that it's over, the secrets can come out.
 const RECAP = `A Mothership (sci-fi horror TTRPG) story the players were playing has just ENDED. Write them a short recap to read on the END screen: it's over, so spoilers are fine now and the truth can come out.
 
 - verdict: one line naming how it ended, like a closing title (e.g. "Three made it off KESTREL-9. One didn't.").
@@ -174,7 +159,6 @@ export function recapRequest(state, how) {
   };
 }
 
-// The sections the model wrote that have text: at most `max`, each cut to size.
 const sectionsOf = (raw, max) => (Array.isArray(raw?.sections) ? raw.sections : []).filter((x) => x && String(x.text ?? "").trim()).slice(0, max);
 
 export function normalizeRecap(raw) {
@@ -189,6 +173,5 @@ export function normalizeSynopsis(raw) {
   return sections;
 }
 
-// The log as it played out (nothing cut, nothing empty), and its latest entries as text.
 function shownLog(state) { return state.log.filter((e) => !e.cut && (e.text || e.variants?.length)); }
 function logText(log, voices) { return log.slice(-LOG_ENTRIES).map((e) => logLine(e, voices)).join("\n"); }

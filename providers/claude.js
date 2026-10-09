@@ -1,13 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-// Models are listed cheapest-first; the first one is the default.
 const MODELS = [
   { id: "claude-haiku-4-5", label: "Haiku 4.5 · $1 / $5 per MTok", efforts: [] },
   { id: "claude-sonnet-5-5", label: "Sonnet 5.5 · $2 / $10", efforts: ["low", "medium", "high"], fallbacks: true },
   { id: "claude-opus-5-5", label: "Opus 5.5 · $4 / $20", efforts: ["low", "medium", "high"], fallbacks: true },
 ];
 
-// One client per API key (each Warden brings their own).
 const clients = new Map();
 function clientFor(apiKey) {
   if (!clients.has(apiKey)) {
@@ -34,7 +32,6 @@ export default {
     const params = {
       model: spec.id,
       max_tokens: 16000,
-      // Stable prompt first (cacheable), per-turn GM context second.
       system: [
         { type: "text", text: system, cache_control: { type: "ephemeral" } },
         { type: "text", text: context },

@@ -1,5 +1,3 @@
-// One game session: its station, log, voices, effects, connected players and
-// Warden consoles, and the agent loop. The server keeps many of these at once.
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural, synthesize, wavSeconds } from "./tts.js";
@@ -24,29 +22,22 @@ import { ALL_EFFECTS, AGENT_EFFECTS, effectType, buildRequest, buildPrecheck, li
 
 const FREE_CALLS_PER_DAY = Number(process.env.FREE_CALLS_PER_DAY || 150);
 
-// The narrator's line the first time a comms voice is heard on a system, when
-// the agent didn't write one itself (see introduce). Nothing station-specific: any
-// system. (A creature's or entity's is the agent's to write: specific to what it is.)
 const INTROS = {
   broadcast: ["Humming to life, the speakers squawk a broadcast.", "Every speaker in earshot pops, then a tone rings out.", "Overhead speakers crackle on all at once, one of them a beat behind."],
   comms: ["A nearby intercom buzzes to life.", "A speaker grille crackles, half its mesh rusted through.", "Static spits from a speaker close by, then a voice."],
 };
 
-const MAX_LOG = 1000; // entries kept per session (the model sees the most recent ones)
-const MAX_SOCKETS = 40; // per session
-const PLAYER_INPUT_GAP_MS = 1200; // per connection: stops spamming the agent (and the Warden's bill)
-// Warden messages counted as actions in telemetry (what they used, never what they wrote).
+const MAX_LOG = 1000;
+const MAX_SOCKETS = 40;
+const PLAYER_INPUT_GAP_MS = 1200;
 const WARDEN_ACTIONS = {
   command: "direction", inject: "speak", note: "note", heard: "speech", effect: "effect", soundPlay: "sound", rollRequest: "roll", retcon: "retcon",
   synopsis: "synopsis", roomShow: "room_show", roomDraft: "room_draft", builderSay: "builder_chat", builderDraft: "builder_draft",
   builderApply: "builder_apply", resetSession: "story_restart", adversaryShow: "adversary_show",
 };
-// An id for something new: a prefix, the time, and `n` random characters.
 const newId = (prefix, n) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 2 + n)}`;
 
-// Dice a player or the Warden typed in.
 const manualDice = (d) => (Array.isArray(d) ? d : []).map(Number);
-// The check an outcome suggests, for the log: " · suggests Speed [+]" ("" for none).
 const suggestion = (oc) => (oc.suggested_check !== "none" ? ` · suggests ${checkInfo(oc.suggested_check).label}${oc.advantage === "advantage" ? " [+]" : oc.advantage === "disadvantage" ? " [-]" : ""}` : "");
 
 const LORE_V3 = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
@@ -57,14 +48,11 @@ RECENT EVENTS (public log): Drill team hit a "pressurised void" in the ice 19 da
 REACTOR STATUS: core efficiency 70% (rated minimum 99%). HV-CORE reports an unexplained energy drain on the Deck 3 cargo bay power trunk.
 MAINTENANCE TICKET #4471 (filed 23 days ago): reactor running below rated efficiency. Hollis-Vane dispatched a convict maintenance crew (the PLAYERS) on the prison tug SECOND CHANCE to service the Deck 4 reactor. They have just docked and are standing in Airlock A, at its terminal, with tools for a routine reactor service. The inner airlock door to the station is SEALED: getting it open is their first job, and their work order carries the maintenance override code for it (4471-MAINT). Everything in RECENT EVENTS happened while they were in transit: nobody briefed them, and they are not equipped for it.
 DEPARTURE CONDITION: the SECOND CHANCE is slaved to station control and built so it cannot undock until the station approves the job. HV-CORE must verify the reactor running at 99% efficiency or better, then transmit departure clearance. Until then the crew is not going home.`;
-// The crew start aboard their tug, at its own terminal.
 const PREV_DEFAULT_LORE = LORE_V3.replace(
   "They have just docked and are standing in Airlock A, at its terminal, with tools for a routine reactor service. The inner airlock door to the station is SEALED:",
   "They have just docked at Airlock A and are still aboard the tug, at its own terminal (the SECOND CHANCE's flight computer, not on the station network), with tools for a routine reactor service. Through the docking collar, Airlock A's inner door to the station is SEALED:",
 );
-// (and the tug "locked-down to station control", not "slaved")
 const DEFAULT_LORE = PREV_DEFAULT_LORE.replace("SECOND CHANCE is slaved to station control", "SECOND CHANCE is locked-down to station control");
-// Earlier defaults, upgraded when a saved session still has one unedited.
 const LORE_V2 = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
 CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
 DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
@@ -114,14 +102,8 @@ const OLD_DEFAULT_SECRETS = [
 - Dr. Imre Salk (medic) is infected but does not know it.`,
 ];
 
-// The Warden's station map: one line per deck, "Deck name: room, room=Label, ...".
-// Room ids match keys in the station state (doors.med_bay, cameras.med_bay...).
-// The SECOND CHANCE is docked on Airlock A: its cabin is a "room" (second_chance)
-// drawn on top of the airlock, outside Deck 1, so the tug's state
-// (second_chance.departure_clearance) shows on it.
 const SHIP_DOCKED = "Docked: second_chance=SECOND CHANCE @ airlock_a";
 const LIFT = "Lift: Deck 1, Deck 2, Deck 3, Deck 4";
-// (How the tug was first added: its own deck and a link. Upgraded to SHIP_DOCKED.)
 const SHIP_DECK = "Docked · Prison tug: second_chance=SECOND CHANCE";
 const SHIP_LINK = "Link: airlock_a - second_chance (docking collar)";
 const MAP_V2 = `Deck 1 · Command / Comms: command_deck=Command, airlock_a=Airlock A
@@ -131,17 +113,12 @@ Deck 4 · Reactor: reactor_access=Reactor Access
 Link: med_bay - cargo_bay_deck3 (air vents)
 Link: cargo_bay_deck3 - reactor_access (maintenance shaft)`;
 const MAP_V3 = `${SHIP_DOCKED}\n${MAP_V2.replace("\nLink:", `\n${LIFT}\nLink:`)}`;
-// (and an air vent from the med bay up to command)
 const DEFAULT_MAP = MAP_V3.replace("\nLink: med_bay - cargo_bay_deck3", "\nLink: med_bay - command_deck (air vents)\nLink: med_bay - cargo_bay_deck3");
-// Earlier default layouts, upgraded when unedited: without links, without the
-// tug, then with the tug as its own deck, then without the vent to command.
 const OLD_DEFAULT_MAPS = [MAP_V2.split("\nLink:")[0], MAP_V2, `${SHIP_DECK}\n${MAP_V2}\n${SHIP_LINK}`, MAP_V3];
 
-// Who is where and what's there (the agent keeps these current), and where
-// the lift can go (RESTRICTED and LOCKED: not allowed; FAULT, OFFLINE: broken).
 const ROOM_STATE = {
   lift: { deck_1: "ONLINE", deck_2: "ONLINE", deck_3: "FAULT", deck_4: "RESTRICTED" },
-  occupants: {}, // (the cast's own rooms are theirs: cast.js; this is everyone and everything else)
+  occupants: {},
   contents: {
     cargo_bay_deck3: "The organism, grown into the Deck 3 power trunk",
     reactor_access: "Reactor core (70%); the junction that can cut the Deck 3 trunk",
@@ -169,10 +146,6 @@ const DEFAULT_STATION = {
   ...ROOM_STATE,
 };
 
-// Log kinds players never see: Warden notes, the Warden's commands to the agent,
-// private notes between the Warden and the agent (aside / aside_reply), and what
-// the Warden said aloud at the table (heard: speech-to-text, for the agent), and
-// what the players said aloud on Discord (table: the same, but only context).
 const PRIVATE_KINDS = new Set(["note", "warden", "aside", "aside_reply", "heard", "table"]);
 export const SPOKEN_KINDS = new Set(["terminal", "system", "entity"]);
 
@@ -183,48 +156,43 @@ export function defaultGame(keys = {}) {
       lore: DEFAULT_LORE,
       secrets: DEFAULT_SECRETS,
       standingOrders: "",
-      mode: "auto", // auto: replies go straight to the players | review: the Warden approves each one
-      ...defaultSelection(keys), // provider, model, effort: cheapest the session has a key for
-      agentEffects: true, // the agent may fire screen effects
-      agentVariants: true, // the agent may send different versions of a line to different players
-      agentCrew: true, // the agent may change the crew's health, wounds and stress
-      checkFirst: true, // replies that need the Warden's call are held until the Warden rules
-      talk: "brief", // how much the characters say: terse | brief | normal | long (agent.js TALK)
-      playerVitals: true, // players may change their own health, wounds and stress
-      playerRolls: true, // players may roll their own stats and saves
-      // Where voices play: on the players' screens (tts), on Discord (discordTalk: the bot
-      // speaks them in its voice channel, discordbot.js), or nowhere. See speaksOnScreens.
+      mode: "auto",
+      ...defaultSelection(keys),
+      agentEffects: true,
+      agentVariants: true,
+      agentCrew: true,
+      checkFirst: true,
+      talk: "brief",
+      playerVitals: true,
+      playerRolls: true,
       tts: true,
       discordTalk: false,
-      voices: defaultVoices().map((v) => ({ ...v, systems: ["*"] })), // (the default story: every voice reaches every system, the tug's too)
+      voices: defaultVoices().map((v) => ({ ...v, systems: ["*"] })),
       theme: "green",
       map: DEFAULT_MAP,
-      crew: sanitizeCrew(structuredClone(DEFAULT_CREW)), // the players' characters (crew.js)
-      cast: defaultCast(), // the story's people, and where they are (cast.js)
-      castChannel: "intercom", // the voice the cast is heard through when not in the players' room
-      terminals: structuredClone(DEFAULT_TERMINALS), // where players can be (terminals.js)
-      playerTerminals: true, // players may move between terminals themselves
-      narrator: true, // the agent may narrate the scene (the NARRATOR voice)
-      rooms: structuredClone(DEFAULT_ROOMS), // floor plans by map room (rooms.js)
-      startDocs: [WORK_ORDER], // documents the players start with (back on a story restart)
-      roomDocs: structuredClone(DEFAULT_ROOM_DOCS), // documents and audio logs lying in rooms, to be found (roomdocs.js)
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all"], // one-time additions already made to this story (see migrateGame)
+      crew: sanitizeCrew(structuredClone(DEFAULT_CREW)),
+      cast: defaultCast(),
+      castChannel: "intercom",
+      terminals: structuredClone(DEFAULT_TERMINALS),
+      playerTerminals: true,
+      narrator: true,
+      rooms: structuredClone(DEFAULT_ROOMS),
+      startDocs: [WORK_ORDER],
+      roomDocs: structuredClone(DEFAULT_ROOM_DOCS),
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all"],
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
-    introduced: [], // voices the narrator has already brought in (see introduce)
+    introduced: [],
     clocks: [],
     handouts: [structuredClone(WORK_ORDER)],
-    found: [], // the room documents found so far (ids)
+    found: [],
     whisper: "",
     sounds: [],
-    synopses: {}, // the Warden's synopses, by kind: prebrief, sofar, wrapup (synopsis.js)
+    synopses: {},
   };
 }
 
-// Bring saved games from older versions up to date.
-// The default cast joins the story's: existing people (matched by name) get the
-// default description and voice; the agent's own additions are kept.
 function mergeCast(current, defaults) {
   const out = (current || []).map((c) => ({ ...c }));
   for (const d of defaults) {
@@ -235,13 +203,10 @@ function mergeCast(current, defaults) {
   return out;
 }
 
-// The cast of a saved story: its own, or (from before the cast was its own thing)
-// the people who spoke through its comms voices, placed by the station's occupants.
 function savedCast(config, station) {
   if (Array.isArray(config?.cast)) return { cast: sanitizeCast(config.cast), channel: config.castChannel || "" };
-  if (!Array.isArray(config?.voices)) return { cast: defaultCast(), channel: "intercom" }; // (from before voices)
+  if (!Array.isArray(config?.voices)) return { cast: defaultCast(), channel: "intercom" };
   const found = castFromVoices(config.voices, station);
-  // (Saved before voices had characters: the default story's intercom had the default cast.)
   if (!found.cast.length && config.voices.some((v) => v.id === "intercom" && !v.characters)) {
     const cast = defaultCast().map((c) => ({ ...c, room: "" }));
     placeByOccupants(cast, station);
@@ -250,8 +215,6 @@ function savedCast(config, station) {
   return found;
 }
 
-// Synopses by kind. Before there were three, there was one: the prebrief, or the
-// story so far once play had started.
 function savedSynopses(saved) {
   if (saved.synopses && typeof saved.synopses === "object") return saved.synopses;
   const old = saved.synopsis;
@@ -261,23 +224,19 @@ function savedSynopses(saved) {
 function migrateGame(saved) {
   const base = defaultGame();
   const { persona: legacyPersona, ...config } = { ...base.config, ...saved.config };
-  // The cast (before the voices lose their characters below).
   const found = savedCast(saved.config, saved.station);
   let cast = found.cast;
   config.castChannel = found.channel || config.castChannel;
-  if (saved.storyStart?.config && !Array.isArray(saved.storyStart.config.cast)) { // (what Restart story restores, too)
+  if (saved.storyStart?.config && !Array.isArray(saved.storyStart.config.cast)) {
     const was = savedCast(saved.storyStart.config, saved.storyStart.station);
     Object.assign(saved.storyStart.config, { cast: was.cast, castChannel: was.channel || config.castChannel });
   }
   const voices = sanitizeVoices(config.voices ?? defaultVoices()).map((v) => {
-    // Unedited copies of an older default persona get the current one.
     if (OLD_DEFAULT_PERSONAS[v.id]?.includes(v.persona)) v = { ...v, persona: DEFAULT_PERSONAS[v.id] };
-    // The original INTERCOM default was a synthetic radio voice; untouched ones get the human one.
     if (v.id !== "intercom" || v.preset !== "radio") return v;
     const human = defaultVoices().find((d) => d.id === "intercom");
     return { ...v, preset: human.preset, voice: human.voice, fx: human.fx };
   });
-  // The terminal persona used to be a separate setting; it now lives on the terminal voice.
   if (legacyPersona && !saved.config?.voices?.find((v) => v.id === BUILTIN.terminal)?.persona) {
     voices.find((v) => v.id === BUILTIN.terminal).persona = String(legacyPersona)
       .replace("You are WARDEN, the onboard operating system", "You are HV-CORE, the onboard operating system")
@@ -286,18 +245,16 @@ function migrateGame(saved) {
   }
   config.secrets = String(config.secrets).replace("WARDEN is to seal all decks", "HV-CORE is to seal all decks");
   if (OLD_DEFAULT_MAPS.includes(config.map)) config.map = DEFAULT_MAP;
-  // Still an original KESTREL-9 story: bring it up to date one version at a time
-  // (the full cast, the convict crew's arrival, the sealed airlock, then the reactor job).
   if (config.lore === OLD_DEFAULT_LORE) {
     config.lore = LORE_V1;
     if (OLD_DEFAULT_SECRETS.includes(config.secrets)) config.secrets = SECRETS_V1;
     cast = mergeCast(cast, DEFAULT_CAST);
   }
-  if (config.lore === LORE_V1) { // (before the sealed-airlock start)
+  if (config.lore === LORE_V1) {
     config.lore = LORE_V2;
     if (config.secrets === SECRETS_V1) config.secrets = SECRETS_V2;
   }
-  if (config.lore === LORE_V2) { // (before the reactor job and the SECOND CHANCE's departure lock)
+  if (config.lore === LORE_V2) {
     config.lore = LORE_V3;
     if (config.secrets === SECRETS_V2) config.secrets = DEFAULT_SECRETS;
     const marlowe = cast.find((c) => c.notes === OLD_MARLOWE_NOTES);
@@ -310,11 +267,9 @@ function migrateGame(saved) {
   }
   config.crew = sanitizeCrew(config.crew);
   config.cast = sanitizeCast(cast);
-  delete config.panicTable; // (it was briefly the Warden's to edit; now it's the one table: cast.js)
+  delete config.panicTable;
   config.terminals = upgradeTerminals(sanitizeTerminals(config.terminals));
-  // Once, for a KESTREL-9 story from before it: the crew's tug, its own terminal
-  // and flight computer (not on the station network). Deleting them later sticks.
-  config.upgrades = Array.isArray(saved.config?.upgrades) ? [...saved.config.upgrades] : []; // (not the defaults' list)
+  config.upgrades = Array.isArray(saved.config?.upgrades) ? [...saved.config.upgrades] : [];
   if (!config.upgrades.includes("ship") && config.stationName === "KESTREL-9") {
     if (!config.terminals.some((t) => t.id === "ship")) {
       const at = config.terminals.findIndex((t) => t.id === "airlock") + 1;
@@ -324,29 +279,21 @@ function migrateGame(saved) {
     if (!/\bsecond_chance\s*=/.test(config.map)) config.map = `${SHIP_DOCKED}\n${config.map}`;
     config.upgrades.push("ship");
   }
-  // Once: an unedited KESTREL-9 story starts the crew aboard the tug (its terminal first).
   if (config.lore === LORE_V3 || config.lore === PREV_DEFAULT_LORE) config.lore = DEFAULT_LORE;
   if (!config.upgrades.includes("start-ship")) {
     if (config.lore === DEFAULT_LORE) config.terminals = startAboardShip(config.terminals);
     config.upgrades.push("start-ship");
   }
-  // Once: KESTREL-9 starts with only the tug's and the portable terminals reachable
-  // (Airlock A opens when the Warden moves someone there).
   if (!config.upgrades.includes("airlock-closed")) {
     const airlock = config.terminals.find((t) => t.id === "airlock");
     if (config.stationName === "KESTREL-9" && airlock?.open && !airlock.requires) airlock.open = false;
     config.upgrades.push("airlock-closed");
   }
-  // Once: by the rules every character starts at Stress 2 (Tick and MOLL-7 had 4 and 1).
   if (!config.upgrades.includes("stress-2")) {
     for (const pc of config.crew) if ((pc.id === "varga" && pc.startStress === 4) || (pc.id === "moll" && pc.startStress === 1)) pc.startStress = 2;
     config.upgrades.push("stress-2");
   }
-  // (The "cyan" upgrade turned the whole station cyan; it was meant for the tug. Undone just below.)
   if (!config.upgrades.includes("cyan")) config.upgrades.push("cyan");
-  // Once: the station is green and the SECOND CHANCE's terminal cyan (it was amber;
-  // a station turned cyan by the old upgrade goes back to green). The saved story
-  // (what Restart story restores) too, or a restart would bring the cyan back.
   if (!config.upgrades.includes("ship-cyan-2")) {
     for (const c of [config, saved.storyStart?.config].filter(Boolean)) {
       if (c.stationName !== "KESTREL-9") continue;
@@ -356,14 +303,11 @@ function migrateGame(saved) {
     }
     config.upgrades.push("ship-cyan", "ship-cyan-2");
   }
-  // Once: the default story's people and crew get their portraits (anyone who has none yet).
   if (!config.upgrades.includes("portraits")) {
     for (const m of config.cast) m.portrait ||= findCast(DEFAULT_CAST, m.name)?.portrait || "";
     for (const pc of config.crew) pc.portrait ||= DEFAULT_CREW.find((d) => d.id === pc.id && d.name === pc.name)?.portrait || "";
     config.upgrades.push("portraits");
   }
-  // Once: the intercom's old fixed light blue goes; it takes the screen's colour like
-  // the other voices. The saved story too, or Restart story would bring the blue back.
   if (!config.upgrades.includes("intercom-colour")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
       const v = list.find((x) => x.id === "intercom");
@@ -371,8 +315,6 @@ function migrateGame(saved) {
     }
     config.upgrades.push("intercom-colour");
   }
-  // Once: the "???" voice becomes an adversary (the default story's is the organism),
-  // in the saved start too. Its lines show as ??? until the players see it.
   if (!config.upgrades.includes("adversaries")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
       for (const v of list) {
@@ -383,8 +325,6 @@ function migrateGame(saved) {
     }
     config.upgrades.push("adversaries");
   }
-  // Once: in KESTREL-9 every voice reaches every system (Connections: All), so the
-  // station's comms reach the crew aboard their tug too. In the saved start as well.
   if (!config.upgrades.includes("connections-all")) {
     for (const c of [config, saved.storyStart?.config].filter(Boolean)) {
       if (c.stationName !== "KESTREL-9") continue;
@@ -394,7 +334,6 @@ function migrateGame(saved) {
     }
     config.upgrades.push("connections-all");
   }
-  // Once: KESTREL-9's monster is THE COLD (it was briefly THE ORGANISM), unless renamed since.
   if (!config.upgrades.includes("the-cold")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
       const v = list.find((x) => x.id === "unknown" && x.name === "THE ORGANISM");
@@ -402,7 +341,6 @@ function migrateGame(saved) {
     }
     config.upgrades.push("the-cold");
   }
-  // Once: KESTREL-9's THE COLD gets its picture (a link: voices.js DEFAULT_COLD), if it has none.
   if (!config.upgrades.includes("the-cold-picture")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
       const v = list.find((x) => x.id === "unknown" && x.adversary && !x.adversary.picture);
@@ -410,7 +348,6 @@ function migrateGame(saved) {
     }
     config.upgrades.push("the-cold-picture");
   }
-  // Once: THE COLD's first picture (unchanged) becomes "Of the Void".
   if (!config.upgrades.includes("the-cold-picture-2")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
       const v = list.find((x) => x.id === "unknown" && OLD_COLD_PICTURES.includes(x.adversary?.picture));
@@ -418,7 +355,6 @@ function migrateGame(saved) {
     }
     config.upgrades.push("the-cold-picture-2");
   }
-  // Once: an original KESTREL-9 story gets its documents and audio logs to find in its rooms.
   config.roomDocs = sanitizeRoomDocs(config.roomDocs);
   if (!config.upgrades.includes("room-docs")) {
     if (config.stationName === "KESTREL-9") {
@@ -429,13 +365,11 @@ function migrateGame(saved) {
     }
     config.upgrades.push("room-docs");
   }
-  // The work order's tug "locked-down to station control" (it said "slaved"), in the story and in hand.
   const ss = saved.storyStart?.config;
-  if (ss && (ss.lore === PREV_DEFAULT_LORE || ss.lore === LORE_V3)) ss.lore = DEFAULT_LORE; // (what Restart story goes back to)
+  if (ss && (ss.lore === PREV_DEFAULT_LORE || ss.lore === LORE_V3)) ss.lore = DEFAULT_LORE;
   for (const d of [...(saved.config?.startDocs || []), ...(saved.handouts || []), ...(ss?.startDocs || [])]) {
     if (d?.id === WORK_ORDER.id && typeof d.text === "string") d.text = d.text.replace("SECOND CHANCE is slaved to station control", "SECOND CHANCE is locked-down to station control");
   }
-  // Once: an original KESTREL-9 story starts the crew with their work order.
   config.startDocs = Array.isArray(saved.config?.startDocs) ? saved.config.startDocs : [];
   if (!config.upgrades.includes("work-order")) {
     if (config.stationName === "KESTREL-9") {
@@ -445,18 +379,14 @@ function migrateGame(saved) {
     }
     config.upgrades.push("work-order");
   }
-  // Once: the tug's terminal gets its own system (its own log, name and OS on the players' screens).
   if (!config.upgrades.includes("systems")) {
     const ship = config.terminals.find((t) => t.id === "ship" && !t.system);
     if (ship && config.stationName === "KESTREL-9") Object.assign(ship, SHIP_SYSTEM);
     config.upgrades.push("systems");
   }
-  // Every story has the narrator (the Warden can switch it off, not delete it).
   if (!voices.some((v) => v.id === BUILTIN.narrator)) voices.splice(Math.min(2, voices.length), 0, narratorVoice());
-  for (const v of voices) if (v.id === BUILTIN.narrator) v.color = NARRATOR_WHITE; // (always white)
+  for (const v of voices) if (v.id === BUILTIN.narrator) v.color = NARRATOR_WHITE;
   config.rooms = sanitizeRooms(config.rooms);
-  // Once, for a KESTREL-9 story from before them: floor plans, who and what is
-  // where, the lift, and the tug docked on the airlock instead of on its own deck.
   if (!config.upgrades.includes("rooms") && config.stationName === "KESTREL-9") {
     for (const [id, plan] of Object.entries(DEFAULT_ROOMS)) config.rooms[id] ??= structuredClone(plan);
     config.map = config.map.split("\n").map((l) => (l.trim() === SHIP_DECK ? SHIP_DOCKED : l)).filter((l) => l.trim() !== SHIP_LINK).join("\n");
@@ -464,44 +394,33 @@ function migrateGame(saved) {
     config.upgrades.push("rooms");
   }
   return {
-    // (Manual mode is gone: its sessions review every reply instead, so nothing reaches players unseen.)
     config: { ...config, ...fixSelection(config), voices, mode: config.mode === "auto" ? "auto" : "review" },
     station: saved.station ?? base.station,
     log: Array.isArray(saved.log) ? saved.log.slice(-MAX_LOG) : [],
     whisper: String(saved.whisper ?? ""),
-    roll: Array.isArray(saved.roll?.pcs) ? saved.roll : null, // the current/last roll (see rolls.js; older rolls weren't per character)
-    outcomeCheck: saved.outcomeCheck ?? null, // an uncertain player action the agent left to the Warden
-    sounds: Array.isArray(saved.sounds) ? saved.sounds : [], // the Warden's uploaded sounds (files: sounds.js)
-    // The story builder's conversation and latest draft (builder.js).
+    roll: Array.isArray(saved.roll?.pcs) ? saved.roll : null,
+    outcomeCheck: saved.outcomeCheck ?? null,
+    sounds: Array.isArray(saved.sounds) ? saved.sounds : [],
     builder: { messages: Array.isArray(saved.builder?.messages) ? saved.builder.messages.slice(-60) : [], draft: saved.builder?.draft ?? null },
-    synopses: savedSynopses(saved), // kind -> { sections, started, at, logId } (synopsis.js)
-    // A game without a Warden (see "no Warden" below): { phase, pitches, opened, error }.
-    // (A build cut off by a restart goes back to choosing.)
-    handouts: Array.isArray(saved.handouts) ? saved.handouts : [], // documents given to the players (see "handouts")
-    found: Array.isArray(saved.found) ? saved.found.map(String) : [], // room documents found so far (see "room documents")
-    localKeys: !!saved.localKeys, // started on the server's own computer: may use its .env keys (providers/index.js)
-    // Who plays whom on Discord (discordbot.js /player): Discord user id -> { crew: crew id, name: their Discord name }.
+    synopses: savedSynopses(saved),
+    handouts: Array.isArray(saved.handouts) ? saved.handouts : [],
+    found: Array.isArray(saved.found) ? saved.found.map(String) : [],
+    localKeys: !!saved.localKeys,
     discordPlayers: saved.discordPlayers && typeof saved.discordPlayers === "object" ? saved.discordPlayers : {},
-    streamKey: typeof saved.streamKey === "string" ? saved.streamKey : "", // the stream page's (Session.streamKey)
-    clocks: Array.isArray(saved.clocks) ? saved.clocks : [], // countdowns on the players' screens (see "clocks")
-    // The story as it was when play began (see "the story's start"): what Restart story restores.
+    streamKey: typeof saved.streamKey === "string" ? saved.streamKey : "",
+    clocks: Array.isArray(saved.clocks) ? saved.clocks : [],
     storyStart: saved.storyStart && saved.storyStart.config ? saved.storyStart : null,
     solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
 }
 
-// The default story's starting documents: the crew's work order, in everyone's DOCS.
 const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 4471-MAINT", text: "# HOLLIS-VANE EXTRACTION CO.\n## WORK ORDER 4471 - REACTOR SERVICE\n\n**VESSEL:** Penal tug SECOND CHANCE\n**ASSIGNED:** Convict maintenance crew (4)\n**STATION:** KESTREL-9, rimward ice platform\n**FILED:** 23 days prior - STATUS: OVERDUE\n**PRIORITY:** 2 / ROUTINE\n\n**TASK:** Service Deck 4 reactor. Core efficiency 70%. Rated minimum **99%**. Find the bleed, restore rated output.\n\n**TOOLS:** As issued at tender. Nothing is to be drawn from station stores.\n\n**ACCESS**\n- Airlock A inner door (Deck 1): **OVERRIDE CODE 4471-MAINT**. Entry logs to Administrator's console.\n- Reactor access, Deck 4: standard crew hatch.\n\n**DEPARTURE**\nSECOND CHANCE is locked-down to station control. She will not undock until HV-CORE verifies the reactor at **99% or better** and transmits departure clearance. No exceptions, no overrides.\n\n~~Hazard pay authorised for duration of job.~~\n\n**DO NOT** interfere with station operations. Do not alter Deck 3 cargo configuration.\n\nHV-CORE // verified // 4471-MAINT", to: "", at: 0 };
 
-// The built-in story, always on offer in a game without a Warden (no build needed).
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
-// The session's settings, not part of the story (a restart keeps them as they are).
 const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
-// The Warden's moves that play the story (the first one saves it; see storyBegins).
 const STORY_ACTIONS = new Set(["command", "inject", "note", "heard", "rollRequest", "rollFor", "generate", "approve", "outcome", "handout", "clockStart"]);
-// A crew member named by the agent ("" for none, or no match).
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
   return n ? crew.find((c) => c.name.toLowerCase() === n || c.name.toLowerCase().includes(n))?.id || "" : "";
@@ -529,38 +448,31 @@ function setPath(obj, dotted, value) {
 }
 
 export class Session {
-  // saved: { code, tokenHash, createdAt, lastActive, game } (game from defaultGame or disk)
   constructor(saved, { onChange, onEnd }) {
     this.code = saved.code;
     this.tokenHash = saved.tokenHash;
     this.createdAt = saved.createdAt ?? Date.now();
     this.lastActive = saved.lastActive ?? Date.now();
-    // playing: sounds on the players' screens right now (loops stay listed until stopped).
     this.state = { ...migrateGame(saved.game ?? {}), pending: null, effects: [], playing: [] };
-    this.builderBusy = ""; // "", "chat" or "draft" while the story builder waits on the agent
-    this.synopsisBusy = ""; // the kind of synopsis the agent is writing for the Warden, if any
-    this.handoutBusy = false; // the agent is writing a handout from the Warden's brief
-    this.roomBusy = ""; // the map room whose floor plan the agent is drawing
-    this.keys = {}; // provider id -> API key. Memory only: never saved, never sent to a browser.
-    if (this.state.localKeys) this.keys[LOCAL_KEYS] = true; // (started on this computer: its .env keys; see providers)
-    this.sttKey = ""; // Groq key, for writing down Discord voice (discordbot.js). Memory only, like this.keys.
-    this.freeCalls = { day: "", count: 0 }; // calls on the server's free key today (see callModel)
+    this.builderBusy = "";
+    this.synopsisBusy = "";
+    this.handoutBusy = false;
+    this.roomBusy = "";
+    this.keys = {};
+    if (this.state.localKeys) this.keys[LOCAL_KEYS] = true;
+    this.sttKey = "";
+    this.freeCalls = { day: "", count: 0 };
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
-    // The system the players last acted on ("" = the station's network; terminals.js):
-    // where things go when the players are on more than one (see defaultNet).
     this.lastNet = this.state.log.findLast((e) => e.net !== "*")?.net || "";
     this.clockTimers = new Map();
-    for (const c of this.state.clocks) this.scheduleClock(c); // (running across a restart)
+    for (const c of this.state.clocks) this.scheduleClock(c);
     this.genCounter = 0;
-    // Lines reach the players on one shared timeline (see scheduleLine), in order.
     this.playhead = 0;
     this.lineChain = Promise.resolve();
-    // The agent's recent responses, newest last, so the Warden can retcon them
-    // (in memory only): { entries, effects, station, crew, outcome }.
     this.undoStack = [];
     this.delivering = null;
-    this.rerun = false; // a player typed while the agent was busy: answer once it's done
+    this.rerun = false;
     this.effectTimers = new Map();
     this.onChange = onChange;
     this.onEnd = onEnd;
@@ -572,7 +484,6 @@ export class Session {
     return { code: this.code, tokenHash: this.tokenHash, createdAt: this.createdAt, lastActive: this.lastActive, game };
   }
 
-  // Started on this computer (server.js): the keys in its .env, now and after a restart.
   useLocalKeys() {
     this.state.localKeys = true;
     this.keys[LOCAL_KEYS] = true;
@@ -582,8 +493,6 @@ export class Session {
   checkToken(token) {
     return !!token && sameHash(hashToken(token), this.tokenHash);
   }
-  // The stream page's key: it only watches (it can't run the session, so a link to it
-  // in streaming software gives nothing more away). Made when first asked for.
   streamKey() {
     if (!this.state.streamKey) { this.state.streamKey = crypto.randomBytes(12).toString("hex"); this.touch(); }
     return this.state.streamKey;
@@ -597,7 +506,6 @@ export class Session {
     this.onChange(this);
   }
 
-  // Busy = a reply is being generated right now (discarding one clears it too).
   get generating() {
     return this.state.pending?.status === "generating";
   }
@@ -606,10 +514,6 @@ export class Session {
     return this.state.config.voices.some((v) => v.voice.engine === "neural");
   }
 
-  // ---------------------------------------------------------------- sockets
-  // hint.terminal: where a returning player screen was, so its first view is that system's log.
-  // hint.stream: the Warden's stream page (for showing the game on a stream): a player
-  // screen at no terminal that sees everything, the Warden's log too, and plays no part.
   attach(ws, role, hint = {}) {
     if (this.sockets.size >= MAX_SOCKETS) {
       ws.close(4029, "session full");
@@ -618,7 +522,7 @@ export class Session {
     ws.role = role;
     ws.lastInput = 0;
     this.sockets.add(ws);
-    ws.character = null; // the crew file this player screen has claimed (crew.js)
+    ws.character = null;
     ws.stream = role === "player" && !!hint.stream;
     const t = role === "player" && !ws.stream && this.state.config.terminals.find((x) => x.id === hint.terminal);
     if (t && reachable(t, this.state.station)) ws.terminal = t.id;
@@ -637,15 +541,9 @@ export class Session {
   }
   toPlayers(p) { this.send("player", p); }
   sendHeader() { this.toPlayers({ t: "header", header: this.playerHeader() }); }
-  // Which system a player screen is on ("" = the station's network).
   netOfSocket(ws) { return netOf(this.state.config.terminals.find((t) => t.id === ws.terminal)); }
-  // Where new lines go: the system the players are on; if they're on several,
-  // the one the latest input came from (the agent picks per line; see deliverReply).
-  // Player screens at a terminal (not the stream page, nor one that hasn't picked).
   screensAtTerminals() { return [...this.sockets].filter((c) => c.role === "player" && c.terminal); }
-  // The systems player screens are on.
   occupiedNets() { return new Set(this.screensAtTerminals().map((c) => this.netOfSocket(c))); }
-  // Is a voice heard on this system?
   voiceReaches(voiceId, net) {
     const ok = this.voiceNets(voiceId);
     return ok.includes(ALL_NET) || ok.includes(net);
@@ -654,63 +552,46 @@ export class Session {
     const nets = this.occupiedNets();
     return nets.size === 1 ? [...nets][0] : this.lastNet;
   }
-  // The connection graph: the systems a voice can be heard on (voices.js). Only
-  // systems the story has count; a voice left with none can be heard anywhere.
   voiceNets(voiceId) {
     const exist = new Set(systemsOf(this.state.config).map((x) => x.net));
     const v = this.state.config.voices.find((x) => x.id === voiceId);
     const nets = (v?.systems ?? [""]).filter((n) => n === ALL_NET || exist.has(n));
     return nets.length ? nets : [ALL_NET];
   }
-  // Where a line can really be said: on `net` if its voice is on that system,
-  // else on one it is on (where the players are, if possible).
   routeLine(voiceId, net) {
     if (this.voiceReaches(voiceId, net)) return net;
     const ok = this.voiceNets(voiceId), occupied = this.occupiedNets(), here = this.defaultNet();
     return ok.find((n) => n === here) ?? ok.find((n) => occupied.has(n)) ?? ok[0];
   }
-  // The room a player screen is in (its terminal's; "" for a portable one).
   roomOfSocket(ws) { return this.state.config.terminals.find((t) => t.id === ws.terminal)?.room || ""; }
-  // Does this player screen show this log line? Lines belong to the system they
-  // were said on; someone talking in person is only heard in that room.
   sees(ws, e) { return ws.stream || (shownOn(e.net, this.netOfSocket(ws)) && (!e.room || this.roomOfSocket(ws) === e.room)); }
-  // Do the players' screens speak? When voices are set to play on the screens; or on
-  // Discord while the bot isn't in a voice channel (so nothing goes unsaid).
   speaksOnScreens() {
     const c = this.state.config;
     return !!c.tts || (!!c.discordTalk && !discordLinked(this.code));
   }
 
-  // The bot joined or left a voice channel: the screens may start or stop speaking.
   discordMoved() {
     this.sendHeader();
     this.syncDm();
   }
 
-  // Is a line on some player screen? (With none connected, everyone's on Discord.)
   seenByAnyone(entry) {
     const screens = [...this.sockets].filter((c) => c.role === "player" && !c.stream);
     return !screens.length || screens.some((c) => this.sees(c, entry));
   }
-  // Only the player screens that show this line.
   toEntry(entry, p) { this.toPlayersIf((c) => this.sees(c, entry), p); }
-  // The open player screens that pass `pred` (p: a message, or one already as JSON).
   toPlayersIf(pred, p) {
     const data = typeof p === "string" ? p : JSON.stringify(p);
     for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && pred(c)) c.send(data);
   }
   sendInit(ws) { ws.send(JSON.stringify({ t: "init", ...this.playerView(ws) })); }
-  // How someone of the cast is heard: face to face when a player screen is in
-  // their room (only screens there show it), else over the cast's channel (the intercom).
   castDelivery(member, asked) {
     const voice = channelOf(this.state.config);
     const there = member.room && this.screensAtTerminals().find((x) => this.roomOfSocket(x) === member.room);
     if (there) return { voice, inPerson: true, room: member.room, net: this.netOfSocket(there) };
     return { voice, inPerson: false, room: "", net: this.routeLine(voice, asked) };
   }
-  // Only the player screens on one system (log lines belong to the system they were said on).
   toNet(net, p) { this.toPlayersIf((c) => c.stream || shownOn(net, this.netOfSocket(c)), p); }
-  // Every player screen redrawn, each with its own system's log.
   initPlayers() {
     for (const c of this.sockets) if (c.role === "player" && c.readyState === 1) this.sendInit(c);
   }
@@ -720,9 +601,6 @@ export class Session {
     this.syncIso();
   }
 
-  // The station map on the players' screens, while the Warden shows it, in the view they
-  // picked (2D or 3D): the station state, the layout, the rooms' floor plans and where
-  // the players are; never who of the cast is where (occupants). Re-sent as any of that changes.
   isoView() {
     const view = this.state.mapShown;
     if (!view) return null;
@@ -736,8 +614,6 @@ export class Session {
     this.toPlayersIf(() => true, `{"t":"isoMap","map":${map}}`);
   }
 
-  // The stream pages: the Warden's own entries (notes, asides, table talk), new or
-  // changed since each was last told. (Deleted ones go with a fresh init: initPlayers.)
   syncStreams() {
     for (const ws of this.sockets) {
       if (!ws.stream || ws.readyState !== 1) continue;
@@ -754,7 +630,6 @@ export class Session {
       if (map !== ws.mapSent) { ws.mapSent = map; ws.send(`{"t":"streamMap","map":${map}}`); }
     }
   }
-  // The stream page's map: the layout, and which crew members are in which room (at a terminal there).
   streamMap() {
     const people = {};
     for (const ws of this.sockets) {
@@ -769,8 +644,6 @@ export class Session {
     setImmediate(() => { this.streamSyncQueued = false; this.syncStreams(); });
   }
 
-  // For one player screen: only the log of the system it's on. (A stream page: all of
-  // it, the Warden's entries too.)
   playerView(ws) {
     const net = ws ? this.netOfSocket(ws) : "";
     const log = ws?.stream
@@ -792,7 +665,7 @@ export class Session {
       ...(ws?.stream ? { map: this.streamMap() } : {}),
       clocks: this.publicClocks(),
       handouts: this.handoutsFor(ws),
-      solo: this.soloView(), // a game without a Warden: choosing a story, building it, or playing
+      solo: this.soloView(),
       claims: this.claims(),
       busy: !!this.state.pending,
       roll: this.publicRoll(),
@@ -806,16 +679,13 @@ export class Session {
       accessLevel: String(this.state.station.access_level ?? "GUEST"),
       theme: c.theme,
       tts: this.speaksOnScreens(),
-      vitals: c.playerVitals, // players may edit their own health/wounds/stress
+      vitals: c.playerVitals,
       terminals: c.terminals.map((t) => ({ id: t.id, name: t.name, look: t.look, theme: t.theme, system: t.system, os: t.os, open: reachable(t, this.state.station) })),
-      moveTerminals: c.playerTerminals, // players may switch terminals themselves
-      selfRolls: c.playerRolls, // players may roll their own stats/saves
-      // What each voice looks like on screen and its effect chain (no personas or base-voice internals).
-      // chunked: human voices are spoken one text line at a time (see speechParts).
+      moveTerminals: c.playerTerminals,
+      selfRolls: c.playerRolls,
       voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: shownName(v), style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
-      // The cast's portraits, by lowercase name (lines name who speaks).
       portraits: Object.fromEntries((c.cast || []).filter((m) => m.portrait).map((m) => [m.name.toLowerCase(), m.portrait])),
-      portraitCredit: [...(c.cast || []), ...c.crew].some((m) => m.portrait?.startsWith("kit/")), // (the bundled ones need their credit shown)
+      portraitCredit: [...(c.cast || []), ...c.crew].some((m) => m.portrait?.startsWith("kit/")),
     };
   }
 
@@ -828,7 +698,6 @@ export class Session {
       claims: this.claims(),
       screens: this.screens(),
       canRetcon: this.undoStack.length,
-      // (timed cues are listed for a while after they end; only show what's running)
       effects: this.state.effects.filter((e) => this.effectRunning(e)),
       builderBusy: this.builderBusy,
       roomBusy: this.roomBusy,
@@ -840,26 +709,23 @@ export class Session {
       allEffects: ALL_EFFECTS,
       rollOptions: { checks: CHECKS, skillLevels: SKILL_LEVELS },
       voiceOptions: { presets: PRESETS, fxParams: FX_PARAMS, variants: VARIANTS, styles: STYLES, engines: ENGINES, speakers: SPEAKERS },
-      panicTable: PANIC_TABLE.slice(1), // (shown on the Rules tab)
+      panicTable: PANIC_TABLE.slice(1),
     };
   }
 
-  // ---------------------------------------------------------------- log
   addLog(kind, text, extra = {}) {
-    // net: the system it was said on (players elsewhere don't see it). Unless
-    // given (the agent's pick, the Warden's), wherever the players are.
     const { net = this.defaultNet(), ...rest } = extra;
     const entry = { id: this.nextId++, kind, text, ts: Date.now(), ...(net ? { net } : {}), ...rest };
     const adv = kind === "entity" && this.state.config.voices.find((v) => v.id === entry.entity && v.adversary);
-    if (adv) entry.shownAs = shownName(adv); // (the name its line goes by: ??? until it's been seen)
+    if (adv) entry.shownAs = shownName(adv);
     this.state.log.push(entry);
     this.delivering?.entries.push(entry.id);
     if (this.state.log.length > MAX_LOG) this.state.log.splice(0, this.state.log.length - MAX_LOG);
     if (SPOKEN_KINDS.has(kind)) this.pregenerate([entry]);
-    if (kind === "player") this.toNet(entry.net || "", { t: "line", entry }); // what they typed: at once
-    else if (PRIVATE_KINDS.has(kind)) this.queueStreamSync(); // (the stream pages show the Warden's log too)
+    if (kind === "player") this.toNet(entry.net || "", { t: "line", entry });
+    else if (PRIVATE_KINDS.has(kind)) this.queueStreamSync();
     else {
-      entry.queued = true; // not on players' screens until it's scheduled
+      entry.queued = true;
       this.lineChain = this.lineChain.then(() => this.scheduleLine(entry)).catch((err) => console.error(`[${this.code}] line schedule failed:`, err));
     }
     this.touch();
@@ -867,14 +733,11 @@ export class Session {
   }
 
   setBusy(busy) { this.toPlayers({ t: "busy", busy }); }
-  // Drop the reply being written or waiting for the Warden (one still in flight is ignored when it lands).
   dropReply() {
     this.genCounter++;
     this.state.pending = null;
     this.setBusy(false);
   }
-  // Back to the default story, keeping the sound library (the Warden's uploads), the
-  // story builder, and the session's keys. extra: kept too (e.g. the game without a Warden).
   freshGame(extra = {}) {
     const s = this.state;
     this.genCounter++;
@@ -885,8 +748,6 @@ export class Session {
     this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], ...extra, localKeys: s.localKeys, streamKey: s.streamKey };
   }
 
-  // Nothing reaches the players until the Warden rules (it works / it fails /
-  // roll); then the agent writes what happens, knowing the result.
   holdForWarden(raw, note) {
     const s = this.state;
     const oc = { needed: true, attempt: String(raw.attempt || "").slice(0, 140), suggested_check: CHECKS[raw.suggested_check] || raw.suggested_check === PANIC ? raw.suggested_check : "none", advantage: ["advantage", "disadvantage"].includes(raw.advantage) ? raw.advantage : "none", why: String(raw.why || "").slice(0, 300), on_success: String(raw.on_success || "").slice(0, 200), on_failure: String(raw.on_failure || "").slice(0, 200) };
@@ -894,21 +755,16 @@ export class Session {
     this.addLog("note", `⚖ Your call (players see nothing yet): ${oc.attempt || "(unspecified)"}${suggestion(oc)}`);
     if (note) this.addLog("note", `Agent: ${note}`);
     s.pending = null;
-    this.setBusy(true); // players see PROCESSING meanwhile
+    this.setBusy(true);
     this.touch();
     this.syncDm();
-    if (s.solo?.phase === "play") this.soloRule(s.outcomeCheck); // (no Warden: settle it now)
+    if (s.solo?.phase === "play") this.soloRule(s.outcomeCheck);
   }
 
-  // A player typed while lines were still playing: the comms are cut off on every
-  // screen. Lines not yet started were never said (marked cut: kept in the
-  // Warden's log, gone from the players' screens and the agent's memory); a line
-  // cut off mid-way keeps only what was already spoken.
-  // Only on the typist's system (net): a player on the tug doesn't cut off the station.
   interruptComms(net = "") {
     const now = Date.now();
     const cut = [], trimmed = [];
-    let elsewhere = now; // lines still playing on other systems keep the timeline busy
+    let elsewhere = now;
     for (const e of this.state.log) {
       if (PRIVATE_KINDS.has(e.kind) || e.kind === "player" || e.cut || e.interrupted) continue;
       if (!shownOn(e.net, net)) { if (e.timing?.end > elsewhere) elsewhere = e.timing.end; continue; }
@@ -928,25 +784,13 @@ export class Session {
       trimmed.push(e.id);
     }
     if (!cut.length && !trimmed.length) return;
-    for (const fx of [...this.state.effects]) if (fx.atEntry && cut.includes(fx.atEntry)) this.endEffect(fx.id); // never fires
+    for (const fx of [...this.state.effects]) if (fx.atEntry && cut.includes(fx.atEntry)) this.endEffect(fx.id);
     this.playhead = Math.max(now, elsewhere);
-    this.toPlayers({ t: "interrupt", at: now, cut, trimmed }); // (other systems' screens don't have these lines)
-    discordCut(this.code); // (and the bot stops talking)
+    this.toPlayers({ t: "interrupt", at: now, cut, trimmed });
+    discordCut(this.code);
     this.addLog("note", `A player cut off comms${cut.length ? `: ${cut.length} line${cut.length > 1 ? "s" : ""} unsaid` : ""}.`);
   }
 
-  // ---------------------------------------------------------------- shared timeline
-  // Every player screen shows and speaks a line at the same moment. The server
-  // generates each clip once (cached in tts.js), measures it, and gives every
-  // line and every spoken piece a start time on one session timeline (server
-  // clock, ms). Screens sync their clocks (ping/pong) and play to the schedule.
-  //   entry.timing = { at, speakAt, end, versions: [[{ i, at, dur, audio, last }], ...] }
-  //   at: effects "before" the line fire; speakAt: after any beat (e.g. a blackout).
-  //   versions[0] is the line's text; versions[k] its k-th per-player variant.
-  // The line goes out once each version's first piece is ready; later pieces
-  // follow as "part" messages, then "lineEnd".
-  // A log line's voice (spoken kinds only), and whether it's said a sentence at a time
-  // (the cast, and human voices).
   lineVoice(e) {
     const voice = SPOKEN_KINDS.has(e.kind) ? voiceFor(this.state.config.voices, e) : null;
     return { voice, chunked: !!e.character || voice?.voice.engine === "neural" };
@@ -954,25 +798,18 @@ export class Session {
   async scheduleLine(entry) {
     const PIECE_GAP = 250, LINE_GAP = 150;
     const c = this.state.config;
-    // Discord: the bot speaks the line in its channel too (the main text, not per-player
-    // versions), when someone can see it, with the voice's effects (in person: none).
     const talk = !!c.discordTalk && SPOKEN_KINDS.has(entry.kind) && discordLinked(this.code) && this.seenByAnyone(entry);
-    // LEAD: time for every screen to decode the first clip; for Discord, for the server
-    // to put its effects on too (a clip that's still late waits its turn: discordbot.js).
     const LEAD = talk ? 1500 : 700;
     const screens = this.speaksOnScreens();
     const spoken = (screens || talk) && SPOKEN_KINDS.has(entry.kind);
     const { voice, chunked } = this.lineVoice(entry);
     const base = voice ? speakingVoice(c, entry) : null;
-    const rate = entry.inPerson ? 1 : voice?.fx?.rate || 1; // (in person: no speaker effects)
+    const rate = entry.inPerson ? 1 : voice?.fx?.rate || 1;
     const texts = [entry.text, ...(entry.variants || []).map((v) => v.text)];
     const pieces = texts.map((t) => (!t ? [] : chunked ? speechParts(t) : [t]));
     const jobs = pieces.map((ps) => ps.map((p) => (spoken ? synthesize(p, base).catch(() => null) : Promise.resolve(null))));
-    // The audio itself goes out with the line (and its later pieces): every
-    // screen gets the same clip at the same moment, nothing to fetch.
     const wavs = texts.map(() => []);
     const withAudio = () => ({ ...entry, timing: { ...entry.timing, versions: entry.timing.versions.map((ps, v) => ps.map((p) => ({ ...p, wav: wavs[v][p.i] }))) } });
-    // A beat (e.g. a blackout) holds the line back for its length, plus a moment so the lights are surely back.
     const beat = Math.max(0, ...(entry.cues || []).filter((x) => x.hold).map((x) => Math.min(10, x.seconds || 3) * 1000));
     const hold = beat ? beat + 400 : 0;
     const at = Math.max(this.playhead, Date.now() + LEAD);
@@ -986,8 +823,7 @@ export class Session {
       for (let v = 0; v < texts.length; v++) {
         if (i >= pieces[v].length) continue;
         const wav = await jobs[v][i];
-        if (wav && screens) wavs[v][i] = wav.toString("base64"); // (screens that don't speak just get the timing)
-        // Unspoken text gets reading time instead.
+        if (wav && screens) wavs[v][i] = wav.toString("base64");
         const dur = wav ? Math.round((wavSeconds(wav) / rate) * 1000) : Math.min(6000, 400 + pieces[v][i].length * 18);
         const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!wav && screens, last: i === pieces[v].length - 1 };
         if (talk && v === 0 && wav && live()) discordSay(this.code, wav, entry.inPerson ? {} : voice?.fx || {}, part.at);
@@ -1003,26 +839,23 @@ export class Session {
         if (live()) this.toEntry(entry, { t: "line", entry: withAudio() });
       }
     }
-    if (!sent && !entry.cut) { // nothing to show anyone (shouldn't happen): keep the order, move on
+    if (!sent && !entry.cut) {
       entry.timing = timing;
       delete entry.queued;
       if (live()) this.toEntry(entry, { t: "line", entry });
     }
-    if (entry.cut || entry.interrupted) return; // (cut off: the timeline already moved on)
+    if (entry.cut || entry.interrupted) return;
     timing.end = Math.max(timing.speakAt, ...cursors.map((x) => x - PIECE_GAP));
     if (live()) this.toEntry(entry, { t: "lineEnd", id: entry.id, end: timing.end });
     this.playhead = timing.end + LINE_GAP;
   }
 
-  // ---------------------------------------------------------------- players
-  // Which crew files are taken, and how many screens each: { id: count }.
   claims() {
     const out = {};
     for (const ws of this.sockets) if (ws.role === "player" && ws.character) out[ws.character] = (out[ws.character] || 0) + 1;
     return out;
   }
 
-  // Who is playing which crew member: at a screen, or (named) on Discord. [{ id, by }]
   played() {
     const out = new Map();
     for (const ws of this.sockets) if (ws.role === "player" && ws.character && !out.has(ws.character)) out.set(ws.character, "");
@@ -1033,7 +866,6 @@ export class Session {
   crewChanged() {
     this.toPlayers({ t: "crew", crew: this.state.config.crew, claims: this.claims(), played: this.played() });
     this.syncDm();
-    // No Warden: the story opens once someone has taken a crew file.
     const x = this.state.solo;
     if (x?.phase === "play" && !x.opened && Object.keys(this.claims()).length) this.soloOpen();
   }
@@ -1042,21 +874,19 @@ export class Session {
   characterOf(ws) { return this.crewById(ws.character) || null; }
 
   handlePlayer(ws, msg) {
-    if (ws.stream && msg.t !== "ping") return; // (a stream page only watches)
-    // A game without a Warden: its pilot (holding the session's token) runs the AI.
+    if (ws.stream && msg.t !== "ping") return;
     if (msg.t === "pilot") return this.pilotAuth(ws, msg.token);
     if (String(msg.t).startsWith("pilot")) return ws.pilot && this.handlePilot(ws, msg);
-    if (msg.t === "input" && this.state.solo && this.state.solo.phase !== "play") return; // (still choosing the story)
+    if (msg.t === "input" && this.state.solo && this.state.solo.phase !== "play") return;
     if (["input", "roll", "selfRoll", "vitals"].includes(msg.t)) this.storyBegins();
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
-    if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() })); // clock sync
+    if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() }));
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
     if (msg.t === "claim") {
-      // A player picks their character (or none). Several screens may share one.
       ws.character = this.state.config.crew.some((c) => c.id === msg.id) ? msg.id : null;
-      ws.send(JSON.stringify({ t: "handouts", handouts: this.handoutsFor(ws) })); // (theirs depend on who they are)
+      ws.send(JSON.stringify({ t: "handouts", handouts: this.handoutsFor(ws) }));
       return this.crewChanged();
     }
     if (msg.t !== "input") return;
@@ -1069,7 +899,7 @@ export class Session {
     this.interruptComms(this.netOfSocket(ws));
     const pc = this.characterOf(ws);
     const term = this.state.config.terminals.find((t) => t.id === ws.terminal);
-    this.lastNet = netOf(term); // the reply goes to the system they typed on
+    this.lastNet = netOf(term);
     this.addLog("player", text, { ...(pc ? { by: pc.name } : {}), ...(term ? { at: term.name } : {}) });
     this.requestReply();
   }
@@ -1078,18 +908,15 @@ export class Session {
     return this.state.effects.some((e) => e.type === "lockout" && this.effectRunning(e));
   }
 
-  // Is an effect on the players' screens right now? One timed to a line (a cue)
-  // runs from when that line comes up on the shared timeline, for its duration.
   effectRunning(e) {
     if (!e.atEntry) return true;
     const t = this.state.log.find((x) => x.id === e.atEntry)?.timing;
-    if (!t) return false; // its line hasn't been scheduled (or was cut)
+    if (!t) return false;
     const start = e.when === "after" ? t.end ?? Infinity : t.at;
     const now = Date.now();
     return now >= start && (!e.seconds || now < start + e.seconds * 1000);
   }
 
-  // ---------------------------------------------------------------- Warden
   handleDm(msg) {
     const s = this.state;
     if (STORY_ACTIONS.has(msg.t)) this.storyBegins();
@@ -1102,9 +929,8 @@ export class Session {
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
         s.config.discordTalk = !!s.config.discordTalk;
-        if (s.config.discordTalk && "discordTalk" in msg.patch) s.config.tts = false; // (one or the other)
+        if (s.config.discordTalk && "discordTalk" in msg.patch) s.config.tts = false;
         if ("discordTalk" in msg.patch) setDiscordTalk(this.code, s.config.discordTalk);
-        // Switching provider snaps to its cheapest model; invalid efforts snap to the cheapest valid one.
         if ("provider" in msg.patch && !("model" in msg.patch)) Object.assign(s.config, { model: "", effort: "" });
         else if ("model" in msg.patch && !("effort" in msg.patch)) s.config.effort = "";
         Object.assign(s.config, fixSelection(s.config));
@@ -1112,7 +938,6 @@ export class Session {
         break;
       }
       case "apiKey": {
-        // Keys stay in this process's memory only.
         const p = getProvider(msg.provider);
         if (!p || p.serverKeyOnly) { rememberSecret(msg.key); break; }
         const key = String(msg.key || "").trim();
@@ -1123,7 +948,6 @@ export class Session {
           this.send("dm", { t: "toast", level: "error", text: `Not a valid ${p.label} key (expected ${p.keyHint}).` });
           return;
         }
-        // First key in: point the session at that provider's cheapest model.
         if (key && !keyFor(s.config.provider, this.keys)) Object.assign(s.config, defaultSelection(this.keys));
         break;
       }
@@ -1132,7 +956,7 @@ export class Session {
         if (this.usesNeural()) warmNeural();
         this.sendHeader();
         break;
-      case "adversary": { // the Warden edits one (name, revealed, notes, sound, colour, picture)
+      case "adversary": {
         const v = s.config.voices.find((x) => x.id === msg.id && x.adversary);
         const p = msg.patch || {};
         if (!v) break;
@@ -1156,7 +980,7 @@ export class Session {
       case "adversaryDel":
         s.config.voices = s.config.voices.filter((x) => !(x.id === msg.id && x.adversary));
         break;
-      case "adversaryShow": { // its picture, full screen on the players' screens (seeing it reveals it)
+      case "adversaryShow": {
         const v = s.config.voices.find((x) => x.id === msg.id && x.adversary);
         if (!v?.adversary.picture) break;
         this.revealAdversaries([v.id]);
@@ -1165,19 +989,18 @@ export class Session {
         this.addLog("note", `Showed the players ${v.name}.`);
         break;
       }
-      case "castPanic": { // the Warden has someone of the cast roll a Panic check, in front of the players
+      case "castPanic": {
         const member = s.config.cast.find((m) => m.id === msg.id);
         if (member) this.castPanic(member, "warden");
         break;
       }
-      case "cast": // the story's people (cast.js), and the voice they're heard through elsewhere
+      case "cast":
         s.config.cast = sanitizeCast(msg.cast);
         if (s.config.voices.some((v) => v.id === msg.channel)) s.config.castChannel = msg.channel;
         this.sendHeader();
         break;
       case "station":
         if (msg.station && typeof msg.station === "object" && !Array.isArray(msg.station)) s.station = msg.station;
-        // (opening a door can make a terminal reachable: the header carries that)
         this.sendHeader();
         break;
 
@@ -1185,7 +1008,6 @@ export class Session {
         this.generate(msg.steer);
         return;
       case "command": {
-        // A Warden command: recorded in the agent's history, then the agent acts on it.
         const text = String(msg.text || "").trim().slice(0, 4000);
         if (!text) break;
         this.addLog("warden", text);
@@ -1205,7 +1027,6 @@ export class Session {
       case "inject": {
         let text = String(msg.text || "").trim().slice(0, 4000);
         if (!text) break;
-        // As someone of the cast: in person if they're in a room with players, else over the intercom.
         if (msg.cast) {
           const member = s.config.cast.find((m) => m.id === msg.cast);
           if (!member) break;
@@ -1216,12 +1037,10 @@ export class Session {
           if (msg.clearPending) this.dropReply();
           break;
         }
-        // "as" is a voice id: the terminal, broadcasts, or any Warden-defined voice.
         const as = msg.as === "system" ? BUILTIN.broadcast : msg.as || BUILTIN.terminal;
-        if (this.speaksBySentence(as)) text = sentenceLines(text); // (a sentence per line, like the agent's)
+        if (this.speaksBySentence(as)) text = sentenceLines(text);
         if (!s.config.voices.some((v) => v.id === as)) break;
         const kind = kindOf(as);
-        // On a system the Warden picked (when the players are split), else where the players are.
         const asked = netNamed(s.config, msg.system) ?? this.defaultNet();
         const net = this.routeLine(as, asked);
         if (net !== asked) this.send("dm", { t: "toast", level: "info", text: `${s.config.voices.find((v) => v.id === as)?.name} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(s.config, asked)}`}. Sent to ${systemName(s.config, net)}.` });
@@ -1231,10 +1050,8 @@ export class Session {
         break;
       }
       case "heard":
-        // What the Warden said aloud at the table (their console's speech-to-text).
         return this.hearTable({ text: msg.text, warden: true });
       case "sttKey": {
-        // A Groq key, for writing down Discord voice. Memory only.
         const key = String(msg.key || "").trim();
         rememberSecret(key);
         if (key && !/^gsk_[A-Za-z0-9]{20,}$/.test(key)) {
@@ -1248,7 +1065,6 @@ export class Session {
         stopListening(this.code, "Discord: stopped. The bot left the voice channel.");
         break;
       case "note": {
-        // A private note to the agent: it updates what's true, without the players seeing anything.
         const text = String(msg.text || "").trim().slice(0, 4000);
         if (text) this.aside(text);
         break;
@@ -1267,14 +1083,12 @@ export class Session {
         this.initPlayers();
         break;
       case "clearScreen":
-        // Wipe the visible terminal but keep the entries so the agent's memory survives.
         for (const e of s.log) e.hidden = true;
         this.playhead = 0;
         this.initPlayers();
         break;
       case "resetSession":
         this.restartStory();
-        // Everyone back where the story starts: the first terminal they can reach.
         { const start = s.config.terminals.find((t) => reachable(t, s.station));
           if (start) for (const ws of this.sockets) if (ws.role === "player" && ws.terminal) { ws.terminal = null; this.playerTerminal(ws, start.id, "warden"); } }
         break;
@@ -1286,15 +1100,13 @@ export class Session {
           break;
         }
         if (msg.fromOutcome) {
-          // The stakes the Warden was shown go to the agent for when the result comes in,
-          // and to the players' roll prompt.
           const oc = s.outcomeCheck;
           if (oc?.on_success || oc?.on_failure) s.roll.stakes = { success: oc.on_success || "", failure: oc.on_failure || "" };
           const trim = (t) => String(t || "").trim().replace(/[.\s]+$/, "");
           const stakes = [oc?.on_success && `on a success, ${trim(oc.on_success)}`, oc?.on_failure && `on a failure, ${trim(oc.on_failure)}`].filter(Boolean);
           if (stakes.length) this.addLog("warden", `Stakes for this roll (narrate the result by them): ${stakes.join("; ")}.`);
           s.outcomeCheck = null;
-          this.setBusy(false); // the roll prompt replaces PROCESSING
+          this.setBusy(false);
         }
         const who = s.roll.all ? "everyone" : s.roll.pcs[0].name;
         this.addLog("note", `Roll called for ${who}: ${[checkLabel(s.roll), skillLabel(s.roll), s.roll.reason].filter(Boolean).join(" · ")}`);
@@ -1302,14 +1114,12 @@ export class Session {
         break;
       }
       case "rollFor": {
-        // The Warden rolls for a character (nobody's playing them, or to keep things moving).
         const pc = this.crewById(msg.pc);
         if (pc && s.roll?.status === "waiting") this.rollFor(pc, diceFor(s.roll), { by: "warden" });
         return;
       }
       case "rollCancel":
         if (s.roll?.status === "waiting" && Object.keys(s.roll.results).length) {
-          // Some have rolled: stop waiting for the rest, and go on with what was rolled.
           const missing = s.roll.pcs.filter((p) => !s.roll.results[p.id]).map((p) => p.name);
           this.addLog("note", `Roll closed without ${missing.join(", ")}.`);
           this.finishRoll();
@@ -1323,46 +1133,43 @@ export class Session {
         this.retcon();
         break;
       case "outcome": {
-        // The Warden rules on an attempt the agent left open (rule of cool).
         const oc = s.outcomeCheck;
         if (!oc || !["success", "failure"].includes(msg.verdict)) break;
         s.outcomeCheck = null;
         const verdict = msg.verdict === "success" ? "SUCCEEDS" : "FAILS";
-        // The stakes the Warden was shown for this outcome: the narration follows them.
         const stake = msg.verdict === "success" ? oc.on_success : oc.on_failure;
         this.addLog("warden", `The players' attempt (${oc.attempt || "their last action"}) ${verdict}.${stake ? ` As the stakes said: ${stake}` : ""} Narrate the result in character and apply any station changes.${msg.verdict === "success" ? "" : " Fail forward: even so, the story moves on (see FAIL FORWARD)."}`);
         this.generate();
         break;
       }
       case "outcomeStakes": {
-        // The Warden edited the stakes: the agent narrates by these.
         const oc = s.outcomeCheck;
         if (!oc) break;
         oc.on_success = String(msg.on_success ?? "").trim().slice(0, 200);
         oc.on_failure = String(msg.on_failure ?? "").trim().slice(0, 200);
         this.touch();
-        return; // (no redraw: the Warden is typing in the card)
+        return;
       }
-      case "handout": // the Warden gives the players a document, or an audio log (voice), to everyone or one character
+      case "handout":
         this.giveHandout({ title: msg.title, text: msg.text, to: msg.to, voice: msg.voice });
         break;
-      case "roomDocPlace": { // the Warden leaves a document or audio log in a room, to be found
+      case "roomDocPlace": {
         const [d] = sanitizeRoomDocs([{ id: newRoomDocId(), room: msg.room, title: msg.title, text: msg.text, voice: msg.voice && this.logVoice(msg.voice) ? msg.voice : "" }]);
         if (!d || s.config.roomDocs.length >= MAX_ROOM_DOCS) break;
         s.config.roomDocs.push(d);
         this.addLog("note", `"${d.title}" left in ${this.roomName(d.room)}`);
         break;
       }
-      case "roomDocGive": // the Warden hands one over now (found)
+      case "roomDocGive":
         this.findRoomDoc(String(msg.id || ""), msg.to || "");
         break;
       case "roomDocDelete":
         s.config.roomDocs = s.config.roomDocs.filter((d) => d.id !== msg.id);
         break;
-      case "handoutWrite": // the agent drafts one from the Warden's brief (back to the Warden to edit, not to the players)
+      case "handoutWrite":
         if (!this.handoutBusy) this.writeHandout(String(msg.brief || "").slice(0, 2000), String(msg.title || "").slice(0, 120), String(msg.voice || ""));
         return;
-      case "handoutAgain": { // show it again (it pops up on their screens)
+      case "handoutAgain": {
         const h = s.handouts.find((x) => x.id === msg.id);
         if (h) this.showHandout(h);
         return;
@@ -1405,7 +1212,6 @@ export class Session {
         if (!this.synopsisBusy) this.writeSynopsis(SYNOPSIS_KINDS.includes(msg.kind) ? msg.kind : "sofar");
         break;
       case "roomLayout": {
-        // The Warden's edits to a room's floor plan (rows: null removes it).
         const id = roomId(msg.room);
         if (!id) break;
         const rows = sanitizeRows(msg.rows);
@@ -1413,14 +1219,13 @@ export class Session {
         else delete s.config.rooms[id];
         break;
       }
-      case "mapShow": // the Warden shows the players the map in one of its views, or takes it away
+      case "mapShow":
         s.mapShown = ["draw", "iso"].includes(msg.view) ? msg.view : "";
         break;
       case "roomDraft":
         if (!this.roomBusy) this.draftRoom(msg);
         return;
       case "roomShow": {
-        // A room's floor plan on the players' screens (all, or one character's): the layout only.
         const plan = s.config.rooms[msg.room];
         const to = [...this.sockets].filter((ws) => ws.role === "player" && (!msg.pc || ws.character === msg.pc));
         const payload = JSON.stringify(msg.hide ? { t: "roomPlan", rows: null } : { t: "roomPlan", name: String(msg.label || msg.room).slice(0, 60), rows: plan?.rows || null });
@@ -1443,12 +1248,10 @@ export class Session {
         const nets = players.map((c) => this.netOfSocket(c));
         s.config.terminals = sanitizeTerminals(msg.terminals);
         this.sendHeader();
-        // A terminal moved to another system: its screens switch to that system's log.
         players.forEach((c, i) => { if (c.readyState === 1 && this.netOfSocket(c) !== nets[i]) this.sendInit(c); });
         break;
       }
       case "moveScreens":
-        // The Warden moves a character's player screens to a terminal.
         for (const ws of this.sockets) if (ws.role === "player" && ws.character && ws.character === msg.character) this.playerTerminal(ws, msg.terminal, "warden");
         break;
       case "crew":
@@ -1459,7 +1262,6 @@ export class Session {
         const snd = s.sounds.find((x) => x.id === msg.id);
         if (!snd) break;
         const play = { pid: newId("sp", 3), id: snd.id, name: snd.name, loop: !!msg.loop, volume: clampVol(msg.volume ?? snd.volume), at: Date.now() };
-        // Loops are listed until stopped; one-shots until they end (so the Warden can cut them off).
         s.playing = [...s.playing.filter((p) => p.loop || Date.now() - p.at < 120_000), play].slice(-30);
         this.toPlayers({ t: "sound", play });
         if (!play.loop) {
@@ -1503,11 +1305,6 @@ export class Session {
     this.syncDm();
   }
 
-  // ---------------------------------------------------------------- effects
-  // cue: { atEntry, when: "before" | "after" } = don't fire yet; the players'
-  // screens fire it when they reach that log line (so effects land between lines
-  // of dialogue, in step with the text and voices). Players time cue effects
-  // themselves; the server just keeps them listed until they're surely over.
   startEffect(raw, source, cue = null) {
     if (raw) raw = { ...raw, type: effectType(raw.type) };
     if (!raw || !ALL_EFFECTS.includes(raw.type)) return;
@@ -1522,21 +1319,17 @@ export class Session {
       source,
       startedAt: Date.now(),
       ...(cue ? { atEntry: cue.atEntry, when: cue.when, ...(cue.hold ? { hold: true } : {}) } : {}),
-      // The agent's effects happen on the system its reply is for; the Warden's hit every screen.
       ...(source === "agent" ? { net: cue ? this.state.log.find((e) => e.id === cue.atEntry)?.net || "" : this.defaultNet() } : {}),
     };
     this.state.effects.push(effect);
     this.delivering?.effects.push(effect.id);
     if (effect.net !== undefined) this.toNet(effect.net, { t: "effect", effect });
     else this.toPlayers({ t: "effect", effect });
-    // A cue starts when the players reach its line, which may be a while (voices
-    // play first), so the server keeps it listed for a generous margin.
     const listed = cue ? seconds + 180 : seconds;
     if (seconds > 0) this.effectTimers.set(effect.id, setTimeout(() => { this.endEffect(effect.id); this.syncDm(); }, listed * 1000));
     if (source === "agent") this.addLog("note", `Agent triggered effect: ${effect.type}${effect.text ? ` "${effect.text}"` : ""} (${seconds || "∞"}s)${cue ? ` ${cue.when} line #${cue.atEntry}` : ""}`);
   }
 
-  // ---------------------------------------------------------------- sounds
   addSound(sound) {
     this.state.sounds.push(sound);
     this.touch();
@@ -1568,25 +1361,17 @@ export class Session {
     if (this.state.effects.length !== before) this.toPlayers({ t: "endEffect", id });
   }
 
-  // ---------------------------------------------------------------- speech
-  // Start making human-voice audio now (cached in tts.js), rather than when the
-  // players' browsers ask for it. Pieces match the /tts/:id?part=N requests.
   pregenerate(lines) {
     if (!this.speaksOnScreens()) return;
     for (const l of lines) {
       const base = speakingVoice(this.state.config, l);
-      if (base.engine !== "neural") continue; // synthetic voices are instant anyway
+      if (base.engine !== "neural") continue;
       for (const text of [l.text, ...(l.variants || []).map((v) => v.text)]) {
         for (const part of speechParts(text)) synthesize(part, base).catch(() => {});
       }
     }
   }
 
-  // The agent's cast changes: someone new joins the story, someone moves (room:
-  // a map room id, "none" for nowhere on the map, "" to stay put), new notes.
-  // In two steps around the reply's lines, so it stages naturally: before them,
-  // everything but leaving the players' room (someone walks in, then talks face
-  // to face); after them, the leaving (they say their piece face to face, then go).
   applyCastChanges(list, step = "before") {
     const c = this.state.config;
     const withPlayers = new Set(this.screensAtTerminals().map((x) => this.roomOfSocket(x)).filter(Boolean));
@@ -1604,26 +1389,21 @@ export class Session {
       const to = target(ch);
       const moved = !!room && to !== member.room;
       if (moved) member.room = to;
-      // (A note adds to what's known about them; it never replaces it.)
       const notes = String(ch.notes ?? "").trim();
       if (notes && !member.notes.includes(notes)) member.notes = `${member.notes}${member.notes ? " " : ""}${notes}`.slice(0, 1500);
       if (created) this.addLog("note", `Cast: ${member.name} joins the story${member.room ? ` (in ${member.room})` : ""}.`);
       else if (moved) this.addLog("note", `Cast: ${member.name} → ${member.room || "nowhere on the map"}.`);
       else if (notes) this.addLog("note", `Cast: ${member.name}: ${notes}`);
-      // How they feel about the players now.
       const [was, now] = shiftAttitude(member, ch.attitude_change, String(ch.why ?? ""));
       if (now !== was) this.addLog("note", `Cast: ${member.name} feels ${attitudeLabel(now)} towards the players (was ${attitudeLabel(was)})${member.why ? `: ${member.why}` : ""}.`);
-      // Their Stress, and a Panic check (rolled once this reply's lines are out).
       const [s0, s1] = shiftStress(member, ch.stress_change);
       if (s1 !== s0) this.addLog("note", `Cast: ${member.name}: Stress ${s0} → ${s1}.`);
       if (ch.panic_check && !(this.panics ||= []).includes(member.id)) this.panics.push(member.id);
       any ||= created || moved || !!notes || now !== was;
     }
-    if (any) this.sendHeader(); // (their portraits)
+    if (any) this.sendHeader();
   }
 
-  // An adversary the players see on this line (by name or id): revealed now. Returns what
-  // the line carries for the players' screens ({ id, name, src?, credit? }), or null.
   revealOnLine(ref) {
     const c = this.state.config;
     const n = String(ref || "").trim().toLowerCase();
@@ -1635,11 +1415,8 @@ export class Session {
     const pic = v.adversary.picture;
     return { id: v.id, name: v.name, ...(pic ? { src: this.pictureSrc(pic), credit: v.adversary.credit || "" } : {}) };
   }
-  // Where a picture is: a link as it is, or an upload of this session's.
   pictureSrc(pic) { return PICTURE_LINK.test(pic) ? pic : `api/sessions/${this.code}/portraits/${pic}`; }
 
-  // Adversaries the players have now seen (by name or id): from here on their lines
-  // show their name, not ???. Returns whether any were new.
   revealAdversaries(names = []) {
     const c = this.state.config;
     let any = false;
@@ -1655,9 +1432,6 @@ export class Session {
     return any;
   }
 
-  // Someone of the cast rolls a Panic check, in front of the players (the same dice
-  // on their screens as their own rolls): a d20 at or under their Stress and they
-  // panic, by CAST_PANIC. Then the agent plays it out (a follow-up reply).
   castPanic(member, by = "agent") {
     const req = { check: PANIC, advantage: "none" };
     const result = resolve(req, member.stress ?? 2, diceFor(req));
@@ -1666,13 +1440,10 @@ export class Session {
     this.toPlayers({ t: "rollResult", result, label: "Panic", who: member.name, effect: fx?.name || "" });
     this.addLog("roll", `${member.name}${by === "warden" ? " (the Warden called it)" : ""}: PANIC CHECK\nSTRESS ${result.target} · ROLLED ${result.used} (D20)\n${fx ? `PANIC · ${fx.name.toUpperCase()}` : "KEPT THEIR COOL"}`,
       { outcome: result.outcome, by: member.name, cast: true, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
-    // The agent plays out what happens (after this reply, if one is being written).
     if (this.generating) this.rerun = true;
     else setTimeout(() => this.requestReply(), 0);
   }
 
-  // One model call, counted (provider, model, how long, whether it worked).
-  // On the free provider (the server's key) each session gets FREE_CALLS_PER_DAY calls.
   async callModel(provider, request, kind) {
     if (provider.serverKeyOnly) {
       const day = new Date().toISOString().slice(0, 10);
@@ -1694,7 +1465,6 @@ export class Session {
     }
   }
 
-  // The session's provider and its key (throws if there's no way to call it).
   modelAccess(noKey = "No API key. Add one in Settings → Agent.") {
     const id = this.state.config.provider;
     const provider = getProvider(id);
@@ -1704,7 +1474,6 @@ export class Session {
     return { provider, apiKey };
   }
 
-  // One call to the session's model, with a silent retry on malformed output. Returns parsed JSON.
   async ask(request, kind = "reply") {
     const s = this.state;
     const { provider, apiKey } = this.modelAccess();
@@ -1718,7 +1487,6 @@ export class Session {
     }
   }
 
-  // The story builder: a conversation turn, or a full draft of the scenario.
   async builderTurn(kind) {
     const b = this.state.builder;
     this.builderBusy = kind;
@@ -1741,10 +1509,9 @@ export class Session {
     this.syncDm();
   }
 
-  // The Warden's synopsis of one kind: the prebrief, the story so far, or the wrap-up.
   async writeSynopsis(kind) {
     const s = this.state;
-    this.synopsisBusy = kind; // (which one is being written)
+    this.synopsisBusy = kind;
     this.syncDm();
     try {
       const { started, request } = synopsisRequest(s, this.screens(), kind);
@@ -1759,7 +1526,6 @@ export class Session {
     this.syncDm();
   }
 
-  // The agent draws a room's floor plan (the first time the Warden opens it, or on request).
   async draftRoom(msg) {
     const s = this.state;
     const room = {
@@ -1783,28 +1549,24 @@ export class Session {
     this.syncDm();
   }
 
-  // Replace the story with a builder draft: new station, lore, secrets, voices,
-  // map and crew; a fresh log. Provider, mode and the sound library stay.
   applyStory(draft) {
     this.clearClocks();
     const s = this.state;
     const { config, station } = applyDraft(draft);
     this.genCounter++;
     this.playhead = 0;
-    Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] }); // (new rooms: plans are drawn when first opened)
+    Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] });
     s.config.roomDocs = sanitizeRoomDocs(config.roomDocs);
     Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopses: {} });
     this.endAllEffects();
     this.stopSounds();
-    for (const ws of this.sockets) if (ws.role === "player") ws.character = null; // everyone picks a new crew file
+    for (const ws of this.sockets) if (ws.role === "player") ws.character = null;
     if (this.usesNeural()) warmNeural();
     this.addLog("note", `New story applied: "${draft.title}".`);
     this.initPlayers();
     this.setBusy(false);
   }
 
-  // A private note from the Warden: the agent takes it in (updating the station
-  // state if needed) and answers the Warden; the players see nothing.
   async aside(text) {
     const s = this.state;
     this.addLog("aside", text);
@@ -1835,20 +1597,16 @@ export class Session {
     this.syncDm();
   }
 
-  // ---------------------------------------------------------------- rolls
-  // What players see of a roll request (only while it's waiting for them).
   publicRoll() {
     const r = this.state.roll;
     if (!r || r.status !== "waiting") return null;
     return {
       id: r.id, check: r.check, label: checkLabel(r), skill: skillLabel(r), skillName: r.skill, bonus: r.bonus, reason: r.reason, advantage: r.advantage,
       panic: r.check === PANIC, all: r.all, stakes: r.stakes || null,
-      pcs: r.pcs.map((p) => ({ ...p, done: !!r.results[p.id] })), // who rolls, and who already has
+      pcs: r.pcs.map((p) => ({ ...p, done: !!r.results[p.id] })),
     };
   }
 
-  // A player answers the roll for their character: digital dice from the server,
-  // or physical dice typed in.
   resolveRoll(ws, msg) {
     const r = this.state.roll;
     const pc = this.characterOf(ws);
@@ -1862,14 +1620,12 @@ export class Session {
     }
   }
 
-  // One character's roll for the current request, against their own sheet.
   rollFor(pc, dice, { manual = false, by = "player" } = {}) {
     const r = this.state.roll;
     const { stat, bonus } = rollTarget(r, pc);
-    const result = resolve(r, stat, dice, bonus); // (throws on bad dice)
+    const result = resolve(r, stat, dice, bonus);
     track("Roll", { Kind: r.check === PANIC ? "panic" : CHECKS[r.check].kind === "Save" ? "save" : "stat", Who: r.all ? "all" : "one" });
     r.results[pc.id] = { result, manual, by };
-    // A panic: its entry on the panic table (shown on the dice, and to the agent to play out).
     const fx = result.panic && !result.success ? panicEntry(result.used) : null;
     this.toPlayers({ t: "rollResult", result, label: checkLabel(r), who: pc.name, effect: fx?.name || "" });
     this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(r, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
@@ -1881,38 +1637,30 @@ export class Session {
     }
   }
 
-  // Everyone has rolled (or the Warden stopped waiting).
   finishRoll() {
     const r = this.state.roll;
     Object.assign(r, { status: "done", finishedAt: Date.now() });
     this.toPlayers({ t: "roll", roll: null });
     this.syncDm();
-    // The agent narrates what happens, with the [ROLL RESULT]s as the latest input
-    // (with no key, the Warden does it)
     if (this.state.solo) this.soloNoCheck = true;
     if (this.hasKey()) this.generate();
   }
 
-  // A screen is at a terminal: the player chose it (if allowed), or the Warden moved them.
   playerTerminal(ws, id, by) {
     const t = this.state.config.terminals.find((x) => x.id === id);
     if (!t || ws.terminal === id) return;
-    // Players can't walk into a terminal that isn't reachable, or move at all if the Warden says so
-    // (but a screen that has no terminal yet takes the one it asks for).
     const canReach = reachable(t, this.state.station);
     if (by === "player" && ws.terminal && (!this.state.config.playerTerminals || !canReach)) return;
     if (by === "player" && !ws.terminal && !canReach) return;
     const had = ws.terminal;
     const wasNet = this.netOfSocket(ws);
     ws.terminal = id;
-    if (by !== "player") ws.send(JSON.stringify({ t: "terminalSet", id })); // (the Warden or the agent moved them)
-    // The Warden put someone there: it's reachable from now on.
+    if (by !== "player") ws.send(JSON.stringify({ t: "terminalSet", id }));
     if (by !== "player" && !canReach) {
       Object.assign(t, { open: true, openedInPlay: true });
       this.addLog("note", `${t.name} is now reachable.`);
       this.sendHeader();
     }
-    // Onto another system: the screen shows that system's log (each keeps its own).
     if (netOf(t) !== wasNet) ws.send(JSON.stringify({ t: "init", ...this.playerView(ws) }));
     if (had) this.lastNet = netOf(t);
     const pc = this.characterOf(ws);
@@ -1920,18 +1668,15 @@ export class Session {
     this.syncDm();
   }
 
-  // Where each player screen is: [{ character, terminal }] (for the Warden and the agent).
   screens() {
     return [...this.sockets].filter((ws) => ws.role === "player" && ws.terminal).map((ws) => ({ character: this.characterOf(ws)?.name || null, characterId: ws.character, terminal: ws.terminal }));
   }
 
-  // A player tracks their own condition (e.g. after something settled at the table).
   playerVitals(ws, msg) {
     const pc = this.characterOf(ws);
     if (!pc || !this.state.config.playerVitals) return;
     const ch = setVital(pc, msg.field, msg.value);
     if (!ch || ch[0] === ch[1]) return;
-    // Several clicks in a row are one change in the Warden's log ("Health 16 → 13").
     const last = this.state.log.at(-1);
     const vital = { pc: pc.id, field: msg.field };
     if (last?.kind === "note" && last.vital?.pc === pc.id && last.vital.field === msg.field && Date.now() - last.ts < 20_000) {
@@ -1943,7 +1688,6 @@ export class Session {
     this.crewChanged();
   }
 
-  // A player rolls one of their own Stats or Saves (not asked for by the Warden).
   selfRoll(ws, msg) {
     const pc = this.characterOf(ws);
     if (!pc || !this.state.config.playerRolls || !CHECKS[msg.check]) return;
@@ -1954,7 +1698,6 @@ export class Session {
     const dice = msg.manual ? manualDice(msg.dice) : diceFor(r);
     let result;
     try {
-      // (They pick from their own skills, so the bonus always applies.)
       result = resolve(r, pc.stats[msg.check] ?? pc.saves[msg.check], dice, r.bonus);
     } catch (err) {
       ws.send(JSON.stringify({ t: "rollError", text: err.message }));
@@ -1966,14 +1709,12 @@ export class Session {
     if (!result.success) this.stressFromRoll(pc, 1);
     this.syncDm();
   }
-  // A failed roll: Stress up.
   stressFromRoll(pc, n) {
     const ch = setVital(pc, "stress", pc.stress + n);
     this.addLog("note", `${pc.name}: Stress ${ch[0]} → ${ch[1]} (failed roll).`);
     this.crewChanged();
   }
 
-  // The agent's changes to the crew's health, wounds and stress.
   applyCrewChanges(changes) {
     if (!this.state.config.agentCrew) return;
     let any = false;
@@ -1990,9 +1731,6 @@ export class Session {
     if (any) this.crewChanged();
   }
 
-  // The agent moves screens when the fiction moves the players (for: a name or "all";
-  // terminal: a name or id). Like the Warden's moves, a terminal it couldn't reach opens.
-  // Somewhere with no terminal of its own (a corridor, outside): the portable one.
   applyMoves(moves) {
     const terms = this.state.config.terminals;
     const norm = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\bterminal\b/g, "").trim();
@@ -2010,12 +1748,11 @@ export class Session {
     }
   }
 
-  // What the agent says a character picked up, used up or lost.
   applyItemChanges(changes) {
     if (!this.state.config.agentCrew) return;
     let any = false;
     for (const c of changes || []) {
-      for (const id of crewTargets(c.for, this.state.config.crew).slice(0, 1)) { // (one person holds it)
+      for (const id of crewTargets(c.for, this.state.config.crew).slice(0, 1)) {
         const pc = this.state.config.crew.find((x) => x.id === id);
         const did = changeItem(pc, c.action, c.item);
         if (!did) continue;
@@ -2026,13 +1763,11 @@ export class Session {
     if (any) this.crewChanged();
   }
 
-  // ---------------------------------------------------------------- replies
   logDirectives(directives = []) {
     for (const d of directives) this.addLog("warden", d);
   }
 
   deliver(reply, source) {
-    // Remember how things were, so the Warden can retcon this response.
     this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms) };
     try {
       this.deliverReply(reply, source);
@@ -2043,21 +1778,17 @@ export class Session {
     }
   }
 
-  // Roll back the agent's last response: its lines (and the notes it made) are
-  // removed everywhere, and its station and crew changes and effects are undone.
   retcon() {
     const undo = this.undoStack.pop();
     if (!undo) return;
     const s = this.state;
     this.dropReply();
-    // Gone everywhere: the players' screens, the Warden's log and the agent's memory.
     s.log = s.log.filter((e) => !undo.entries.includes(e.id));
     for (const id of undo.effects) this.endEffect(id);
     s.station = undo.station;
-    if (undo.cast) s.config.cast = undo.cast; // (who joined, who moved)
+    if (undo.cast) s.config.cast = undo.cast;
     for (const [id, revealed] of undo.revealed || []) { const v = s.config.voices.find((x) => x.id === id); if (v?.adversary) v.adversary.revealed = revealed; }
     if (undo.map !== undefined) Object.assign(s.config, { map: undo.map, rooms: undo.rooms });
-    // Crew: only their condition goes back (sheet edits made since are kept).
     for (const pc of s.config.crew) {
       const was = undo.crew.find((x) => x.id === pc.id);
       if (was) Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, items: was.items });
@@ -2071,7 +1802,7 @@ export class Session {
 
   deliverReply(reply, source) {
     const oc = reply?.outcome_check;
-    if (oc?.needed && !this.state.solo) { // (no Warden to rule on it: see soloRule)
+    if (oc?.needed && !this.state.solo) {
       this.state.outcomeCheck = { ...oc, id: Date.now().toString(36), at: Date.now() };
       this.addLog("note", `⚖ Outcome needed: ${oc.attempt || "(unspecified)"}${suggestion(oc)}`);
     }
@@ -2080,61 +1811,45 @@ export class Session {
       (reply?.lines || []).map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: String(l.character ?? "").slice(0, 60), inPerson: !!(l.inPerson ?? l.in_person), system: String(l.system ?? ""), reveal: String(l.reveal ?? "").slice(0, 60), text: String(l.text ?? "").slice(0, 8000), effects: l.effects, variants: l.variants })),
       voices,
     );
-    // The fiction moved them: screens go to their new terminals first, so this reply
-    // plays there; and the cast to their new rooms (which decides who's in person).
     if (source === "agent") this.applyMoves(reply?.moves);
     if (source === "agent") this.applyCastChanges(reply?.cast_changes);
-    const here = this.defaultNet(); // (lines with no system, or one that doesn't exist, go where the players are)
-    // A line's own system only matters while the players are split across systems:
-    // all on one (after any moves), every line goes there (or to all, if it says so).
+    const here = this.defaultNet();
     const split = this.occupiedNets().size > 1;
     const useEffects = this.state.config.agentEffects;
     const changes = (reply?.station_changes || []).filter((c) => c && typeof c.path === "string" && c.path);
     const effects = useEffects ? (reply?.effects || []) : [];
-    // The first entry carries the reply's changes/effects so the agent's history
-    // shows that it really changed things (otherwise it learns to leave them empty).
     const mapChanges = this.mapChanges(reply);
     let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], moves: reply?.moves || [], castChanges: reply?.cast_changes || [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
-    // Effects on a line fire as it begins. An effect-only beat (no text) fires
-    // before the next line, or after the last one if nothing follows.
     let waiting = [];
     let lastEntry = null;
     const config = this.state.config;
     const channel = channelOf(config);
-    let prev = null; // the voice of the line before
+    let prev = null;
     for (let { voice, character, system, reveal, text, effects: lineFx, variants: rawVariants } of lines) {
-      if (voice === BUILTIN.narrator && source === "agent" && config.narrator === false) continue; // (switched off)
-      // Someone of the cast speaking: their lines are on the cast's channel (someone
-      // new joins the cast). A name on any other voice (a computer, the entity) is dropped.
+      if (voice === BUILTIN.narrator && source === "agent" && config.narrator === false) continue;
       let member = character && voice === channel ? findCast(config.cast, character) : null;
       if (!member && character && voice === channel) {
         member = addCast(config.cast, character).member;
         if (member) this.addLog("note", `Cast: ${member.name} joins the story.`);
       }
       character = member?.name || "";
-      // People and the narrator a sentence per line, so their voices start sooner.
       if (member || this.speaksBySentence(voice)) { text = sentenceLines(text); for (const v of rawVariants || []) v.text = sentenceLines(v.text); }
-      // Per-player versions of this line, for the crew they name (if the Warden allows them).
       const variants = source === "agent" && !this.state.config.agentVariants ? [] : resolveVariants(rawVariants, this.state.config.crew);
-      // Effects from an effect-only beat are marked hold: the next line waits for them.
       const cues = useEffects ? [...waiting, ...normalizeEffects(lineFx)] : [];
       if (!text && !variants.length) { waiting = cues.map((c) => ({ ...c, hold: true })); continue; }
-      // A blackout hides the screen and silences voices, so it always plays as a
-      // beat: the dialogue pauses for it, then this line appears once it's over.
       for (const c of cues) if (c.type === "blackout") c.hold = true;
       waiting = [];
       const named = netNamed(config, system);
       const asked = named === ALL_NET || (split && named !== null) ? named : here;
       let net, inPerson = false, room = "";
-      if (member) ({ voice, net, inPerson, room } = this.castDelivery(member, asked)); // (where they are decides how they're heard)
+      if (member) ({ voice, net, inPerson, room } = this.castDelivery(member, asked));
       else {
         net = this.routeLine(voice, asked);
         if (net !== asked) this.addLog("note", `${voices.find((v) => v.id === voice)?.name || voice} ${asked === ALL_NET ? "isn't on every system" : `isn't on ${systemName(config, asked)}`}: its line went to ${systemName(config, net)}.`);
       }
       const kind = kindOf(voice);
-      // The players see an adversary on this line: revealed now, its picture up as the line begins.
       const shown = source === "agent" && reveal ? this.revealOnLine(reveal) : null;
-      this.introduce(voice, net, { inPerson, done: prev === BUILTIN.narrator }); // (the agent's own intro will do)
+      this.introduce(voice, net, { inPerson, done: prev === BUILTIN.narrator });
       prev = voice;
       const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson ? { inPerson: true, room } : {}), ...(variants.length ? { variants } : {}), ...(shown ? { reveal: shown } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
@@ -2142,9 +1857,8 @@ export class Session {
       for (const c of cues) this.startEffect(c, "agent", { atEntry: entry.id, when: "before", hold: c.hold });
     }
     for (const c of waiting) this.startEffect(c, "agent", lastEntry ? { atEntry: lastEntry.id, when: "after" } : null);
-    if (source === "agent") this.applyCastChanges(reply?.cast_changes, "after"); // (whoever leaves the players' room goes now)
-    if (source === "agent") this.revealAdversaries(reply?.reveal); // (an old-style reveal list: at the end)
-    // Panic checks the agent called for, rolled in front of the players now its lines are out.
+    if (source === "agent") this.applyCastChanges(reply?.cast_changes, "after");
+    if (source === "agent") this.revealAdversaries(reply?.reveal);
     for (const id of this.panics?.splice(0) || []) {
       const member = this.state.config.cast.find((m) => m.id === id);
       if (member) this.castPanic(member);
@@ -2158,7 +1872,6 @@ export class Session {
     for (const e of effects) this.startEffect(e, "agent");
     this.applyCrewChanges(reply?.crew_changes);
     this.applyItemChanges(reply?.item_changes);
-    // The story's over (in a game without a Warden; with one, the Warden decides).
     if (reply?.story_end?.ended && this.state.solo?.phase === "play") setTimeout(() => this.soloEnd(reply.story_end.how), 0);
     for (const c of reply?.clocks || []) c.action === "stop" ? this.stopClock(c.label) : this.startClock(c.label, c.seconds, "agent");
     for (const f of reply?.found_docs || []) {
@@ -2166,14 +1879,11 @@ export class Session {
       this.findRoomDoc(f.id, to, to ? this.crewById(to)?.name : "The crew");
     }
     for (const h of reply?.handouts || []) {
-      // (an audio log: spoken by someone of the cast, or one of the voices)
       const member = h.voice && findCast(this.state.config.cast, h.voice), vid = h.voice && !member && resolveVoice(h.voice, this.state.config.voices);
       this.giveHandout({ title: h.title, text: h.text, to: findCharacterId(this.state.config.crew, h.for), voice: member ? `cast:${member.id}` : vid || "" });
     }
   }
 
-  // The map changes in an agent reply that really change something: a new
-  // layout, and redrawn floor plans. { layout?, roomPlans? }
   mapChanges(reply) {
     const out = {};
     const layout = String(reply?.layout || "").trim();
@@ -2195,9 +1905,6 @@ export class Session {
     }
   }
 
-  // Player input: one agent call at a time per session. Input that arrives while
-  // the agent is busy gets one combined follow-up reply, not one call each.
-  // With no key for the session's model the agent stays quiet: the Warden replies with Speak.
   requestReply() {
     if (!this.hasKey()) { this.state.pending = null; this.syncDm(); return; }
     if (this.generating) this.rerun = true;
@@ -2211,11 +1918,7 @@ export class Session {
     const myGen = ++this.genCounter;
     const forEntry = s.log.filter((e) => e.kind === "player").at(-1)?.id ?? null;
     const { model, effort } = s.config;
-    // Whisper/steering are logged as Warden commands when the reply goes out,
-    // so the agent's history shows what it was told and when.
     const directives = currentDirectives(s, steer);
-    // No Warden: a reply asked for to settle or narrate something (a ruling, a
-    // roll's result, the opening) can't open another check, or it could loop.
     const noCheck = !!s.solo && this.soloNoCheck;
     this.soloNoCheck = false;
     s.pending = { status: "generating", forEntry, steer: steer || "", model, directives };
@@ -2225,8 +1928,6 @@ export class Session {
 
     try {
       const { provider, apiKey } = this.modelAccess();
-      // Check first: answering a player who is attempting something uncertain
-      // waits for the Warden's ruling, so nothing is shown before it.
       const latest = s.log.findLast((e) => ["player", "warden", "roll", "aside"].includes(e.kind));
       if (s.config.checkFirst !== false && latest?.kind === "player" && !steer && !directives.length) {
         let oc = null;
@@ -2235,8 +1936,6 @@ export class Session {
         if (oc?.needed) return this.holdForWarden(oc, "");
       }
       const request = { apiKey, model, effort, ...buildRequest({ ...s, screens: this.screens(), defaultNet: this.defaultNet(), unheard: this.unheard() }, steer) };
-      // Silent retries for malformed output (empty / not JSON) before bothering the Warden:
-      // one, or two on the free shared model (its routed models are less reliable).
       let reply;
       for (let attempt = 1; ; attempt++) {
         try {
@@ -2247,12 +1946,10 @@ export class Session {
           console.warn(`[${this.code}] retrying after malformed reply: ${err.message}`);
         }
       }
-      if (myGen !== this.genCounter) return; // superseded
+      if (myGen !== this.genCounter) return;
 
-      // The one-shot whisper is consumed once a reply exists.
       s.whisper = "";
       if (reply.outcome_check.needed && s.config.checkFirst !== false && !noCheck) {
-        // (The reply flagged a check the first question missed: hold it too.)
         this.logDirectives(directives);
         return this.holdForWarden(reply.outcome_check, reply.dm_note);
       } else if (s.config.mode === "auto") {
@@ -2263,15 +1960,13 @@ export class Session {
         this.setBusy(false);
       } else {
         s.pending = { status: "ready", forEntry, reply, model, directives };
-        // Make the voices while the Warden reads the draft: an unedited line is
-        // then ready to play the moment it's sent.
         this.pregenerate(reply.lines.map((l) => ({ ...l, kind: kindOf(l.voice), entity: l.voice })));
       }
     } catch (err) {
       if (myGen !== this.genCounter) return;
       console.error(`[${this.code}] generation failed:`, err?.message || err);
       s.pending = { status: "error", forEntry, error: err?.message || String(err), model, directives };
-      if (s.solo) { // (no Warden to retry it: the players are told, and can type again)
+      if (s.solo) {
         s.pending = null;
         this.setBusy(false);
         this.toPlayers({ t: "notice", text: `LINK ERROR: ${err?.message || err}` });
@@ -2279,18 +1974,8 @@ export class Session {
     }
     this.touch();
     this.syncDm();
-    // Players typed while the agent was busy: one follow-up covering all of it
-    // (in review mode this replaces the draft, as new input always has).
     if (this.rerun) this.generate();
   }
-
-  // ---------------------------------------------------------------- no Warden
-  // A game without a Warden. One player, the pilot, created the session: their
-  // screen holds its token, which lets them run the AI (key, model), pick the
-  // story and end the game; they never see the Warden's console. Everyone picks
-  // a story from the agent's pitches, the agent builds it (builder.js) and then
-  // runs it as Warden too: uncertain attempts become rolls (or its own call),
-  // it calls Panic checks, and it opens the story when someone has a crew file.
 
   soloView() {
     const x = this.state.solo;
@@ -2306,7 +1991,6 @@ export class Session {
     this.soloPitches();
   }
 
-  // Fresh story ideas (the built-in story always stays first).
   async soloPitches() {
     const x = this.state.solo;
     if (!x || x.busy || x.phase !== "pick") return;
@@ -2323,7 +2007,6 @@ export class Session {
     this.soloChanged();
   }
 
-  // The pilot picked a story: the built-in one at once, any other built by the agent first.
   async soloBuild(i) {
     const x = this.state.solo;
     const p = x?.pitches?.[i];
@@ -2343,7 +2026,6 @@ export class Session {
     Object.assign(x, { phase: "building", busy: "build" });
     this.soloChanged();
     try {
-      // A draft that comes back cut off, malformed or missing its essentials gets one more try.
       const build = async () => {
         const d = normalizeDraft(await this.ask(draftRequest(pitchBuilder(p)), "builder"));
         if (!d.crew?.length || !d.stationName || !d.map) throw Object.assign(new Error("the story came back incomplete"), { incomplete: true });
@@ -2357,7 +2039,7 @@ export class Session {
         console.warn(`[${this.code}] story build retry: ${err.message}`);
         draft = await build();
       }
-      if (x.phase !== "building") return; // (the pilot started over meanwhile)
+      if (x.phase !== "building") return;
       x.phase = "play";
       this.applyStory(draft);
       Object.assign(this.state.config, { mode: "auto", checkFirst: true });
@@ -2370,13 +2052,11 @@ export class Session {
     this.syncDm();
   }
 
-  // The end: the story's final scene has played (or the pilot wrapped it up).
-  // Every screen shows THE END, with a recap the agent writes now that it's over.
   async soloEnd(how) {
     const x = this.state.solo;
     if (!x || x.phase !== "play") return;
     Object.assign(x, { phase: "ended", ending: String(how || "").slice(0, 300), recap: null, busy: "recap", error: "" });
-    this.dropReply(); // (nothing more from the agent)
+    this.dropReply();
     for (const c of [...this.state.clocks]) this.stopClock(c.id, true);
     this.clocksChanged();
     this.addLog("note", `The story ended${x.ending ? `: ${x.ending}` : "."}`);
@@ -2390,7 +2070,6 @@ export class Session {
     this.soloChanged();
   }
 
-  // The story's first scene, once someone has a crew file.
   soloOpen() {
     this.state.solo.opened = true;
     this.touch();
@@ -2398,9 +2077,6 @@ export class Session {
     this.generate("OPENING: there is no Warden, so you start the game. Set the opening scene for the players at their terminal in a few short lines: where they are, what they see and hear, and something that gives them a reason to act. End on a moment that invites them to type.");
   }
 
-  // An uncertain attempt, settled the way a Warden would: a roll when one fits
-  // (for whoever tried it; characters nobody is playing roll by themselves),
-  // otherwise the agent rules on it fairly and narrates it.
   soloRule(oc) {
     const s = this.state;
     if (!oc) return;
@@ -2423,7 +2099,6 @@ export class Session {
     this.generate();
   }
 
-  // The pilot's screen proves it holds the session token.
   pilotAuth(ws, token) {
     if (!this.state.solo || !this.checkToken(token)) return;
     ws.pilot = true;
@@ -2437,7 +2112,7 @@ export class Session {
     const x = this.state.solo;
     if (!x) return;
     switch (msg.t) {
-      case "pilotConfig": { // the AI provider, model and thinking effort
+      case "pilotConfig": {
         const patch = Object.fromEntries(Object.entries(msg.patch || {}).filter(([k]) => ["provider", "model", "effort"].includes(k)));
         this.handleDm({ t: "config", patch });
         break;
@@ -2451,10 +2126,10 @@ export class Session {
       case "pilotBuild":
         this.soloBuild(Number(msg.i));
         break;
-      case "pilotWrapUp": // end the story now (the recap follows)
+      case "pilotWrapUp":
         this.soloEnd(String(msg.how || "The crew called it a night."));
         break;
-      case "pilotNewStory": // back to choosing (the current story is dropped)
+      case "pilotNewStory":
         this.dropReply();
         Object.assign(x, { phase: "pick", busy: "", error: "", opened: false, ending: "", recap: null });
         this.soloChanged();
@@ -2470,12 +2145,6 @@ export class Session {
     for (const c of this.sockets) if (c.pilot && c.readyState === 1) this.sendPilot(c);
   }
 
-  // ---------------------------------------------------------------- the story's start
-  // The story is saved the moment it's first played (a player types, rolls or
-  // changes their sheet; the Warden directs, speaks, notes, rolls, hands out or
-  // starts a clock; the agent replies). Until then the Warden can set it up
-  // freely. Restart story puts everything back to that save, and the next first
-  // move saves it again (so set-up changes made after a restart count).
   storyBegins() {
     const s = this.state;
     if (s.storyStart || s.solo && s.solo.phase !== "play") return;
@@ -2484,19 +2153,12 @@ export class Session {
     this.touch();
   }
 
-  // Voices that come through a speaker (the intercom, broadcasts, comms, the thing
-  // in the walls): not a screen's computer (the terminal voice, or one named after
-  // its system, like a ship's), and not the narrator.
   isSpeaker(voiceId) {
     const c = this.state.config;
     const v = c.voices.find((x) => x.id === voiceId);
     if (!v || voiceId === BUILTIN.terminal || voiceId === BUILTIN.narrator || v.style === "plain") return false;
     return !systemsOf(c).some((s) => netKey(s.name) === netKey(v.name));
   }
-  // The first time a speaker voice is heard on a system, the narrator brings it in
-  // ("A nearby intercom buzzes to life."): once per voice per system, per story.
-  // The agent writes it itself (told which are NOT YET HEARD); this adds one when it
-  // (or the Warden's Speak) didn't. done: the line before was already the narrator's.
   introduce(voice, net, { inPerson = false, done = false } = {}) {
     const s = this.state;
     if (inPerson || !this.isSpeaker(voice)) return;
@@ -2505,21 +2167,17 @@ export class Session {
     if (!keys.length) return;
     s.introduced.push(...keys);
     if (done || s.config.narrator === false || !s.config.voices.some((x) => x.id === BUILTIN.narrator)) return;
-    // (No stock line for a creature or entity: a speaker crackling would be wrong for it.)
     const comms = voice === BUILTIN.broadcast || COMMS_PRESETS.has(s.config.voices.find((x) => x.id === voice)?.preset);
     if (!comms) return;
     const lines = INTROS[voice === BUILTIN.broadcast ? "broadcast" : "comms"];
     this.addLog(kindOf(BUILTIN.narrator), lines[Math.floor(Math.random() * lines.length)], { source: "auto", net, entity: BUILTIN.narrator });
   }
-  // Speaker voices the players haven't heard yet where they are (for the agent's context).
   unheard() {
     const s = this.state;
     const nets = this.occupiedNets();
     if (!nets.size) nets.add(this.defaultNet());
     return s.config.voices.filter((v) => this.isSpeaker(v.id) && [...nets].some((n) => this.voiceReaches(v.id, n) && !(s.introduced || []).includes(`${v.id}@${n}`))).map((v) => v.name);
   }
-  // Voices spoken aloud by a human voice: a sentence per line (spoken a line at a
-  // time, so the first sentence plays while the rest is voiced).
   speaksBySentence(voiceId) {
     const v = this.state.config.voices.find((x) => x.id === voiceId);
     return !!v && v.style !== "plain" && v.voice?.engine === "neural";
@@ -2528,7 +2186,7 @@ export class Session {
   restartStory() {
     const s = this.state;
     const snap = s.storyStart;
-    this.genCounter++; // (orphan anything in flight)
+    this.genCounter++;
     this.rerun = false;
     this.playhead = 0;
     this.undoStack = [];
@@ -2537,35 +2195,30 @@ export class Session {
     this.endAllEffects();
     this.stopSounds();
     if (snap) {
-      // The whole story as it was (settings stay: they're the session's, not the story's).
-      // Pictures stay as they are now: they're how people look, not where the story is.
       const pics = new Map([...s.config.cast, ...s.config.crew].map((m) => [m.id, m.portrait]));
       Object.assign(s.config, structuredClone(snap.config));
       s.config.voices = sanitizeVoices(s.config.voices);
       s.station = structuredClone(snap.station);
       s.config.cast = sanitizeCast(s.config.cast);
-      s.config.crew = sanitizeCrew(s.config.crew); // (a start saved before skills had bonuses: they're filled in)
+      s.config.crew = sanitizeCrew(s.config.crew);
       for (const m of [...s.config.cast, ...s.config.crew]) if (pics.has(m.id)) m.portrait = pics.get(m.id);
-      s.synopses = structuredClone(savedSynopses(snap)); // (the prebrief: the story is back at its start)
+      s.synopses = structuredClone(savedSynopses(snap));
       delete s.synopses.sofar;
       delete s.synopses.wrapup;
     } else {
-      // Played before saves existed: everyone fresh, and the default story's own station.
       for (const pc of s.config.crew) freshen(pc);
       if (s.config.stationName === "KESTREL-9") {
         s.station = structuredClone(DEFAULT_STATION);
-        for (const m of s.config.cast) m.room = findCast(DEFAULT_CAST, m.name)?.room ?? m.room; // (back where they started)
+        for (const m of s.config.cast) m.room = findCast(DEFAULT_CAST, m.name)?.room ?? m.room;
       }
       s.synopses = {};
     }
-    // Every terminal reachable as the story starts it.
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
-    // Players start as guests.
     s.station.access_level = DEFAULT_STATION.access_level;
     Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);
-    this.toPlayers({ t: "roomPlan", rows: null }); // (any floor plan they were shown)
+    this.toPlayers({ t: "roomPlan", rows: null });
     this.toPlayers({ t: "roll", roll: null });
     this.sendHeader();
     this.crewChanged();
@@ -2574,12 +2227,6 @@ export class Session {
     if (s.solo) this.soloChanged();
   }
 
-  // ---------------------------------------------------------------- handouts
-  // Documents in the players' hands (a log, a memo, a manifest): they pop up on
-  // the screens they're for, and stay under DOCS. to: a crew id, or "" for all.
-  // An audio log is one with a voice: its text is what's said, one line at a time,
-  // and the players play it on their screens (the audio comes from handoutAudio).
-  // note: what the log says (default: who received it).
   giveHandout({ title, text, to = "", voice = "" }, note = "") {
     const clean = (v, n) => String(v ?? "").replace(/\r/g, "").trim().slice(0, n);
     const h = { id: newId("doc", 4), title: clean(title, 120), text: clean(text, 6000), to: this.state.config.crew.some((c) => c.id === to) ? to : "", at: Date.now() };
@@ -2609,12 +2256,9 @@ export class Session {
   showHandout(h) {
     this.toPlayersIf((c) => c.stream || !h.to || c.character === h.to, { t: "handout", handout: this.handoutView(h) });
   }
-  // A screen's handouts: everyone's, and its character's own. (The stream page: all of them.)
   handoutsFor(ws) {
     return (this.state.handouts || []).filter((h) => ws?.stream || !h.to || h.to === ws?.character).map((h) => this.handoutView(h));
   }
-  // An audio log's speaker: a voice ("terminal", "intercom") or someone of the cast ("cast:<id>").
-  // How it sounds: the voice with its effects; the cast through their channel's (recorded off the comms).
   logVoice(ref) {
     const c = this.state.config, r = String(ref || "");
     if (r.startsWith("cast:")) {
@@ -2625,16 +2269,12 @@ export class Session {
     const v = c.voices.find((x) => x.id === r);
     return v ? { base: v.voice, fx: v.fx, name: shownName(v) } : null;
   }
-  // An audio log's lines, each with who says it: "OKONKWO: ..." starts someone's lines (someone
-  // of the cast, a voice, or anyone else by name, in a voice of their own); a line without a name
-  // is the speaker before's (at first, the log's own voice). [{ who, text, base, fx }]
-  // who: the name as written, on lines that start with one (else "").
   logParts(h) {
     const main = this.logVoice(h.voice);
     if (!main) return [];
     let cur = main;
     return speechParts(h.text).map((line) => {
-      const m = line.match(/^([A-Z][A-Z .'-]{0,38}[A-Z.]):\s+(.+)$/); // (a name in capitals, no digits: "DAY 4:" isn't one)
+      const m = line.match(/^([A-Z][A-Z .'-]{0,38}[A-Z.]):\s+(.+)$/);
       const sp = m && this.speakerNamed(m[1], main);
       if (sp) cur = sp;
       return { who: sp ? m[1] : "", text: sp ? m[2] : line, base: cur.base, fx: cur.fx };
@@ -2647,35 +2287,27 @@ export class Session {
     const vid = resolveVoice(name, c.voices);
     if (vid) return this.logVoice(vid);
     if (name.trim().split(/\s+/).length > 3) return null;
-    // Anyone else (the company on a comms channel): a voice of their own, the same every time, through the
-    // log's effects. (One none of the cast use, so they don't sound like someone on the station.)
     const taken = new Set((c.cast || []).map((m) => castVoice(m).speaker));
     const free = Object.keys(SPEAKERS).filter((k) => !taken.has(k)), keys = free.length ? free : Object.keys(SPEAKERS);
     let n = 0;
     for (const ch of name.toUpperCase()) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
     return { base: { engine: "neural", speaker: keys[n % keys.length], pace: 1 }, fx: main.fx, name };
   }
-  // A handout as the players get it: an audio log comes with its lines, who says each and how they sound.
   handoutView(h) {
     const { voice, ...rest } = h, lv = voice && this.logVoice(voice);
     return lv ? { ...rest, audio: { speaker: lv.name, lines: this.logParts(h).map(({ who, text, fx }) => ({ who, text, fx })) } } : rest;
   }
-  // One line of an audio log, spoken (a WAV; null if there's no such line).
   handoutAudio(id, part) {
     const h = (this.state.handouts || []).find((x) => x.id === id);
     const p = h?.voice && this.logParts(h)[part];
     return p ? synthesize(p.text, p.base) : Promise.resolve(null);
   }
 
-  // ---------------------------------------------------------------- room documents
-  // Documents and audio logs in rooms (config.roomDocs, roomdocs.js): where they are tells the
-  // agent what it can hand the players while they're there; the Warden can give any of them.
   roomName(id) {
     const m = String(this.state.config.map || "").match(new RegExp(`\\b${id}\\s*=\\s*([^,\\n@]+)`));
     return m ? m[1].trim() : String(id).replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
   }
 
-  // Found: it's a handout now (to one character, or everyone), and gone from its room.
   findRoomDoc(id, to = "", finder = "") {
     const d = (this.state.config.roomDocs || []).find((x) => x.id === id);
     if (!d || (this.state.found ||= []).includes(id)) return;
@@ -2683,19 +2315,12 @@ export class Session {
     this.giveHandout({ title: d.title, text: d.text, voice: d.voice, to }, finder ? `${finder} found "${d.title}" in ${this.roomName(d.room)}` : "");
   }
 
-
-  // ---------------------------------------------------------------- clocks
-  // Countdowns on every player's screen (a breach, oxygen, a self-destruct).
-  // The Warden or the agent starts and stops them; when one runs out, the agent
-  // is told to make it happen (with no key, the Warden sees it in the log).
-  // A paused clock has no end time, just the seconds it had left (left).
   publicClocks() {
     return this.state.clocks.map(({ id, label, ends, paused, left }) => ({ id, label, ends, paused: !!paused, left: left ?? null }));
   }
   clockLeft(c) {
     return c.paused ? c.left : Math.max(0, Math.round((c.ends - Date.now()) / 1000));
   }
-  // A new story (or a restart): no clocks left running.
   clearClocks() {
     for (const t of this.clockTimers.values()) clearTimeout(t);
     this.clockTimers.clear();
@@ -2710,7 +2335,7 @@ export class Session {
     const label = String(rawLabel || "").replace(/\s+/g, " ").trim().toUpperCase().slice(0, 40);
     const secs = Math.max(10, Math.min(7200, Math.round(Number(seconds) || 0)));
     if (!label || !Number(seconds)) return;
-    this.stopClock(label, true); // (the same name again: it restarts)
+    this.stopClock(label, true);
     const clock = { id: newId("clk", 4), label, ends: Date.now() + secs * 1000, seconds: secs };
     this.state.clocks.push(clock);
     this.scheduleClock(clock);
@@ -2731,7 +2356,6 @@ export class Session {
     this.addLog("note", `⏱ Clock stopped: ${c.label}`);
     this.clocksChanged();
   }
-  // The Warden pauses or resumes a clock (frozen on every screen meanwhile).
   pauseClock(id, pause) {
     const c = this.state.clocks.find((x) => x.id === id);
     if (!c || !!c.paused === !!pause) return;
@@ -2745,7 +2369,6 @@ export class Session {
     this.addLog("note", `⏱ ${c.label} ${pause ? "paused" : "running again"} (${clockText(this.clockLeft(c))} left)`);
     this.clocksChanged();
   }
-  // Move a clock on (negative: less time left; it can run out now) or give it more time.
   shiftClock(id, seconds) {
     const c = this.state.clocks.find((x) => x.id === id);
     const delta = Math.round(Number(seconds) || 0);
@@ -2772,18 +2395,13 @@ export class Session {
     this.requestReply();
   }
 
-  // Said aloud at the table: by the Warden (heard: their console's Listen button,
-  // or them on Discord), or by a player on Discord (table, under their name). It
-  // doesn't prompt the agent: it goes with the next request, the Warden's as fact,
-  // the players' as context. Speech in a row from the same person (nothing else
-  // logged in between) adds up in one entry.
   hearTable({ text, speaker = "", playing = "", warden = false }) {
     text = String(text || "").replace(/\s+/g, " ").trim().slice(0, 2000);
     if (!text) return;
     if (warden) this.storyBegins();
     const kind = warden ? "heard" : "table";
     speaker = String(speaker || "").replace(/\s+/g, " ").trim().slice(0, 40);
-    playing = String(playing || "").slice(0, 80); // (the character they play, when the Warden has said)
+    playing = String(playing || "").slice(0, 80);
     const last = this.state.log.at(-1);
     if (last?.kind === kind && (last.speaker || "") === speaker && (last.playing || "") === playing && last.text.length + text.length < 4000) {
       last.text += ` ${text}`;
@@ -2793,7 +2411,6 @@ export class Session {
     this.syncDm();
   }
 
-  // Discord, for the Warden console (enabled: false when the server has no bot).
   discordView() {
     const d = discordStatus(this.code);
     if (!d) return { enabled: false };
@@ -2802,13 +2419,11 @@ export class Session {
     return { enabled: true, ...d, players, sttKey: !!this.sttKey };
   }
 
-  // The crew member a Discord user plays (null: not said, or no longer in the crew).
   playerOf(userId) {
     const id = this.state.discordPlayers?.[userId]?.crew;
     return (id && this.crewById(id)) || null;
   }
 
-  // Discord /player: this user plays that crew member (one player each), or nobody (crewId null).
   assignPlayer(userId, crewId, name = "") {
     const map = (this.state.discordPlayers ||= {});
     for (const [u, p] of Object.entries(map)) if (u === userId || (crewId && p.crew === crewId)) delete map[u];
@@ -2817,7 +2432,6 @@ export class Session {
     this.crewChanged();
   }
 
-  // Words Whisper should spell right: the station, the crew, the cast.
   sttPrompt() {
     const c = this.state.config;
     const names = [c.stationName, ...c.crew.map((m) => m.name), ...(c.cast || []).map((m) => m.name)].filter(Boolean);

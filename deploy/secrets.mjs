@@ -1,22 +1,9 @@
-// Fetches the app's secrets from SSM Parameter Store into a root-only env file
-// that the systemd unit loads (EnvironmentFile). Run by update.sh as root:
-//
-//   node deploy/secrets.mjs /etc/mothership/secrets.env
-//
-// No AWS CLI or SDK on the server: this signs the request itself (SigV4) with
-// the credentials the Systems Manager agent keeps in /root/.aws/credentials
-// (role mothership-server-ssm, which may read only these parameters; see
-// MothershipStack in monster-land). Values are never printed.
-// A parameter that doesn't exist is left out (its feature stays off).
-// Exits 1 on any other failure without touching the file, so a deploy keeps
-// the secrets it had.
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
 
 const REGION = "us-west-2";
-// env var -> parameter name
 const PARAMS = { OPENROUTER_API_KEY: "/mothership/openrouter-api-key", DISCORD_BOT_TOKEN: "/mothership/discord-bot-token" };
 
 function credentials() {
@@ -40,7 +27,6 @@ function credentials() {
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const hmac = (k, s) => crypto.createHmac("sha256", k).update(s).digest();
 
-// One SSM API call, SigV4-signed.
 async function ssm(target, payload, creds) {
   const host = `ssm.${REGION}.amazonaws.com`;
   const body = JSON.stringify(payload);

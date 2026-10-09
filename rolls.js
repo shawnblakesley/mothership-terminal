@@ -1,19 +1,3 @@
-// Mothership (1e) stat checks and saves.
-//
-// - Roll d100 (0-99; "00" is 0). Succeed if the roll is LESS THAN the target.
-// - Target = the Stat or Save, + a Skill bonus when one applies
-//   (Trained +10, Expert +15, Master +20).
-// - Doubles (00, 11, 22 ... 99) are criticals: a critical success if it
-//   succeeds, a critical failure if it fails.
-// - Advantage [+] / Disadvantage [-]: roll twice, keep the better / worse.
-// - Failing a check or save gives the character 1 Stress.
-//
-// Panic checks: roll d20 against current Stress. Above it, they keep their
-// cool; equal or under, they Panic and the Warden looks the number up on the
-// Panic Table. [+] / [-] keep the higher / lower die. No automatic Stress.
-//
-// The Warden calls a roll for one character, or for all of them at once; each
-// rolls on their own screen against the numbers on their own sheet.
 import crypto from "crypto";
 import { findSkill } from "./crew.js";
 import { clampInt } from "./clean.js";
@@ -35,12 +19,6 @@ export const checkInfo = (check) => (check === PANIC ? PANIC_CHECK : CHECKS[chec
 export const SKILL_LEVELS = { none: 0, trained: 10, expert: 15, master: 20 };
 export const ADVANTAGE = ["none", "advantage", "disadvantage"];
 
-
-
-// What the Warden asks for: who rolls (one character's id, or "all"), and what.
-// Their Stat/Save (or Stress, for panic) comes from their sheet when they roll, and so
-// does a skill's bonus: each character who has the skill adds their own (crew.js).
-// bonus: the one roller's, when one rolls (for "all", each has their own: rollTarget).
 const LEVEL_OF = Object.fromEntries(Object.entries(SKILL_LEVELS).map(([k, v]) => [v, k]));
 export function sanitizeRequest(raw, crew = []) {
   const check = CHECKS[raw?.check] || raw?.check === PANIC ? raw.check : "intellect";
@@ -58,23 +36,21 @@ export function sanitizeRequest(raw, crew = []) {
     advantage: ADVANTAGE.includes(raw?.advantage) ? raw.advantage : "none",
     reason: String(raw?.reason || "").trim().slice(0, 140),
     all: raw?.pc === "all",
-    pcs: who.map((c) => ({ id: c.id, name: c.name })), // who must roll
-    results: {}, // pc id -> { result, manual, by }
+    pcs: who.map((c) => ({ id: c.id, name: c.name })),
+    results: {},
     status: "waiting",
     createdAt: Date.now(),
   };
 }
 
-// The number a character rolls against, from their sheet.
 export function rollTarget(req, pc) {
   if (req.check === PANIC) return { stat: pc.stress, bonus: 0 };
   return { stat: pc.stats[req.check] ?? pc.saves[req.check], bonus: findSkill(pc, req.skill)?.bonus ?? 0 };
 }
 
-// One die: rank orders outcomes for advantage/disadvantage.
 function judge(d, target) {
   const success = d < target;
-  const critical = d % 11 === 0; // 00, 11, ... 99
+  const critical = d % 11 === 0;
   return { d, success, critical, rank: success ? (critical ? 3 : 2) : critical ? 0 : 1 };
 }
 
@@ -82,8 +58,6 @@ export const rollD100 = () => crypto.randomInt(0, 100);
 export const rollD20 = () => crypto.randomInt(1, 21);
 export const diceFor = (req) => Array.from({ length: req.advantage === "none" ? 1 : 2 }, req.check === PANIC ? rollD20 : rollD100);
 
-// dice: one value, or two for [+]/[-]. Returns the full result.
-// bonus: the skill bonus this character gets (rollTarget).
 export function resolve(request, statValue, dice, bonus = request.bonus) {
   if (request.check === PANIC) return resolvePanic(request, statValue, dice);
   const stat = clampInt(statValue, 1, 99, null);
@@ -103,7 +77,6 @@ export function resolve(request, statValue, dice, bonus = request.bonus) {
   return { stat, bonus, target, dice, used: pick.d, success: pick.success, critical: pick.critical, outcome, stress: pick.success ? 0 : 1 };
 }
 
-// d20 against Stress: above it they keep their cool, otherwise they Panic.
 function resolvePanic(request, stressValue, dice) {
   const stress = clampInt(stressValue, 0, 20, 0);
   const need = request.advantage === "none" ? 1 : 2;
@@ -117,7 +90,6 @@ function resolvePanic(request, stressValue, dice) {
 
 const pad = (d) => String(d).padStart(2, "0");
 
-// Short labels, e.g. "INTELLECT CHECK [+]" / "FEAR SAVE".
 export function checkLabel(req) {
   const c = checkInfo(req.check);
   const adv = req.advantage === "advantage" ? " [+]" : req.advantage === "disadvantage" ? " [-]" : "";
@@ -128,7 +100,6 @@ export function skillLabel(req) {
   return req.skill ? `${req.skill.toUpperCase()}${req.bonus ? ` +${req.bonus}` : ""}` : "";
 }
 
-// The line that goes in the log (players see it; the agent reads it).
 export function resultText(req, res) {
   const skill = res.bonus ? `${(req.skill || "SKILL").toUpperCase()} +${res.bonus}` : "";
   const head = [checkLabel(req), skill, req.reason && req.reason.toUpperCase()].filter(Boolean).join(" · ");

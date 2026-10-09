@@ -1,12 +1,5 @@
-// Room floor plans: a grid of tile codes per map room (config.rooms[roomId] =
-// { rows: ["####D####", ...] }). The agent drafts one the first time the Warden
-// opens a room; the Warden edits it tile by tile and can show it to the players
-// (the layout only: who and what is in the room stays with the Warden).
-// public/roomplan.js draws them.
-
 import { roomId } from "./clean.js";
 
-// Keep in step with public/roomplan.js (TILES).
 export const TILES = {
   " ": "outside (no room here)",
   "#": "wall",
@@ -28,7 +21,6 @@ export const TILES = {
 };
 export const MAX_W = 24, MAX_H = 16;
 
-// Rows of known codes, padded to one width, within the size limits; null if empty.
 export function sanitizeRows(rows) {
   const list = (Array.isArray(rows) ? rows : []).slice(0, MAX_H).map((r) => [...String(r ?? "")].slice(0, MAX_W).map((c) => (TILES[c] !== undefined ? c : ".")).join(""));
   while (list.length && !list.at(-1).trim()) list.pop();
@@ -62,7 +54,6 @@ export const DRAFT_SCHEMA = {
   properties: { rows: { type: "array", items: { type: "string" } } },
 };
 
-// What the agent needs to draw one room.
 export function draftRequest(state, room) {
   const c = state.config;
   const context = [
@@ -81,7 +72,6 @@ export function draftRequest(state, room) {
   };
 }
 
-// KESTREL-9's rooms.
 export const DEFAULT_ROOMS = sanitizeRooms({
   second_chance: { rows: [
     "  ####WWWW####  ",

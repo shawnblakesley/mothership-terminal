@@ -1,14 +1,3 @@
-// The Warden's station map: the station state drawn with every value on it.
-//   draw():   a schematic drawing: decks stacked on a lift shaft, each with a
-//             corridor its rooms open off, doors on the doorways, cameras,
-//             lights, and extra connections (vents, maintenance shafts...).
-// Layout is the Warden's text, one line per deck, plus optional links:
-//   Deck 2 · Habitation / Med Bay: med_bay=Med Bay, galley
-//   Link: med_bay - cargo_bay_deck3 (air vents)
-// A room id matches station state keys anywhere in a path (doors.med_bay,
-// cameras.med_bay...); a deck id (deck_2, from "Deck 2") matches deck-wide keys
-// (lights.deck_2). Values that belong to no room or deck are shown as systems,
-// so nothing in the state is left off. Exposes window.StationMap.
 (() => {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const slug = (s) => String(s).toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -17,7 +6,6 @@
   const LINK = /^link\s*:\s*(.+?)\s*(?:-+|<->|–|—|to)\s*(.+?)(?:\s*\((.+)\))?$/i;
 
   const SPECIAL = /^(link|lift|docked)\s*:/i;
-  // Deck lines -> [{ id: "deck_1", label, rooms: [{ id, label }] }]
   function parseLayout(text) {
     return lines(text).filter((l) => !SPECIAL.test(l)).map((line) => {
       const at = line.indexOf(":");
@@ -30,17 +18,13 @@
       return { id: n ? `deck_${n[1]}` : slug(head), label: head, rooms };
     });
   }
-  // "Link: a - b (label)" lines -> [{ a, b, label }]
   function parseLinks(text) {
     return lines(text).map((l) => l.match(LINK)).filter(Boolean).map((m) => ({ a: slug(m[1]), b: slug(m[2]), label: (m[3] || "").trim() }));
   }
-  // "Docked: second_chance=SECOND CHANCE @ airlock_a" -> [{ id, label, parent }]:
-  // a room with no corridor of its own, drawn against its parent room, outside the deck.
   function parseDocked(text) {
     return lines(text).map((l) => l.match(/^docked\s*:\s*([^=@]+?)\s*(?:=\s*([^@]+?))?\s*@\s*(.+)$/i)).filter(Boolean)
       .map((m) => ({ id: slug(m[1]), label: (m[2] || human(m[1])).trim(), parent: slug(m[3]) }));
   }
-  // "Lift: Deck 1, Deck 2" -> the deck ids the lift reaches (null: every "Deck N").
   function parseLift(text) {
     const line = lines(text).find((l) => /^lift\s*:/i.test(l));
     if (!line) return null;
@@ -49,7 +33,6 @@
   }
   const lines = (text) => String(text || "").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
 
-  // Every scalar in the state, with its path.
   function leaves(obj, path = [], out = []) {
     for (const [k, v] of Object.entries(obj || {})) {
       if (v && typeof v === "object" && !Array.isArray(v)) leaves(v, [...path, k], out);
@@ -58,7 +41,6 @@
     return out;
   }
 
-  // How a value reads at a glance.
   function tone(path, value) {
     const v = String(value).toUpperCase();
     const key = path.join(".").toLowerCase();
@@ -69,7 +51,6 @@
     return "info";
   }
 
-  // Sort the state onto the layout: rooms, decks, "not on the map yet", systems.
   function build(station, layoutText) {
     const decks = parseLayout(layoutText);
     const docked = parseDocked(layoutText);
@@ -85,7 +66,6 @@
       else if (deck) add(byDeck, deck, { leaf, label: labelFor(leaf.path, deck) });
       else loose.push(leaf);
     }
-    // Location-like values not on the layout (a new door the agent added) vs station systems.
     const placedCats = new Set([...byRoom.values(), ...byDeck.values()].flat().map((x) => x.leaf.path[0]));
     const elsewhere = new Map(), systems = new Map();
     for (const leaf of loose) {
@@ -106,7 +86,6 @@
     return { decks, docked, lift: parseLift(layoutText), links: parseLinks(layoutText), byRoom, byDeck, elsewhere, systems, deckLook };
   }
 
-  // A clickable value: "DOOR LOCKED".
   function chip(leaf, label, editable) {
     const t = tone(leaf.path, leaf.value);
     const pct = typeof leaf.value === "number" && /pct|percent/.test(leaf.path.join(".").toLowerCase());
@@ -120,38 +99,28 @@
       <div class="mchips">${items.map((leaf) => chip(leaf, labelFor(leaf.path.slice(group ? 1 : 0)), editable)).join("")}</div>
     </div>`).join("")}</div>`;
 
-
-  // How a lift value reads: "perm" (needs clearance: yellow stripes), "fault" (broken: red stripes) or "".
   const liftState = (v) => {
     const s = String(v ?? "").toUpperCase();
     if (/FAULT|OFFLINE|DAMAG|ERROR|MALFUNC|BROKEN|JAM|STUCK|FAIL|DOWN|DISABLED|NO POWER/.test(s)) return "fault";
     if (/RESTRICT|LOCK|DENIED|CLEARANCE|AUTH|SECUR|SEALED/.test(s)) return "perm";
     return "";
   };
-  // Who and what is in a room (occupants.<room>, contents.<room>): kept off the
-  // room's value lines, counted on it instead, and listed in the room view.
   const isRoster = (leaf) => leaf.path[0] === "occupants" || leaf.path[0] === "contents";
   const names = (v) => String(v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 
-  // ---------------------------------------------------------------- schematic
-  // Decks stacked top to bottom on a lift shaft at the left. Each deck has a
-  // corridor; its rooms sit in rows above and below it, joined by doorways.
-  // The lift only connects to the decks it reaches ("Lift:" line). Docked rooms
-  // ("Docked:" lines) sit against their parent room, outside its deck.
-  // opts.people: { roomId: [player character names] } (from the terminals).
   function draw(el, station, layoutText, { editable = true, people = {} } = {}) {
     const m = build(station, layoutText);
-    const W = Math.max(560, Math.round(el.clientWidth || 900)); // ~1 unit per CSS pixel, so text stays readable
+    const W = Math.max(560, Math.round(el.clientWidth || 900));
     const SHAFT = 34, X0 = SHAFT + 46, RIGHT = 28;
     const ROOM_H = 62, GAP = 40, LABEL = 32, DOCK_GAP = 24, DOCK = ROOM_H + DOCK_GAP;
     const perRow = Math.max(1, Math.floor((W - X0 - RIGHT) / 170));
-    const rooms = {}; // id -> { x, y, w, h, cx, cy, side, corridor, label, deck, parent? }
+    const rooms = {};
     let y = 12;
     const out = { bands: [], links: [], fg: [], lift: [] };
     const path = (leaf) => (editable && leaf ? `data-path="${esc(JSON.stringify(leaf.path))}"` : "");
     const title = (s) => `<title>${esc(s)}</title>`;
     const served = m.lift ?? new Set(m.decks.map((d) => d.id).filter((id) => /^deck_\d+$/.test(id)));
-    const stops = []; // served decks' corridor lines
+    const stops = [];
     const dockedOn = (ids) => m.docked.filter((r) => ids.includes(r.parent));
 
     m.decks.forEach((d) => {
@@ -159,7 +128,7 @@
       const above = d.rooms.slice(0, perRow), below = d.rooms.slice(perRow, perRow * 2), extra = d.rooms.slice(perRow * 2);
       const dockAbove = dockedOn(above.map((r) => r.id)), dockBelow = dockedOn(below.map((r) => r.id));
       const top = y + (dockAbove.length ? DOCK : 0);
-      const cy = top + LABEL + ROOM_H + GAP; // corridor centre line
+      const cy = top + LABEL + ROOM_H + GAP;
       const bottom = cy + (below.length ? GAP + ROOM_H : 0) + 18;
       const reached = served.has(d.id);
       const liftLeaf = (m.byDeck.get(d.id) || []).find((x) => /lift|elevator/i.test(x.leaf.path[0]))?.leaf;
@@ -175,7 +144,6 @@
         ${tags.map((leaf, i) => `<g class="sv-click ${tone(leaf.path, leaf.value)}" ${path(leaf)}><text class="sv-tag" x="${W - RIGHT - i * 150}" y="${top + 20}" text-anchor="end">${esc(labelFor(leaf.path, d.id))} ${esc(leaf.value)}</text>${title(leaf.path.join("."))}</g>`).join("")}
         <line class="sv-corridor" x1="${reached ? SHAFT : bandX + 10}" y1="${cy}" x2="${W - RIGHT}" y2="${cy}"/>
       </g>`);
-      // Where the lift meets this deck: a stop, striped when it can't be used.
       if (reached) {
         const stripes = ls ? `fill="url(#sv-stripes-${ls === "perm" ? "warn" : "bad"})"` : "";
         out.lift.push(`<g class="sv-liftstop ${ls}" ${path(liftLeaf)}>
@@ -183,7 +151,6 @@
           <rect class="sv-stop" x="${SHAFT - 9}" y="${cy - 9}" width="18" height="18" rx="3" ${stripes}/>
           ${title(liftLeaf ? `${liftLeaf.path.join(".")}: ${liftLeaf.value}` : `Lift: ${d.label}`)}</g>`);
       }
-      // Rooms spread along the corridor (links get the right-hand margin).
       const place = (row, ry, side) => {
         const span = W - X0 - RIGHT - (m.links.length ? 70 : 0);
         const slot = span / Math.max(row.length, 2);
@@ -194,8 +161,7 @@
       };
       place(above, top + LABEL, "above");
       place(below, cy + GAP, "below");
-      extra.forEach((r) => (rooms[r.id] = null)); // too many for one deck: not drawn
-      // Docked rooms: straight onto their parent, outside the deck.
+      extra.forEach((r) => (rooms[r.id] = null));
       for (const r of [...dockAbove, ...dockBelow]) {
         const p = rooms[r.parent];
         const ry = p.side === "above" ? top - DOCK_GAP - ROOM_H : bottom + DOCK_GAP;
@@ -204,7 +170,6 @@
       y = bottom + 14 + (dockBelow.length ? DOCK : 0);
     });
 
-    // The lift shaft, between the decks it reaches. A fault or lockout of the whole lift stripes all of it.
     const whole = [...(m.systems.get("lift") || []), ...(m.systems.get("elevator") || [])];
     const wholeState = whole.map((l) => liftState(l.value)).find(Boolean) || "";
     const shaft = stops.length
@@ -214,7 +179,6 @@
          <text class="sv-tag sv-lift" x="${SHAFT}" y="${stops[0] - 32}" text-anchor="middle">LIFT</text>`
       : "";
 
-    // Rooms, their doorways and what's in them.
     for (const [id, r] of Object.entries(rooms)) {
       if (!r) continue;
       const items = m.byRoom.get(id) || [];
@@ -222,7 +186,6 @@
       const door = items.find(isDoor)?.leaf;
       const cam = items.find((x) => /camera|cctv|feed/i.test(x.leaf.path.join(".")))?.leaf;
       const values = items.filter((x) => !isRoster(x.leaf));
-      // Shown in the room: door and camera first, then anything else.
       const rest = [...values.filter((x) => x.leaf === door || x.leaf === cam), ...values.filter((x) => x.leaf !== door && x.leaf !== cam)];
       const bad = values.some((x) => tone(x.leaf.path, x.leaf.value) === "bad");
       const who = names(items.find((x) => x.leaf.path[0] === "occupants")?.leaf.value);
@@ -232,13 +195,11 @@
       const open = door && /OPEN/i.test(String(door.value));
       let dx = r.cx, dy;
       if (r.side === "docked") {
-        // A docking collar straight into the parent room (no corridor).
         const p = r.parent, up = r.y < p.y;
         const y1 = up ? r.y + r.h : p.y + p.h, y2 = up ? p.y : r.y;
         out.fg.push(`<g class="sv-collar"><line x1="${r.cx - 9}" y1="${y1}" x2="${r.cx - 9}" y2="${y2}"/><line x1="${r.cx + 9}" y1="${y1}" x2="${r.cx + 9}" y2="${y2}"/></g>`);
         dy = (y1 + y2) / 2;
       } else {
-        // Doorway: a short passage from the room to the corridor, with the door across it.
         const y1 = r.side === "above" ? r.y + r.h : r.corridor, y2 = r.side === "above" ? r.corridor : r.y;
         dy = r.side === "above" ? y1 + 9 : y2 - 9;
         out.fg.push(`<line class="sv-doorway" x1="${r.cx}" y1="${y1}" x2="${r.cx}" y2="${y2}"/>`);
@@ -261,7 +222,6 @@
       }
     }
 
-    // Extra connections between rooms: vents, ducts, maintenance shafts.
     for (const l of m.links) {
       const a = rooms[l.a], b = rooms[l.b];
       if (!a || !b) continue;
@@ -282,19 +242,16 @@
       </svg>${elsewhere}`;
   }
 
-  // Values that belong to no room on the layout yet (a new door the agent added).
   const elsewhereHtml = (m, editable) => (m.elsewhere.size
     ? `<div class="mdecks"><section class="mdeck"><header><span class="mdname">Not on the map yet</span></header><div class="mrooms">${[...m.elsewhere.entries()].map(([id, items]) =>
         `<div class="mroom"><div class="mrname">${esc(human(id))}</div><div class="mchips">${items.map((x) => chip(x.leaf, x.label, editable)).join("")}</div></div>`).join("")}</div></section></div>`
     : "");
 
-  // "doors.med_bay" in room med_bay -> "DOOR"; "life_support.oxygen_pct" -> "OXYGEN"
   function labelFor(path, skip) {
     const parts = path.filter((p) => slug(p) !== skip);
     return (parts.length ? parts : path).map((p, i, a) => (i === 0 && a.length === 1 && skip ? singular(p) : p)).join(" ").replace(/_/g, " ").replace(/\bpct\b/i, "").trim().toUpperCase();
   }
 
-  // Likely values for a key, offered as one-click choices when editing.
   function choicesFor(path) {
     const k = path.join(".").toLowerCase();
     if (/door|hatch|airlock|access$/.test(k) && !/access_level/.test(k)) return ["OPEN", "CLOSED", "LOCKED", "SEALED"];
@@ -306,10 +263,6 @@
     return [];
   }
 
-  // ---------------------------------------------------------------- mini map
-  // The stream page's corner: just the decks (on the lift), their rooms, and which
-  // rooms the players are in. No doors, cameras or values.
-  //   people: { roomId: ["ROOK", ...] }
   function mini(el, layoutText, people = {}) {
     const decks = parseLayout(layoutText).filter((d) => d.rooms.length);
     const docked = parseDocked(layoutText);
@@ -320,10 +273,10 @@
     let y = 2, w = X0;
     for (const d of decks) {
       const dock = docked.filter((r) => d.rooms.some((x) => x.id === r.parent));
-      if (dock.length) y += ROW; // (docked rooms sit above the room they're docked at)
+      if (dock.length) y += ROW;
       const cy = y + RH / 2, end = X0 + d.rooms.length * (RW + GAP) - GAP;
       stops.push(cy);
-      corridors.push(`<text class="mm-deck" x="${LIFT + 12}" y="${cy + 5}">${esc(fit(deckName(d.label), 7))}</text><line class="mm-corr" x1="${LIFT}" y1="${cy}" x2="${LIFT + 8}" y2="${cy}"/><line class="mm-corr" x1="${X0 - 8}" y1="${cy}" x2="${end}" y2="${cy}"/>`); // (broken for the deck's name)
+      corridors.push(`<text class="mm-deck" x="${LIFT + 12}" y="${cy + 5}">${esc(fit(deckName(d.label), 7))}</text><line class="mm-corr" x1="${LIFT}" y1="${cy}" x2="${LIFT + 8}" y2="${cy}"/><line class="mm-corr" x1="${X0 - 8}" y1="${cy}" x2="${end}" y2="${cy}"/>`);
       d.rooms.forEach((r, i) => (placed[r.id] = { x: X0 + i * (RW + GAP), y, label: r.label }));
       for (const r of dock) {
         const p = placed[r.parent];
@@ -343,7 +296,6 @@
     el.innerHTML = decks.length ? `<svg class="mm" viewBox="0 0 ${w + 4} ${y - 6}" role="img" aria-label="Where the crew are">${lift}${corridors.join("")}${rooms}</svg>` : "";
   }
 
-  // (and for the 3D view, isomap.js: the same model, values and tones, so it shows what the 2D view does)
   window.StationMap = { draw, mini, parseLayout, parseLinks, parseDocked, parseLift, choicesFor,
     model: build, tone, liftState, labelFor, isRoster, names, chip, systemsHtml, elsewhereHtml, esc };
 })();

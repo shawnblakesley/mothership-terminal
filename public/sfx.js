@@ -1,11 +1,7 @@
-// The Warden's sound library on the player screen: one-shots (an attack, a
-// scream) and loops (a low growl, ambience). Everything plays through the
-// terminal's master volume (FX.Sound.bus), so the VOL meter and mute apply.
-// Exposes window.Sfx.
 (() => {
-  const buffers = new Map(); // sound id -> Promise<AudioBuffer|null>
-  const wanted = new Map(); // pid -> play request ({ pid, id, loop, volume }) still to start or playing
-  const live = new Map(); // pid -> { src, gain }
+  const buffers = new Map();
+  const wanted = new Map();
+  const live = new Map();
   let urlFor = (id) => id;
 
   const ready = () => window.FX && FX.Sound.ok();
@@ -16,21 +12,19 @@
         .then((r) => (r.ok ? r.arrayBuffer() : null))
         .then((b) => (b ? FX.Sound.ctx.decodeAudioData(b) : null))
         .catch(() => null)
-        .then((buf) => { if (!buf) buffers.delete(id); return buf; })); // let a failed load retry
+        .then((buf) => { if (!buf) buffers.delete(id); return buf; }));
     }
     return buffers.get(id);
   }
 
   async function start(req) {
     const buf = await load(req.id);
-    // Stopped (or already started) while loading? Then never mind.
     if (!buf || wanted.get(req.pid) !== req || live.has(req.pid)) return;
     const c = FX.Sound.ctx;
     const src = c.createBufferSource();
     src.buffer = buf;
     src.loop = !!req.loop;
     const gain = c.createGain();
-    // Loops fade in like a sound rising out of the station; one-shots hit at once.
     gain.gain.setValueAtTime(req.loop ? 0 : req.volume, c.currentTime);
     if (req.loop) gain.gain.linearRampToValueAtTime(req.volume, c.currentTime + 1.5);
     src.connect(gain).connect(FX.Sound.bus());
@@ -41,8 +35,6 @@
     src.start();
   }
 
-  // Start whatever should be playing. Loops that arrive before the terminal's
-  // audio is unlocked (a key press) start once it is.
   function sync() {
     if (!ready()) return;
     for (const req of wanted.values()) if (!live.has(req.pid)) start(req);
@@ -50,7 +42,6 @@
   setInterval(sync, 1000);
 
   function play(req) {
-    // A one-shot only makes sense now: if sound is off, skip it rather than play it late.
     if (!req.loop && !ready()) return;
     wanted.set(req.pid, req);
     sync();
@@ -85,7 +76,6 @@
     stop,
     stopAll,
     setVolume,
-    // On (re)connect: the loops that should be running now.
     sync(list) {
       const keep = new Set(list.map((p) => p.pid));
       for (const pid of [...wanted.keys()]) if (!keep.has(pid)) stop(pid);

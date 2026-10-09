@@ -23,10 +23,8 @@
 * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--line2) transparent; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
-/* Everything in the console in the monospaced face (a little smaller: its letters are wider). */
 body { background: var(--bg); color: var(--fg); font: 13px/1.5 var(--mono); display: flex; flex-direction: column; }
 
-/* ---- controls ---- */
 button, input, select, textarea { font: inherit; color: inherit; }
 input, select, textarea {
   background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; width: 100%;
@@ -51,7 +49,6 @@ button.ghost { background: transparent; border-color: transparent; color: var(--
 button.ghost:hover { color: var(--fg); background: var(--panel2); }
 button:disabled { opacity: 0.4; cursor: default; }
 
-/* ---- header ---- */
 .top { display: flex; align-items: center; gap: 12px; padding: 9px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .top h1 { font: 600 14px var(--mono); letter-spacing: 0.2em; margin: 0; color: var(--accent); text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 35%, transparent); }
 .grow { flex: 1; }
@@ -72,7 +69,6 @@ code { font-family: var(--mono); background: var(--panel2); padding: 1px 6px; bo
 .seg button:hover { color: var(--fg); background: var(--panel3); }
 .seg button.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
 
-/* ---- layout ---- */
 .grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(320px, 1fr) minmax(360px, 1fr); }
 .col { padding: 14px 16px; border-right: 1px solid var(--line); overflow-y: auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 .col:last-child { border-right: 0; }
@@ -87,9 +83,7 @@ h3 { font-size: 12px; color: var(--muted); margin: 0; font-weight: 500; }
 .check { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
 .check input { width: auto; accent-color: var(--accent-soft); }
 
-/* ---- log ---- */
 .log { flex: 1; min-height: 200px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
-/* Each line is marked by its speaker's colour (--c, set per entry): a tag with a dot. */
 .entry { --c: var(--muted); position: relative; padding: 7px 10px 8px; border-radius: var(--radius); background: var(--panel2); border: 1px solid transparent; }
 .entry .who { font-size: 11px; letter-spacing: 0.06em; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: 2px; padding-right: 18px; }
 .entry .tag { display: inline-flex; align-items: center; gap: 6px; color: var(--c); font-weight: 600; text-transform: uppercase; }
@@ -102,7 +96,6 @@ h3 { font-size: 12px; color: var(--muted); margin: 0; font-weight: 500; }
 .entry.warden { background: color-mix(in srgb, var(--warden) 8%, var(--panel2)); border-color: color-mix(in srgb, var(--warden) 28%, transparent); }
 .entry.warden .txt { font-family: inherit; font-size: 13.5px; }
 .entry.roll { background: color-mix(in srgb, var(--roll) 6%, var(--panel2)); }
-/* Warden notes (effects fired, station changes...): quiet one-liners. */
 .entry.note { display: flex; align-items: baseline; gap: 8px; background: transparent; padding: 1px 10px; font-size: 12px; color: var(--muted); }
 .entry.note .txt { flex: 1; font-family: inherit; font-size: 12px; }
 .entry.note .txt::before { content: "› "; opacity: 0.6; }
@@ -114,7 +107,6 @@ h3 { font-size: 12px; color: var(--muted); margin: 0; font-weight: 500; }
 .entry:hover .del { opacity: 1; }
 .compose { display: flex; flex-direction: column; gap: 8px; }
 
-/* ---- cards ---- */
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .card.empty { color: var(--muted); font-style: italic; }
 .card.generating { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
@@ -129,7 +121,6 @@ h3 { font-size: 12px; color: var(--muted); margin: 0; font-weight: 500; }
 .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--warn); border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ---- effects ---- */
 .fxopts { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; }
 .fxopts label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
 .fxgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
@@ -137,16 +128,12 @@ h3 { font-size: 12px; color: var(--muted); margin: 0; font-weight: 500; }
 .fxgrid button:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 .fxgrid button .ico { display: inline-flex; flex: none; }
 .fxgrid button .fxi { width: 16px; height: 16px; }
-/* An effect's icon beside text elsewhere (draft lines, the active list): text-sized. */
 .fxi { width: 1.05em; height: 1.05em; vertical-align: -0.17em; flex: none; }
 .fxlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .fxlist li { display: flex; align-items: center; gap: 8px; background: var(--panel2); border-radius: 6px; padding: 4px 4px 4px 10px; font-size: 13px; }
 .fxlist li .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fxlist li.none { background: transparent; color: var(--muted); font-style: italic; padding-left: 2px; }
 
-/* ---- preview ---- */
-
-/* ---- session: start screen, code, key dialog, toasts ---- */
 body.starting > header.top, body.starting > .grid { display: none; }
 .start { max-width: 640px; width: 100%; margin: 0 auto; padding: 40px 16px 48px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
 .start h1 { font: 600 18px var(--mono); letter-spacing: 0.2em; color: var(--accent); margin: 0; text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent); }
@@ -172,7 +159,6 @@ dialog h2::after { display: none; }
 .toast.error { border-color: var(--danger); color: var(--danger); }
 #keywarn { cursor: pointer; }
 
-/* ---- rule of cool + rolls ---- */
 .card.outcome { border-color: color-mix(in srgb, var(--warden) 55%, var(--line)); background: color-mix(in srgb, var(--warden) 5%, var(--panel)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warden) 10%, transparent); }
 .card.outcome .attempt { font-size: 15px; font-weight: 600; }
 .rollgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
@@ -186,7 +172,6 @@ dialog h2::after { display: none; }
 #rollStatus .rollres button { padding: 2px 8px; font-size: 12px; }
 #rollTarget { line-height: 1.5; }
 
-/* ---- draft lines ---- */
 #draftLines { display: flex; flex-direction: column; gap: 6px; }
 .dline { display: grid; grid-template-columns: minmax(90px, 9em) 1fr auto; gap: 6px; align-items: start; }
 .dline select { padding: 5px 6px; }
@@ -195,10 +180,9 @@ dialog h2::after { display: none; }
 .dline .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-family: var(--mono); background: color-mix(in srgb, var(--warn) 12%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: 99px; padding: 2px 9px; }
 .dline .chip input { width: auto; accent-color: var(--warn); }
 
-/* ---- voices ---- */
 .sendas { display: inline-flex; gap: 0; min-width: 12em; }
 .sendas select { flex: 1; min-width: 0; border-radius: 6px 0 0 6px; border-right: 0; }
-.sendas select + select { border-radius: 0; } /* (the middle of the bar: square both sides) */
+.sendas select + select { border-radius: 0; }
 .sendas button { border-radius: 0 6px 6px 0; }
 .sendas select.on { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .keyhint { margin-top: -4px; }
@@ -233,7 +217,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .entry.note.fx .txt::before { content: none; }
 .entry.note.fx .txt { color: color-mix(in srgb, var(--warn) 70%, var(--muted)); }
 
-/* ---- sounds ---- */
 .drop { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 10px; background: var(--panel); transition: border-color 0.15s, background 0.15s; }
 .drop.over { border-color: var(--accent-soft); background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
 .soundlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -248,14 +231,12 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .volctl input[type="range"] { width: 80px; }
 .volctl .volpct { width: 52px; padding: 3px 4px; text-align: right; font-size: 12.5px; }
 
-/* ---- characters & private notes ---- */
 :root { --aside: #5fd3c6; }
 .entry.aside, .entry.aside_reply { background: color-mix(in srgb, var(--aside) 7%, var(--panel2)); border-color: color-mix(in srgb, var(--aside) 25%, transparent); border-style: dashed; }
 .entry.aside .txt, .entry.aside_reply .txt { font-family: inherit; font-size: 13.5px; }
 .entry .chg { margin-top: 4px; font-family: var(--mono); font-size: 12px; color: var(--aside); }
 .dwho { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .dchar { padding: 4px 6px; font-size: 12.5px; }
-/* ---- characters (the story's people) ---- */
 .castm { display: flex; gap: 10px; align-items: flex-start; background: var(--panel2); border-radius: var(--radius); padding: 8px 10px; margin-bottom: 6px; }
 .castm .pick { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 6px; overflow: hidden; display: grid; place-items: center; font-weight: 600; color: var(--muted); }
 .castm .pick img, .pc .pick img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -268,7 +249,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .advm .check { display: inline-flex; align-items: center; gap: 4px; }
 .advm input[type="color"] { width: 40px; height: 26px; padding: 1px; }
 .advm [data-aact="show"] { padding: 2px 8px; font-size: 12px; }
-/* Read-only: all of what it is, with the Warden's own line breaks, to look things up mid-game. */
 .advm .advinfo { white-space: pre-wrap; overflow-wrap: anywhere; color: color-mix(in srgb, var(--fg) 82%, var(--muted)); line-height: 1.45; }
 .castbody .mood { display: inline-flex; align-items: baseline; gap: 4px; }
 .castbody .mood select { width: auto; padding: 1px 4px; }
@@ -281,11 +261,9 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .castbody textarea { font-size: 12.5px; }
 .castchip { display: inline-block; border: 1px dashed var(--line); border-radius: 99px; padding: 2px 9px; font-size: 12px; margin: 0 4px 4px 0; }
 
-/* ---- station map ---- */
 #mapExpand { padding: 2px 8px; font-weight: 400; font-size: 12px; }
 .smap { display: flex; flex-direction: column; gap: 10px; }
-/* The 3D view (isomap.js): a terminal-dark window onto the station. */
-.smap .iso { height: 420px; } /* (then fitted to the height its panel has left: dm.js fitIso) */
+.smap .iso { height: 420px; }
 .smap.compact .msystems { grid-template-columns: 1fr 1fr; }
 .smap.compact .mrooms { grid-template-columns: 1fr 1fr; }
 .mapdlg { width: min(1100px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; }
@@ -293,12 +271,10 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .mapdlg h2 { font-size: 14px; }
 .maplayout { margin-top: 12px; }
 
-/* ---- station schematic ---- */
 .mapview { margin-left: auto; }
 .mapview button { padding: 2px 10px; font-size: 12px; font-weight: 500; }
 .mapdlg .row .mapview { margin-left: 8px; }
 
-/* ---- room view and floor plans (public/roomplan.js) ---- */
 .roomdlg { width: min(980px, calc(100vw - 32px)); max-height: calc(100vh - 40px); display: none; }
 .roomdlg[open] { display: flex; flex-direction: column; gap: 10px; }
 .roomdlg h2 { font-size: 14px; }
@@ -333,7 +309,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .roomside .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .roomside .pcchip { background: color-mix(in srgb, var(--player) 14%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--player) 40%, var(--line)); border-radius: 999px; padding: 1px 9px; font-size: 12.5px; }
 
-/* ---- crew (player characters) ---- */
 #crew { display: flex; flex-direction: column; gap: 6px; }
 .pc { background: var(--panel2); padding: 7px 10px; }
 .pc summary { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-weight: 500; }
@@ -343,7 +318,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .pcgrid label.wide { grid-column: 1 / -1; }
 .pcgrid input[type="number"] { padding: 4px 6px; }
 
-/* ---- story builder ---- */
 .builderdlg { width: min(1280px, calc(100vw - 32px)); height: calc(100vh - 40px); max-height: none; display: none; }
 .builderdlg[open] { display: flex; flex-direction: column; gap: 10px; }
 .builderdlg h2 { font-size: 14px; }
@@ -365,7 +339,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .mono { font-family: var(--mono); }
 @media (max-width: 900px) { .bgrid { grid-template-columns: 1fr; overflow-y: auto; } .bmsgs { min-height: 300px; } }
 
-/* ---- synopsis ---- */
 .panictable { margin: 4px 0 10px; padding-left: 26px; font-size: 12.5px; }
 .panictable li { margin: 3px 0; }
 .portraitdlg { width: min(760px, calc(100vw - 32px)); height: calc(100vh - 60px); max-height: none; display: none; }
@@ -387,7 +360,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .synsec.warden h3 { color: var(--warden); }
 .synlabel { display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--warden); border: 1px solid color-mix(in srgb, var(--warden) 55%, transparent); border-radius: 4px; padding: 1px 6px; margin-bottom: 6px; }
 
-/* ---- per-player variants ---- */
 .entry .var { margin-top: 5px; padding: 4px 0 0 10px; border-top: 1px dashed var(--line2); white-space: pre-wrap; }
 .entry .vfor { font-size: 11px; letter-spacing: 0.04em; color: var(--warden); text-transform: uppercase; }
 .dline .dvars { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
@@ -395,21 +367,17 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .dvar input, .dvar textarea { font-size: 12.5px; padding: 4px 6px; }
 .dvars .small { padding: 2px 6px; font-size: 12px; }
 
-/* ---- settings ---- */
 .settingsdlg { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; }
-/* Tabs (Session / Agent / Players / Discord): one panel at a time, the same height whichever it is. */
 .settingsdlg > .tabs { margin: 12px 0 2px; }
 .settingsdlg .tabpanel { gap: 6px; min-height: min(510px, 70vh); }
 .settingsdlg .tabpanel > .sethead:first-child, .settingsdlg #discordOn > .sethead:first-child { margin-top: 6px; }
 .settingsdlg .tabpanel > p.muted:first-child, .settingsdlg #discordOn > p.muted:first-child { margin: 10px 0 0; }
 .sethead { margin: 14px 0 0; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.12em; }
 .settingsdlg .check { align-items: flex-start; margin: 8px 0 0; }
-.settingsdlg .check input { margin-top: 5px; } /* (centred on the lowercase letters of the first line, not the line box: it looked high) */
+.settingsdlg .check input { margin-top: 5px; }
 .settingsdlg .check em { display: block; font-style: normal; font-size: 12px; color: var(--muted); }
 
-/* ---- terminals ---- */
 #terminals { display: flex; flex-direction: column; gap: 6px; }
-/* The connection graph as a grid: voices down, systems across. */
 .conns { width: 100%; border-collapse: collapse; font-size: 12px; }
 .conns th, .conns td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: center; }
 .conns th:first-child, .conns td:first-child { text-align: left; }
@@ -424,27 +392,20 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .tcard .looks { display: flex; flex-wrap: wrap; gap: 4px; }
 .tcard .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 99px; padding: 2px 9px; color: var(--fg); }
 .tcard .chip input { width: auto; }
-/* A character's name is green while a player is connected as them. */
 .pc .pcname.online { color: var(--accent); }
 .pc .pcname.offline { color: var(--muted); }
 
-/* Where they are, in the card's header: reads as text, opens as a picker. */
 .pc .where { display: inline-flex; align-items: baseline; gap: 4px; margin-left: auto; }
 .pc select[data-move] { width: auto; max-width: 220px; padding: 1px 4px; font: inherit; color: var(--fg); background: transparent; border: 1px solid transparent; border-radius: 5px; cursor: pointer; }
 .pc select[data-move]:hover, .pc select[data-move]:focus-visible { border-color: var(--line); background: var(--panel3); }
 
-/* Lines cut off by a player before they were said */
 .entry.cut { opacity: 0.45; }
 .entry.cut .txt { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 70%, transparent); }
 .settingsdlg .talkrow { margin-top: 10px; }
 
-/* ---- tabs, hints ---- */
 .tabs { display: flex; width: 100%; }
 .tabs button { flex: 1; }
 .tabpanel { display: flex; flex-direction: column; gap: 10px; }
-/* The side panel's tab bar stays at the top of its column while it scrolls
-   (the shadow is the page colour, so nothing shows round it), with a
-   highlight that slides to the chosen tab and panels that ease in. */
 .col > .sidehead { position: sticky; top: 0; z-index: 5; flex-shrink: 0; display: flex; gap: 8px; align-items: stretch; background: var(--bg); box-shadow: 0 0 0 8px var(--bg), 0 -16px 0 8px var(--bg); }
 .sidehead .tabs { flex: 1; width: auto; min-width: 0; }
 .sidehead .tabs button { padding-left: 6px; padding-right: 6px; }
@@ -453,23 +414,16 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .lockbtn .icon { display: block; }
 .editmode[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
 
-/* Between the comms log and the compose box: what needs the Warden now (a ruling,
-   a draft reply, a roll in progress). Gone when nothing does. */
 .tray { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; flex-shrink: 0; }
 .tray:not(:has(> :not([hidden]))) { display: none; }
 .ocroll:not(:empty) { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
-/* ---- the Warden's speech (speech-to-text, for the agent) ---- */
 :root { --heard: #e8b04a; }
 .entry.heard { background: color-mix(in srgb, var(--heard) 7%, var(--panel2)); border-color: color-mix(in srgb, var(--heard) 28%, transparent); }
-/* ---- the players' speech on Discord (table talk: context for the agent) ---- */
 :root { --table: #7fa8d6; }
 .entry.table { background: color-mix(in srgb, var(--table) 6%, var(--panel2)); border-color: color-mix(in srgb, var(--table) 24%, transparent); }
 #discordCmd { font-size: 13px; }
 .voicesrow { align-items: center; margin-top: 8px; gap: 10px; }
 #voicesNote { margin: 4px 0 0; }
-/* Discord: its logo beside a crew member someone plays there, and the Listen button as
-   the Discord button. While the bot listens, rings ripple out from it like sound
-   waves; the icon itself stays put. */
 :root { --discord: #5865f2; }
 .dlogo { display: inline-flex; color: var(--discord); margin-left: 6px; vertical-align: -2px; }
 .dlogo svg { width: 14px; height: 14px; }
@@ -497,24 +451,20 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .keyrow #retcon { padding: 2px 8px; font-size: 12px; color: #c96a63; border-color: color-mix(in srgb, #c96a63 35%, var(--line)); }
 .keyrow #retcon:hover:not(:disabled) { color: #e07a72; background: color-mix(in srgb, #c96a63 12%, transparent); }
 
-/* The stakes on the "your call" card: what happens if it works / fails. */
 .outcome .stakes { display: flex; flex-direction: column; gap: 4px; font-size: 13px; margin: 2px 0 4px; }
 .outcome .stakes label { display: flex; align-items: center; gap: 8px; }
 .outcome .stakes label span { width: 7.5em; font-weight: 700; flex-shrink: 0; white-space: nowrap; }
 .outcome .stakes input { flex: 1; min-width: 0; padding: 4px 8px; }
 .outcome .ok { color: var(--accent); }
 .outcome .bad { color: var(--danger); }
-/* It works / It fails / Call for a roll: icons only (their names are the tooltips). */
 .outcome .ocbtn { width: 40px; height: 34px; padding: 0; font-size: 18px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .outcome .ocbtn.ok { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
 .outcome .ocbtn.ok:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .outcome .ocbtn.bad { border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
 .outcome .ocbtn.bad:hover { background: color-mix(in srgb, var(--danger) 18%, transparent); }
 
-/* Read-only (the default) vs Edit: setup controls only while editing. */
 .col.side:not(.editing) .edit-only, .col.side.editing .play-only { display: none !important; }
 
-/* Read-only views: a character's sheet, where the terminals are, the cast. */
 .pcsheet { display: flex; flex-direction: column; gap: 6px; font-size: 13px; padding: 4px 2px 2px; }
 .pcsheet .nums { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .pcsheet .nums span { white-space: nowrap; }
@@ -535,8 +485,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .castv { margin: 4px 0 8px; }
 .castv b { font-size: 13px; }
 
-/* ---- phones: one view at a time (comms, or one side tab), picked from the
-   bottom bar; the header on one line. ---- */
 .mnav { display: none; }
 @media (max-width: 760px) {
   body { height: 100dvh; }
@@ -555,7 +503,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
   body[data-mview="comms"] .grid > .col.side, body:not([data-mview="comms"]) .grid > .col:not(.side) { display: none; }
   .grid > .col:not(.side) > h2:first-child { display: none; }
   .log { max-height: none; min-height: 0; flex: 1; }
-  .sidehead .tabs { display: none; } /* (the bottom bar picks the tab) */
+  .sidehead .tabs { display: none; }
   .sidehead { justify-content: flex-end; }
   .mnav { display: flex; flex-shrink: 0; border-top: 1px solid var(--line); background: var(--panel); padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); gap: 2px; }
   .mnav button { flex: 1; min-width: 0; border: 0; background: none; color: var(--muted); padding: 9px 2px; font-size: 13px; border-radius: 8px; position: relative; }
@@ -564,16 +512,13 @@ summary .muted { font-weight: 400; font-size: 12px; }
   .tray { max-height: 45vh; }
 }
 
-/* Lore, secrets, standing orders: grown to fit their text (dm.js growStory). */
 #lore, #secrets, #standingOrders { overflow-y: hidden; resize: none; min-height: 4em; }
 
-/* The station's name and colour, at the top of the terminals. */
 .stationrow { gap: 8px 16px; }
 .stationrow label { display: inline-flex; align-items: center; gap: 6px; }
 .stationrow #stationName { width: 12em; }
 .stationrow select { width: auto; }
 
-/* Clocks */
 .clockform input#clockLabel { flex: 1; min-width: 140px; }
 .clockform input#clockMins { width: 64px; }
 #clockList .ctime { font-family: var(--mono); color: var(--accent); }
@@ -583,7 +528,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 #clockList button { padding: 2px 7px; font-size: 12px; }
 #clockList button.danger { color: var(--danger); }
 
-/* The Rules tab. */
 .rules h2 { margin: 6px 0 0; }
 .rules a { color: var(--accent); }
 .rules ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
@@ -601,13 +545,11 @@ summary .muted { font-weight: 400; font-size: 12px; }
   .tabs.seg.slider.ready::before { transition: none; }
   .tabpanel.enter { animation: none; }
 }
-/* A reply or ruling waiting on the Warden while another tab is open. */
 .tabdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); margin-left: 6px; vertical-align: 1px; box-shadow: 0 0 6px var(--warn); }
 .hint { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--line2); color: var(--muted); font-size: 10px; font-weight: 600; cursor: help; letter-spacing: 0; text-transform: none; }
 .hint:hover { color: var(--fg); border-color: var(--muted); }
 h2 .hint { margin-left: -4px; }
-h2 .h2btn { order: 2; padding: 1px 8px; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: none; } /* (after the rule line) */
-/* Collapsible sections that look like plain section headings (Story tab). */
+h2 .h2btn { order: 2; padding: 1px 8px; font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: none; }
 details.sec { background: none; border: 0; border-radius: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 details.sec[open] { padding-bottom: 0; }
 details.sec > *:not(summary) { margin-top: 0; }

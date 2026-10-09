@@ -1,9 +1,3 @@
-// The story builder: the Warden and the agent talk a brand-new scenario into
-// shape (station, what went wrong, secrets, the people who can talk, the
-// computer's personality, the players' characters), then the agent drafts it
-// in full and the Warden applies it to the session.
-//
-// Two kinds of call: a conversation turn ({ reply, ready }) and a full draft.
 import { BUILTIN, PRESETS, SPEAKERS, defaultVoices, fromPreset, sanitizeVoices } from "./voices.js";
 import { sanitizeCast, addCast } from "./cast.js";
 import { CLASSES, STATS, SAVES, sanitizeCrew } from "./crew.js";
@@ -111,7 +105,6 @@ const DRAFT_SCHEMA = obj({
 
 const SPEAKER_LIST = `SPEAKER VOICES (for the cast): ${Object.entries(SPEAKERS).map(([id, d]) => `${id} = ${d}`).join("; ")}.`;
 
-// The conversation so far, as alternating turns.
 function transcript(b) {
   const msgs = b.messages.map((m) => ({ role: m.role === "warden" ? "user" : "assistant", content: m.role === "warden" ? m.text : JSON.stringify({ reply: m.text, ready: false }) }));
   if (!msgs.length || msgs[0].role !== "user") msgs.unshift({ role: "user", content: "Let's make a new scenario." });
@@ -136,13 +129,12 @@ export function draftRequest(b) {
     messages: [{ role: "user", content: `THE CONVERSATION:\n\n${convo}\n\nWrite the complete scenario now.` }],
     schema: DRAFT_SCHEMA,
     example: null,
-    maxTokens: 16000, // (a whole scenario is long; providers cap it at what they allow)
+    maxTokens: 16000,
   };
 }
 
 const summary = (d) => `${d.title}: ${d.pitch}\nStation: ${d.stationName}. Cast: ${d.cast.map((c) => c.name).join(", ") || "none"}. Crew: ${d.crew.map((c) => c.name).join(", ")}.`;
 
-// Coerce a model's draft into a safe, complete shape.
 export function normalizeDraft(raw) {
   const s = (v, n) => String(v ?? "").slice(0, n);
   const d = raw && typeof raw === "object" ? raw : {};
@@ -164,7 +156,6 @@ export function normalizeDraft(raw) {
       systems: (Array.isArray(v?.systems) ? v.systems : []).slice(0, 16).map((n) => s(n, 40)).filter(Boolean),
     })).filter((v) => v.name),
     adversaries: (Array.isArray(d.adversaries) ? d.adversaries : []).slice(0, 3).map((a) => ({ name: s(a?.name, 40).toUpperCase(), persona: s(a?.persona, 8000), preset: PRESET_IDS.includes(a?.preset) ? a.preset : "demonic" })).filter((a) => a.name),
-    // (Drafts from before the cast was its own list had it inside the voices.)
     cast: (Array.isArray(d.cast) ? d.cast : (Array.isArray(d.voices) ? d.voices : []).flatMap((v) => v?.characters || [])).slice(0, 30)
       .map((c) => ({ name: s(c?.name, 40), sex: c?.sex === "m" ? "m" : "f", voice: SPEAKERS[c?.voice] ? c.voice : "", room: s(c?.room, 60), notes: s(c?.notes, 500) })).filter((c) => c.name),
     crew: (Array.isArray(d.crew) ? d.crew : []).slice(0, 4),
@@ -173,7 +164,6 @@ export function normalizeDraft(raw) {
   };
 }
 
-// The pieces of session state a draft replaces.
 export function applyDraft(d) {
   const base = defaultVoices();
   const terminal = { ...base.find((v) => v.id === BUILTIN.terminal), name: d.computer.name, persona: d.computer.persona || base[0].persona };
@@ -181,15 +171,12 @@ export function applyDraft(d) {
   const others = d.voices.map((v) => {
     return {
       id: v.id || v.name, name: v.name, style: "label", color: v.color, persona: v.persona, ...fromPreset(v.preset),
-      // System names to net keys ("" the station, "*" everywhere); none: the station.
       systems: (v.systems || []).map((n) => (/^all$/i.test(n) ? "*" : netKey(n) === netKey(d.stationName) ? "" : netKey(n))).filter((n, i, a) => a.indexOf(n) === i),
     };
   });
-  // Every story has an intercom for the cast to be heard over (the draft's, or the default one).
-  const idOf = (v) => String(v.id || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40); // (as sanitizeVoices makes it)
+  const idOf = (v) => String(v.id || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40);
   let channel = others.find((v) => idOf(v) === "intercom") || others.find((v) => v.preset === "intercom");
   if (!channel) others.unshift((channel = base.find((v) => v.id === "intercom")));
-  // Each person keeps the voice they were given (unless someone already has it), or is cast one.
   const cast = [];
   for (const c of d.cast) {
     const room = c.room.toLowerCase().replace(/[^a-z0-9_]/g, "");
@@ -220,23 +207,17 @@ export function applyDraft(d) {
       standingOrders: d.standingOrders,
       map: d.map,
       voices: sanitizeVoices([terminal, broadcast, base.find((v) => v.id === BUILTIN.narrator), ...others.filter((v) => v.id !== BUILTIN.narrator),
-        // The threats: "???" to the players until they've seen them.
         ...(d.adversaries || []).map((a, i) => ({ id: `adversary-${i + 1}`, name: a.name, style: "label", color: "#ff5a5a", persona: a.persona, ...fromPreset(a.preset), systems: [""], adversary: { revealed: false, picture: "" } }))]),
       crew,
       cast: sanitizeCast(cast),
       castChannel: idOf(channel),
-      // The story's terminals (the players start at the first open one), plus a portable unit.
       terminals: sanitizeTerminals([...d.terminals, DEFAULT_TERMINALS.find((t) => t.id === "portable")]),
-      // Documents the players start with (in everyone's DOCS; a story restart hands them out again).
       startDocs: (d.documents || []).map((x, i) => ({ id: `doc-start-${i + 1}`, title: x.title, text: x.text, to: "", at: 0 })),
     },
     station,
   };
 }
 
-// ---------------------------------------------------------------- no Warden
-// Story pitches for a game played without a Warden: the players pick one, then
-// the agent drafts it (draftRequest, from the pitch) and runs it.
 const PITCHES = `You pitch scenarios for Mothership (sci-fi horror TTRPG) to a group of players with NO Warden: an AI will build the whole world from the one they pick, then run it.
 
 ${APP_BRIEF}
@@ -264,7 +245,6 @@ export function normalizePitches(r) {
   return (Array.isArray(r?.pitches) ? r.pitches : []).map((p) => ({ title: s(p?.title, 60), hook: s(p?.hook, 400), tags: s(p?.tags, 80) })).filter((p) => p.title && p.hook).slice(0, 6);
 }
 
-// The builder conversation for a picked pitch (draftRequest drafts it in full).
 export function pitchBuilder(p) {
   return {
     messages: [{ role: "warden", text: `Build this scenario. It will be played WITHOUT a Warden: the AI runs everything, so make it self-contained and playable from the players' terminals, with clues they can find, people they can talk to, and a way to win, escape or die.\n\n${p.title}: ${p.hook} (${p.tags})\n\nWrite 4 player characters.` }],

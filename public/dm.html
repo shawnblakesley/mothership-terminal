@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Warden Console</title>
-  <!-- three.js, for the 3D station map (isomap.js; served from node_modules by server.js) -->
   <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }</script>
 
   <link rel="icon" href="warden.svg" type="image/svg+xml">
@@ -12,7 +11,6 @@
   <link rel="stylesheet" href="stationmap.css">
 </head>
 <body>
-  <!-- ================= START: create or reopen a session ================= -->
   <main id="start" class="start" hidden>
     <h1>WARDEN CONSOLE</h1>
     <p class="muted">Players join with a code. An AI voices the station while you steer it.</p>
@@ -47,8 +45,6 @@
     </section>
   </main>
 
-  <!-- In-page confirmations (browser confirm() boxes can be switched off by
-       "don't allow more dialogs", which silently cancels them). -->
   <dialog id="askDialog">
     <form method="dialog" class="stack">
       <h2 id="askTitle"></h2>
@@ -58,7 +54,6 @@
     </form>
   </dialog>
 
-  <!-- Session settings: the look, and which features the agent and players may use. -->
   <dialog id="settingsDialog" class="settingsdlg">
     <div class="row"><h2 class="grow">Settings</h2><button id="settingsClose" class="ghost" aria-label="Close">✕</button></div>
     <div class="tabs seg" data-tabs="settings" role="tablist">
@@ -157,7 +152,6 @@
     </div>
   </dialog>
 
-  <!-- Story builder: talk a new scenario into shape with the agent, then apply it. -->
   <dialog id="builderDialog" class="builderdlg">
     <div class="row">
       <h2 class="grow">Story builder</h2>
@@ -179,8 +173,6 @@
     </div>
   </dialog>
 
-  <!-- Synopsis: a briefing for the players (the setup, or the story so far), with Warden-only notes. -->
-  <!-- A character's picture: upload one, or pick from the portrait pack that comes with the app. -->
   <dialog id="portraitDialog" class="portraitdlg">
     <div class="row wrap">
       <h2 class="grow" id="portraitTitle">Picture</h2>
@@ -206,7 +198,6 @@
     <div id="synBody" class="synbody"></div>
   </dialog>
 
-  <!-- The full station map, with its layout editor. -->
   <dialog id="mapDialog" class="mapdlg">
     <div class="row">
       <h2 class="grow" id="mapTitle">Station map</h2>
@@ -224,7 +215,6 @@
     </details>
   </dialog>
 
-  <!-- One room: its floor plan (view, edit, show the players), who and what is in it, its state. -->
   <dialog id="roomDialog" class="roomdlg">
     <div class="row wrap">
       <h2 class="grow"><span id="roomTitle">Room</span> <span id="roomDeck" class="muted small"></span></h2>
@@ -293,14 +283,10 @@
   </header>
 
   <div class="grid">
-    <!-- ================= LOG ================= -->
     <section class="col">
       <h2>Comms log <button id="logDownload" class="ghost small h2btn" title="Save the whole game: the log, the crew and cast, the map, the station and handouts (a .json file)">Download</button></h2>
       <div id="log" class="log"></div>
-      <!-- What needs the Warden now, between the log and the compose box (hidden when nothing does):
-           an uncertain attempt to rule on, the agent's draft reply, a roll in progress. -->
       <div id="tray" class="tray">
-        <!-- An uncertain player action the agent left to the Warden (rule of cool). -->
         <div id="outcome" class="card outcome" hidden></div>
         <div id="pending" class="card empty" hidden></div>
         <div id="rollStatus" class="card rollstatus" hidden></div>
@@ -326,16 +312,13 @@
       </div>
     </section>
 
-    <!-- ================= CONTROL PANEL: actions, map, crew, story ================= -->
     <section class="col side">
-      <!-- Tabs, and Edit: read-only (the default) shows what matters while running the game; Edit shows the setup. -->
       <div class="sidehead">
         <div class="tabs seg" data-tabs="side" role="tablist">
           <button data-tab="actions">Actions</button><button data-tab="map">Map</button><button data-tab="crew">Crew</button><button data-tab="story">Story</button><button data-tab="rules">Rules</button>
         </div>
         <button id="editMode" class="ghost editmode lockbtn" aria-pressed="false" title="Unlock to edit the setup"></button>
       </div>
-      <!-- The next response, rolls, effects and sounds. -->
       <div class="tabpanel" data-tabs="side" data-panel="actions">
         <p id="noKeyNote" class="muted small" hidden>No AI key. Use Speak, or add a key in Settings.</p>
 
@@ -343,7 +326,6 @@
         <div class="stack">
         <div class="card stack" id="rollCard">
           <p id="rollAway" class="muted small" hidden>Roll form is open in ⚖ Your call.</p>
-          <!-- The form also opens inside ⚖ Your call (its 🎲), and comes back here after. -->
           <div id="rollForm" class="stack">
           <div class="rollgrid">
             <label>Who rolls
@@ -413,7 +395,6 @@
 
         <h2>Sounds <span class="hint" title="Your own audio, played on every player's screen.">?</span></h2>
         <div class="stack">
-        <!-- The Warden's own audio: monster growls, attacks, ambience. Plays on every player screen. -->
         <div id="soundDrop" class="drop">
           <input type="file" id="soundFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.webm" multiple hidden>
           <button id="soundUpload">Upload sounds</button>
@@ -454,7 +435,6 @@
         <div class="row edit-only"><button id="addAdversary" class="ghost">+ Add adversary</button></div>
         <input type="file" id="advFile" accept="image/*" hidden>
         <h2>Terminals <span class="hint" title="Where each player's screen is. Players switch with TERM if allowed.">?</span></h2>
-        <!-- The station: its name (every screen's header) and the colour of every terminal set to "station's". -->
         <div class="row wrap stationrow">
           <label class="small muted">Station name <input id="stationName"></label>
           <label class="small muted">Screen colour <select id="theme"><option>green</option><option>amber</option><option>cyan</option><option>white</option><option>red</option></select></label>
@@ -490,7 +470,6 @@
       </details>
       </div>
 
-      <!-- A quick Mothership (1e) reference, in this app's terms. -->
       <div class="tabpanel rules" data-tabs="side" data-panel="rules">
         <p class="muted small">Mothership 1e at a glance. The full rules are in the Player's Survival Guide and Warden's Operations Manual (Tuesday Knight Games · <a href="https://www.mothershiprpg.com/" target="_blank" rel="noopener">mothershiprpg.com ↗</a>).</p>
 
@@ -556,7 +535,6 @@
     </section>
   </div>
 
-  <!-- Phones: one view at a time, picked here (the side panel's tabs, plus the comms). -->
   <nav id="mnav" class="mnav" aria-label="Views">
     <button data-mview="comms">Comms<span id="mnavDot" class="tabdot" hidden title="Waiting on you"></span></button>
     <button data-mview="actions">Actions</button><button data-mview="map">Map</button><button data-mview="crew">Crew</button><button data-mview="story">Story</button><button data-mview="rules">Rules</button>

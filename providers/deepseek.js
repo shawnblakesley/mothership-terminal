@@ -1,7 +1,5 @@
 import { openAICompatible } from "./openai-compatible.js";
 
-// Prices are DeepSeek's off-peak rates (peak is 2x). Cheapest model first.
-// Effort "off" disables thinking: fastest and cheapest, fine for a terminal.
 export default openAICompatible({
   id: "deepseek",
   label: "DeepSeek",

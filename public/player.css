@@ -1,11 +1,7 @@
-/* VT323 has no blocks, shapes, arrows or most symbols (■ ● ▓ → Δ ...), and what the browser
-   borrows for them is wider: a [■] was half a character wider than a [ ], and lines shifted.
-   These stand in for just those characters, shrunk so each is one VT323 character wide
-   (0.4em): the first monospace font this machine has, scaled by 0.4 / its own advance. */
 @font-face { font-family: "VT323 Cells"; src: local("Consolas"); size-adjust: 72.727%; unicode-range: U+0394, U+039E, U+03A8, U+2190-22FF, U+2580-25FF, U+26A0; }
 @font-face { font-family: "VT323 Cells 2"; src: local("Menlo"), local("Menlo-Regular"), local("DejaVu Sans Mono"), local("DejaVuSansMono"); size-adjust: 66.445%; unicode-range: U+0394, U+039E, U+03A8, U+2190-22FF, U+2580-25FF, U+26A0; }
 @font-face { font-family: "VT323 Cells 3"; src: local("Courier New"), local("CourierNewPSMT"); size-adjust: 66.667%; unicode-range: U+0394, U+039E, U+03A8, U+2190-22FF, U+2580-25FF, U+26A0; }
-.sq { position: relative; top: -0.08em; } /* (■ from those fonts sits on the baseline: up to the letters' middle) */
+.sq { position: relative; top: -0.08em; }
 :root {
   --bg: #050805;
   --fg: #3bff7a;
@@ -26,7 +22,6 @@ body {
   font-family: var(--font);
   font-size: clamp(18px, 2.3vw, 26px);
   line-height: 1.15;
-  /* Phosphor bloom plus a faint red/blue fringe, like a slightly misconverged tube */
   text-shadow:
     0 0 2px var(--glow),
     0 0 9px var(--glow),
@@ -38,7 +33,6 @@ body {
 #crt {
   position: fixed; inset: 0;
   display: flex; flex-direction: column;
-  /* Extra inset so text clears the curved bezel corners */
   padding: clamp(24px, 4.5vh, 48px) clamp(28px, 5vw, 72px) clamp(26px, 5vh, 52px);
   animation: flicker 7s infinite steps(1);
 }
@@ -52,7 +46,6 @@ body {
   83% { transform: none; }
 }
 
-/* CRT power-on after the boot screen: a bright line that opens into the picture */
 #crt.power-on { animation: powerOn 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 @keyframes powerOn {
   0%   { transform: scale(1, 0.004); filter: brightness(6); opacity: 1; }
@@ -73,7 +66,6 @@ body {
 #hdr .link { color: var(--fg); }
 #hdr .link.down { color: var(--dim); animation: blink 1s infinite steps(1); }
 
-/* Volume: VOL toggle + ten-segment meter */
 .vol { display: inline-flex; align-items: center; gap: 0.35em; }
 #vol-mute {
   background: none; border: 0; padding: 0; cursor: pointer;
@@ -94,9 +86,7 @@ body {
 .line { white-space: pre-wrap; word-break: break-word; margin: 0 0 0.35em; }
 .line.player { color: var(--dim); text-transform: uppercase; }
 .line.player::before { content: attr(data-prompt); }
-/* Ability rolls */
 .line.roll { border: 3px double var(--fg); padding: 0.2em 0.5em; display: block; }
-/* Another character's roll: text on a filled white background. */
 .line.roll.others { background: #ecece6; color: #0a0a0a; border-color: #ecece6; text-shadow: none; }
 .line.roll.others.ok { background: #4fdc86; border-color: #4fdc86; color: #03150a; }
 .line.roll.others.bad { background: #ff6a5c; border-color: #ff6a5c; color: #1c0402; }
@@ -121,7 +111,6 @@ body {
   background: rgba(0, 0, 0, 0.72); pointer-events: none;
 }
 .rollfx[hidden] { display: none; }
-/* A room's floor plan from the Warden: a blueprint in the screen's colour. */
 .planfx { position: fixed; inset: 0; z-index: 60; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8em; padding: 4vh 4vw; cursor: pointer; }
 .planfx[hidden] { display: none; }
 .pf-title { letter-spacing: 0.2em; text-shadow: 0 0 6px var(--glow); }
@@ -129,7 +118,6 @@ body {
 .isofx { cursor: default; padding: 3vh 3vw; }
 .isofx .if-map { flex: 1; min-height: 0; width: 100%; overflow: auto; text-shadow: none; scrollbar-width: none; }
 .isofx .if-map.iso { overflow: hidden; }
-/* The map's views (stationmap.css), in the terminal's colours. */
 .mapfx { --panel: color-mix(in srgb, var(--fg) 4%, var(--bg)); --panel2: color-mix(in srgb, var(--fg) 7%, var(--bg)); --panel3: color-mix(in srgb, var(--fg) 11%, var(--bg));
   --line: color-mix(in srgb, var(--dim) 55%, var(--bg)); --line2: var(--dim); --muted: var(--dim); --accent: var(--fg); --accent-soft: var(--fg);
   --danger: #ff4a3d; --warn: #ffb22e; --player: #ffffff; --mono: var(--font); }
@@ -143,8 +131,6 @@ body {
 .mapfx .sv .sv-roomname { font-size: 16px; }
 .mapfx .sv .sv-val, .mapfx .sv .sv-tag { font-size: 14px; }
 .pf-plan { width: min(92vw, 900px); display: flex; justify-content: center; filter: drop-shadow(0 0 4px var(--glow)); }
-/* An adversary's picture beside the terminal (the right-hand panel), grey multiplied
-   over the screen's colour, with scanlines. On narrow screens, over everything. */
 #reveal { flex: 0 0 clamp(280px, 38%, 560px); display: flex; flex-direction: column; align-items: center; gap: 0.4em;
   border-left: 2px solid var(--dim); padding: 0 0 0 0.8em; cursor: pointer; min-height: 0; }
 #reveal[hidden] { display: none; }
@@ -176,21 +162,15 @@ body {
 .rollfx.crit .rf-out { animation: blink 0.35s infinite steps(1); }
 .rollfx.fail .rf-out { color: #ff4a3d; text-shadow: 0 0 10px rgba(255, 74, 61, 0.6); }
 
-/* Per-voice display styles (set by the Warden in the DM console) */
 .line.style-boxed { border: 1px solid var(--fg); padding: 0.2em 0.5em; display: inline-block; }
 .line.style-label::before { content: attr(data-label); opacity: 0.75; }
-/* The cast's portraits (about two lines tall), to the left of what they say.
-   Line art in the line's colour (the screen's, in person) with the paper see-through:
-   the picture (lines opaque, paper clear) is a stencil over the colour. Scanlines on top. */
 .line.has-portrait { display: flex; gap: 0.6em; align-items: flex-start; }
 .line.has-portrait::before { content: none; }
 .line.has-portrait .lt { flex: 1; min-width: 0; white-space: pre-wrap; }
 .line.style-label .lt::before { content: attr(data-label); opacity: 0.75; }
-/* The crew's portraits on their files: the picker, the full file, the side sheet. */
 .portrait.face { float: left; margin: 0.1em 0.7em 0.2em 0; }
 #crewpick-list li.has-face::after { content: ""; display: block; clear: both; }
 #crewpick-list li.current { outline: 1px solid var(--fg); outline-offset: 0.15em; }
-/* A whole row is the button: hovered (or its button focused), it all inverts, picture too. */
 #crewpick-list li { padding: 0.25em 0.4em; cursor: pointer; }
 #crewpick-list li:hover, #crewpick-list li:has(.pick:focus-visible) { background: var(--fg); color: var(--bg); text-shadow: none; }
 #crewpick-list li:hover :is(.pick, .p-dim, b), #crewpick-list li:has(.pick:focus-visible) :is(.pick, .p-dim, b) { background: none; color: inherit; text-shadow: none; }
@@ -199,7 +179,6 @@ body {
 .portrait {
   position: relative; display: block; flex: none; width: 2.3em; height: 2.3em; margin-top: 0.05em;
   overflow: hidden; isolation: isolate;
-  /* (the thin border is drawn just inside the edge: outside, the screen's edge would clip it) */
   outline: 1px solid color-mix(in srgb, currentColor 40%, transparent); outline-offset: -1px;
   box-shadow: 0 0 6px color-mix(in srgb, currentColor 30%, transparent);
 }
@@ -208,7 +187,6 @@ body {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.32) 2px 3px);
 }
-/* Over the intercom: dimmer, crawling static, a rolling bar and flicker (the picture itself holds still). */
 .portrait.comms { animation: p-flicker 2.7s infinite steps(1); }
 .portrait.comms .ink { filter: brightness(0.85) blur(0.4px); }
 .portrait.comms::before {
@@ -229,9 +207,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .portrait.comms, .portrait.comms::before, .portrait.comms::after { animation: none; }
 }
-/* The narrator: scene description, set apart from the voices. */
 .line.style-narration { font-style: italic; color: #ecece6 !important; text-shadow: 0 0 2px rgba(236, 236, 230, 0.45), 0 0 9px rgba(236, 236, 230, 0.25) !important; }
-/* (no cursor on output: the only blinking cursor is where the player types) */
 
 #busy { color: var(--dim); margin-bottom: 0.35em; }
 .dots::after { content: ""; animation: dots 1.2s infinite steps(4); }
@@ -252,15 +228,12 @@ body {
 #inputrow.disabled #caret, #inputrow:not(:focus-within) #caret { display: none; }
 @keyframes blink { 50% { opacity: 0; } }
 
-/* THE END */
 .ending-verdict { margin: 0.5em 0 0.3em; letter-spacing: 0.06em; }
 #ending-recap .rc-h { margin-top: 0.8em; color: var(--fg); }
 #ending-recap .rc-t { white-space: pre-wrap; color: var(--dim); }
 #ending { max-height: 80vh; overflow-y: auto; }
 
-/* Documents (handouts): read as printed text. */
-/* An audio log: its player, and the transcript lighting up a line at a time as it's said. */
-.docbody .alog { white-space: normal; } /* (the docbody keeps a document's line breaks; this lays out its own) */
+.docbody .alog { white-space: normal; }
 .alog-head { display: flex; justify-content: space-between; gap: 1em; color: var(--dim); }
 .alog-state { color: var(--fg); }
 .alog-ctl { margin: 0.4em 0 0.6em; }
@@ -285,7 +258,6 @@ body {
 .docbody code { font: inherit; border: 1px solid var(--dim); padding: 0 0.2em; }
 #docs-list li .p-dim { margin-left: 0.6em; }
 
-/* Countdowns under the header. The last half minute flashes red. */
 .clocks { display: flex; flex-wrap: wrap; gap: 0.4em 1.6em; padding: 0.15em 0 0.35em; letter-spacing: 0.08em; }
 .clocks[hidden] { display: none; }
 .clock b { font-weight: normal; background: var(--fg); color: var(--bg); padding: 0 0.3em; text-shadow: none; }
@@ -294,9 +266,6 @@ body {
 .clock.paused { color: var(--dim); }
 .clock.paused b { background: var(--dim); }
 
-/* ----- CRT overlays ----- */
-/* The glass sits above everything (boot screen and effects included) and never takes clicks. */
-/* The bundled portraits' credit, small in the bottom-right corner (above the glass, so its links work). */
 #credit {
   position: fixed; right: 2.2vw; bottom: 1.4vh; z-index: 210; margin: 0; max-width: 60vw;
   font-size: clamp(9px, 1.1vw, 12px); line-height: 1.3; text-align: right; color: var(--dim); opacity: 0.75; text-shadow: none;
@@ -306,14 +275,12 @@ body {
 .crt-glass { position: fixed; inset: 0; pointer-events: none; z-index: 200; overflow: hidden; }
 .crt-glass > * { position: absolute; inset: 0; }
 
-/* RGB aperture grille: fine vertical phosphor stripes */
 .crt-glass .grille {
   background: repeating-linear-gradient(to right,
     rgba(255, 40, 40, 0.06) 0 1px, rgba(40, 255, 80, 0.06) 1px 2px, rgba(40, 90, 255, 0.06) 2px 3px);
   mix-blend-mode: screen;
 }
 
-/* Scanlines, drifting very slowly */
 .crt-glass .scan {
   inset: -4px 0;
   background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.32) 2px 3px, rgba(0,0,0,0) 3px 4px);
@@ -321,7 +288,6 @@ body {
 }
 @keyframes scanDrift { to { transform: translateY(4px); } }
 
-/* Refresh band rolling down the tube */
 .crt-glass .roll {
   inset: auto 0;
   height: 22vh;
@@ -333,7 +299,6 @@ body {
 }
 @keyframes roll { to { transform: translateY(122vh); } }
 
-/* Film-grain noise */
 .crt-glass .grain {
   inset: -50%;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
@@ -346,12 +311,11 @@ body {
   60% { transform: translate(-3%, 8%); } 80% { transform: translate(8%, 2%); } 100% { transform: translate(0, 0); }
 }
 
-/* Curved tube: dark edges, rounded bezel corners, and a soft reflection on the glass */
 .crt-glass .bezel {
   border-radius: 4% / 6%;
   box-shadow:
-    0 0 0 60px #000,                                    /* mask outside the rounded corners */
-    inset 0 0 6vmin 1vmin rgba(0, 0, 0, 0.85),          /* tube edge falloff */
+    0 0 0 60px #000,
+    inset 0 0 6vmin 1vmin rgba(0, 0, 0, 0.85),
     inset 0 0 22vmin rgba(0, 0, 0, 0.55);
   background:
     radial-gradient(ellipse 120% 90% at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.55) 100%),
@@ -364,7 +328,6 @@ body {
   #crt.power-on { animation: none; }
 }
 
-/* ----- boot ----- */
 #boot {
   position: fixed; inset: 0; z-index: 100;
   background: var(--bg);
@@ -387,7 +350,6 @@ body {
 .warden-link a { color: var(--dim); text-decoration: none; border-bottom: 1px dashed var(--dim); text-shadow: none; }
 .warden-link a:hover, .warden-link a:focus-visible { color: var(--fg); border-color: var(--fg); outline: none; }
 
-/* ----- effects ----- */
 #fx { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
 #fx > * { position: absolute; inset: 0; }
 .fx-in { animation: fxIn 0.25s ease-out; }
@@ -395,10 +357,8 @@ body {
 @keyframes fxIn { from { opacity: 0; } }
 
 .fx-canvas { width: 100%; height: 100%; }
-.fx-ice { opacity: 0.425; } /* (half-there: the screen always shows through the frost) */
+.fx-ice { opacity: 0.425; }
 .fx-goo { filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)) saturate(1.2); }
-/* Goo is alive: it breathes (swelling a touch, hanging from the top) and its light
-   throbs in an uneven double beat, each splash at its own pace (--beat). */
 .fx-goo { transform-origin: 50% 0; animation: gooBreathe calc(var(--beat, 3s) * 2.3) ease-in-out infinite; }
 .fx-goo.fx-in { animation: fxIn 0.25s ease-out, gooBreathe calc(var(--beat, 3s) * 2.3) ease-in-out infinite; }
 .fx-goo > canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -407,7 +367,6 @@ body {
 @keyframes gooBeat { 0% { opacity: 0.12; } 7% { opacity: 0.75; } 16% { opacity: 0.3; } 25% { opacity: 0.55; } 45% { opacity: 0.18; } 100% { opacity: 0.1; } }
 @media (prefers-reduced-motion: reduce) { .fx-goo, .fx-goo.fx-in, .fx-goo .goo-glow { animation: none; } }
 .fx-static { image-rendering: pixelated; mix-blend-mode: screen; }
-
 
 .fx-alarm {
   display: grid; place-items: center;
@@ -429,14 +388,13 @@ body {
   background: #b00000; color: #fff; text-shadow: none; text-align: center; padding: 4px; white-space: nowrap; overflow: hidden;
 }
 
-/* (what is on the glass itself stays when the power goes: blood, goo, cracks and ice sit above the blackout) */
 .fx-blood, .fx-goo, .fx-crack, .fx-ice { z-index: 61; }
 .fx-blackout { background: #000; z-index: 60; display: flex; align-items: flex-end; padding: 24px; }
 .fx-blackout .aux { color: #400; text-shadow: none; animation: blink 2s infinite steps(1); }
 .fx-blackout.restoring { animation: restore 1.6s forwards steps(8); }
 @keyframes restore { 0% { opacity: 1; } 15% { opacity: 0; } 25% { opacity: 1; } 40% { opacity: 0; } 50% { opacity: 0.8; } 70% { opacity: 0; } 80% { opacity: 0.4; } 100% { opacity: 0; } }
 
-.fx-lockout { background: rgba(0,0,0,0.75); display: grid; place-items: center; } /* (typing is blocked by disabling the input; clicks still go through) */
+.fx-lockout { background: rgba(0,0,0,0.75); display: grid; place-items: center; }
 .fx-lockout .big { font-size: 2.6em; }
 
 .fx-banner { display: grid; place-items: center; }
@@ -446,7 +404,6 @@ body {
   animation: blink 0.8s infinite steps(1);
 }
 
-/* glitch is applied to #crt itself */
 #crt.glitching { animation: none; }
 #crt.glitching #screen, #crt.glitching #hdr {
   transform: translate(var(--gx, 0), var(--gy, 0));
@@ -455,8 +412,6 @@ body {
 }
 #crt.glitch-3 { filter: hue-rotate(40deg) contrast(1.3); }
 
-/* The text rots (corruption, part of the glitch): junk characters in sick colours,
-   lines lurching sideways, and bands of the screen tearing. */
 #crt .cr-red { color: #ff2448; text-shadow: 0 0 6px rgba(255,36,72,0.7); }
 #crt .cr-mag { color: #ff3df2; text-shadow: 0 0 6px rgba(255,61,242,0.7); }
 #crt .cr-cyan { color: #39f3ff; text-shadow: 0 0 6px rgba(57,243,255,0.7); }
@@ -467,12 +422,10 @@ body {
 #crt.corrupting #lines, #crt.corrupting #hdr {
   text-shadow: var(--cx, 0) 0 rgba(255,30,90,0.7), calc(var(--cx, 0) * -1) 0 rgba(30,220,255,0.7), 0 0 6px var(--glow);
 }
-/* The character sheet's picture, glitching: jolted, torn into slices, wrong colours, a tearing band. */
 #crt .cr-img { position: relative; }
 #crt .cr-img > * { transform: translateX(var(--fx, 0)); clip-path: inset(var(--ct, 0) 0 var(--cb, 0) 0); filter: hue-rotate(var(--fh, 0deg)) saturate(2.6) contrast(1.5); }
 #crt .cr-img.cr-img-inv > * { filter: invert(1) hue-rotate(var(--fh, 0deg)) contrast(1.8); }
 #crt .cr-img::after { content: ""; position: absolute; left: -4%; right: -4%; top: var(--bt, 50%); height: var(--bh, 4%); background: var(--fg); mix-blend-mode: difference; pointer-events: none; }
-/* (the adversary's picture keeps its scanlines: its tearing band goes before them) */
 #crt .rv-pic.cr-img::after { left: 0; right: 0; top: 0; height: auto; inset: 0; background: repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0, 0, 0, 0.3) 2px 3px); mix-blend-mode: normal; }
 #crt .rv-pic.cr-img::before { content: ""; position: absolute; z-index: 1; left: -4%; right: -4%; top: var(--bt, 50%); height: var(--bh, 4%); background: var(--fg); mix-blend-mode: difference; pointer-events: none; }
 .fx-corrupt { pointer-events: none; }
@@ -485,11 +438,9 @@ body {
   #crt { animation: none; }
 }
 
-/* Crew files: picker and the player's own sheet (replace the log while open). */
 #hdr .hdr-btn { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; text-shadow: inherit; letter-spacing: inherit; text-transform: uppercase; }
 #hdr .hdr-btn:hover, #hdr .hdr-btn:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
 body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow, body.panel-open #watchpick { display: none; }
-/* The crew sheet, in cards (renderFile, renderSide): rounded boxes, values in pills and circles. */
 .cs { display: flex; flex-direction: column; gap: 0.5em; max-width: 30em; }
 .cs-card { border: 2px solid var(--fg); border-radius: 0.6em; padding: 0.45em 0.6em 0.55em; box-shadow: 0 0 8px color-mix(in srgb, var(--fg) 22%, transparent), inset 0 0 10px color-mix(in srgb, var(--fg) 7%, transparent); }
 .cs-title { text-align: center; letter-spacing: 0.14em; margin-bottom: 0.35em; }
@@ -504,10 +455,8 @@ body.panel-open #lines, body.panel-open #busy, body.panel-open #inputrow, body.p
 .cs-vitals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4em; text-align: center; }
 .cs-pill { display: flex; align-items: stretch; justify-content: space-between; gap: 0.2em; min-height: 1.6em; border: 2px solid var(--fg); border-radius: 999px; padding: 0; overflow: hidden; font-size: 1.15em; white-space: nowrap; }
 .cs-of { color: var(--dim); }
-/* (the current value keeps as many places as the max, at least two: the pill doesn't shrink when it drops a digit) */
 .cs-now { display: inline-block; text-align: center; }
-.cs-now.of { text-align: right; } /* (beside a max: the / stays put) */
-/* (the -/+ run to the pill's ends, so hovered they fill its rounded end, clipped to it) */
+.cs-now.of { text-align: right; }
 .cs-pill .cs-step { flex: none; display: flex; align-items: center; padding: 0 0.15em 0 0.4em; opacity: 0.75; line-height: 1; }
 .cs-pill .cs-step:last-child { padding: 0 0.4em 0 0.15em; }
 .cs-step svg { width: 0.55em; height: 0.55em; }
@@ -527,14 +476,11 @@ button.cs-num:focus-visible { outline: none; }
 .cs-list > div:last-child { border: 0; }
 .cs-chips { display: flex; flex-wrap: wrap; gap: 0.3em; }
 .cs-chips > span, .cs-chips > .cs-doc { border: 2px solid var(--fg); border-radius: 999px; padding: 2px calc(0.45em + 2px); font-size: 0.85em; }
-/* A document among the items: it opens. */
 .cs-chips .cs-doc { display: inline-flex; align-items: center; gap: 0.3em; background: none; color: inherit; font-family: inherit; text-shadow: inherit; line-height: inherit; cursor: pointer; }
 .cs-chips .cs-doc:hover, .cs-chips .cs-doc:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
 .cs-chips .cs-file { width: 1em; height: 1em; flex: none; }
-/* One line, always: a pill too long for the card shrinks to fit, its text fading at the end,
-   and on hover the text slides across to show the rest (and back). */
 .cs-chips > * { max-width: 100%; min-width: 0; display: inline-flex; align-items: center; }
-.cs-cw { display: flex; min-width: 0; overflow: hidden; white-space: nowrap; } /* (flex: no text baseline adding height) */
+.cs-cw { display: flex; min-width: 0; overflow: hidden; white-space: nowrap; }
 .cs-ct { display: inline-block; white-space: nowrap; }
 .cs-cw.long { -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent); mask-image: linear-gradient(90deg, #000 82%, transparent); }
 .cs-chips > :hover .cs-cw.long, .cs-chips > :focus-visible .cs-cw.long { -webkit-mask-image: none; mask-image: none; }
@@ -542,8 +488,6 @@ button.cs-num:focus-visible { outline: none; }
 @keyframes csMarquee { 0%, 12% { transform: translateX(0); } 88%, 100% { transform: translateX(var(--shift, 0)); } }
 @media (prefers-reduced-motion: reduce) { .cs-chips > :hover .cs-cw.long .cs-ct { animation: none; } }
 .cs-story { display: flex; flex-direction: column; gap: 0.3em; }
-/* The full sheet fills the panel; with room for it, the cards pair up side by side
-   (by the space the sheet has, not the window's: a container query). */
 #crewfile { max-width: none; }
 #crewfile-body { container-type: inline-size; }
 .cs-full { max-width: none; }
@@ -558,14 +502,12 @@ button.cs-num:focus-visible { outline: none; }
   .cs-full .cs-skills { grid-area: skills; }
   .cs-full .cs-items { grid-area: items; }
   .cs-full .cs-stats, .cs-full .cs-saves { display: flex; flex-direction: column; }
-  .cs-full .cs-nums { flex: 1; align-items: center; } /* (circles centred when the pair's heights differ) */
+  .cs-full .cs-nums { flex: 1; align-items: center; }
 }
-/* (beside the terminal: a little smaller) */
 .cs-compact { font-size: 0.85em; max-width: none; }
 .cs-compact .cs-head { grid-template-columns: 4.6em 1fr; }
-/* The side sheet's buttons, always at the bottom of the panel (the sheet scrolls above them). */
-.s-foot { position: sticky; bottom: -1px; display: flex; gap: 1.2em; padding: 0.45em 0 calc(0.2em + 1px); /* (1px past the bottom: the panel can end on a fraction of a pixel, and the sheet showed through below) */ background: var(--bg); border-top: 1px solid var(--dim); margin-top: auto;
-  box-shadow: -0.8em 0 0 var(--bg); } /* (and over the panel's left padding, where the cards' glow spills) */
+.s-foot { position: sticky; bottom: -1px; display: flex; gap: 1.2em; padding: 0.45em 0 calc(0.2em + 1px); background: var(--bg); border-top: 1px solid var(--dim); margin-top: auto;
+  box-shadow: -0.8em 0 0 var(--bg); }
 
 .panel { border: 3px double var(--fg); padding: 0.6em 0.9em; margin: 0.2em 0 0.8em; max-width: 52em; }
 .panel[hidden] { display: none; }
@@ -580,22 +522,20 @@ button.cs-num:focus-visible { outline: none; }
 .p-sec { margin-top: 0.45em; }
 .p-text { white-space: pre-wrap; }
 .p-actions { margin-top: 0.8em; display: flex; gap: 2em; flex-wrap: wrap; }
-.p-actions.p-top { margin: 0 0 0.6em; } /* (the crew file's Back and Select, above the sheet) */
+.p-actions.p-top { margin: 0 0 0.6em; }
 
-/* The character sidebar beside the terminal. */
 #mainrow { flex: 1; min-height: 0; display: flex; gap: 0.9em; }
 #mainrow #screen { min-width: 0; }
 #side {
-  flex: 0 0 auto; overflow-y: auto; /* (its width: sideWidth in player.js) */ scrollbar-width: none;
+  flex: 0 0 auto; overflow-y: auto; scrollbar-width: none;
   border-left: 2px solid var(--dim); padding: 0 0 0 0.8em; line-height: 1.25;
-  display: flex; flex-direction: column; /* (the sheet, then its buttons at the bottom) */
+  display: flex; flex-direction: column;
 }
 #side > .cs { flex: 1 0 auto; }
 #side::-webkit-scrollbar { display: none; }
 #side[hidden] { display: none; }
 #hdr .hdr-btn.on { text-decoration: underline; }
 
-/* The rules: a plain, readable sheet over the terminal (no glow, no terminal font). */
 .rulesdlg { width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid #3a3f44; border-radius: 12px;
   background: #15181b; color: #e9ecef; font: 16px/1.55 system-ui, "Segoe UI", sans-serif; text-shadow: none; letter-spacing: normal; text-transform: none;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; }
@@ -619,10 +559,8 @@ button.cs-num:focus-visible { outline: none; }
 .rules-body .fine { margin: 18px 0 0; font-size: 13px; color: #8a939a; }
 @media (max-width: 520px) { .rules-body dl { grid-template-columns: 1fr; } .rules-body dd { margin-bottom: 6px; } }
 
-/* Clickable stats, vitals controls, the self-roll panel. */
 #selfroll .p-btn { margin: 0 0.5em 0.2em 0; }
 #selfroll .p-btn.on { color: var(--fg); }
-/* (a chosen pip: one character wide, centred on the letters' middle) */
 #selfroll .sr-pip { width: 0.4em; height: 0.4em; vertical-align: 0.08em; }
 #selfroll .sr-pip rect { fill: currentColor; }
 #selfroll .sr-pip path { stroke: var(--bg); stroke-width: 1.5; stroke-linecap: square; }
@@ -631,11 +569,7 @@ button.cs-num:focus-visible { outline: none; }
 #sr-dice { background: transparent; border: 0; border-bottom: 2px solid var(--fg); outline: 0; color: var(--fg); font: inherit; text-shadow: inherit; text-align: center; }
 #sr-err { color: var(--fg); animation: blink 1s infinite steps(1); }
 
-/* Terminal looks (a terminal's own condition; blood/goo/crack are drawn as effects). */
 body.look-flicker #screen, body.look-flicker #side { animation: lookflicker 5s infinite steps(1); }
-/* Less flicker (each player's own choice: FLICKER in the header, player.js): the screen holds
-   still. Nothing flickers, rolls, blinks, flashes or pulses; a glitch doesn't shake the screen
-   (its text still rots, slowly: effects.js); static is faint and slow. */
 body.calm *, body.calm *::before, body.calm *::after { animation: none !important; }
 body.calm #crt.glitching #screen, body.calm #crt.glitching #hdr { transform: none; clip-path: none; }
 body.calm #crt.glitch-3, body.calm #crt.glitch-3 #hdr, body.calm #crt.glitch-3 #clocks, body.calm #crt.glitch-3 #mainrow { filter: none; }
@@ -653,8 +587,6 @@ body.look-grime #crt::after {
 body.look-portable #crt { inset: 5vh 6vw; border: 3px solid var(--dim); border-radius: 22px; box-shadow: 0 0 0 9999px #050505, inset 0 0 40px rgba(0, 0, 0, 0.6); font-size: 0.9em; }
 body.look-portable #crt::before { content: "PORTABLE UNIT · SIGNAL ▂▄▆_ · BATT 62%"; position: absolute; right: 2.2em; bottom: 0.6em; color: var(--dim); font-size: 0.7em; letter-spacing: 0.08em; }
 
-/* A game without a Warden: the start button on the join screen, the setup and
-   pilot dialogs (readable, like the rules), the stakes on a roll, notices. */
 .warden-link + .warden-link { margin-top: 0.8em; }
 .warden-link .linkbtn { background: none; border: 0; border-bottom: 1px dashed var(--dim); padding: 0; font: inherit; color: var(--dim); letter-spacing: inherit; cursor: pointer; text-transform: inherit; }
 .warden-link .linkbtn:hover, .warden-link .linkbtn:focus-visible { color: var(--fg); outline: none; }
@@ -682,17 +614,12 @@ body.look-portable #crt::before { content: "PORTABLE UNIT · SIGNAL ▂▄▆_ �
 #solopick li .p-btn { text-align: left; }
 #solopick .tags { color: var(--dim); }
 
-/* The stream page (player.js: stream): along the bottom on the right, the crew being
-   played (portrait, name, wounds, health and stress), then a frame for the Warden's
-   camera, a little bigger than a portrait. The streaming software puts the camera over it. */
 body.stream { --cb-face: 15vh; --cb-cam: 19vh; }
-/* The effects stay above them: they end at the line over the crew (--fx-bottom: player.js). */
 body.stream #fx, body.stream .rollfx, body.stream .planfx { bottom: var(--fx-bottom, 0px); overflow: hidden; }
 body.stream #crt.glitch-3 { filter: none; }
 body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #crt.glitch-3 #mainrow { filter: hue-rotate(40deg) contrast(1.3); }
 #castbar { display: flex; justify-content: flex-end; align-items: flex-end; gap: 2.5vh; margin-top: 0.6em; padding-top: 0.6em; border-top: 2px solid var(--dim); }
 #castbar[hidden] { display: none; }
-/* The station, small: which rooms the players are in (stationmap.js mini). */
 #cb-map { margin-right: auto; align-self: stretch; min-width: 0; flex: 0 1 auto; display: flex; align-items: flex-end; }
 #cb-map .mm { height: calc(var(--cb-cam) + 1.4em); width: auto; max-width: 100%; overflow: visible; font-family: var(--font); }
 .mm-corr, .mm-lift { stroke: var(--dim); stroke-width: 3; }
@@ -718,7 +645,6 @@ body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #
 .cb-wounds i { width: 0.45em; height: 0.45em; border: 1px solid var(--fg); }
 .cb-wounds i.on { background: var(--fg); }
 .cb-rec { color: #ff4a3d; text-shadow: 0 0 6px rgba(255, 74, 61, 0.6); animation: blink 1.2s infinite steps(1); }
-/* The Warden's own entries: quieter than what the players see; versions of a line under it. */
 .line.meta { color: var(--dim); text-transform: uppercase; }
 .line.meta.table, .line.meta.heard, .line.meta.warden { color: var(--fg); }
 .line .var { color: var(--dim); margin-top: 0.15em; }

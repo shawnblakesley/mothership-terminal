@@ -1,6 +1,3 @@
-// The Warden's sound library: audio files uploaded to a session (monster
-// growls, attacks, ambience...) that the Warden plays on the players' screens.
-// Files live on disk under DATA_DIR/sounds/<CODE>/; the list is in the session.
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -18,8 +15,6 @@ export function setSoundsDir(dir) {
 const dirFor = (code) => path.join(root, code.replace(/[^A-Z0-9]/g, ""));
 export const soundPath = (code, sound) => path.join(dirFor(code), `${sound.id}.${sound.ext}`);
 
-// What kind of audio file is this? Checked from its first bytes (not its name),
-// so only real audio is stored and served.
 export function sniff(buf) {
   const ascii = (a, b) => buf.subarray(a, b).toString("latin1");
   if (buf.length < 12) return null;
@@ -32,7 +27,6 @@ export function sniff(buf) {
   return null;
 }
 
-// Store an uploaded file. Returns the sound's record, or throws with a message for the Warden.
 export function saveSound(code, existing, buf, name, seconds) {
   if (!buf?.length) throw new Error("That file is empty.");
   if (buf.length > MAX_SOUND_BYTES) throw new Error(`Sounds can be up to ${MAX_SOUND_BYTES / 1048576} MB each.`);
@@ -47,7 +41,7 @@ export function saveSound(code, existing, buf, name, seconds) {
     ext: kind.ext,
     type: kind.type,
     bytes: buf.length,
-    seconds: Math.max(0, Math.min(3600, Number(seconds) || 0)), // as measured by the console (0 = unknown)
+    seconds: Math.max(0, Math.min(3600, Number(seconds) || 0)),
     volume: 0.8,
   };
   fs.mkdirSync(dirFor(code), { recursive: true });

@@ -1,21 +1,7 @@
-// Voices ("entities"): anything that can put words on the players' screen and
-// speak them aloud. Two are built in (the terminal itself and system broadcasts);
-// the Warden can add any number more (intercom, a stranger on comms, the thing in
-// the vents...). Each has a display style, an eSpeak base voice, and a Web Audio
-// effect chain (applied in the player's browser by public/voice.js).
-
 import { clampInt } from "./clean.js";
 export const BUILTIN = { terminal: "terminal", broadcast: "broadcast", narrator: "narrator" };
-// Adversaries (the creature, the thing in the walls) are voices with an "adversary"
-// part: { revealed, picture }. Until the players see one, its lines show as "???";
-// after, by its name. picture: an uploaded file (portraits.js), or a link to one on
-// the web (it loads from there: nothing is copied), the Warden can show them;
-// credit: where the picture is from (the artist, a link), shown with it.
 export const PICTURE_LINK = /^https:\/\/[^\s"'<>()`]{4,600}$/;
-// THE COLD: "Of the Void" by thienbao (linked, not copied; the artist's DeviantArt
-// account is gone, so the link is to where it's still posted).
 const COLD_PICTURE = "https://vibes1.funnyjunk.com/pictures/The+formless+one+this+is+far+and+away+the+longest_dddc3c_6624090.jpg";
-// (its first picture, Matt Harding's: saved stories with it unchanged move to the new one)
 export const OLD_COLD_PICTURES = ["https://images.squarespace-cdn.com/content/v1/58d3f460d482e9f596028aac/1503694623654-WL23BVBQK0KZH1XVQBSJ/thingarbook_art_03.jpg?format=2500w"];
 const COLD_CREDIT = "Of the Void by thienbao on DeviantArt";
 export const DEFAULT_COLD = { picture: COLD_PICTURE, credit: COLD_CREDIT };
@@ -27,7 +13,6 @@ export function newAdversary() {
     persona: "What it is, what it wants, how it acts and (if it does) how it speaks. The agent reads this.",
     ...fromPreset("demonic"), systems: [""], adversary: { revealed: false, picture: "", credit: "" } };
 }
-// Voices that sound like comms (people on a speaker or radio), by their sound preset.
 export const COMMS_PRESETS = new Set(["intercom", "radio", "human", "clean"]);
 
 export const VARIANTS = [
@@ -36,10 +21,8 @@ export const VARIANTS = [
 ];
 export const STYLES = ["plain", "label", "boxed", "narration"];
 
-// "espeak" = synthetic (instant). "neural" = human-sounding Kokoro voices (see tts.js).
 export const ENGINES = ["espeak", "neural"];
 
-// Kokoro speakers: a/b = American/British, f/m = female/male.
 export const SPEAKERS = {
   af_heart: "Heart (US female)", af_bella: "Bella (US female)", af_nicole: "Nicole (US female, soft)",
   af_sarah: "Sarah (US female)", af_nova: "Nova (US female)", af_sky: "Sky (US female)",
@@ -52,27 +35,25 @@ export const SPEAKERS = {
   bm_george: "George (UK male)", bm_lewis: "Lewis (UK male)", bm_daniel: "Daniel (UK male)", bm_fable: "Fable (UK male)",
 };
 
-// Effect parameters and their [min, max, default]. public/voice.js reads the same names.
 export const FX_PARAMS = {
-  rate: [0.5, 1.5, 1], // playback speed (also lowers/raises pitch)
-  highpass: [20, 1500, 80], // Hz: cut lows (higher = thinner, more "speaker")
-  lowpass: [800, 12000, 9000], // Hz: cut highs (lower = muffled)
-  drive: [0, 8, 0], // saturation / distortion
-  ringMix: [0, 1, 0], // ring modulator amount (robotic warble)
-  ringFreq: [10, 400, 55], // Hz: ring modulator carrier
-  comb: [0, 0.9, 0], // metallic resonance amount
-  combMs: [1, 20, 6], // ms: metallic resonance pitch
-  chorus: [0, 1, 0], // drifting doubled voices
-  echo: [0, 1, 0], // echo amount
-  echoTime: [0.05, 1, 0.4], // s
+  rate: [0.5, 1.5, 1],
+  highpass: [20, 1500, 80],
+  lowpass: [800, 12000, 9000],
+  drive: [0, 8, 0],
+  ringMix: [0, 1, 0],
+  ringFreq: [10, 400, 55],
+  comb: [0, 0.9, 0],
+  combMs: [1, 20, 6],
+  chorus: [0, 1, 0],
+  echo: [0, 1, 0],
+  echoTime: [0.05, 1, 0.4],
   echoFeedback: [0, 0.85, 0.35],
-  reverb: [0, 1.5, 0], // long reverb tail
-  noise: [0, 1, 0], // radio hiss underneath
-  dry: [0, 1.5, 1], // direct (unprocessed-by-space) level
+  reverb: [0, 1.5, 0],
+  noise: [0, 1, 0],
+  dry: [0, 1.5, 1],
 };
 
 export const PRESETS = {
-  // Human-sounding (neural) voices
   intercom: {
     voice: { engine: "neural", speaker: "am_michael", pace: 1 },
     fx: { highpass: 320, lowpass: 3400, drive: 1.2, noise: 0.25, reverb: 0.15, dry: 1 },
@@ -81,7 +62,6 @@ export const PRESETS = {
     voice: { engine: "neural", speaker: "af_heart", pace: 1 },
     fx: {},
   },
-  // Synthetic (eSpeak) voices
   robotic: {
     voice: { engine: "espeak", variant: "m3", pitch: 32, speed: 165, wordgap: 1 },
     fx: { highpass: 180, lowpass: 3600, drive: 2.5, ringMix: 0.6, ringFreq: 55, comb: 0.45, combMs: 6.2, dry: 0.85 },
@@ -122,7 +102,6 @@ function fillFx(fx = {}) {
   return out;
 }
 
-// Personas tell the agent who each voice is and how it talks.
 export const DEFAULT_PERSONAS = {
   narrator: `You are the narrator: the scene itself, not a person in it. You describe what happens around the players, as it happens, in a sentence or two: what they see, hear and smell (water dripping, a panel flickering, the deck shuddering, an explosion somewhere below), and what other people do (someone flinches; footsteps stop outside the door).
 
@@ -159,66 +138,49 @@ HOW IT SPEAKS:
 - Use it only when tension is high, or when the Warden asks. Never explain it.`,
 };
 
-// Earlier default personas, upgraded when a saved session still has one unedited.
 const INTERCOM_BASE = `The live station intercom: real people elsewhere on the station talking to the players.
 - Natural, human, conversational speech (sentence case), with the speaker's own personality, stress and fear.
 - Say who is speaking if it isn't obvious ("This is Salk, in med bay...").
 - Only people the lore says are on the station can speak, and only about what they would know.`;
 const PREV = PREV_PERSONAS();
 export const OLD_DEFAULT_PERSONAS = {
-  // before THE COLD was described (it was just "something that should not be in the system")
   unknown: [`Something that should not be in the system. Nobody knows what it is.
 - Speaks rarely: short, wrong, intimate fragments, all lowercase. Knows things it shouldn't.
 - Use it only when tension is high, or when the Warden asks. Never explain it.`],
-  // the first narrator, before it was kept brief
   narrator: [PREV.narrator, PREV.narrator.replace("- Each sentence on its own line: it's spoken a line at a time.\n", ""), PREV.narrator.replace("- Each sentence on its own line: it's spoken a line at a time.\n", "").replace("- BRIEF: one or two short sentences, under 25 words. One telling detail beats a full description. Present tense, plain and concrete. No dialogue: people speak through their own voices.", "- Present tense, plain and concrete. Short: one to three sentences. No dialogue: people speak through their own voices.")],
   terminal: [
-    PREV.terminal, // before the rules every computer shares moved to the agent's own
-    // before the rule of cool: HV-CORE decided whether hacks worked
+    PREV.terminal,
     PREV.terminal.replace(
       /^- Players may try to log in, hack, override.*$/m,
       "- Players may try to log in, hack, or social-engineer you. Be fair but make them work. A clever approach can succeed; brute force should fail and may trip security.",
     ),
   ],
   intercom: [
-    // before the cast was its own thing (characters lived in the voice)
     `The live station intercom: real people elsewhere on the station talking to the players.
 - Several people use it (see CHARACTERS); each line says who is speaking. Give each their own personality, stress and fear, and let them talk to each other as well as to the players.
 - Natural, human, conversational speech (sentence case).`,
-    PREV.intercom, // before the rules every voice shares moved to the agent's own
-    INTERCOM_BASE, // before the one-sentence rule
+    PREV.intercom,
+    INTERCOM_BASE,
     `${INTERCOM_BASE}\n- Strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,
-    `${INTERCOM_BASE}\n- Intercom lines only: strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`, // before characters
+    `${INTERCOM_BASE}\n- Intercom lines only: strictly MUST be one line per sentence. Break into new lines when using ellipses, commas, or any punctuation. Fragments are okay.`,
   ],
 };
 
-// How a human (neural) voice's line is split for speech: one clip per text line,
-// so the first plays while the rest generate. public/player.js splits the same way.
-// One sentence per line: human voices are spoken a line at a time, so the first
-// sentence can play while the rest is still being voiced. ("Dr. Vale" stays whole.)
 export function sentenceLines(text) {
   return String(text).replace(ABBREVIATION, `$1${HIDDEN_DOT}`).split("\n")
     .flatMap((row) => (row.match(SENTENCE) || [row]).map((s) => s.trim()))
     .filter(Boolean).join("\n").replaceAll(HIDDEN_DOT, ".");
 }
-// Splitting text into sentences (here and agent.js limitLength): abbreviations' dots
-// are hidden first (as HIDDEN_DOT, a one-dot leader), so "Dr. Vale" stays whole.
 export const ABBREVIATION = /\b(Dr|Mr|Mrs|Ms|St|Sgt|Lt|Capt|No|vs)\./g;
 export const SENTENCE = /[^.!?…]+(?:[.!?…]+["')\]]*|$)\s*/g;
 export const HIDDEN_DOT = "\u2024";
 
 export const speechParts = (text) => String(text).split(/\n+/).map((s) => s.trim()).filter(Boolean);
 
-// The connection graph: which systems each voice can be heard on (terminals.js
-// net keys: "" is the station's network, "*" every system). The station's
-// computer, broadcasts and intercom are on the station; the tug's flight
-// computer only on the tug; the entity is in every machine.
-const SHIP_NET = "second-chance"; // (netOf(SHIP_TERMINAL))
-const DEFAULT_SYSTEMS = { ship: [SHIP_NET], unknown: ["*"], narrator: ["*"] }; // (the narrator is the room, not a machine)
+const SHIP_NET = "second-chance";
+const DEFAULT_SYSTEMS = { ship: [SHIP_NET], unknown: ["*"], narrator: ["*"] };
 const defaultSystemsFor = (id) => [...(DEFAULT_SYSTEMS[id] || [""])];
 
-// The narrator: a plain, calm human voice describing the scene, in every adventure.
-// Always white, whatever the terminal's colour (the player screen enforces it too).
 export const NARRATOR_WHITE = "#ecece6";
 export function narratorVoice() {
   return { id: BUILTIN.narrator, name: "NARRATOR", style: "narration", color: NARRATOR_WHITE, persona: DEFAULT_PERSONAS.narrator, systems: defaultSystemsFor(BUILTIN.narrator), ...fromPreset("human"), preset: "custom", voice: { engine: "neural", speaker: "bm_george", pace: 0.95 } };
@@ -230,21 +192,17 @@ export function defaultVoices() {
     { id: BUILTIN.broadcast, name: "SYSTEM BROADCAST", style: "boxed", color: "", persona: DEFAULT_PERSONAS.broadcast, ...fromPreset("ethereal") },
     narratorVoice(),
     shipVoice(),
-    { id: "intercom", name: "INTERCOM", style: "label", color: "", // (the screen's own colour)
+    { id: "intercom", name: "INTERCOM", style: "label", color: "",
       persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom") },
-    // The organism (an adversary: "???" until the players see it): the demonic effects over a slowed human voice.
     { id: "unknown", name: "THE COLD", style: "label", color: "#ff5a5a", persona: DEFAULT_PERSONAS.unknown, ...fromPreset("demonic"),
       preset: "custom", voice: { engine: "neural", speaker: "am_onyx", pace: 0.75 }, adversary: { revealed: false, picture: COLD_PICTURE, credit: COLD_CREDIT } },
   ];
 }
 
-// The SECOND CHANCE's own flight computer: a separate machine, off the station network.
 export function shipVoice() {
   return { id: "ship", name: "SECOND CHANCE", style: "label", color: "#ffb347", persona: DEFAULT_PERSONAS.ship, systems: defaultSystemsFor("ship"), ...fromPreset("radio") };
 }
 
-
-// Validate whatever the DM console sends; always keep the two built-ins.
 export function sanitizeVoices(list) {
   const defaults = defaultVoices();
   const seen = new Set();
@@ -256,7 +214,6 @@ export function sanitizeVoices(list) {
     out.push({
       id,
       name: String(raw.name || id).slice(0, 40),
-      // Voices saved before personas existed get the default for their id.
       persona: String(raw.persona ?? DEFAULT_PERSONAS[id] ?? "").slice(0, 8000),
       style: STYLES.includes(raw.style) ? raw.style : "label",
       color: /^#[0-9a-f]{6}$/i.test(raw.color || "") ? raw.color : "",
@@ -271,10 +228,9 @@ export function sanitizeVoices(list) {
         wordgap: clampInt(raw.voice?.wordgap, 0, 10, 0),
       },
       fx: fillFx(raw.fx),
-      // Where it can be heard (net keys; see DEFAULT_SYSTEMS). Voices from before this get their default.
       systems: (Array.isArray(raw.systems) ? [...new Set(raw.systems.map((n) => String(n)).filter((n) => n === "*" || /^[a-z0-9-]{0,60}$/.test(n)))].slice(0, 64) : []),
     });
-    if (!out.at(-1).systems.length) out.at(-1).systems = defaultSystemsFor(id); // (none given: its default)
+    if (!out.at(-1).systems.length) out.at(-1).systems = defaultSystemsFor(id);
     if (raw.adversary && typeof raw.adversary === "object") {
       out.at(-1).adversary = { revealed: !!raw.adversary.revealed, picture: PICTURE_FILE.test(raw.adversary.picture || "") || PICTURE_LINK.test(raw.adversary.picture || "") ? raw.adversary.picture : "", credit: String(raw.adversary.credit || "").replace(/\s+/g, " ").trim().slice(0, 200) };
     }
@@ -288,8 +244,6 @@ export function voiceFor(voices, entry) {
   return voices.find((v) => v.id === id) || voices.find((v) => v.id === BUILTIN.terminal);
 }
 
-// The default personas as they were before the shared rules moved into the agent's
-// own instructions (agent.js: COMPUTERS, SPOKEN VOICES), for upgrading unedited saved ones.
 function PREV_PERSONAS() {
   return {
     narrator: "You are the narrator: the scene itself, not a person in it. You describe what happens around the players, as it happens, in a sentence or two: what they see, hear and smell (water dripping, a panel flickering, the deck shuddering, an explosion somewhere below), and what other people do (Salk flinches; Okonkwo's footsteps stop outside the door).\n\nRULES\n- BRIEF: one or two short sentences, under 25 words. One telling detail beats a full description. Present tense, plain and concrete. No dialogue: people speak through their own voices.\n- Each sentence on its own line: it's spoken a line at a time.\n- Never speak to the players or their characters. Never say \"you\". Never ask anything, advise, hint at what to do, or explain what something means.\n- Never say what the players' characters do, think or feel; describe the world they're in, and how others react to them.\n- Only what can be perceived in the room; no secrets, no thoughts, no foreshadowing that knows too much.\n- Use it when something happens in the scene that the terminal and the people talking wouldn't say. Don't narrate every reply.",

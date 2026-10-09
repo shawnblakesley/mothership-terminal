@@ -2,9 +2,6 @@
   const $ = (id) => document.getElementById(id);
   const normCode = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
-  // ------------------------------------------------------------ session + token
-  // The Warden token proves this console runs the session. It arrives once in a
-  // link's #fragment (never sent to the server in a URL) and is kept per device.
   const store = {
     get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
@@ -17,15 +14,14 @@
     store.set(tokenKey(code), hashToken);
     history.replaceState(null, "", `?s=${code}`);
   }
-  let key = code ? store.get(tokenKey(code)) : null; // the Warden token for this session
+  let key = code ? store.get(tokenKey(code)) : null;
   let ws, S = null;
-  let appVersion = null; // the server's code version (see version.js)
-  let pendingKey = ""; // re-render the draft only when the pending reply actually changes
-  const dirty = new Set(); // config fields the DM is mid-edit on
+  let appVersion = null;
+  let pendingKey = "";
+  const dirty = new Set();
 
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const send = (msg) => ws?.readyState === 1 && ws.send(JSON.stringify(msg));
-  // A file to the server (a picture or a sound), as the Warden. Returns its JSON reply.
   async function upload(url, body) {
     const r = await fetch(url, { method: "POST", headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" }, body });
     const out = await r.json().catch(() => ({}));
@@ -33,14 +29,11 @@
     return out;
   }
   const time = (ts) => new Date(ts).toTimeString().slice(0, 5);
-  // Who is at a terminal: their crew names ("a screen" for one with none).
   const screensAt = (id) => (S.screens || []).filter((s) => s.terminal === id).map((s) => s.character || "a screen");
 
   // Each effect's icon (flat line icons from Lucide, ISC licence: lucide.dev) and name.
-  // A skill as the Warden reads and edits it: "Hacking +15" (crew.js keeps { name, bonus }).
   const skillStr = (s) => (typeof s === "string" ? s : `${s.name} +${s.bonus}`);
   const fxIcon = (inner) => `<svg class="fxi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
-  // An effect as the Warden sees it in a reply: icon, type, its text, how long.
   const fxLabel = (f, icon) => `${FX_META[f.type]?.[0] || icon} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s`;
   const FX_META = {
     blood: [fxIcon('<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>'), "Blood"],
@@ -56,7 +49,6 @@
     banner: [fxIcon('<path d="M11 6a13 13 0 0 0 8.4-2.8A1 1 0 0 1 21 4v12a1 1 0 0 1-1.6.8A13 13 0 0 0 11 14H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/><path d="M6 14a12 12 0 0 0 2.4 7.2 2 2 0 0 0 3.2-2.4A8 8 0 0 1 10 14"/><path d="M8 6v8"/>'), "Banner"],
   };
 
-  // ------------------------------------------------------------ socket
   let autoKeySent = false, autoSttSent = false;
   function connect() {
     const u = new URL(`ws?s=${encodeURIComponent(code)}&role=dm`, location.href);
@@ -77,12 +69,10 @@
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.t === "state") {
-        // The server was updated while this page was open: load the new code.
         if (appVersion && msg.state.version && msg.state.version !== appVersion) return location.reload();
         appVersion = msg.state.version;
         S = msg.state;
         render();
-        // After a server restart the session's key is gone: re-send a remembered one.
         const p = S.providers.find((x) => x.id === S.config.provider);
         const remembered = p && store.get(`wardenKey:${p.id}`);
         if (p && !p.configured && remembered && !autoKeySent) {
@@ -111,16 +101,10 @@
     toast.t = setTimeout(() => (el.hidden = true), 5000);
   }
 
-  // Player link for this session (relative to this page, so it works under /mothership/).
   const playerLink = () => new URL(`./?s=${code}`, location.href).href;
-  // The stream page (player.js: stream): it signs in with its own key, which only watches.
   const streamLink = () => `${new URL(`stream?s=${code}`, new URL("./", location.href)).href}#key=${S?.streamKey || ""}`;
   const wardenLink = () => `${new URL(`dm?s=${code}`, new URL("./", location.href)).href}#token=${key}`;
 
-  // In-page confirmation: ask(title, text, [[value, label, class?], ...]) resolves
-  // to the clicked button's value, or "" if dismissed. (Not confirm(): browsers let
-  // people block those, which silently answers "cancel".)
-  // input: { value } shows an editable field (read it from $("askCopy") afterwards).
   function ask(title, text, buttons, copyText, input = null) {
     const dlg = $("askDialog");
     $("askTitle").textContent = title;
@@ -139,7 +123,7 @@
         if (dlg.open) dlg.close();
         resolve(value);
       };
-      const onClose = () => done(""); // Esc
+      const onClose = () => done("");
       dlg.addEventListener("close", onClose);
       $("askButtons").onclick = (e) => {
         const btn = e.target.closest("button");
@@ -156,7 +140,6 @@
     catch { ask(`Copy the ${what.toLowerCase()}`, "Copying was blocked. Copy it from below.", [], text); }
   }
 
-  // ------------------------------------------------------------ start screen
   let providerCatalog = [];
   async function loadProviders() {
     if (providerCatalog.length) return providerCatalog;
@@ -185,13 +168,10 @@
     const provs = await loadProviders();
     const sel = $("newProvider");
     sel.innerHTML = provs.map((p) => `<option value="${esc(p.id)}">${esc(p.label)} · ${p.free ? "free, rate-limited" : p.localKey ? "local key" : `cheapest: ${esc(p.models[0].label)}`}</option>`).join("");
-    // On this computer with a key in .env: that provider first, nothing to paste.
     const local = provs.find((p) => p.localKey);
     if (local) sel.value = local.id;
     const syncProv = () => {
       const p = provs.find((x) => x.id === sel.value);
-      // The free provider runs on the server's key, and on this computer a provider
-      // with a key in .env uses that: no key field either way.
       const free = !!p?.free || !!p?.localKey;
       $("newKeyFields").hidden = free;
       $("newKey").required = !free;
@@ -264,10 +244,8 @@
     }
   });
 
-  // ------------------------------------------------------------ API key dialog
   function openKeyDialog() {
     const sel = $("keyProvider");
-    // The free provider takes no key, so it isn't listed here.
     const keyed = S.providers.filter((p) => !p.free);
     sel.innerHTML = keyed.map((p) => `<option value="${esc(p.id)}">${esc(p.label)}${p.configured ? " ✓" : ""}</option>`).join("");
     sel.value = keyed.some((p) => p.id === S.config.provider) ? S.config.provider : keyed[0].id;
@@ -302,8 +280,6 @@
     }
   });
 
-  // ------------------------------------------------------------ render
-  // The panic table (Rules tab), for reference.
   function renderPanicTable() {
     const list = $("panicTable");
     if (list.childElementCount || !S.panicTable) return;
@@ -345,19 +321,14 @@
     $("retcon").textContent = S.canRetcon > 1 ? `↶ Retcon last response (${S.canRetcon})` : "↶ Retcon last response";
   }
 
-  // Discord's logo (Simple Icons, CC0), in the text colour.
   const DISCORD_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>';
-  // Discord is ready when the server has the bot and this session has a Groq key.
   const discordReady = () => !!(S?.discord?.enabled && S.discord.sttKey);
 
-  // With Discord ready, Listen becomes the Discord button: it copies the /terminal listen
-  // command (with the session's code), and pulses while the bot is listening; then a
-  // click stops it (the bot leaves the channel).
   let micMode = "", micTitle = null;
   function renderDiscordButton() {
     const d = S.discord || {}, btn = $("micBtn"), on = discordReady();
     micTitle ??= btn.title;
-    if (on && listening) setListening(false); // (Discord does the listening now)
+    if (on && listening) setListening(false);
     const mode = on ? `discord|${d.listening ? `${d.listening.channel}|${d.listening.guild}` : ""}` : "mic";
     if (mode !== micMode) {
       micMode = mode;
@@ -377,14 +348,12 @@
       }
     }
   }
-  // The command that brings the bot into a voice channel: the session's own code.
   const listenCommand = () => `/terminal listen code:${code}`;
   function copyDiscordCommand() {
     const cmd = listenCommand();
     navigator.clipboard.writeText(cmd).then(() => toast("Copied. Send it in your voice channel's chat."), () => copy(cmd, "Command"));
   }
 
-  // Discord (Settings): the Groq key, and the bot's link to a voice channel.
   function renderDiscord() {
     const d = S.discord || {};
     $("discordOff").hidden = !!d.enabled;
@@ -398,14 +367,12 @@
       ? `Listening in ${d.listening.channel} (${d.listening.guild}).${d.sttKey ? "" : " Add a Groq key to transcribe."}`
       : "Not listening.";
     $("discordStop").hidden = !d.listening;
-    // Who's who (Discord /player).
     const roster = [d.listening?.warden && ["Warden", d.listening.warden], ...(d.players || []).map((p) => [p.as, p.name])].filter(Boolean);
     $("discordRoster").innerHTML = roster.map(([as, name]) => `<li><b>${esc(as)}</b>: ${esc(name)}</li>`).join("") || '<li class="muted">Nobody yet.</li>';
     $("discordCode").hidden = !!d.listening;
     $("discordCmd").value = listenCommand();
   }
 
-  // <option>s for [value, label] pairs, with `selected` on the current one.
   const optionsHtml = (pairs, current) => pairs.map(([v, label]) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(label)}</option>`).join("");
   function fillSelect(sel, options, value) {
     const html = options.map(([v, label]) => `<option value="${esc(v)}">${esc(label)}</option>`).join("");
@@ -425,8 +392,6 @@
   }
 
   let lastLogLen = -1;
-  // A log entry's speaker label, who sent it (you or the agent) and its colour.
-  // Null for Warden notes.
   function speaker(e) {
     const by = e.source === "dm" ? "you" : e.source === "agent" ? "agent" : "";
     const who = (name) => (e.inPerson && e.character ? `${e.character} (in person)` : e.character ? `${name} · ${e.character}` : name);
@@ -448,12 +413,10 @@
     }
   }
 
-  // Per-player versions of a line: "↳ MOLL-7 (Android): ..."
   const crewName = (id) => S.config.crew.find((c) => c.id === id)?.name || id;
   const variantsHtml = (e) => (e.variants || []).map((v) =>
     `<div class="var"><span class="vfor">↳ ${esc(v.to.map(crewName).join(", "))}${v.for && !v.to.some((id) => crewName(id).toLowerCase() === v.for.toLowerCase()) ? ` (${esc(v.for)})` : ""}</span>\n${esc(v.text)}</div>`).join("");
 
-  // A log entry's system (its net key, as in terminals.js netOf) by the name its terminals give it.
   const netKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const systemName = (net) => (net === "*" ? "All" : S.config.terminals.find((t) => t.system && netKey(t.system) === net)?.system || net);
 
@@ -464,10 +427,7 @@
       const sp = speaker(e);
       const del = `<button class="del" data-del="${e.id}" title="Delete, also from agent memory">✕</button>`;
       const when = `<span class="time">${time(e.ts)}</span>`;
-      // Warden notes: one quiet line each.
       if (!sp) {
-        // "Agent triggered effect: blackout (2s) before line #13" -> "<blackout icon> blackout (2s)":
-        // it's listed right under the line it plays with.
         const fx = /^Agent triggered effect: (.*?)(?: (before|after) line #\d+)?$/.exec(e.text);
         const txt = fx ? `${FX_META[fx[1].split(" ")[0]]?.[0] || "⚡"} ${esc(fx[1])}${fx[2] === "after" ? " · after this line" : ""}` : esc(e.text);
         return `<div class="entry note${fx ? " fx" : ""}"><span class="txt">${txt}</span>${when}${del}</div>`;
@@ -482,7 +442,6 @@
     lastLogLen = S.log.length;
   }
 
-  // Does the session have a key for its model? (Without one the agent stays quiet.)
   const hasKey = () => !!S.providers?.find((p) => p.id === S.config.provider)?.configured;
 
   function renderPending() {
@@ -492,7 +451,7 @@
     $("noKeyNote").hidden = hasKey();
     if (k === pendingKey) return;
     pendingKey = k;
-    card.hidden = !p; // (nothing pending: out of the way)
+    card.hidden = !p;
     const forText = p?.forEntry ? S.log.find((e) => e.id === p.forEntry)?.text : null;
     const forLine = forText ? `<div class="label">Replying to: <span class="muted">${esc(forText.slice(0, 120))}</span></div>` : "";
 
@@ -530,9 +489,7 @@
       ${steerRow()}
       <div class="row"><button data-act="regen">↻ Regenerate</button></div>`;
   }
-  // The story's systems by name, station first (one entry: no separate systems).
   const systemNames = () => [...new Set([S.config.stationName, ...S.config.terminals.filter((t) => t.system).map((t) => t.system)])];
-  // Which system's screens a draft line goes to (the agent's pick; the Warden can change it).
   const sysSelect = (system) => {
     const names = systemNames();
     if (names.length < 2) return "";
@@ -542,8 +499,6 @@
     return `<select class="dsys" aria-label="System" title="System that shows this line">${optionsHtml(opts, sel)}</select>`;
   };
 
-  // One editable line of a draft: who says it, and what.
-  // A line's effects fire as it begins (between lines of dialogue); untick to drop one.
   const draftLine = (l) => `
     <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}">
       <div class="dwho">
@@ -561,9 +516,7 @@
       <input class="dvfor" list="variantTargets" value="${esc(v.for)}" placeholder="for: name or class" aria-label="Variant for">
       <textarea class="dvtext" rows="${Math.min(8, Math.max(1, v.text.split("\n").length))}" aria-label="Their version">${esc(v.text)}</textarea>
       <button data-act="delVar" class="ghost" title="Remove variant">✕</button></div>`;
-  // Name suggestions: the characters (a draft line's speaker), and who a variant can be for.
   function renderCastLists() {
-    // Who a variant can be for: each crew member, their classes, and Humans.
     const targets = [...S.config.crew.map((c) => c.name), ...new Set(S.config.crew.map((c) => c.className)), "Humans"];
     $("castLists").innerHTML = `<datalist id="variantTargets">${targets.map((t) => `<option value="${esc(t)}">`).join("")}</datalist>` +
       `<datalist id="castNames">${(S.config.cast || []).map((c) => `<option value="${esc(c.name)}">`).join("")}</datalist>`;
@@ -580,7 +533,6 @@
       : `<li class="none">None</li>`;
   }
 
-  // ------------------------------------------------------------ crew (player characters)
   const CREW_CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
   let crewDraft = null, crewTimer = null, crewSentAt = 0;
   const sendCrewNow = () => { crewSentAt = 0; send({ t: "crew", crew: crewDraft }); };
@@ -600,7 +552,7 @@
       : `<label class="wide">${label}<input data-c="${k}" value="${esc(v)}"></label>`;
     panel.innerHTML = crewDraft.map((c, i) => {
       const playing = S.claims?.[c.id] || 0;
-      const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id); // (who plays them on Discord)
+      const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id);
       return `<details class="pc" data-i="${i}">
         <summary>${pickButton(c, `class="pick small" data-pcpic="${i}"`)}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
           <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
@@ -630,20 +582,13 @@
         <div class="row edit-only"><span class="grow"></span><button data-cact="del" class="danger">Remove character</button></div>
       </details>`;
     }).join("") || `<p class="muted small">No player characters. Add some, or build a story.</p>`;
-    // Keep open whichever cards were open.
     for (const i of openCrew) panel.querySelector(`.pc[data-i="${i}"]`)?.setAttribute("open", "");
     $("addCrew").disabled = crewDraft.length >= 4;
   }
-  // ------------------------------------------------------------ characters (the story's people)
-  // Each has a portrait, a human voice, notes for the agent and the room they're in:
-  // in a room with players they talk face to face, anywhere else over the intercom.
-  // The room is set in read-only too (it changes in play).
   let castDraft = null, castTimer = null, castSentAt = 0;
-  // How a character feels about the players (cast.js ATTITUDES).
   const ATTITUDES = [[-3, "Hostile"], [-2, "Resentful"], [-1, "Wary"], [0, "Neutral"], [1, "Friendly"], [2, "Trusting"], [3, "Loyal"]];
   const portraitUrl = (file) => (file.startsWith("kit/") ? `portraits/${file.slice(4)}` : `api/sessions/${code}/portraits/${file}`);
   const initials = (name) => { const w = name.split(/\s+/).filter(Boolean); return ((w[0]?.[0] || "") + (w.length > 1 ? w.at(-1)[0] : "")).toUpperCase(); };
-  // The button showing someone's picture (or initials), that changes it.
   const pickButton = (m, attrs) => `<button ${attrs} title="${m.portrait ? "Change their picture" : "Add a picture"}" aria-label="Picture of ${esc(m.name)}">${m.portrait ? `<img src="${esc(portraitUrl(m.portrait))}" alt="">` : `<span>${esc(initials(m.name) || "+")}</span>`}</button>`;
   function renderCast(fromDraft = false) {
     const panel = $("cast");
@@ -703,7 +648,7 @@
   });
   $("cast").addEventListener("focusout", () => setTimeout(() => S && renderCast(), 1600));
   $("castChannel").addEventListener("change", () => saveCast(true));
-  let picFor = null; // { cast: i } or { crew: i }: whose picture is being picked
+  let picFor = null;
   $("cast").addEventListener("click", async (e) => {
     const act = e.target.closest("[data-mact]")?.dataset.mact;
     const card = e.target.closest(".castm");
@@ -727,7 +672,6 @@
     renderCast(true);
     $("cast").querySelector(".castm:last-of-type .cname")?.select();
   };
-  // Whose picture is being picked, and setting it (an upload's file, a pack one's "kit/…", or "").
   const picTarget = () => (picFor?.crew !== undefined ? crewDraft[picFor.crew] : castDraft[picFor?.cast]);
   function setPortrait(file) {
     const m = picTarget();
@@ -737,7 +681,6 @@
     else { saveCast(true); renderCast(true); }
     $("portraitDialog").close();
   }
-  // The picker: the pack's portraits (public/portraits/pack.json), or upload your own.
   let pack = null;
   async function openPortraits(target) {
     picFor = target;
@@ -757,7 +700,6 @@
   $("portraitUpload").onclick = () => { $("portraitFile").value = ""; $("portraitFile").click(); };
   $("portraitNone").onclick = () => setPortrait("");
 
-  // A picture of their own: cropped to a small square here, then uploaded.
   $("portraitFile").addEventListener("change", async () => {
     const file = $("portraitFile").files[0];
     if (!file || !picTarget()) return;
@@ -767,8 +709,6 @@
       const cv = Object.assign(document.createElement("canvas"), { width: SIZE, height: SIZE });
       const g = cv.getContext("2d");
       g.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, SIZE, SIZE);
-      // Like the pack's: white, with the dark of the picture as how opaque it is (the
-      // players' screens draw it in their colour, the light parts see-through).
       const px = g.getImageData(0, 0, SIZE, SIZE), d = px.data;
       for (let i = 0; i < d.length; i += 4) {
         const light = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
@@ -783,11 +723,7 @@
     }
   });
 
-  // ------------------------------------------------------------ adversaries
-  // The threats: voices with an adversary part. "???" to the players until they've
-  // seen one (the agent reveals it then; or tick Revealed); a picture to show them.
   let advTimer = null, advFor = null;
-  // A picture: an upload, or a link to one on the web.
   const advSrc = (pic) => (/^https:\/\//.test(pic) ? pic : `api/sessions/${code}/portraits/${pic}`);
   function renderAdversaries() {
     const panel = $("adversaries");
@@ -843,7 +779,6 @@
     else if (act === "del" && (await sure(`Remove ${v.name}?`, "Removes it and its voice from the story.", "Remove"))) send({ t: "adversaryDel", id });
   });
   $("addAdversary").onclick = () => send({ t: "adversaryAdd" });
-  // Its picture: kept as a picture (not line art), shrunk to fit, then uploaded.
   $("advFile").addEventListener("change", async () => {
     const file = $("advFile").files[0];
     if (!file || !advFor) return;
@@ -859,8 +794,6 @@
     }
   });
 
-  // Read-only: what a character can do at a glance. Health, Wounds and Stress
-  // stay adjustable (they change in play); the rest is edited with the padlock unlocked.
   const cap = (k) => k[0].toUpperCase() + k.slice(1);
   function pcSheet(c) {
     const nums = (o) => Object.entries(o).map(([k, v]) => `<span>${cap(k)} <b>${v}</b></span>`).join("");
@@ -876,25 +809,22 @@
       ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
     </div>`;
   }
-  // What they carry: changes in play, so it's editable in read-only too (✕ drops one; type to add).
   const itemsLine = (c) => `<div class="items"><span class="k">Items:</span> ${c.items.map((x, j) => `<span class="chip">${esc(x)}<button data-item-del="${j}" title="Drop it" aria-label="Drop ${esc(x)}">✕</button></span>`).join("")}<input data-item-add placeholder="+ add" aria-label="Add an item" size="10"></div>`;
   const openCrew = new Set();
   const whereIs = (crewId) => {
     const id = S.screens?.find((s) => s.characterId === crewId)?.terminal;
     return S.config.terminals.find((t) => t.id === id)?.name || "";
   };
-  // A crew member's picture (the same picker and upload as the characters').
   $("crew").addEventListener("click", (e) => {
     const pic = e.target.closest("[data-pcpic]");
     if (!pic) return;
-    e.preventDefault(); // (it's in the card's header: don't open or close the card)
+    e.preventDefault();
     openPortraits({ crew: Number(pic.dataset.pcpic) });
   });
   $("crew").addEventListener("change", (e) => {
     const who = e.target.dataset.move;
     if (who && e.target.value) { send({ t: "moveScreens", character: who, terminal: e.target.value }); e.target.blur(); }
   });
-  // The where-they-are picker sits in the card's header: using it doesn't open or close the card.
   for (const type of ["click", "keydown", "keyup"]) {
     $("crew").addEventListener(type, (e) => {
       if (!e.target.matches?.("summary select[data-move]")) return;
@@ -913,7 +843,7 @@
       crewTimer = null;
       crewSentAt = Date.now();
       send({ t: "crew", crew: crewDraft });
-      setTimeout(() => S && renderCrew(), 1600); // (the headers catch up once the edit settles)
+      setTimeout(() => S && renderCrew(), 1600);
     }, 500);
   }
   $("crew").addEventListener("focusout", () => setTimeout(() => S && renderCrew(), 1600));
@@ -960,7 +890,6 @@
     sendCrewNow();
   };
 
-  // ------------------------------------------------------------ story builder
   let builderKey = "";
   function renderBuilder() {
     if (!$("builderDialog").open) return;
@@ -1003,7 +932,6 @@
       <details><summary>Terminals</summary><ul class="small">${(d.terminals || []).map((t) => `<li><b>${esc(t.name)}</b> <span class="muted">${esc(t.room)}${t.look?.length ? ` · ${esc(t.look.join(", "))}` : " · clean"}${t.open ? "" : " · not reachable at first"}</span> · ${esc(t.notes)}</li>`).join("")}<li class="muted">+ a handheld terminal</li></ul></details>
       <details open><summary>Player characters</summary>${crew || '<p class="muted">None.</p>'}</details>
       <details><summary>Starting documents</summary>${(d.documents || []).map((x) => `<div class="small"><b>${esc(x.title)}</b></div><pre class="bpre">${esc(x.text)}</pre>`).join("") || '<p class="muted">None.</p>'}</details>`;
-    // Preview the map from the draft's own state and layout.
     const st = {};
     for (const { path, value } of d.station) {
       const ks = path.split(".");
@@ -1033,8 +961,6 @@
     toast("New story applied.");
   });
 
-  // ------------------------------------------------------------ synopsis
-  // Three kinds: the prebrief (the setup), the story so far, and the wrap-up after the one-shot.
   const SYN_KINDS = {
     prebrief: { label: "Prebrief", writing: "Writing the prebrief…",
       empty: "<b>Write it</b> to brief the players before play, with private notes for you." },
@@ -1043,7 +969,6 @@
     wrapup: { label: "Wrap-up", writing: "Writing the wrap-up…",
       empty: "<b>Write it</b> when the one-shot ends: what happened and what became of the crew." },
   };
-  // Before play, the prebrief; once it has started, the story so far. (The Warden can pick another.)
   let synKind = null;
   const synopsisOf = (k) => S.synopses?.[k] || null;
   let synopsisKey = "";
@@ -1051,7 +976,6 @@
     if (!$("synopsisDialog").open) return;
     const kind = shownKind();
     const syn = synopsisOf(kind), busy = S.synopsisBusy, mine = busy === kind;
-    // Entries since it was written (things said or typed, not console notes). (Not for the prebrief: it's the setup.)
     const newer = syn && kind !== "prebrief" ? S.log.filter((e) => e.id > syn.logId && e.kind !== "note").length : 0;
     const key = JSON.stringify([kind, syn, busy, newer]);
     if (key === synopsisKey) return;
@@ -1077,9 +1001,9 @@
   const writeSynopsis = () => { if (!S.synopsisBusy) send({ t: "synopsis", kind: shownKind() }); };
   $("synopsisBtn").onclick = () => {
     synopsisKey = "";
-    synKind = null; // (opens on the one that fits where the story is)
+    synKind = null;
     $("synopsisDialog").showModal();
-    if (!synopsisOf(shownKind()) && !S.synopsisBusy) writeSynopsis(); // first time: write it straight away
+    if (!synopsisOf(shownKind()) && !S.synopsisBusy) writeSynopsis();
     renderSynopsis();
   };
   $("synKinds").addEventListener("click", (e) => {
@@ -1095,7 +1019,6 @@
     catch { toast("Copy blocked by the browser.", "error"); }
   };
 
-  // ------------------------------------------------------------ terminals
   const LOOKS = { blood: "Blood", goo: "Goo", crack: "Cracked", flicker: "Flicker", dim: "Dim", grime: "Grime", portable: "Handheld" };
   let termDraft = null, termTimer = null, termSentAt = 0;
   const sendTermsNow = () => { termSentAt = 0; send({ t: "terminals", terminals: termDraft }); };
@@ -1110,7 +1033,6 @@
     }
     const decks = StationMap.parseLayout(S.config.map);
     const deckRooms = decks.flatMap((d) => d.rooms.map((r) => [r.id, `${r.label} (${d.label.split("·")[0].trim()})`]));
-    // Docked rooms (the crew's tug) aren't on a deck: listed by what they're docked to.
     const labelOf = (id) => decks.flatMap((d) => d.rooms).find((r) => r.id === id)?.label || id;
     const rooms = [...deckRooms, ...StationMap.parseDocked(S.config.map).map((r) => [r.id, `${r.label} (docked at ${labelOf(r.parent)})`])];
     const doors = doorPaths();
@@ -1135,7 +1057,6 @@
       </div>`;
     }).join("");
   }
-  // Read-only terminals: where each is, whether the players can get to it, who's there.
   function roomLabels() {
     const decks = StationMap.parseLayout(S.config.map);
     const out = new Map(decks.flatMap((d) => d.rooms.map((r) => [r.id, r.label])));
@@ -1160,7 +1081,6 @@
       return `<div><b>${esc(t.name)}</b><span class="muted small">${esc(rooms.get(t.room) || (t.room ? t.room : "portable"))}${t.system ? ` · ${esc(t.system)}` : ""}</span>${access}${here.length ? `<span class="here small">${here.map(esc).join(", ")}</span>` : ""}</div>`;
     }).join("") || '<p class="muted small">No terminals.</p>';
   }
-  // Read-only: the voices (the characters are on the Crew tab).
   function renderCastPlay() {
     const panel = $("castPlay");
     const json = JSON.stringify(S.config.voices.map((v) => [v.name, v.color, !!v.adversary]));
@@ -1169,8 +1089,6 @@
     panel.innerHTML = S.config.voices.filter((v) => !v.adversary).map((v) => `<div class="castv"><b style="color: ${esc(v.color || "var(--fg)")}">${esc(v.name)}</b></div>`).join("");
   }
 
-  // The connection graph: which voices are heard on which system (voice.systems,
-  // net keys: "" the station, "*" every system). Shown once there's more than one system.
   function renderConnections() {
     const panel = $("connections");
     const systems = [{ net: "", name: S.config.stationName }];
@@ -1202,11 +1120,9 @@
     send({ t: "voices", voices });
   });
 
-  // Door-like paths in the station state (doors.*, hatches...), for "opens with".
   function doorPaths() {
     return stationLeaves().map(([p]) => p.join(".")).filter((p) => /door|hatch|airlock|lock|gate/i.test(p));
   }
-  // Every value in the station state, with its path: [[path, value]], in order.
   function stationLeaves() {
     const out = [];
     const walk = (o, path) => { for (const [k, v] of Object.entries(o || {})) { const p = [...path, k]; if (v && typeof v === "object") walk(v, p); else out.push([p, v]); } };
@@ -1225,7 +1141,7 @@
     if (e.target.dataset.look) {
       const k = e.target.dataset.look;
       t.look = e.target.checked ? [...new Set([...t.look, k])] : t.look.filter((x) => x !== k);
-    } else if (e.target.dataset.t === "open") t.open = t.startOpen = e.target.checked; // (setting up the story: how it starts, too)
+    } else if (e.target.dataset.t === "open") t.open = t.startOpen = e.target.checked;
     else if (e.target.dataset.t) t[e.target.dataset.t] = e.target.value;
     saveTerminals();
   });
@@ -1242,9 +1158,6 @@
     renderTerminals(true);
   };
 
-  // ------------------------------------------------------------ phones
-  // One view at a time, from the bottom bar: the comms, or a side tab (which
-  // also flips the side panel's own tabs, so the two stay in step).
   function setMview(v) {
     document.body.dataset.mview = v;
     for (const b of $("mnav").querySelectorAll("[data-mview]")) b.classList.toggle("on", b.dataset.mview === v);
@@ -1252,7 +1165,6 @@
     store.set("mview", v);
     renderMnavDot();
   }
-  // Something waits on the Warden beside the log (a ruling, a draft, a roll) while they're elsewhere.
   function renderMnavDot() {
     const waiting = [...$("tray").children].some((c) => !c.hidden);
     $("mnavDot").hidden = !waiting || document.body.dataset.mview === "comms";
@@ -1260,21 +1172,17 @@
   $("mnav").addEventListener("click", (e) => { const v = e.target.closest("[data-mview]")?.dataset.mview; if (v) setMview(v); });
   setMview(store.get("mview") || "comms");
 
-  // ------------------------------------------------------------ story text
-  // Lore, secrets and standing orders show all their text: the boxes grow to fit
-  // (as it's set, as it's typed, and when the Story tab opens), never scroll.
   const STORY_BOXES = ["lore", "secrets", "standingOrders"];
   function growBox(el) {
-    if (!el.offsetParent) return; // (not on screen: measured when it is)
+    if (!el.offsetParent) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight + 2}px`;
   }
   function growStory() { for (const id of STORY_BOXES) growBox($(id)); }
   for (const id of STORY_BOXES) $(id).addEventListener("input", (e) => growBox(e.target));
   addEventListener("resize", () => requestAnimationFrame(growStory));
-  document.addEventListener("toggle", (e) => { if (e.target.open && STORY_BOXES.some((id) => e.target.contains($(id)))) growStory(); }, true); // (a section opened)
+  document.addEventListener("toggle", (e) => { if (e.target.open && STORY_BOXES.some((id) => e.target.contains($(id)))) growStory(); }, true);
 
-  // Padlock icons for the edit toggles: locked = read-only, open = editing.
   // Lucide's "lock" and "lock-open" (lucide.dev, ISC licence), inlined.
   const LOCK_SVG = (open) => `<svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="${open ? "M7 11V7a5 5 0 0 1 9.9-1" : "M7 11V7a5 5 0 0 1 10 0v4"}"/></svg>`;
   function setLock(btn, editing, what) {
@@ -1282,9 +1190,6 @@
     btn.setAttribute("aria-label", editing ? `Done editing ${what}` : `Edit ${what}`);
   }
 
-  // ------------------------------------------------------------ edit mode
-  // Read-only (the default, remembered per device) shows what matters while
-  // running the game; Edit shows the setup (dm.css .edit-only / .play-only).
   const sideCol = document.querySelector(".col.side");
   function setEditing(on) {
     sideCol.classList.toggle("editing", on);
@@ -1296,9 +1201,6 @@
   $("editMode").onclick = () => setEditing(!sideCol.classList.contains("editing"));
   setEditing(store.get("editMode") === "1");
 
-  // ------------------------------------------------------------ tabs
-  // Tab bars ([data-tabs]) show one panel at a time; the choice is remembered.
-  // The highlight slides to the chosen tab and the panel eases in (dm.css).
   for (const bar of document.querySelectorAll(".tabs[data-tabs]")) {
     const group = bar.dataset.tabs;
     bar.classList.add("slider");
@@ -1315,27 +1217,23 @@
       for (const p of document.querySelectorAll(`.tabpanel[data-tabs="${group}"]`)) {
         p.hidden = p.dataset.panel !== tab;
         p.classList.remove("enter");
-        if (!p.hidden && current !== null && current !== tab) { void p.offsetWidth; p.classList.add("enter"); } // (restart the animation)
+        if (!p.hidden && current !== null && current !== tab) { void p.offsetWidth; p.classList.add("enter"); }
       }
-      // A new tab starts at its top (the bar stays put above it).
       const col = bar.closest(".col");
       if (current !== null && current !== tab && col && col.scrollTop > 0) col.scrollTop = 0;
       current = tab;
       place();
-      requestAnimationFrame(() => bar.classList.add("ready")); // (no slide on first draw)
+      requestAnimationFrame(() => bar.classList.add("ready"));
       store.set(`tab:${group}`, tab);
-      if (group === "side" && tab === "map" && S) renderMap(true); // (drawn for its width)
-      if (group === "side" && tab === "story") requestAnimationFrame(growStory); // (hidden, it had no height to measure)
+      if (group === "side" && tab === "map" && S) renderMap(true);
+      if (group === "side" && tab === "story") requestAnimationFrame(growStory);
     };
     bar.addEventListener("click", (e) => { const t = e.target.closest("[data-tab]")?.dataset.tab; if (t) show(t); });
     show(store.get(`tab:${group}`) || bar.querySelector("[data-tab]").dataset.tab);
   }
 
-  // ------------------------------------------------------------ station map
   let mapKey = "";
-  // Drawing (schematic) or Status (board); remembered on this device.
-  let mapView = store.get("mapView") === "iso" ? "iso" : "draw"; // 2D or 3D
-  // The station state with each character added to their room's occupants (for the map).
+  let mapView = store.get("mapView") === "iso" ? "iso" : "draw";
   function withCast(station, cast = S.config.cast) {
     const st = structuredClone(station || {});
     const occ = (st.occupants = typeof st.occupants === "object" && st.occupants ? st.occupants : {});
@@ -1351,7 +1249,6 @@
     mapKey = key;
     const show = (el) => (mapView === "iso" ? showIso(el, isoData(people))
       : (dropIso(el), StationMap.draw(el, withCast(S.station), S.config.map, { people })));
-    // Show players: this view (none of the cast's whereabouts); shown, Hide; another view shown, switch to this one.
     for (const b of document.querySelectorAll(".mapShow")) {
       b.textContent = S.mapShown === mapView ? "Hide from players" : S.mapShown ? "Show players this view" : "Show players";
       b.classList.toggle("primary", S.mapShown === mapView);
@@ -1362,12 +1259,11 @@
     if (document.activeElement !== $("mapLayout") && !dirty.has("map")) $("mapLayout").value = S.config.map;
   }
 
-  // Click a value: pick a likely one or type anything; it goes into the station state.
   async function editStationValue(path) {
     const cur = stationAt(path);
     const options = StationMap.choicesFor(path).filter((o) => o !== String(cur).toUpperCase());
     const picked = await ask(path.join(".").replace(/_/g, " ").toUpperCase(), `Now: ${cur}. Pick or type a value. Hidden from players.`,
-      [["set", "Set", "primary"], ...options.map((o) => [`opt:${o}`, o])], "", { value: cur }); // Set first: Enter in the field means Set
+      [["set", "Set", "primary"], ...options.map((o) => [`opt:${o}`, o])], "", { value: cur });
     if (!picked) return;
     const raw = picked === "set" ? $("askCopy").value.trim() : picked.slice(4);
     if (raw === "" || raw === String(cur)) return;
@@ -1386,18 +1282,16 @@
     });
   }
   $("mapExpand").onclick = (e) => {
-    e.preventDefault(); // (it sits in the panel's summary)
+    e.preventDefault();
     $("mapTitle").textContent = `${S.config.stationName} · station map`;
     $("mapDialog").showModal();
     renderMap(true);
   };
-  $("mapDialog").addEventListener("close", () => dropIso($("mapBig"))); // (its 3D view stops drawing)
-  // The 3D view (isomap.js, three.js): loaded the first time it's picked. One per map element.
+  $("mapDialog").addEventListener("close", () => dropIso($("mapBig")));
   let isoLib = null;
-  const isoViews = new Map(); // element -> { view, data }
+  const isoViews = new Map();
   const nick = (name) => (String(name).match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || String(name).split(" ")[0]).toUpperCase();
   const isoData = (people) => ({ station: withCast(S.station), layout: S.config.map, rooms: S.config.rooms, editable: true, people: Object.fromEntries(Object.entries(people).map(([room, names]) => [room, names.map(nick)])) });
-  // The 3D view fills the height its panel has left (less whatever follows the map in it).
   function fitIso(el) {
     const box = el.querySelector(":scope > .iso");
     if (!box) return;
@@ -1406,7 +1300,6 @@
     const sibs = [...el.parentElement.children], after = sibs.slice(sibs.indexOf(el) + 1).reduce((n, s) => n + s.getBoundingClientRect().height, 0);
     const [top, height] = !sc || sc === document.body ? [box.getBoundingClientRect().top, innerHeight]
       : [box.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop,
-        // (a dialog grows to fit what's in it: as tall as it's allowed to be)
         Math.max(sc.clientHeight, parseFloat(getComputedStyle(sc).maxHeight) || 0) - (parseFloat(getComputedStyle(sc).paddingBottom) || 0)];
     box.style.height = `${Math.max(320, height - top - after - 16)}px`;
   }
@@ -1430,13 +1323,12 @@
     seg.addEventListener("click", (e) => {
       const v = e.target.closest("[data-view]")?.dataset.view;
       if (!v) return;
-      e.preventDefault(); // (one sits in the panel's summary)
+      e.preventDefault();
       mapView = v;
       store.set("mapView", v);
       renderMap(true);
     });
   }
-  // The drawing is laid out for its width.
   let mapResize = null;
   addEventListener("resize", () => { clearTimeout(mapResize); mapResize = setTimeout(() => S && renderMap(true), 200); });
   $("mapLayout").addEventListener("input", () => dirty.add("map"));
@@ -1445,12 +1337,8 @@
     send({ t: "config", patch: { map: $("mapLayout").value } });
   };
 
-  // ------------------------------------------------------------ room view
-  // One room: its floor plan (drawn by the agent the first time, editable tile by
-  // tile, shown to the players as layout only), who and what is there, its state.
-  let room = null; // { id, label, deck } while the room view is open
+  let room = null;
   let roomEditing = false, roomTool = "#", roomRows = null, roomKey = "", roomSaveTimer = null, roomPainting = false;
-  // Player characters in each room, from the terminals their screens are at.
   function playersByRoom() {
     const out = {};
     for (const sc of S.screens || []) {
@@ -1467,7 +1355,6 @@
     roomRows = null;
     roomKey = "";
     if (!$("roomDialog").open) $("roomDialog").showModal();
-    // No plan yet: the agent draws one (if it can).
     if (!S.config.rooms?.[id] && !S.roomBusy && hasKey()) send({ t: "roomDraft", room: id, label, deck });
     renderRoom(true);
   }
@@ -1482,7 +1369,6 @@
     roomKey = key;
     $("roomTitle").textContent = room.label;
     $("roomDeck").textContent = room.deck;
-    // The plan (or the local copy being painted).
     if (!roomEditing) roomRows = plan ? [...plan.rows] : null;
     const box = $("roomPlan");
     if (busy) box.innerHTML = `<div class="rpempty muted"><span class="spinner"></span>The agent is drawing ${esc(room.label)}…</div>`;
@@ -1497,24 +1383,20 @@
     $("roomTools").innerHTML = roomEditing ? RoomPlan.CODES.filter((c) => c !== " ").concat(" ").map((c) =>
       `<button data-tool="${esc(c)}" class="${c === roomTool ? "on" : ""}" title="${esc(RoomPlan.TILES[c][0])}">${c === " " ? "␣ erase" : `${esc(c)} ${esc(RoomPlan.TILES[c][0].split(" ")[0])}`}</button>`).join("")
       + `<button data-tool="+col" title="Add a column">+ col</button><button data-tool="-col" title="Remove the last column">− col</button><button data-tool="+row" title="Add a row">+ row</button><button data-tool="-row" title="Remove the last row">− row</button>` : "";
-    // Who sees it.
     const sel = $("roomShowTo"), who = [["", "All players"], ...S.config.crew.map((c) => [c.id, c.name])];
     fillSelect(sel, who, who.some(([v]) => v === sel.value) ? sel.value : "");
-    // Who and what is here.
     const castHere = S.config.cast.filter((c) => c.room === room.id).map((c) => c.name);
     $("roomPlayers").innerHTML = (pcs.length ? pcs.map((n) => `<span class="pcchip">${esc(n)}</span>`).join("") : `<span class="muted small">No player characters here.</span>`) +
       (castHere.length ? castHere.map((n) => `<span class="castchip" title="Character, move on the Crew tab">${esc(n)}</span>`).join("") : "");
     for (const [id, k] of [["roomOccupants", "occupants"], ["roomContents", "contents"]]) {
       if (document.activeElement !== $(id) && !dirty.has(id)) $(id).value = String(stationAt([k, room.id]) ?? "");
     }
-    // The room's state: everything in the station state under this room's id.
     const vals = stationLeaves().filter(([q]) => q.includes(room.id) && !["occupants", "contents"].includes(q[0]));
     $("roomValues").innerHTML = vals.length ? vals.map(([p, v]) => `<button class="ghost small" data-path="${esc(JSON.stringify(p))}" title="${esc(p.join("."))}">${esc(p.filter((x) => x !== room.id).join(" ").replace(/_/g, " "))}: <b>${esc(v)}</b></button>`).join("") : `<span class="muted small">Nothing tracked here.</span>`;
     const terms = S.config.terminals.filter((t) => t.room === room.id);
     $("roomTerminals").innerHTML = terms.length ? terms.map((t) => `<div><b>${esc(t.name)}</b>: ${esc(t.notes)}</div>`).join("") : "None.";
   }
 
-  // Painting: click or drag across tiles; the plan is saved a moment after.
   function paintAt(el) {
     const g = el?.closest("[data-x]");
     if (!g || !roomRows) return;
@@ -1545,7 +1427,6 @@
     if (t.length > 1) saveRoomSoon();
     renderRoom(true);
   });
-  // Saved now, and shown as saved (not the old plan until the server's copy arrives).
   const saveRoomNow = () => { clearTimeout(roomSaveTimer); send({ t: "roomLayout", room: room.id, rows: roomRows }); (S.config.rooms ||= {})[room.id] = { rows: [...roomRows] }; };
   $("roomEdit").onclick = () => {
     if (roomEditing) saveRoomNow();
@@ -1582,11 +1463,9 @@
     room = null;
   });
 
-  // ------------------------------------------------------------ sounds
   const soundUrl = (id) => `api/sessions/${code}/sounds/${id}`;
   let soundsKey = "";
 
-  // A volume slider with a percent box beside it, for fine control; the two stay in step.
   const volumeControl = (cls, volume, title) => {
     const pct = Math.round(volume * 100);
     return `<span class="volctl" title="${title}">
@@ -1594,12 +1473,11 @@
       <input class="volpct" type="number" min="0" max="100" step="1" value="${pct}" aria-label="${title}, percent"><span class="muted">%</span>
     </span>`;
   };
-  // Typing a percent moves the slider (and the other way round). Returns the volume, 0-1.
   function syncVolume(target) {
     const ctl = target.closest(".volctl");
     const slider = ctl.querySelector('input[type="range"]'), pct = ctl.querySelector(".volpct");
     if (target === pct) {
-      if (pct.value === "") return null; // (still typing)
+      if (pct.value === "") return null;
       const v = Math.max(0, Math.min(100, Math.round(Number(pct.value) || 0)));
       pct.value = v;
       slider.value = v / 100;
@@ -1610,7 +1488,6 @@
   }
 
   function renderSounds() {
-    // Don't redraw the library under the Warden's fingers (renaming, dragging a slider).
     const list = $("soundList");
     const key = JSON.stringify(S.sounds);
     if (key !== soundsKey && !list.contains(document.activeElement)) {
@@ -1637,7 +1514,6 @@
     }
   }
 
-  // How long a clip lasts (so a one-shot leaves the "Playing" list when it ends). 0 if unknown.
   let measureCtx = null;
   async function clipSeconds(file) {
     try {
@@ -1695,14 +1571,12 @@
     }
     e.target.blur();
   });
-  // Dragging the slider shows its percent as it moves; the volume is saved on release.
   $("soundList").addEventListener("input", (e) => { if (e.target.classList.contains("svol")) syncVolume(e.target); });
   $("soundList").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.target.classList.contains("sname") || e.target.classList.contains("volpct"))) e.target.blur(); });
   $("soundPlaying").addEventListener("click", (e) => {
     const stop = e.target.closest("[data-stop]");
     if (!stop) return;
     send({ t: "soundStop", pid: stop.dataset.stop });
-    // Gone at once (the list doesn't redraw while the button still has focus).
     stop.blur();
     stop.closest("li").remove();
     if (!$("soundPlaying").children.length) $("soundPlaying").innerHTML = `<li class="none">Silence</li>`;
@@ -1710,17 +1584,15 @@
   $("soundPlaying").addEventListener("input", (e) => {
     const li = e.target.closest("li[data-pid]");
     if (!li || !e.target.closest(".volctl")) return;
-    const volume = syncVolume(e.target); // (live: the players hear it change)
+    const volume = syncVolume(e.target);
     if (volume !== null) send({ t: "soundVolume", pid: li.dataset.pid, volume });
   });
   $("soundPlaying").addEventListener("change", (e) => e.target.blur());
   $("soundPlaying").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList.contains("volpct")) e.target.blur(); });
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
-  // On/off features in the Settings window (config keys of the same name).
   const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals"];
 
-  // Where voices play: the screens, Discord (the bot speaks them in its channel), or off.
   const voicesOn = () => (S.config.discordTalk ? "discord" : S.config.tts !== false ? "screens" : "off");
   function renderVoicesOn() {
     const on = voicesOn(), d = S.discord || {};
@@ -1754,13 +1626,11 @@
     if (!dirty.has("station") && document.activeElement !== $("station")) $("station").value = JSON.stringify(S.station, null, 2);
   }
 
-  // ------------------------------------------------------------ actions
   $("mode").addEventListener("click", (e) => {
     const m = e.target.closest("button")?.dataset.mode;
     if (m) send({ t: "config", patch: { mode: m } });
   });
 
-  // Text config fields save on blur (or after a pause in typing).
   for (const id of ["stationName", "lore", "secrets", "standingOrders"]) {
     const el = $(id);
     let t;
@@ -1784,11 +1654,7 @@
     }
   });
 
-  // The comms box sends as a Direction (the agent obeys), as a voice speaking
-  // (the Speak picker), or as a private Note. Keyboard first: Tab / Shift+Tab
-  // cycle Direction → Note → each voice and character; Enter sends in the
-  // current mode, Shift+Enter is a new line, Ctrl+Enter always sends a Note.
-  let composeMode = "command"; // "command" | "voice" (as $("sendAs")) | "note"
+  let composeMode = "command";
   const composeModes = () => ["command", "note", ...[...$("sendAs").options].map((o) => `voice:${o.value}`)];
   const currentComposeMode = () => (composeMode === "voice" ? `voice:${$("sendAs").value}` : composeMode);
 
@@ -1822,7 +1688,6 @@
     }
     $("compose").value = "";
   }
-  // A button sends in its mode and makes it the current one; the box keeps focus.
   const sendIn = (mode) => () => { setComposeMode(mode === "voice" ? `voice:${$("sendAs").value}` : mode); compose(mode); $("compose").focus(); };
   $("sendCommand").onclick = sendIn("command");
   $("sendVoice").onclick = sendIn("voice");
@@ -1841,9 +1706,6 @@
   });
   renderComposeMode();
 
-  // Listen: the browser's speech-to-text writes down what the Warden says aloud
-  // at the table. Each finished phrase goes to the log (read-only, private) and
-  // with the agent's next prompt, as things that happened. Off until switched on.
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   let listening = false, recog = null, quickEnds = 0;
   const micStatus = (text) => { $("micLive").textContent = text; };
@@ -1857,7 +1719,6 @@
     if (on) startRecog();
     else recog?.abort();
   }
-  // Something stops it for good: say what, in the toast and under the box.
   function micFailed(text) {
     console.warn(`[listen] ${text}`);
     toast(text, "error");
@@ -1889,11 +1750,9 @@
       micStatus(interim.trim() ? `${interim.trim()}…` : "Listening…");
     };
     recog.onerror = (e) => {
-      if (e.error === "no-speech" || e.error === "aborted") return; // (a silence; or switched off)
+      if (e.error === "no-speech" || e.error === "aborted") return;
       if (recog === r) micFailed(MIC_ERRORS[e.error] || `Speech recognition stopped: ${e.error}${e.message ? ` (${e.message})` : ""}.`);
     };
-    // Browsers stop listening after a silence or a while: start again while it's on.
-    // If it keeps ending at once without hearing anything, it isn't working.
     recog.onend = () => {
       if (!listening || recog !== r) return;
       quickEnds = !heardAny && Date.now() - started < 1500 ? quickEnds + 1 : 0;
@@ -1902,7 +1761,6 @@
     };
     try { recog.start(); } catch (err) { micFailed(`Couldn't start speech recognition: ${err.message}`); }
   }
-  // Without speech recognition (or on an insecure page) Listen says how to get it, instead of starting.
   const FIREFOX_HOW = "In about:config, set media.webspeech.recognition.enable to true, then reload.";
   const micUnavailable = !window.isSecureContext
     ? "Listen needs https or localhost."
@@ -1927,7 +1785,7 @@
             .filter((v) => v.for && v.text.trim());
           return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), system: row.querySelector(".dsys")?.value || "", text: row.querySelector(".dwho + textarea").value, effects: fx, variants };
         })
-        .filter((l) => l.text.trim() || l.effects.length || l.variants.length), // effect-only beats count
+        .filter((l) => l.text.trim() || l.effects.length || l.variants.length),
       station_changes: r.station_changes.filter((_, i) => card.querySelector(`[data-chg="${i}"]`)?.checked),
       crew_changes: (r.crew_changes || []).filter((_, i) => card.querySelector(`[data-crw="${i}"]`)?.checked),
       effects: r.effects.filter((_, i) => card.querySelector(`[data-eff="${i}"]`)?.checked),
@@ -1944,7 +1802,6 @@
     else if (act === "discard") send({ t: "discard" });
     else if (act === "regen") send({ t: "generate", steer: $("steer")?.value || "" });
   });
-  // Switching a line's voice: its speaker box follows (shown for shared voices).
   $("pending").addEventListener("change", (e) => {
     if (!e.target.matches(".dwho select:not(.dsys)")) return;
     const box = e.target.parentElement.querySelector(".dchar");
@@ -1959,9 +1816,6 @@
   });
   $("retcon").onclick = () => send({ t: "retcon" });
 
-  // Download: the whole game as one file (for a recap, a record, or to look back on): the log
-  // (comms, notes, table talk, rolls), the crew and cast as they are now, the story, the map,
-  // the station and what was handed out. (No stream key, no builder chat, nothing secret to the app.)
   $("logDownload").onclick = () => {
     if (!S) return;
     const c = S.config;
@@ -1992,7 +1846,6 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
   };
 
-  // Effect buttons
   $("fxButtons").innerHTML = Object.entries(FX_META)
     .map(([type, [ico, label]]) => `<button data-fx="${type}"><span class="ico">${ico}</span>${label}</button>`).join("");
   $("fxButtons").addEventListener("click", (e) => {
@@ -2019,11 +1872,8 @@
   };
   $("resetAll").onclick = async () => (await sure("Factory reset?", "Resets the whole story to the defaults.", "Factory reset")) && send({ t: "resetAll" });
 
-  // ------------------------------------------------------------ voices & entities
   const BUILTIN_IDS = ["terminal", "broadcast", "narrator"];
-  // Every voice keeps settings for both engines, so switching engine loses nothing.
   const BASE_VOICE = { engine: "espeak", speaker: "am_michael", pace: 1, variant: "", pitch: 50, speed: 170, wordgap: 0 };
-  // A preset's sound: its voice and its effects (the defaults for any it leaves out).
   const presetSound = (p) => ({ voice: { ...BASE_VOICE, ...p.voice }, fx: Object.fromEntries(Object.entries(S.voiceOptions.fxParams).map(([k, [, , def]]) => [k, p.fx[k] ?? def])) });
   const FX_LABELS = {
     rate: "Speed / pitch", highpass: "Low cut (Hz)", lowpass: "High cut (Hz)", drive: "Distortion",
@@ -2033,7 +1883,7 @@
   };
   const VARIANT_LABELS = { "": "default", whisperf: "whisper (female)", klatt: "klatt (synthetic)", klatt2: "klatt 2", klatt3: "klatt 3" };
 
-  let voicesDraft = null; // working copy while the Warden edits
+  let voicesDraft = null;
   let voicesSentAt = 0;
   const sendVoicesNow = () => { voicesSentAt = 0; send({ t: "voices", voices: voicesDraft }); };
   let voicesTimer = null;
@@ -2045,19 +1895,15 @@
   function renderSendAs() {
     const sel = $("sendAs");
     const prev = sel.value || "terminal";
-    // The voices, then each character (face to face if they're with players, else over the intercom).
     fillSelect(sel, [
       ...S.config.voices.map((v) => [v.id, v.id === "terminal" ? `${v.name} (terminal)` : v.adversary && !v.adversary.revealed ? `${v.name} (as ???)` : v.name]),
       ...(S.config.cast || []).map((c) => [`cast:${c.id}`, c.name]),
     ], prev);
     if (!sel.value) sel.value = "terminal";
     renderSendOn();
-    renderComposeMode(); // (names may have changed)
+    renderComposeMode();
   }
 
-  // Which system's screens Speak goes to, when the story has more than one
-  // (e.g. a ship): where the players are (each system, if they're split), or
-  // "to All" for every screen (a broadcast, something creepy in every machine).
   function renderSendOn() {
     const sel = $("sendOn");
     const nameOf = (id) => { const t = S.config.terminals.find((x) => x.id === id); return t?.system || S.config.stationName; };
@@ -2078,12 +1924,9 @@
     }, 350);
   }
 
-  // fromDraft: re-draw the Warden's working copy (e.g. after picking a preset)
-  // instead of pulling the server's copy, which may not have their latest edits yet.
   function renderVoices(fromDraft = false) {
     const panel = $("voices");
     if (!fromDraft) {
-      // Don't yank the form out from under the Warden mid-edit.
       const editing = panel.contains(document.activeElement) || voicesTimer !== null || Date.now() - voicesSentAt < 1500;
       if (voicesDraft && editing) return;
       const json = JSON.stringify(S.config.voices);
@@ -2173,7 +2016,6 @@
         card.querySelector('[data-k="preset"]').value = "custom";
       }
       if (key === "voice.engine") {
-        // Different engines have different controls: redraw this card.
         saveVoices();
         renderVoices(true);
         return restoreCard(card.dataset.i);
@@ -2184,7 +2026,6 @@
     saveVoices();
   });
 
-  // After a preset re-render, put focus back on the same card's preset picker.
   function restoreCard(i) {
     const card = $("voices").querySelector(`.vcard[data-i="${i}"]`);
     card?.querySelector('[data-k="preset"]')?.focus();
@@ -2221,12 +2062,9 @@
     sendVoicesNow();
   };
 
-  // ------------------------------------------------------------ rule of cool + ability rolls
   const checkName = (id) => (id === "panic" ? "Panic" : S?.rollOptions?.checks[id]?.label || id);
   const advMark = (a) => (a === "advantage" ? " [+]" : a === "disadvantage" ? " [−]" : "");
 
-  // An attempt the agent left open: the Warden rules on it, or calls for a roll.
-  // The roll form lives in the Actions tab; ⚖ Your call's 🎲 borrows it (under the stakes).
   function rollFormHome() {
     if ($("rollForm").parentElement !== $("rollCard")) $("rollCard").append($("rollForm"));
     $("rollAway").hidden = true;
@@ -2236,7 +2074,7 @@
   function renderOutcome() {
     const card = $("outcome");
     const oc = S.outcomeCheck;
-    if (!oc || card.dataset.id !== oc.id) rollFormHome(); // (before the card is redrawn or hidden)
+    if (!oc || card.dataset.id !== oc.id) rollFormHome();
     card.hidden = !oc;
     if (!oc) { card.dataset.id = ""; return; }
     if (card.dataset.id === oc.id) return;
@@ -2261,7 +2099,6 @@
       <div class="ocroll"></div>`;
   }
 
-  // The stakes are editable: what you write is what the agent narrates by.
   let stakesTimer = null;
   const sendStakes = () => {
     clearTimeout(stakesTimer);
@@ -2278,12 +2115,11 @@
     const act = e.target.closest("[data-oc]")?.dataset.oc;
     const oc = S?.outcomeCheck;
     if (!act || !oc) return;
-    if (stakesTimer) sendStakes(); // (edits still waiting go first)
+    if (stakesTimer) sendStakes();
     if (act === "success" || act === "failure") send({ t: "outcome", verdict: act });
     else if (act === "dismiss") send({ t: "outcomeDismiss" });
     else if (act === "roll") {
-      if ($("rollForm").parentElement !== $("rollCard")) return rollFormHome(); // (🎲 again: close it)
-      // Pre-fill the roll form from the agent's suggestion, for whoever typed the attempt.
+      if ($("rollForm").parentElement !== $("rollCard")) return rollFormHome();
       if (oc.suggested_check !== "none") $("rollCheck").value = oc.suggested_check;
       const by = S.log.findLast((e) => e.kind === "player" && e.by)?.by;
       const pc = S.config.crew.find((c) => c.name === by);
@@ -2292,7 +2128,6 @@
       $("rollReason").value = oc.attempt || "";
       rollFromOutcome = true;
       rollFormChanged();
-      // The who-rolls-what form opens here, under the stakes.
       $("outcome").querySelector(".ocroll").append($("rollForm"));
       $("rollAway").hidden = false;
       $("rollForm").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -2301,11 +2136,9 @@
   });
 
   let rollFromOutcome = false, rollWhoKey = "";
-  const rollSkillName = (v) => v.slice(2); // option values are "s:<skill>"
-  // Their own bonus for a skill, from their sheet (0: they don't have it).
+  const rollSkillName = (v) => v.slice(2);
   const skillBonus = (pc, skill) => (skill && pc.skills.find((k) => k.name.toLowerCase() === skill.toLowerCase())?.bonus) || 0;
 
-  // The roll form: who rolls (one character, or all), and the skills they have.
   function renderRoll() {
     const sel = $("rollCheck");
     if (!sel.options.length) {
@@ -2323,13 +2156,12 @@
       who.innerHTML = crew.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("")
         + (crew.length > 1 ? `<option value="all">All (each rolls)</option>` : "");
       if ([...who.options].some((o) => o.value === was)) who.value = was;
-      $("rollSkill").dataset.for = ""; // rebuild the skill list
+      $("rollSkill").dataset.for = "";
     }
     rollFormChanged();
     renderRollStatus();
   }
 
-  // The skills on offer and the target preview follow the chosen character and check.
   function rollFormChanged() {
     const crew = S.config.crew;
     const who = $("rollWho").value;
@@ -2350,7 +2182,6 @@
       if ([...skillSel.options].some((o) => o.value === was)) skillSel.value = was;
     }
     for (const el of document.querySelectorAll("#rollCard .rollskill")) el.hidden = panic;
-    // What each of them will roll against, from their sheets.
     const check = $("rollCheck").value, skill = rollSkillName(skillSel.value);
     const line = (c) => {
       if (panic) return `${c.name}: Stress ${c.stress}, panics on a d20 of ${c.stress} or under`;
@@ -2363,7 +2194,6 @@
   }
   for (const id of ["rollWho", "rollCheck", "rollSkill"]) $(id).addEventListener("change", rollFormChanged);
 
-  // The roll in progress (who has rolled, who hasn't), or the last one's results.
   function renderRollStatus() {
     const r = S.roll;
     const box = $("rollStatus");
@@ -2416,19 +2246,15 @@
     else if (act === "for") send({ t: "rollFor", pc: b.dataset.pc });
   });
 
-  // ------------------------------------------------------------ handouts
   function renderHandouts() {
     const to = $("docTo");
     const opts = [["", "Everyone"], ...S.config.crew.map((c) => [c.id, c.name])];
     fillSelect(to, opts, opts.some(([v]) => v === to.value) ? to.value : "");
-    // An audio log's speaker: none (a written document), a voice, or someone of the cast.
     fillSelect($("docVoice"), [["", "None (written)"], ...S.config.voices.map((v) => [v.id, v.name]), ...(S.config.cast || []).map((c) => [`cast:${c.id}`, c.name])], $("docVoice").value || "");
-    // Where: handed out now, or left in a room to be found.
     const roomsOf = [...StationMap.parseLayout(S.config.map).flatMap((d) => d.rooms), ...StationMap.parseDocked(S.config.map)];
     const roomLabel = (id) => roomsOf.find((r) => r.id === id)?.label || id;
     fillSelect($("docRoom"), [["", "Hand out now"], ...roomsOf.map((r) => [r.id, `In ${r.label}`])], $("docRoom").value || "");
     syncDocSend();
-    // What's lying in rooms: found ones are struck through; Give hands one over now, ✕ takes it out of the story.
     const found = new Set(S.found || []);
     const docs = S.config.roomDocs || [];
     $("roomDocHead").hidden = !docs.length;
@@ -2437,7 +2263,6 @@
     const nameOf = (id) => S.config.crew.find((c) => c.id === id)?.name || "everyone";
     $("docList").innerHTML = list.length ? list.map((h) => `<li title="${esc(h.text.slice(0, 300))}"><span class="grow">${esc(h.title)} <span class="muted">· ${h.voice ? "audio log · " : ""}${esc(h.to ? nameOf(h.to) : "everyone")}</span></span><button data-doc-again="${esc(h.id)}" class="ghost" title="Show again">↻</button><button data-doc-del="${esc(h.id)}" class="ghost" title="Take it back">✕</button></li>`).join("") : '<li class="muted small">None given yet.</li>';
   }
-  // The agent writes it from the description in the text box (and the title, if any).
   function handoutWriting(busy) {
     $("docWrite").disabled = busy;
     $("docWrite").textContent = busy ? "Writing…" : "Write it";
@@ -2470,7 +2295,6 @@
     if (del) send({ t: "handoutDelete", id: del });
   });
 
-  // ------------------------------------------------------------ clocks
   function renderClocks() {
     const list = S?.clocks || [];
     $("clockList").innerHTML = list.length ? list.map((c) => {
@@ -2500,7 +2324,6 @@
     else if (b.dataset.clockShift) send({ t: "clockShift", id: b.dataset.clockShift, seconds: Number(b.dataset.seconds) });
   });
 
-  // ------------------------------------------------------------ session controls
   $("sttKeySave").onclick = () => {
     const k = $("sttKey").value.trim();
     if (!k) return;

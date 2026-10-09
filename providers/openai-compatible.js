@@ -1,9 +1,3 @@
-// Base for any provider that speaks the OpenAI chat-completions format
-// (DeepSeek, OpenRouter, Groq, Together, a local Ollama/LM Studio, ...).
-// These APIs don't enforce a JSON schema, so the schema goes into the prompt
-// and the server validates whatever comes back.
-
-// maxOutput: the most a reply may be (a request can ask for less or more, up to it).
 export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPattern, baseURL, models, maxOutput = 8000, rateLimitText = "rate limited — wait a moment and regenerate.", authText = "authentication failed. Check the API key in the Warden console.", buildExtras = () => ({}) }) {
   return {
     id,
@@ -59,7 +53,6 @@ export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPatter
   };
 }
 
-// `example` is an optional sample reply from the app, so the model copies the shape.
 function jsonInstructions(schema, example) {
   return `OUTPUT FORMAT
 Respond with ONE json object and nothing else, matching this JSON Schema:

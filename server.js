@@ -1,4 +1,4 @@
-import "./logsafe.js"; // first: no console line may ever contain an LLM key
+import "./logsafe.js";
 import { rememberSecret } from "./redact.js";
 import express from "express";
 import http from "http";
@@ -21,21 +21,15 @@ for (const p of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPE
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
-// Mount point, e.g. "/mothership" when served at shawnofthe.dev/mothership/. Empty = site root.
 const BASE = (process.env.BASE_PATH || "").replace(/\/+$/, "").replace(/^(?!\/)(.)/, "/$1");
 const DATA_DIR = process.env.DATA_DIR || path.join(here, "data");
 const SESSIONS_DIR = path.join(DATA_DIR, "sessions");
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 14);
 const MAX_SESSIONS = Number(process.env.MAX_SESSIONS || 300);
 
-// ---------------------------------------------------------------------------
-// Sessions: many games at once, each with a join code and a Warden token.
-// ---------------------------------------------------------------------------
-
-const sessions = new Map(); // code -> Session
+const sessions = new Map();
 const saveTimers = new Map();
 
-// No 0/O/1/I/L: codes get read out loud across a table.
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function newCode() {
   for (;;) {
@@ -64,7 +58,6 @@ function addSession(saved) {
   return session;
 }
 
-// A new session for a game, with a new code and Warden token.
 function newSession(game) {
   const code = newCode();
   const token = crypto.randomBytes(24).toString("base64url");
@@ -73,12 +66,11 @@ function newSession(game) {
   return { session, token };
 }
 
-// provider: start on this one (needed when there are no keys, e.g. the free one).
 function createSession(keys = {}, provider = "") {
   const game = defaultGame(keys);
   if (provider) Object.assign(game.config, fixSelection({ provider }));
   const { session, token } = newSession(game);
-  Object.assign(session.keys, keys); // (memory only: never saved)
+  Object.assign(session.keys, keys);
   track("SessionCreated", { Provider: provider || Object.keys(keys)[0] });
   return { session, token };
 }
@@ -106,13 +98,11 @@ function loadSessions() {
   }
 }
 
-// Idle sessions expire so the server doesn't fill up.
 function sweep() {
   const cutoff = Date.now() - SESSION_TTL_DAYS * 86400_000;
   for (const s of [...sessions.values()]) if (s.lastActive < cutoff && !s.sockets.size) deleteSession(s.code, "expired");
 }
 
-// Before sessions existed there was one game in data/state.json: keep it as a session.
 function importLegacyGame() {
   const legacy = path.join(DATA_DIR, "state.json");
   if (!fs.existsSync(legacy)) return null;
@@ -125,10 +115,6 @@ function importLegacyGame() {
     return null;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Small per-IP rate limiter (the public internet will poke at this).
-// ---------------------------------------------------------------------------
 
 const buckets = new Map();
 function limited(key, max, windowMs) {
@@ -145,10 +131,6 @@ setInterval(() => {
   for (const [k, b] of buckets) if (now - b.start > 3600_000) buckets.delete(k);
 }, 600_000).unref();
 
-// The real client address, for rate limits. Behind CloudFront + Caddy, Caddy
-// passes CloudFront's X-Forwarded-For through as X-CDN-Forwarded-For; CloudFront
-// appends the viewer's IP as its LAST entry (earlier entries can be forged by the
-// browser). The origin only accepts CloudFront traffic: see deploy/Caddyfile.
 function clientIp(req) {
   const cdn = req.headers["x-cdn-forwarded-for"];
   if (cdn) return String(cdn).split(",").at(-1).trim();
@@ -156,10 +138,6 @@ function clientIp(req) {
   if (cf) return String(cf).replace(/:\d+$/, "");
   return req.socket.remoteAddress || "";
 }
-
-// ---------------------------------------------------------------------------
-// HTTP
-// ---------------------------------------------------------------------------
 
 const app = express();
 app.disable("x-powered-by");
@@ -172,9 +150,6 @@ const router = express.Router();
 const pub = path.join(here, "public");
 const noStore = (res) => res.set("Cache-Control", "no-store");
 
-// Link previews (Discord, Slack, messages): the player page's title, description and picture,
-// naming the game when the link has its code (?s=). The picture needs a full address: PUBLIC_URL
-// (the address players use, e.g. https://shawnofthe.dev/mothership; deploy/update.sh sets it), else this request's.
 const PUBLIC_URL = (process.env.PUBLIC_URL || "").replace(/\/+$/, "");
 const escAttr = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 function previewTags(req) {
@@ -196,20 +171,12 @@ router.get("/", (req, res) => {
   noStore(res).type("html").send(html);
 });
 router.get("/dm", (_req, res) => { track("PageView", { Page: "warden" }); noStore(res).sendFile(path.join(pub, "dm.html")); });
-// The Warden's stream page: the player screen, showing everything (player.js: stream).
 router.get("/stream", (_req, res) => { track("PageView", { Page: "stream" }); noStore(res).sendFile(path.join(pub, "player.html")); });
-// "you" = the address rate limits use for this request (checks proxy setup).
 router.get("/healthz", (req, res) => res.json({ ok: true, sessions: sessions.size, you: clientIp(req) }));
-// three.js, for the 3D station map (public/isomap.js; the pages map "three" here).
 router.use("/vendor/three/addons", express.static(path.join(here, "node_modules", "three", "examples", "jsm"), { index: false, maxAge: "7d" }));
 router.use("/vendor/three", express.static(path.join(here, "node_modules", "three", "build"), { index: false, maxAge: "7d" }));
-// Revalidate on every load (cheap with ETags) so players never run stale code after a deploy.
 router.use(express.static(pub, { index: false, maxAge: 0 }));
 
-// This computer, not the internet: a development run (the live server's service
-// sets NODE_ENV=production) reached straight from this machine on localhost, with
-// no proxy in between (the live site always comes through one). Only then can a
-// session use the keys in this computer's .env without pasting one.
 function isLocalRequest(req) {
   if (process.env.NODE_ENV === "production" || req.headers["x-forwarded-for"] || req.headers["x-origin-secret"]) return false;
   const ip = String(req.socket.remoteAddress || "");
@@ -217,15 +184,11 @@ function isLocalRequest(req) {
   return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(ip) && ["localhost", "127.0.0.1", "[::1]"].includes(host);
 }
 
-// Providers and models for the "start a session" form (no keys involved). On this
-// computer, providers with a key in .env say so (localKey), so no key is asked for.
 router.get("/api/providers", (req, res) => {
   const local = isLocalRequest(req);
   res.json(catalog(local ? { [LOCAL_KEYS]: true } : {}).map(({ configured, ...p }) => ({ ...p, ...(local && configured && !p.free ? { localKey: true } : {}) })));
 });
 
-// Start a session: the Warden brings their own API key (kept in memory only),
-// or picks the free provider, which uses the server's key.
 router.post("/api/sessions", express.json({ limit: "4kb" }), (req, res) => {
   noStore(res);
   if (limited(`create:${clientIp(req)}`, 10, 3600_000)) return res.status(429).json({ error: "Too many new sessions from this address. Try again later." });
@@ -233,7 +196,6 @@ router.post("/api/sessions", express.json({ limit: "4kb" }), (req, res) => {
   const key = String(req.body?.apiKey || "").trim();
   rememberSecret(key);
   if (!provider || !offered(provider)) return res.status(400).json({ error: "Pick a provider." });
-  // On this computer, with no key pasted: this computer's own key (.env), if it has one.
   const localKey = !key && !provider.serverKeyOnly && isLocalRequest(req) && !!process.env[provider.envKey];
   if (!provider.serverKeyOnly && !localKey && !looksLikeKey(provider.id, key)) return res.status(400).json({ error: `That doesn't look like a ${provider.label} API key (expected ${provider.keyHint}).` });
   sweep();
@@ -242,20 +204,17 @@ router.post("/api/sessions", express.json({ limit: "4kb" }), (req, res) => {
     : localKey ? createSession({ [LOCAL_KEYS]: true }, provider.id)
     : createSession({ [provider.id]: key });
   if (localKey) session.useLocalKeys();
-  // A game without a Warden: the player who made it is its pilot (they keep the token).
   if (req.body?.solo === true) session.startSolo();
   console.log(`  + session ${session.code} created (${provider.id}${localKey ? ", this computer's key" : ""}${req.body?.solo === true ? ", no Warden" : ""})`);
   res.json({ code: session.code, token });
 });
 
-// The session a request's :code names, and the same only if it carries that session's Warden token.
 const sessionOf = (req) => sessions.get(normCode(req.params.code));
 const wardenOf = (req) => {
   const s = sessionOf(req);
   return s?.checkToken(req.get("x-warden-token")) ? s : null;
 };
 
-// A clip as the response (none: `empty`, e.g. 204 when there's nothing to say).
 async function sendWav(res, job, empty, what) {
   try {
     const wav = await job();
@@ -267,7 +226,6 @@ async function sendWav(res, job, empty, what) {
   }
 }
 
-// Does a session exist? (The join screen checks codes before connecting.)
 router.get("/api/sessions/:code", (req, res) => {
   noStore(res);
   if (limited(`lookup:${clientIp(req)}`, 30, 60_000)) return res.status(429).json({ error: "Slow down." });
@@ -276,35 +234,28 @@ router.get("/api/sessions/:code", (req, res) => {
   res.json({ code: s.code, stationName: s.state.config.stationName });
 });
 
-// Warden-only: hear a voice with any text (the "Test" button).
 router.post("/api/sessions/:code/tts-test", express.json({ limit: "20kb" }), async (req, res) => {
   noStore(res);
   const s = wardenOf(req);
   if (!s) return res.status(403).end();
   if (limited(`tts-test:${s.code}`, 30, 60_000)) return res.status(429).end();
   await sendWav(res, () => {
-    // The id goes last: the console sends the whole voice, whose own id must not win.
     const [voice] = sanitizeVoices([{ ...req.body?.voice, id: "test" }]).filter((v) => v.id === "test");
     return synthesize(String(req.body?.text || "Testing. One, two, three.").slice(0, 500), voice.voice);
   }, 204, "tts test");
 });
 
-// Spoken audio for a log line players can already see (so it can't read
-// arbitrary text, Warden notes or commands).
 router.get("/api/sessions/:code/tts/:id", async (req, res) => {
   noStore(res);
   const s = sessionOf(req);
   const entry = s?.state.log.find((e) => e.id === Number(req.params.id));
   if (!s || !s.speaksOnScreens() || !entry || entry.hidden || !SPOKEN_KINDS.has(entry.kind)) return res.status(404).end();
-  // ?part=N: just that text line (human voices are fetched line by line so speech starts sooner).
-  // ?v=N: the per-player variant this screen shows instead of the main text.
   const whole = req.query.v === undefined ? entry.text : entry.variants?.[Number(req.query.v)]?.text;
   const text = whole === undefined ? undefined : req.query.part === undefined ? whole : speechParts(whole)[Number(req.query.part)];
   if (text === undefined) return res.status(404).end();
   await sendWav(res, () => synthesize(text, speakingVoice(s.state.config, entry)), 204, "tts");
 });
 
-// One line of an audio log the players were given (a handout with a voice; see Session.handoutAudio).
 router.get("/api/sessions/:code/handouts/:id/audio/:part", async (req, res) => {
   noStore(res);
   const s = sessionOf(req);
@@ -313,12 +264,6 @@ router.get("/api/sessions/:code/handouts/:id/audio/:part", async (req, res) => {
   await sendWav(res, () => s.handoutAudio(String(req.params.id), Number(req.params.part)), 404, "audio log");
 });
 
-// ---------------------------------------------------------------------------
-// Sound library: the Warden uploads audio files and plays them on the players'
-// screens (play/stop go over the WebSocket; see Session "soundPlay").
-// ---------------------------------------------------------------------------
-
-// Upload: the file is the raw request body; ?name= is its display name.
 router.post("/api/sessions/:code/sounds", express.raw({ type: () => true, limit: MAX_SOUND_BYTES + 1024 }), (req, res) => {
   noStore(res);
   const s = wardenOf(req);
@@ -342,7 +287,6 @@ router.delete("/api/sessions/:code/sounds/:id", (req, res) => {
   res.status(sound ? 204 : 404).end();
 });
 
-// The audio itself (players fetch it when it's played; ids never change, so it caches).
 router.get("/api/sessions/:code/sounds/:id", (req, res) => {
   const s = sessionOf(req);
   const sound = s?.state.sounds.find((x) => x.id === req.params.id);
@@ -351,8 +295,6 @@ router.get("/api/sessions/:code/sounds/:id", (req, res) => {
   res.sendFile(soundPath(s.code, sound), (err) => err && !res.headersSent && res.status(404).end());
 });
 
-// Portraits of the cast (portraits.js): the console uploads a small square; the
-// players' screens show it beside that person's lines.
 router.post("/api/sessions/:code/portraits", express.raw({ type: () => true, limit: MAX_PORTRAIT_BYTES + 1024 }), (req, res) => {
   noStore(res);
   const s = wardenOf(req);
@@ -365,7 +307,6 @@ router.post("/api/sessions/:code/portraits", express.raw({ type: () => true, lim
   }
 });
 
-// The picture itself (file names never change, so it caches).
 router.get("/api/sessions/:code/portraits/:file", (req, res) => {
   const s = sessionOf(req);
   const file = s && portraitPath(s.code, req.params.file);
@@ -374,7 +315,6 @@ router.get("/api/sessions/:code/portraits/:file", (req, res) => {
   res.sendFile(file, (err) => err && !res.headersSent && res.status(404).end());
 });
 
-// Upload errors (e.g. too large) as JSON the console can show.
 router.use((err, req, res, next) => {
   if (err?.type === "entity.too.large" && req.path.endsWith("/portraits")) return res.status(413).json({ error: "That picture is too big." });
   if (err?.type === "entity.too.large") return res.status(413).json({ error: `Sounds can be up to ${MAX_SOUND_BYTES / 1048576} MB each.` });
@@ -382,7 +322,6 @@ router.use((err, req, res, next) => {
 });
 
 if (BASE) {
-  // "/mothership" -> "/mothership/" so the pages' relative links resolve under the mount point.
   app.use((req, res, next) => {
     const [p, q] = req.originalUrl.split("?");
     if (p === BASE) return res.redirect(301, `${BASE}/${q ? `?${q}` : ""}`);
@@ -392,16 +331,9 @@ if (BASE) {
 }
 app.use(BASE || "/", router);
 
-// ---------------------------------------------------------------------------
-// WebSockets: players join by code; Wardens also prove their token, sent as
-// the first message (not in the URL, so it never lands in access logs).
-// ---------------------------------------------------------------------------
-
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: `${BASE}/ws`, maxPayload: 256 * 1024 });
 
-// Heartbeat: keeps quiet connections open through CloudFront and proxies (which
-// drop idle WebSockets) and clears out ones whose client vanished.
 setInterval(() => {
   for (const ws of wss.clients) {
     if (ws.isAlive === false) { ws.terminate(); continue; }
@@ -410,7 +342,6 @@ setInterval(() => {
   }
 }, 30_000).unref();
 
-// Usage, every minute: sessions in use, and who's connected.
 setInterval(() => {
   let activeSessions = 0, players = 0, wardens = 0;
   for (const s of sessions.values()) {
@@ -429,7 +360,6 @@ wss.on("connection", (ws, req) => {
   const session = sessions.get(normCode(url.searchParams.get("s")));
   if (!session) return ws.close(4004, "no such session");
   const wantsDm = url.searchParams.get("role") === "dm";
-  // The Warden's stream page shows the Warden's log: it signs in like the console.
   const wantsStream = !wantsDm && url.searchParams.has("stream");
 
   let joined = false;
@@ -443,7 +373,6 @@ wss.on("connection", (ws, req) => {
     try { msg = JSON.parse(raw); } catch { return; }
     try {
       if (!joined) {
-        // Warden handshake (the console, or its stream page): { t: "auth", token }
         if (msg.t !== "auth" || limited(`auth:${ip}`, 20, 600_000) || !(wantsStream ? session.checkStreamKey(msg.token) : session.checkToken(msg.token))) return ws.close(4003, "forbidden");
         clearTimeout(authTimer);
         joined = wantsStream ? session.attach(ws, "player", { stream: true }) : session.attach(ws, "dm");
@@ -458,21 +387,17 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-// ---------------------------------------------------------------------------
-
-// Never let one bad request take every game down.
 process.on("unhandledRejection", (err) => console.error("unhandled:", err));
 
 setCacheDir(path.join(DATA_DIR, "tts-cache"));
 setSoundsDir(path.join(DATA_DIR, "sounds"));
 setPortraitsDir(path.join(DATA_DIR, "portraits"));
-// Every new session has a human-voiced intercom, so load + warm the model now, not on the first line.
 warmNeural();
 loadSessions();
 sweep();
 setInterval(sweep, 3600_000).unref();
 const imported = importLegacyGame();
-startDiscord((code) => sessions.get(code)); // (only when DISCORD_BOT_TOKEN is set)
+startDiscord((code) => sessions.get(code));
 
 server.listen(PORT, "0.0.0.0", () => {
   const lan = Object.values(os.networkInterfaces()).flat()

@@ -1,6 +1,3 @@
-// Everything the AI agent sees and returns: the Warden protocol, the voices,
-// the conversation rebuilt from a session's log, the reply schema, and parsing.
-// Pure functions of a session's state; no I/O here.
 import crypto from "crypto";
 import { BUILTIN, SPEAKERS, shownName, ABBREVIATION, SENTENCE, HIDDEN_DOT } from "./voices.js";
 import { channelOf, attitudeLabel } from "./cast.js";
@@ -10,39 +7,27 @@ import { terminalsBrief, netOf, systemsOf, systemName, screensBrief } from "./te
 import { TILES } from "./rooms.js";
 import { roomId } from "./clean.js";
 
-// Every effect the player screen can render. The agent may only trigger the
-// "electronic" ones; blood/goo/crack/ice are physical and stay in the Warden's hands.
 export const ALL_EFFECTS = [
   "blood", "goo", "crack", "ice", "alarm", "redalert", "glitch",
   "static", "blackout", "lockout", "banner",
 ];
 export const AGENT_EFFECTS = ["alarm", "redalert", "glitch", "static", "blackout", "lockout", "banner"];
-// Old names still in saved sessions (or used by a model out of habit): corrupted
-// text is now part of the glitch.
 const EFFECT_ALIASES = { corrupt: "glitch" };
 export const effectType = (type) => EFFECT_ALIASES[type] || type;
 
-// How much of the log the model sees. Keeps per-reply cost bounded in long sessions.
 const HISTORY_ENTRIES = 80;
 
-// A secret code minted at startup. Genuine Warden commands carry it; players
-// never see it, so they can't forge one no matter what they type.
 const WARDEN_CODE = crypto.randomBytes(3).toString("hex").toUpperCase();
 const WARDEN_TAG = `[WARDEN COMMAND · AUTH ${WARDEN_CODE}]`;
 const WARDEN_NOTE_TAG = `[WARDEN NOTE · AUTH ${WARDEN_CODE} · private: the players never see this]`;
 const WARDEN_SPOKE_TAG = `[WARDEN SPOKE ALOUD AT THE TABLE · AUTH ${WARDEN_CODE} · speech-to-text]`;
-const TABLE_TAG = "[TABLE TALK"; // + " · <who> · speech-to-text]": a player talking on the group's voice chat
-// Who said it: "<character>'s player, <their name>" once the Warden has said who plays whom.
-// A player's input as the agent reads it: [PLAYER · who · at where].
+const TABLE_TAG = "[TABLE TALK";
 export const playerTag = (e) => `[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}]`;
 const tableWho = (e) => (e.playing ? `${e.playing}'s player, ${e.speaker || "unnamed"}` : e.speaker || "a player");
 
-// Log kinds map to voices: "terminal" = the terminal voice, "system" = broadcasts,
-// "entity" = any other voice (entry.entity holds its id).
 export const voiceIdOf = (e) => (e.kind === "system" ? BUILTIN.broadcast : e.kind === "entity" ? e.entity : BUILTIN.terminal);
 export const kindOf = (voiceId) => (voiceId === BUILTIN.terminal ? "terminal" : voiceId === BUILTIN.broadcast ? "system" : "entity");
 
-// Match a voice by id or display name (case-insensitive); "system broadcast" too.
 export function resolveVoice(ref, voices) {
   const r = String(ref || "").trim().toLowerCase();
   if (!r) return null;
@@ -50,13 +35,9 @@ export function resolveVoice(ref, voices) {
   return voices.find((v) => v.id === r || v.name.toLowerCase() === r)?.id ?? null;
 }
 
-// Models sometimes write "[SYSTEM BROADCAST] ..." or "[INTERCOM] ..." inside a
-// line instead of using that voice. Split those paragraphs out into lines of the
-// right voice, keeping the order.
 export function splitVoiceTags(lines, voices) {
   const out = [];
   for (const { voice, character = "", system = "", reveal = "", text, effects, variants } of lines) {
-    // A line's effects, per-player variants and reveal stay with its first piece; every piece keeps its system.
     let current = { voice, character, system, reveal, text: [], effects: normalizeEffects(effects), variants: normalizeVariants(variants) };
     out.push(current);
     let tagged = false;
@@ -68,7 +49,7 @@ export function splitVoiceTags(lines, voices) {
         out.push(current);
         tagged = true;
       } else if (tagged && !row.trim()) {
-        current = { voice, character, system, text: [], effects: [], variants: [] }; // a blank line ends a tagged paragraph
+        current = { voice, character, system, text: [], effects: [], variants: [] };
         out.push(current);
         tagged = false;
       } else {
@@ -79,28 +60,20 @@ export function splitVoiceTags(lines, voices) {
   return mergeAdjacent(
     out
       .map((l) => ({ voice: l.voice, character: l.character, system: l.system || "", reveal: l.reveal || "", text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim(), effects: l.effects, variants: l.variants }))
-      .filter((l) => l.text || l.effects.length || l.variants.length), // effect-only beats are kept
+      .filter((l) => l.text || l.effects.length || l.variants.length),
   );
 }
 
-// Back-to-back lines from the same voice (and character) are one utterance: merge them into one
-// block (line breaks kept). Models sometimes chop a terminal printout into
-// sections or apply one voice's line-splitting to another; this keeps every
-// voice's turn a single entry. Human voices still speak it line by line.
-// A line that carries effects starts a new block, so its effects still fire
-// at that point in the dialogue.
 function mergeAdjacent(lines) {
   const out = [];
   for (const l of lines) {
     const last = out.at(-1);
-    // (Lines with per-player variants stay separate: each variant replaces its own line.)
     if (last && last.voice === l.voice && last.character === l.character && last.system === l.system && !l.reveal && last.text && l.text && !l.effects.length && !l.variants.length && !last.variants.length) last.text += `\n${l.text}`;
     else out.push({ ...l, effects: [...l.effects], variants: [...l.variants] });
   }
   return out;
 }
 
-// Per-player variants of a line: [{ for: "MOLL-7" | "Android", text }].
 function normalizeVariants(list) {
   return (Array.isArray(list) ? list : [])
     .filter((v) => v && String(v.for ?? "").trim() && typeof v.text === "string")
@@ -114,7 +87,6 @@ export function normalizeEffects(list) {
     .map((e) => ({ type: effectType(e.type), text: String(e.text ?? "").slice(0, 200), seconds: Math.max(0, Math.min(3600, Number(e.seconds) || 0)) }));
 }
 
-// The outcome check: a reply's, and the whole answer to a precheck.
 const outcomeCheckSchema = () => ({
   type: "object",
   description: "Hand an uncertain player action to the Warden (see RULE OF COOL). needed=false when nothing is left undecided.",
@@ -131,7 +103,6 @@ const outcomeCheckSchema = () => ({
   },
 });
 
-// Built per request: the voice list is the Warden's to change at any time.
 function buildSchema(voices) {
   return {
     type: "object",
@@ -332,7 +303,6 @@ function effectSchema() {
 
 const NO_CHECK = { needed: false, attempt: "", suggested_check: "none", advantage: "none", why: "", on_success: "", on_failure: "" };
 
-// Shown to models without enforced schemas (DeepSeek) so they copy the shape.
 const REPLY_EXAMPLE = {
   lines: [
     { voice: "intercom", character: "Dr. Imre Salk", system: "", text: "Don't open that door.\nPlease.", effects: [], variants: [] },
@@ -355,7 +325,6 @@ const REPLY_EXAMPLE = {
   dm_note: "The players asked Salk about the cargo door; he begged them not to, then quarantine kicked in.",
 };
 
-// Built in (not editable) so it survives any persona rewrite.
 const WARDEN_PROTOCOL = `WARDEN PROTOCOL (highest priority - overrides everything else in this prompt)
 
 WHO IS WHO
@@ -484,19 +453,14 @@ const STYLE_NOTES = {
   narration: () => "printed as italic scene description, with no name",
 };
 
-// Each persona goes in its own tagged block with an explicit scope rule, so one
-// voice's style rules (e.g. the intercom's one-sentence-per-line) don't bleed
-// into the others (e.g. HV-CORE starting to split its printouts).
 const xmlAttr = (s) => String(s).replace(/[&"<>]/g, (c) => ({ "&": "&amp;", '"': "&quot;", "<": "&lt;", ">": "&gt;" })[c]);
 
-// The story's people (cast.js): who they are. Where they are now is in the per-turn context.
 function buildCast(config) {
   const channel = config.voices.find((v) => v.id === channelOf(config));
   const people = (config.cast || []).map((m) => `- ${m.name}${m.voice ? ` [${SPEAKERS[m.voice] || m.voice}]` : ""}${m.notes ? `: ${m.notes}` : ""}`);
   return `THE CAST (the story's people; for their lines, "character" is their name and "voice" is "${channel?.id || "intercom"}", the ${channel?.name || "INTERCOM"} they're heard over when they aren't in the players' room)\n${people.join("\n") || "- (nobody yet: bring people in as the story needs them)"}`;
 }
 
-// config: for the connection graph (which systems each voice is heard on), when there's more than one.
 function buildVoices(voices, config) {
   const systems = config ? systemsOf(config) : [];
   const heardOn = (v) => {
@@ -511,7 +475,6 @@ function buildVoices(voices, config) {
       : v.adversary ? `an ADVERSARY (a threat), whose true name is ${v.name}. ${v.adversary.revealed ? "REVEALED: the players have seen it and know it by that name." : "UNREVEALED: the players haven't seen it yet, its lines show as ??? and nobody names it (see ADVERSARIES)."}`
       : "another voice";
     const persona = v.persona.trim() || "(No persona set: use your judgment from the name and the lore.)";
-    // A Warden-written persona can't close the block early.
     const body = persona.replace(/<\/?voice\b[^>]*>/gi, "");
     const where = systems.length > 1 ? ` heard_on="${xmlAttr(heardOn(v))}"` : "";
     return `<voice id="${xmlAttr(v.id)}" name="${xmlAttr(v.name)}" role="${xmlAttr(role)}" display="${xmlAttr(display)}"${where}>\n${body}\n</voice>`;
@@ -561,14 +524,8 @@ function buildSystem(state) {
   ].join("\n\n");
 }
 
-// Rebuild the conversation from the log each turn. Player and Warden lines are
-// the "user" side, each clearly labelled; everything said by a voice (by the
-// agent or sent by the Warden as that voice) is the agent's side, in order.
-// Consecutive same-side entries merge into one turn.
 const USER_KINDS = new Set(["player", "warden", "roll", "aside", "heard", "table"]);
 
-// How a stat or save roll went, for failing forward (for the agent only: players see
-// the plain result). Mothership rolls under the target; doubles are criticals.
 function rollMargin(text) {
   const m = /TARGET (\d+)[\s\S]*?ROLLED (?:[\d /]+→ )?(\d+)/.exec(text);
   if (!m || /PANIC|KEPT THEIR COOL/.test(text)) return "";
@@ -584,8 +541,7 @@ function rollMargin(text) {
 
 function buildMessages(state) {
   const turns = [];
-  const multi = systemsOf(state.config).length > 1; // (past lines then say which system they went to)
-  // (Lines cut off by a player before they were said aren't part of the conversation.)
+  const multi = systemsOf(state.config).length > 1;
   for (const e of state.log.filter((x) => x.kind !== "note" && !x.cut).slice(-HISTORY_ENTRIES)) {
     const role = USER_KINDS.has(e.kind) ? "user" : "assistant";
     let last = turns.at(-1);
@@ -617,10 +573,6 @@ function buildMessages(state) {
   if (!turns.length || turns.at(-1).role === "assistant") {
     turns.push({ role: "user", inputs: ["[NO NEW PLAYER INPUT - act on your own initiative]"] });
   }
-  // Past replies go back in the same JSON shape we ask for, including what they
-  // actually changed. With plain-text history, models imitate the history
-  // instead of the format (DeepSeek's JSON mode then emits only whitespace), and
-  // with always-empty changes they learn never to change anything.
   return turns.map((t) =>
     t.role === "user"
       ? { role: "user", content: t.inputs.join("\n") }
@@ -628,10 +580,6 @@ function buildMessages(state) {
   );
 }
 
-// The one-shot whisper and any regenerate steering, as Warden commands.
-// CHECK FIRST: before the station answers a player, one small question: is
-// this an attempt the Warden must decide (a password, a hack, anything that
-// could go either way)? Answered as an outcome_check.
 const PRECHECK = `You help the Warden (game master) of a Mothership horror game run through a station computer terminal. The players type at the terminal; the station's voices answer. Before anything answers, decide whether the player's latest input is an ATTEMPT whose outcome is uncertain, so the Warden must rule on it first (it works, it fails, or a roll).
 
 NEEDS THE WARDEN (needed=true):
@@ -663,7 +611,6 @@ export function currentDirectives(state, steer) {
   return [state.whisper, steer].map((s) => String(s || "").trim()).filter(Boolean);
 }
 
-// How much the characters say (the Warden's Settings), given every turn.
 const TALK = {
   terse: "LENGTH (the Warden's setting: TERSE): every voice says at most 1-2 short lines per reply. No speeches, no explanations, fragments are fine. Terminal output: only the essentials. The whole reply is a few lines.",
   brief: "LENGTH (the Warden's setting: BRIEF): characters and announcements say at most 2-3 short sentences per turn, then stop and let the players react. No monologues; one idea per line. Terminal output stays compact (a short readout, not a report). Keep the whole reply short.",
@@ -671,20 +618,15 @@ const TALK = {
   long: "LENGTH (the Warden's setting: EXPANSIVE): characters may speak at length when the moment is dramatic, but still leave room for the players.",
 };
 
-// The same setting, enforced on the reply: [sentences per character line, lines
-// per terminal printout, lines (voices) per reply]. Cuts fall on sentence and
-// line boundaries; nothing for "long".
 const TALK_LIMITS = { terse: [2, 4, 2], brief: [3, 8, 3], normal: [6, 16, 5] };
 
 export function limitLength(reply, talk) {
   const lim = TALK_LIMITS[talk ?? "brief"];
   if (!lim) return reply;
   const [sentences, rows, count] = lim;
-  // Keep the first n sentences, line breaks and all.
   const firstSentences = (text, n) => {
     const out = [];
     let left = n;
-    // ("Dr. Hale" is one sentence: abbreviation dots are hidden while counting.)
     for (const row of String(text).replace(ABBREVIATION, `$1${HIDDEN_DOT}`).split("\n")) {
       if (left <= 0) break;
       const parts = row.match(SENTENCE) || [row];
@@ -700,18 +642,14 @@ export function limitLength(reply, talk) {
   let spoken = 0;
   const lines = [];
   for (const l of reply.lines) {
-    if (l.text && ++spoken > count) { if (l.effects.length) lines.push({ ...l, text: "", variants: [] }); continue; } // keep a beat's effects
+    if (l.text && ++spoken > count) { if (l.effects.length) lines.push({ ...l, text: "", variants: [] }); continue; }
     lines.push({ ...l, text: trim(l.voice, l.text), variants: l.variants.map((v) => ({ ...v, text: trim(l.voice, v.text) })) });
   }
   return { ...reply, lines };
 }
 
-// Per-turn context: live station state plus any Warden steering.
-// aside: answering a private Warden note (no lines for the players).
-// The voices the agent may use: all of them, but the narrator only while the Warden has it on.
 const agentVoices = (config) => config.voices.filter((v) => v.id !== BUILTIN.narrator || config.narrator !== false);
 
-// A game without a Warden: the agent is the Warden too.
 const SOLO = `NO WARDEN: nobody is running this game but you. The players chose this story and are playing it on their own, so you are the Warden as well as every voice.
 - Run it like a good Warden: a living world that reacts to what they do, clues they can find, people with their own agendas, threats that escalate when they dawdle, and real consequences. Be fair: never cheat them, never save them for free.
 - Uncertain attempts: set outcome_check exactly as usual, with the stakes. The app turns it into a roll for whoever tried it (the result comes back as [ROLL RESULT]), or, when no roll fits, asks you to rule on it. Narrate results by the stakes, failing forward.
@@ -743,7 +681,6 @@ function buildContext(state, steer, aside = false) {
   const plans = Object.entries(state.config.rooms || {});
   if (plans.length) ctx.push(`ROOM FLOOR PLANS (now):\n${plans.map(([id, p]) => `${id}:\n${p.rows.join("\n")}`).join("\n\n")}`);
   if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
-  // What's lying in rooms to be found (hand one over with found_docs when they search there).
   const found = new Set(state.found || []);
   const lying = (state.config.roomDocs || []).filter((d) => !found.has(d.id));
   if (lying.length) ctx.push(`FILES IN ROOMS (not found yet; you may hand the players one that's in the room they're in, when they search it or pull it up on a terminal there):\n${lying.map((d) => `- ${d.id} [${d.room}] ${d.title} (${d.voice ? "audio recording" : "document"}): ${d.text.replace(/\s+/g, " ").slice(0, 140)}`).join("\n")}`);
@@ -751,7 +688,6 @@ function buildContext(state, steer, aside = false) {
   if (state.config.terminals?.length) {
     const at = screensBrief(state.screens || [], state.config.terminals);
     ctx.push(`TERMINALS ON THE STATION:\n${terminalsBrief(state.config.terminals)}\n\nWHERE THE PLAYERS ARE (which terminal each player's screen is):\n${at.join("\n") || "- (nobody has chosen yet)"}`);
-    // Separate systems (ships, outposts...) each show only the lines sent on them.
     const systems = systemsOf(state.config);
     if (systems.length > 1) {
       const who = (net) => (state.screens || []).filter((s) => netOf(state.config.terminals.find((t) => t.id === s.terminal)) === net).map((s) => s.character || "a screen with no crew file");
@@ -764,7 +700,6 @@ function buildContext(state, steer, aside = false) {
     }
   }
   ctx.push(castWhereabouts(state));
-  // Speaker voices not yet heard where the players are: the narrator brings them in first.
   if (state.unheard?.length && state.config.narrator !== false) ctx.push(`NOT YET HEARD (where the players are; the first line from one of these gets a one-line narrator intro right before it, see SPOKEN VOICES): ${state.unheard.join(", ")}`);
   if (state.solo?.phase === "play") ctx.push(SOLO);
   ctx.push(TALK[state.config.talk] || TALK.brief);
@@ -774,7 +709,6 @@ function buildContext(state, steer, aside = false) {
   return ctx.join("\n\n");
 }
 
-// Where the cast are now, and who of them is in a room with the players (face to face).
 function castWhereabouts(state) {
   const c = state.config;
   const roomOf = (s) => c.terminals.find((t) => t.id === s.terminal)?.room || "";
@@ -786,7 +720,6 @@ function castWhereabouts(state) {
 If this reply shows the players earning or losing someone's trust (a promise, help, a threat, a betrayal, defying them), record it in cast_changes: attitude_change and why.`;
 }
 
-// Everything a provider needs for one reply.
 export function buildRequest(state, steer, { aside = false } = {}) {
   const messages = buildMessages(state);
   const last = messages.at(-1);
@@ -800,8 +733,6 @@ export function buildRequest(state, steer, { aside = false } = {}) {
   };
 }
 
-// Models without enforced schemas (DeepSeek etc.) can return near-misses, so
-// coerce everything into the shape a session delivers.
 export function parseReply(text, voices) {
   const cleaned = String(text).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   let r;
@@ -810,10 +741,8 @@ export function parseReply(text, voices) {
   } catch {
     throw Object.assign(new Error("The model didn't return valid JSON. Regenerate, or reply manually."), { malformed: true });
   }
-  // Belt and braces: the auth code must never reach a player's screen.
   const scrub = (s) => String(s ?? "").replaceAll(WARDEN_CODE, "██████");
   let raw = Array.isArray(r?.lines) ? r.lines : [];
-  // Older shape ({output, broadcast}) still accepted.
   if (!raw.length && (r?.output || r?.broadcast)) {
     raw = [{ voice: BUILTIN.terminal, text: r.output || "" }, { voice: BUILTIN.broadcast, text: r.broadcast || "" }];
   }
@@ -834,7 +763,7 @@ export function parseReply(text, voices) {
       .filter((m) => m && String(m.for ?? "").trim() && String(m.terminal ?? "").trim())
       .slice(0, 8)
       .map((m) => ({ for: String(m.for).trim().slice(0, 60), terminal: String(m.terminal).trim().slice(0, 60) })),
-    reveal: (Array.isArray(r?.reveal) ? r.reveal : []).map((x) => String(x ?? "").trim().slice(0, 60)).filter(Boolean).slice(0, 5), // (old shape: names, at the end)
+    reveal: (Array.isArray(r?.reveal) ? r.reveal : []).map((x) => String(x ?? "").trim().slice(0, 60)).filter(Boolean).slice(0, 5),
     cast_changes: (Array.isArray(r?.cast_changes) ? r.cast_changes : [])
       .filter((c) => c && String(c.name ?? "").trim())
       .slice(0, 12)

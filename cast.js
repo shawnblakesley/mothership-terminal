@@ -1,31 +1,12 @@
-// The cast: the people of the story (not the players' own characters, crew.js).
-// Each has a human voice of their own, a portrait (optional), notes for the agent,
-// and the room they're in now. Where they are decides how they're heard: in the
-// players' room they talk face to face, clear; anywhere else they come over the
-// intercom (config.castChannel, a voice: its name, look and speaker effects).
-// The Warden edits the cast; the agent brings new people in and moves them.
-//   { id, name, voice: Kokoro speaker id, notes, room: map room id or "", portrait: file or "",
-//     attitude: how they feel about the players, -3 (hostile) to 3 (loyal), 0 neutral; why: the reason,
-//     stress: 0-20, like the crew's (2 to start): a Panic check is a d20 at or under it }
-// portrait: an upload (portraits.js), or "kit/sfcp-<n>.png", one of the pack that
-// comes with the app (public/portraits/, listed in pack.json): Victor J Merino's
-// Sci-fi character portraits project, CC BY-NC 4.0, credited on the players'
-// screens while one is in use.
 import { SPEAKERS, COMMS_PRESETS, voiceFor } from "./voices.js";
 import { slug as keySlug, roomId } from "./clean.js";
 
 export const MAX_CAST = 40;
-// How someone feels about the players: everyone starts Neutral; the agent (and the Warden) move it.
 export const ATTITUDES = { "-3": "Hostile", "-2": "Resentful", "-1": "Wary", 0: "Neutral", 1: "Friendly", 2: "Trusting", 3: "Loyal" };
 export const attitudeLabel = (n) => ATTITUDES[n] || "Neutral";
 const clampAttitude = (n) => Math.max(-3, Math.min(3, Math.round(Number(n) || 0)));
 const clampStress = (n, def = 2) => (Number.isFinite(Number(n)) && n !== null && n !== "" ? Math.max(0, Math.min(20, Math.round(Number(n)))) : def);
 
-// The panic table, for every panic (the crew's and the cast's): when someone rolls
-// a d20 at or under their Stress, the number is looked up here. Mothership 1e's
-// Panic Table (Tuesday Knight Games), its entries restated in our own words.
-// Mechanics (Stress, Conditions, Minimum Stress) are the Warden's to apply to the
-// crew; for the cast, the agent plays it out.
 export const PANIC_TABLE = [null,
   { name: "Adrenaline rush", effect: "[+] on every roll for the next 2d10 minutes, and Stress drops by 1d5." },
   { name: "Anxious", effect: "+1 Stress." },
@@ -49,8 +30,6 @@ export const PANIC_TABLE = [null,
   { name: "Collapse", effect: "the character is lost to their player: the sheet goes to the Warden, and the player makes a new character." },
 ];
 
-// The panic for a roll of n: { name, effect }. Compounding problems (18) rolls twice
-// more on the table itself (an 18 again is rerolled).
 export function panicEntry(n) {
   const e = PANIC_TABLE[n];
   if (!e) return null;
@@ -61,15 +40,12 @@ export function panicEntry(n) {
     effect: `Minimum Stress goes up by 1 for good, and two more panics: ${more.map((d) => `${d}, ${PANIC_TABLE[d].name}: ${PANIC_TABLE[d].effect}`).join(" Then ")}`,
   };
 }
-// A portrait file: an upload, or one that comes with the app (the crew's use these too).
 export const PORTRAIT_FILE = /^([a-f0-9]{12}\.(png|jpg|webp|gif)|kit\/[a-z0-9_-]{1,60}\.(png|jpg))$/;
 
 const slug = (s) => keySlug(s) || "someone";
 
-// KESTREL-9's people, where they are when the crew arrives.
 export const OLD_MARLOWE_NOTES = "Runs the reactor deck. Blunt, practical, swears. Wants the cargo bay opened and dealt with; has no patience for Okonkwo.";
 export const DEFAULT_MARLOWE_NOTES = "Runs the reactor deck. Blunt, practical, swears. Knows the reactor has bled power into the cargo bay for two weeks and that HV-CORE won't let her cut the feed. Can talk the crew through the reactor service. Wants the cargo bay opened and dealt with; has no patience for Okonkwo.";
-// Their faces, by number in the portrait pack.
 const DEFAULT_FACES = { Okonkwo: "70", Salk: "09", Marlowe: "44", Voss: "71", Adar: "86", Petrov: "58", Webb: "14", Ostrand: "98", Yusuf: "12" };
 export const DEFAULT_CAST = [
   { name: "Administrator Ruth Okonkwo", voice: "bf_emma", room: "command_deck", notes: "Station administrator, sealed in on the command deck. Clipped, controlled, company first. Gives orders, never answers questions about what she has reported." },
@@ -84,7 +60,6 @@ export const DEFAULT_CAST = [
 ].map((c) => ({ id: slug(c.name), ...c, portrait: `kit/sfcp-${DEFAULT_FACES[c.name.split(" ").at(-1)]}.png` }));
 export const defaultCast = () => structuredClone(DEFAULT_CAST);
 
-// Validate whatever the console (or a saved story, or the story builder) sends.
 export function sanitizeCast(list) {
   const out = [];
   const names = new Set(), ids = new Set();
@@ -111,7 +86,6 @@ export function sanitizeCast(list) {
   return out;
 }
 
-// Find someone by name, forgivingly: "Salk" or "Dr. Salk" find "Dr. Imre Salk".
 export function findCast(cast, name) {
   const n = String(name || "").replace(/\s*\((f|m|female|male|woman|man)\)\s*$/i, "").trim().toLowerCase();
   if (!n || !cast?.length) return null;
@@ -122,8 +96,6 @@ export function findCast(cast, name) {
   return cast.find((c) => { const cw = words(c.name); return nw.length && nw.every((w) => cw.includes(w)); }) || null;
 }
 
-// Someone new the agent brought in ("Marlowe (f)"): added with a voice nobody
-// else is using (stable for the name). Returns { member, created }.
 export function addCast(cast, raw, { room = "", notes = "" } = {}) {
   const found = findCast(cast, raw);
   if (found) return { member: found, created: false };
@@ -143,18 +115,14 @@ export function addCast(cast, raw, { room = "", notes = "" } = {}) {
   return { member, created: true };
 }
 
-// The base voice someone speaks with: always a human one.
 export const castVoice = (member) => ({ engine: "neural", speaker: member?.voice || "am_michael", pace: 1 });
 
-// The base voice a log line is spoken with: its speaker's (the cast's own), or its voice's.
-// Raise or lower someone's Stress (0-20). Returns [before, after].
 export function shiftStress(member, change) {
   const before = member.stress ?? 2;
   member.stress = clampStress(before + (Math.round(Number(change)) || 0));
   return [before, member.stress];
 }
 
-// Move someone's attitude by `change` steps (clamped). Returns [before, after].
 export function shiftAttitude(member, change, why = "") {
   const before = member.attitude || 0;
   member.attitude = clampAttitude(before + clampAttitude(change));
@@ -167,7 +135,6 @@ export function speakingVoice(config, entry) {
   return member ? castVoice(member) : voiceFor(config.voices, entry).voice;
 }
 
-// The voice the cast is heard through when they aren't in the room.
 export function channelOf(config) {
   const voices = config.voices || [];
   const ok = (id) => voices.some((v) => v.id === id);
@@ -176,9 +143,6 @@ export function channelOf(config) {
   return voices.find((v) => COMMS_PRESETS.has(v.preset) && !["terminal", "broadcast", "narrator"].includes(v.id))?.id || "broadcast";
 }
 
-// Stories from before the cast was its own thing: people moved out of the voices
-// they spoke through (the comms-like ones: an intercom, a radio), into rooms by
-// the station's occupants lists (and taken off them: the cast's room is theirs).
 export function castFromVoices(voices, station) {
   const cast = [];
   let channel = "", most = 0;
@@ -195,8 +159,6 @@ export function castFromVoices(voices, station) {
   return { cast: sanitizeCast(cast), channel };
 }
 
-// Rooms from occupants.<room> ("Dr. Imre Salk, Carys Webb (hiding)"); whoever is
-// matched comes off the list (what was said about them in brackets goes to their notes).
 export function placeByOccupants(cast, station) {
   const occ = station?.occupants;
   if (!occ || typeof occ !== "object") return;

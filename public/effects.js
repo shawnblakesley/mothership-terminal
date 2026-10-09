@@ -1,12 +1,9 @@
-// Screen effects for the player terminal. Exposes window.FX.
 (() => {
   const layer = () => document.getElementById("fx");
-  // A player who asked for less flicker (body.calm: player.js): effects hold still, or change slowly.
   const calm = () => document.body.classList.contains("calm");
   const crt = () => document.getElementById("crt");
-  const active = new Map(); // id -> { effect, el, stop() }
+  const active = new Map();
 
-  // ---------------------------------------------------------------- audio
   const Sound = {
     ctx: null,
     muted: false,
@@ -17,8 +14,6 @@
       }
       if (this.ctx.state === "suspended") this.ctx.resume();
     },
-    // Everything (effects and speech) goes through one master bus so the
-    // player's volume control affects it all.
     volume: 1,
     bus() {
       if (!this.master) {
@@ -80,7 +75,6 @@
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       src.connect(f); f.connect(g); src.start(t); src.stop(t + dur);
     },
-    // Looping sounds return a stop() function.
     noiseLoop(gain = 0.05) {
       if (!this.ok()) return () => {};
       const src = this.ctx.createBufferSource();
@@ -90,7 +84,7 @@
       const g = this.out(gain);
       src.connect(f); f.connect(g); src.start();
       const stop = () => { try { src.stop(); } catch {} g.disconnect(); };
-      stop.level = (v) => g.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02); // (turn it down or up while it runs)
+      stop.level = (v) => g.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
       return stop;
     },
     siren() {
@@ -117,9 +111,6 @@
       const iv = setInterval(blast, 2200);
       return () => { on = false; clearInterval(iv); };
     },
-    // A horror sting, for a reveal (under a second): a quick hiss swelling up, then the
-    // clash: a sharp crack over a sub-bass hit, and a bright dissonant chord ringing
-    // out. (into: any AudioContext and node, for testing.)
     sting(into) {
       if (!into && !this.ok()) return;
       const ctx = into?.ctx || this.ctx, dest = into?.dest || this.bus();
@@ -135,13 +126,11 @@
         g.gain.exponentialRampToValueAtTime(peak, at + attack);
         g.gain.exponentialRampToValueAtTime(0.0001, at + attack + decay);
       };
-      // 1. the swell: a quick hiss rising into the hit
       { const n = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
         f.type = "bandpass"; f.Q.value = 1.5;
         f.frequency.setValueAtTime(800, t0); f.frequency.exponentialRampToValueAtTime(5000, hit);
         g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.2, hit - 0.005); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.03);
         n.connect(f); f.connect(g); g.connect(out); n.start(t0); n.stop(hit + 0.05); }
-      // 2. the hit: a sharp crack on top of a short sub-bass thud and low boom
       { const n = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
         f.type = "highpass"; f.frequency.value = 2500;
         env(g, hit, 0.35, 0.002, 0.06); n.connect(f); f.connect(g); g.connect(out); n.start(hit); n.stop(hit + 0.1); }
@@ -151,17 +140,16 @@
       { const n = noise(), f = ctx.createBiquadFilter(), g = ctx.createGain();
         f.type = "lowpass"; f.frequency.value = 260;
         env(g, hit, 0.28, 0.003, 0.4); n.connect(f); f.connect(g); g.connect(out); n.start(hit); n.stop(hit + 0.45); }
-      // 3. the clash: a bright dissonant cluster (a tritone, and a semitone rub up high), ringing out
       { const f = ctx.createBiquadFilter(), g = ctx.createGain();
         f.type = "lowpass"; f.Q.value = 3;
-        f.frequency.setValueAtTime(4200, hit); f.frequency.exponentialRampToValueAtTime(2600, hit + 0.75); // (no sweep: a steady ring, not a whirl)
+        f.frequency.setValueAtTime(4200, hit); f.frequency.exponentialRampToValueAtTime(2600, hit + 0.75);
         g.gain.setValueAtTime(0.0001, hit); g.gain.exponentialRampToValueAtTime(0.34, hit + 0.008); g.gain.exponentialRampToValueAtTime(0.11, hit + 0.25); g.gain.exponentialRampToValueAtTime(0.04, hit + 0.6); g.gain.exponentialRampToValueAtTime(0.0001, hit + 0.75);
-        for (const [hz, det] of [[110, -2], [155.6, 2], [233, -2], [246.9, 3], [329.6, -2]]) { // (the semitone rub up high: harsh, not warbling)
+        for (const [hz, det] of [[110, -2], [155.6, 2], [233, -2], [246.9, 3], [329.6, -2]]) {
           const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = hz; o.detune.value = det;
           o.connect(f); o.start(hit); o.stop(hit + 0.8);
         }
         f.connect(g); g.connect(out); }
-      return hit + 0.78 - t0; // (how long it lasts)
+      return hit + 0.78 - t0;
     },
     powerDown() {
       if (!this.ok()) return;
@@ -177,7 +165,6 @@
     },
   };
 
-  // ---------------------------------------------------------------- helpers
   const rand = (a, b) => a + Math.random() * (b - a);
   const el = (cls, html = "") => {
     const d = document.createElement("div");
@@ -192,7 +179,6 @@
     c.width = w; c.height = h;
     return c;
   }
-  // (as big as the effects layer: the whole window, or on the stream page the part above the crew)
   function fullCanvas() {
     const c = document.createElement("canvas");
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -205,11 +191,6 @@
     return { c, ctx, w, h };
   }
 
-  // Blood and goo can be wiped off the glass by dragging across them. The
-  // overlay itself never takes the mouse (clicks go through to the buttons and
-  // text underneath); the drag is watched on the whole page instead.
-  // others: offscreen canvases holding the same picture, wiped too (so drips that
-  // are still being revealed from them don't bring wiped liquid back).
   function makeWipeable(c, ctx, others = []) {
     let last = null, dragged = 0;
     const wipe = (x, y) => {
@@ -228,7 +209,6 @@
       if (!c.isConnected) return off();
       if (!last || !(e.buttons & 1)) return;
       dragged += Math.hypot(e.clientX - last[0], e.clientY - last[1]);
-      // A real drag (not a click): wipe, and don't select text while doing it.
       if (dragged > 8) {
         document.body.style.userSelect = "none";
         getSelection()?.removeAllRanges();
@@ -250,7 +230,6 @@
 
   const TAU = Math.PI * 2;
 
-  // Smooth value noise in 0..1, summed over a few octaves: organic edges, veins, mottling.
   function makeNoise() {
     const p = [...Array(256).keys()];
     for (let i = 255; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
@@ -271,11 +250,8 @@
     };
   }
 
-  // A liquid on the glass, as a thickness at every (CSS) pixel. Droplets add to it;
-  // where it passes a threshold there is liquid, and its slope catches the light.
   function liquidField(w, h) {
     const F = new Float32Array(w * h);
-    // A droplet at (x, y): radius r, strength a, stretched k times along angle ang.
     const drop = (x, y, r, a = 1.6, ang = 0, k = 1) => {
       const R = r * Math.max(1, k);
       const x0 = Math.max(0, Math.floor(x - R)), x1 = Math.min(w - 1, Math.ceil(x + R));
@@ -294,24 +270,19 @@
     return { F, w, h, drop };
   }
 
-  // Light the liquid. paint(th, n, x, y, nx, ny, v) gives [r, g, b, a] for a pixel of
-  // thickness th (0 at the edge .. 1 thick; v is the raw depth), noise n and surface normal (nx, ny);
-  // a sharp highlight from the top left is added on top (it's wet).
   function shadeLiquid(fl, noise, paint, { edge = 0.22, relief = 14, gloss = 0.85, shine = 70 } = {}) {
     const { F, w, h } = fl, T = 0.5;
     const img = new ImageData(w, h), D = img.data;
-    const hx = -0.42, hy = -0.56, hz = 1.71, hl = Math.hypot(hx, hy, hz); // halfway between the light and the eye
-    // The surface's height: it rises at the edges and levels off (a pool is flat on top),
-    // so the light catches the curve round each drop's rim.
+    const hx = -0.42, hy = -0.56, hz = 1.71, hl = Math.hypot(hx, hy, hz);
     const H = (f) => (f > 0.3 ? 1 - Math.exp(-(f - 0.3) * 1.6) : 0);
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
         const i = y * w + x, f = F[i];
         if (f < T - edge) continue;
         const nz = noise(x / 26, y / 26, 3);
-        const v = f + (nz - 0.5) * edge * 2; // (ragged, organic edges)
+        const v = f + (nz - 0.5) * edge * 2;
         if (v < T - 0.035) continue;
-        const cover = Math.min(1, (v - (T - 0.035)) / 0.07); // anti-aliased edge
+        const cover = Math.min(1, (v - (T - 0.035)) / 0.07);
         const th = Math.max(0, Math.min(1, (v - T) / 1.4));
         let nx = -(H(F[i + 1]) - H(F[i - 1])) * relief, ny = -(H(F[i + w]) - H(F[i - w])) * relief;
         const nl = Math.hypot(nx, ny, 1);
@@ -331,8 +302,6 @@
     return out;
   }
 
-  // A drip running down from (x, y): a thin trail, a heavier bead at its head.
-  // top / bottom: its thickness where it leaves the pool, and just above the bead.
   function dripPath(fl, x, y, len, r0, { wobble = 0.3, bead = 1.6, beads = 0, top = 1, bottom = 0.65, stretch = 1.25 } = {}) {
     let px = x;
     for (let d = 0; d < len; d += 1.5) {
@@ -345,9 +314,6 @@
     return { x: px, end: y + len + r0 * bead };
   }
 
-  // Liquid that runs: the finished picture is drawn at once except for the drips,
-  // which are uncovered a little each frame as they run down.
-  // more: other layers drawn and uncovered the same way ([{ ctx, src }], e.g. goo's glow).
   function runLiquid(c, ctx, full, drips, speed, more = []) {
     const layers = [{ ctx, src: full }, ...more];
     for (const L of layers) {
@@ -361,7 +327,7 @@
       for (const d of drips) {
         if (d.y >= d.end + 4) continue;
         running = true;
-        if (Math.random() < 0.004) d.v *= 0.4; // (it catches, then creeps on)
+        if (Math.random() < 0.004) d.v *= 0.4;
         else d.v = Math.min(d.max, d.v + d.max * 0.01);
         const y1 = Math.min(d.end + 4, d.y + d.v * speed);
         const hgt = Math.max(1, Math.ceil(y1 - d.y));
@@ -377,7 +343,6 @@
     return () => cancelAnimationFrame(raf);
   }
 
-  // Where a pool's lower edge is, straight down from (x, y): drips start there.
   function poolBottom(fl, x, y) {
     const { F, w, h } = fl;
     let yy = Math.max(0, Math.floor(y)), xi = Math.max(0, Math.min(w - 1, Math.round(x)));
@@ -385,11 +350,7 @@
     return yy;
   }
 
-  // ---------------------------------------------------------------- effects
   const builders = {
-    // Blood on the glass: a heavy impact spatter, nearly black where it pooled and
-    // a translucent red at its thin edges, darker at the rims where it's drying,
-    // with spatter and mist flung out from it and drips running down.
     blood(fx) {
       const { c, ctx, w, h } = fullCanvas();
       c.className = "fx-canvas fx-blood";
@@ -399,13 +360,11 @@
       for (let s = 0; s < splats; s++) {
         const cx = rand(w * 0.12, w * 0.88), cy = rand(h * 0.08, h * 0.62);
         const R = rand(34, 70) * (0.75 + fx.intensity * 0.22);
-        const flung = rand(0, TAU); // the direction it came from: spatter streams the other way
-        // The body: overlapping masses, heavier at the centre.
+        const flung = rand(0, TAU);
         for (let i = 0; i < 26; i++) {
           const a = rand(0, TAU), d = R * Math.pow(Math.random(), 1.6) * 0.6;
           pools.drop(cx + Math.cos(a) * d, cy + Math.sin(a) * d, R * rand(0.32, 0.72), rand(1.4, 2.0));
         }
-        // Fingers thrown out of it, each ending in a bead, some breaking off into a teardrop.
         const arms = 7 + Math.floor(rand(0, 9));
         for (let i = 0; i < arms; i++) {
           const a = rand(0, TAU), len = R * rand(0.7, 2.3) * (Math.cos(a - flung) > 0.4 ? 1.5 : 1);
@@ -421,19 +380,16 @@
             pools.drop(cx + Math.cos(a) * d, cy + Math.sin(a) * d, R * rand(0.05, 0.09), 1.8, a, rand(1.8, 3));
           }
         }
-        // Satellite droplets: smaller and more stretched the further they flew.
         for (let i = 0; i < 140; i++) {
           const a = Math.random() < 0.55 ? flung + rand(-0.8, 0.8) : rand(0, TAU);
           const far = Math.pow(Math.random(), 1.5) * 3.8, d = R * (0.9 + far);
           const r = Math.max(1, R * 0.1 * (1.3 - far / 4.2) * rand(0.35, 1.2));
           pools.drop(cx + Math.cos(a) * d, cy + Math.sin(a) * d, r, rand(1.4, 2), a, 1 + far * 0.7);
         }
-        // A fine mist around it all.
         for (let i = 0; i < 700; i++) {
           const a = rand(0, TAU), d = R * rand(0.8, 5.2);
           pools.drop(cx + Math.cos(a) * d, cy + Math.sin(a) * d, rand(0.6, 1.7), rand(1.2, 2.2));
         }
-        // Drips, from the bottom of the pool.
         for (let i = 0; i < 2 + fx.intensity * 2; i++) starts.push({ x: cx + rand(-R, R) * 0.55, y: cy, len: rand(50, 160) * (0.6 + fx.intensity * 0.45), r0: rand(2, 4.2) });
       }
       const drips = starts.map((s) => {
@@ -453,13 +409,9 @@
       return { el: c, stop: runLiquid(c, ctx, full, drips, 1) };
     },
 
-    // Goo: alien ichor, thick and translucent, dark with a sick bioluminescent green,
-    // threaded with darker veins, an oily sheen that shifts colour where the light
-    // catches it, and bubbles caught inside. It sags from the top in heavy strands.
     goo(fx) {
       const { c, ctx, w, h } = fullCanvas();
       const fl = liquidField(w, h), noise = makeNoise(), veins = makeNoise(), glow = makeNoise(), lie = makeNoise();
-      // The sheet along the top, its lower edge sagging into lobes.
       const band = h * (0.05 + fx.intensity * 0.04);
       for (let x = -30; x < w + 30; x += 12) {
         const depth = band * (0.55 + lie(x / 220, 0.5, 2) * 1.1);
@@ -469,11 +421,10 @@
       for (let i = 0; i < 3 + fx.intensity * 3; i++) {
         const x = rand(0, w), depth = band * (0.55 + lie(x / 220, 0.5, 2) * 1.1);
         const r = rand(14, 34) * (0.8 + fx.intensity * 0.15);
-        fl.drop(x, depth * 0.55 + r * 0.5, r, 1.7, Math.PI / 2, rand(1.3, 2)); // (swelling out of the sheet)
+        fl.drop(x, depth * 0.55 + r * 0.5, r, 1.7, Math.PI / 2, rand(1.3, 2));
         fl.drop(x, depth * 0.45, r * 0.8, 1.6, Math.PI / 2, 1.4);
         lobes.push({ x, y: depth * 0.55 + r * 0.7 });
       }
-      // Globs flung across the glass: rounder and heavier than blood, a few beads round them.
       for (let i = 0; i < 2 * fx.intensity; i++) {
         const cx = rand(w * 0.08, w * 0.92), cy = rand(h * 0.25, h * 0.85), R = rand(22, 58);
         for (let j = 0; j < 14; j++) {
@@ -486,7 +437,6 @@
         }
         lobes.push({ x: cx, y: cy, glob: R });
       }
-      // Strands hanging down, slow and heavy: a thin neck, beads along it, a fat drop at the end.
       const drips = [];
       for (let i = 0; i < 4 + fx.intensity * 4; i++) {
         const from = lobes[Math.floor(rand(0, lobes.length))] || { x: rand(0, w), y: band };
@@ -499,19 +449,15 @@
         drips.push({ x0: Math.floor(Math.min(sx, x) - half), w: Math.ceil(Math.abs(x - sx) + half * 2), y: y + 4, end, v: 0, max: rand(0.12, 0.45) });
       }
       const full = shadeLiquid(fl, noise, (th, n, x, y, nx, ny, depth) => {
-        const k = Math.max(0, Math.min(1, (depth - 0.5) / 3.5)); // (thin strands stay light; the deep sheet goes dark)
-        // Veins: fine dark threads, fading in and out.
+        const k = Math.max(0, Math.min(1, (depth - 0.5) / 3.5));
         const vein = Math.max(0, 1 - Math.abs(veins(x / 30, y / 30, 3) - 0.5) * 70) * Math.min(1, th * 4) * Math.pow(glow(x / 140 + 7, y / 140, 1), 1.5) * 1.6;
-        // A sick light from inside, in patches.
         const lit = Math.pow(glow(x / 90, y / 90, 2), 4) * 1.6 * Math.min(1, th * 3);
         let r = 50 - 40 * k + lit * 30, g = 105 - 78 * k + lit * 115, b = 30 - 20 * k + lit * 22;
         r -= vein * 8; g -= vein * 30; b -= vein * 8;
-        // The oily film: its colour turns with the slope of the surface.
         const slope = Math.min(1, Math.hypot(nx, ny) * 3), film = (nx * 2 + ny * 3 + n * 4) * 3;
         r += slope * 0.3 * (70 + 70 * Math.sin(film)); g += slope * 0.3 * (40 + 40 * Math.sin(film + 2.1)); b += slope * 0.3 * (100 + 90 * Math.sin(film + 4.2));
         return [r, g, b, 0.55 + 0.38 * k];
       }, { edge: 0.14, relief: 7, gloss: 0.85, shine: 30 });
-      // Bubbles and motes caught in the thick of it.
       const fctx = full.getContext("2d");
       for (let i = 0, tries = 0; i < 26 * fx.intensity && tries < 4000; tries++) {
         const x = rand(0, w), y = rand(0, h);
@@ -525,8 +471,6 @@
         fctx.strokeStyle = "rgba(255,255,255,0.7)"; fctx.lineWidth = Math.max(0.8, r * 0.3);
         fctx.beginPath(); fctx.arc(x, y, r * 0.55, Math.PI * 1.1, Math.PI * 1.55); fctx.stroke();
       }
-      // It's alive: its inner light (and the motes in it) on a layer of its own that
-      // throbs, while the whole mass breathes (player.css .fx-goo).
       const glowSrc = newCanvas(w, h);
       const gsctx = glowSrc.getContext("2d"), gimg = gsctx.createImageData(w, h), G = gimg.data;
       for (let y = 0; y < h; y++) {
@@ -553,20 +497,16 @@
       const box = el("fx-goo");
       c.className = "fx-canvas";
       box.append(c, glowC);
-      box.style.setProperty("--beat", `${rand(2.6, 3.6).toFixed(2)}s`); // (each its own pulse)
+      box.style.setProperty("--beat", `${rand(2.6, 3.6).toFixed(2)}s`);
       layer().append(box);
       Sound.burst(0.6, 0.35, 250);
       return { el: box, stop: runLiquid(c, ctx, full, drips, 1, [{ ctx: glowC.getContext("2d"), src: glowSrc }]) };
     },
 
-    // A crack in the glass: a crushed point of impact, jagged cracks running out of
-    // it and branching, rings of fracture between them, facets catching the light,
-    // and the light splitting faintly red and blue along the breaks.
     crack() {
       const { c, ctx, w, h } = fullCanvas();
       c.className = "fx-canvas fx-crack";
       const ox = rand(w * 0.2, w * 0.8), oy = rand(h * 0.2, h * 0.8), far = Math.hypot(w, h);
-      // A jagged line between two points (midpoint displacement).
       const jag = (x1, y1, x2, y2, rough, depth) => {
         let pts = [[x1, y1], [x2, y2]];
         for (let d = 0; d < depth; d++) {
@@ -580,14 +520,13 @@
         }
         return pts;
       };
-      const cracks = []; // { pts, w0, w1, a }
+      const cracks = [];
       const n = 11 + Math.floor(rand(0, 8));
       const angles = Array.from({ length: n }, (_, i) => (i / n) * TAU + rand(-0.22, 0.22)).sort((a, b) => a - b);
       const radials = angles.map((a) => {
         const len = far * rand(0.3, 0.9);
-        const pts = jag(ox, oy, ox + Math.cos(a) * len, oy + Math.sin(a) * len, 0.11, 5); // (straight runs, sharp kinks)
+        const pts = jag(ox, oy, ox + Math.cos(a) * len, oy + Math.sin(a) * len, 0.11, 5);
         cracks.push({ pts, w0: 1.7, w1: 0.35, a: 0.95 });
-        // Branches splitting off it.
         for (let b = 0; b < 1 + Math.floor(rand(0, 3)); b++) {
           const at = pts[Math.floor(pts.length * rand(0.15, 0.75))], ba = a + rand(0.25, 0.65) * (Math.random() < 0.5 ? -1 : 1), bl = len * rand(0.12, 0.38);
           cracks.push({ pts: jag(at[0], at[1], at[0] + Math.cos(ba) * bl, at[1] + Math.sin(ba) * bl, 0.12, 4), w0: 1, w1: 0.3, a: 0.8 });
@@ -595,7 +534,6 @@
         return pts;
       });
       const pointAt = (pts, r) => pts.find(([x, y]) => Math.hypot(x - ox, y - oy) >= r) || pts[pts.length - 1];
-      // Rings of fracture between neighbouring cracks, bowing in toward the impact.
       const r0 = rand(26, 40);
       for (let k = 1; k <= 5; k++) {
         const r = r0 * Math.pow(1.75, k);
@@ -608,12 +546,9 @@
           cracks.push({ pts, w0: 1.1 - k * 0.12, w1: 0.9 - k * 0.12, a: 0.8 - k * 0.08 });
         }
       }
-      // Faint light through the impact.
       const halo = ctx.createRadialGradient(ox, oy, 0, ox, oy, r0 * 4);
       halo.addColorStop(0, "rgba(200,255,225,0.1)"); halo.addColorStop(1, "rgba(200,255,225,0)");
       ctx.fillStyle = halo; ctx.fillRect(ox - r0 * 4, oy - r0 * 4, r0 * 8, r0 * 8);
-      // A dark hollow where it struck: over the shards, and again (smaller) over the
-      // cracks, so they run into the dark instead of meeting in a bright point.
       const hole = r0 * rand(0.8, 1.1);
       const chipped = Array.from({ length: 25 }, () => rand(0.85, 1.05));
       const hollow = (size, core) => {
@@ -622,13 +557,12 @@
         dark.addColorStop(0.75, "rgba(3,8,6,0.3)"); dark.addColorStop(1, "rgba(0,0,0,0)");
         ctx.fillStyle = dark;
         ctx.beginPath();
-        chipped.forEach((m, i) => { // (not a perfect circle: chipped)
+        chipped.forEach((m, i) => {
           const a = (i / 24) * TAU, rr = hole * size * m;
           i ? ctx.lineTo(ox + Math.cos(a) * rr, oy + Math.sin(a) * rr) : ctx.moveTo(ox + Math.cos(a) * rr, oy + Math.sin(a) * rr);
         });
         ctx.fill();
       };
-      // Facets near the centre catching the light.
       for (let i = 0; i < n; i++) {
         if (Math.random() < 0.45) continue;
         const k = 1 + Math.floor(rand(0, 2)), ra = r0 * Math.pow(1.75, k - 1), rb = r0 * Math.pow(1.75, k);
@@ -638,7 +572,6 @@
         ctx.fillStyle = g;
         ctx.beginPath(); p.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill();
       }
-      // The crushed point of impact: small shards, each a little different.
       for (let ring = 0; ring < 3; ring++) {
         const ra = r0 * 0.38 * ring, rb = r0 * 0.38 * (ring + 1), m = 7 + ring * 5;
         for (let j = 0; j < m; j++) {
@@ -652,7 +585,6 @@
       hollow(1.7, 0.95);
       ctx.strokeStyle = "rgba(140,255,190,0.22)"; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(ox, oy, hole * 1.05, 0, TAU); ctx.stroke();
-      // Each crack: a dark shadow, the light splitting red and blue, then the bright break.
       const glint = makeNoise();
       cracks.forEach((cr, j) => { cr.lit = cr.pts.map((_, i) => 0.25 + 0.75 * Math.pow(glint(i / 7, j * 3.7), 1.8) * 1.6); });
       const strokeAll = (style, extra, dx, dy, alpha, catchLight = false) => {
@@ -671,7 +603,6 @@
       strokeAll("rgba(0,0,0,0.6)", 2.2, 0.8, 1, 1);
       strokeAll("rgba(255,70,70,0.3)", 0, 1, 0, 1);
       strokeAll("rgba(80,200,255,0.3)", 0, -1, 0, 1);
-      // Something cold glowing through the breaks near the impact.
       ctx.save();
       ctx.shadowColor = "rgba(110,255,170,0.9)"; ctx.shadowBlur = 10;
       ctx.strokeStyle = "rgba(120,255,175,0.5)"; ctx.lineCap = "round";
@@ -687,7 +618,6 @@
       ctx.restore();
       strokeAll("rgba(228,255,238,0.95)", 0, 0, 0, 1, true);
       hollow(1, 0.97);
-      // Hairline whiskers off the main cracks.
       ctx.strokeStyle = "rgba(225,255,235,0.45)"; ctx.lineWidth = 0.5;
       for (const pts of radials) {
         for (let i = 4; i < pts.length; i += Math.floor(rand(3, 9))) {
@@ -701,20 +631,11 @@
       return { el: c };
     },
 
-    // Ice: frost creeping in over the glass from every edge. Crystals grow inward as
-    // straight, kinked branches that split at sixty degrees, as real frost does,
-    // fogging the glass round them with faceted flakes, thickest at the edges and
-    // fading to nothing toward the middle, with a few glints. It reaches in unevenly,
-    // in drifts (further at higher intensity), then holds. Half see-through (player.css).
-    // It's slow: well over a minute to reach its full extent, each frond at its own
-    // pace that wanders (crawling, stalling, edging on), and now and then the whole
-    // frost lurches forward with a crack before it settles back to its creep.
     ice(fx) {
       const { c, ctx, w, h } = fullCanvas();
       c.className = "fx-canvas fx-ice";
       const k = fx.intensity || 2, reach = Math.min(w, h) * (0.07 + 0.05 * k), drift = makeNoise(), bend = makeNoise(), pace = makeNoise();
-      const seconds = 110 - k * 13; // (to reach its full extent, at an average pace)
-      // A faceted flake of frost (six-sided, not round), stamped along the branches as they grow.
+      const seconds = 110 - k * 13;
       const puff = newCanvas(32, 32);
       const pctx = puff.getContext("2d");
       pctx.translate(16, 16);
@@ -725,8 +646,6 @@
       pctx.beginPath();
       for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI; pctx.moveTo(-Math.cos(a) * 13, -Math.sin(a) * 13); pctx.lineTo(Math.cos(a) * 13, Math.sin(a) * 13); }
       pctx.stroke();
-      // How far a point is in from the nearest edge, as 1 (at the edge) .. 0 (as far as it reaches):
-      // the frost thins toward its inner edge and fades out there.
       const fade = (x, y) => { const d = Math.min(x, y, w - x, h - y) / (reach * 1.35); return d <= 0.3 ? 1 : Math.max(0, 1 - (d - 0.3) / 0.7) ** 1.4; };
       const tips = [];
       const seed = (x, y, ang) => {
@@ -735,7 +654,6 @@
       };
       for (let x = rand(0, 20); x < w; x += rand(22, 46)) { seed(x, -2, Math.PI / 2 + rand(-0.45, 0.45)); seed(x, h + 2, -Math.PI / 2 + rand(-0.45, 0.45)); }
       for (let y = rand(0, 20); y < h; y += rand(22, 46)) { seed(-2, y, rand(-0.45, 0.45)); seed(w + 2, y, Math.PI + rand(-0.45, 0.45)); }
-      // Rime along the very edges.
       const rime = (x0, y0, x1, y1, rx, ry, rw, rh) => {
         const g = ctx.createLinearGradient(x0, y0, x1, y1);
         g.addColorStop(0, "rgba(225,240,255,0.32)"); g.addColorStop(1, "rgba(225,240,255,0)");
@@ -756,7 +674,6 @@
       const step = (now) => {
         const dt = Math.min(50, now - last);
         last = now;
-        // Now and then it lurches: a few seconds' growth in one, with a crack.
         if (now > surgeAt) {
           surgeUntil = now + rand(900, 1600);
           surgeAt = now + rand(12000, 30000);
@@ -765,14 +682,12 @@
         const surge = now < surgeUntil ? 5 : 1;
         const base = dt * (reach / (seconds * 1000)) * surge;
         ctx.lineCap = "round";
-        // One stroke per generation and strength (all their new segments at once).
         const LEVELS = 5, paths = Array.from({ length: 4 }, () => Array.from({ length: LEVELS }, () => new Path2D()));
         for (let i = tips.length - 1; i >= 0; i--) {
           const t = tips[i];
-          // Its own pace, wandering: crawling, stalling, edging on.
           const wander = 0.15 + 1.6 * pace(t.phase + (now - begun) / 7000, t.phase * 0.37, 2) ** 2;
           const d = Math.min(t.left, base * t.speed * wander * (t.gen ? 1.6 : 1));
-          if (Math.random() < 0.012) t.ang += rand(-0.3, 0.3); // (straight runs, then a sharp kink)
+          if (Math.random() < 0.012) t.ang += rand(-0.3, 0.3);
           const ang = t.ang + (bend(t.x / 28, t.y / 28) - 0.5) * 0.08;
           const nx = t.x + Math.cos(ang) * d, ny = t.y + Math.sin(ang) * d;
           const strength = fade(nx, ny);
@@ -780,15 +695,12 @@
             paths[t.gen][Math.min(LEVELS - 1, Math.floor(strength * LEVELS))].moveTo(t.x, t.y);
             paths[t.gen][Math.min(LEVELS - 1, Math.floor(strength * LEVELS))].lineTo(nx, ny);
           }
-          // Haze: thick where the frost starts at the edge, thinning to nothing further in.
-          // (per distance grown, not per frame: a slow frond mustn't pile it up)
           if (Math.random() < (t.gen === 0 && t.left > t.len * 0.55 ? 0.33 : 0.03) * strength * d) {
             const s = 24 - t.gen * 5;
             ctx.save(); ctx.globalAlpha = strength; ctx.translate(nx, ny); ctx.rotate(rand(0, Math.PI / 3));
             ctx.drawImage(puff, -s / 2, -s / 2, s, s); ctx.restore();
           }
           t.x = nx; t.y = ny; t.left -= d; t.next -= d;
-          // Side branches at sixty degrees, shorter each generation.
           if (t.next <= 0 && t.gen < 3 && t.left > 4 && tips.length < 2500) {
             t.next = rand(9, 24) * (1 + t.gen * 0.8);
             const len = Math.min(t.left + 10, reach * 0.35) * rand(0.25, 0.6) / (1 + t.gen * 0.6);
@@ -827,7 +739,6 @@
       return { el: d, stop: Sound.klaxon() };
     },
 
-    // The display glitches: it jumps and tears, and its text corrupts (corruptText).
     glitch(fx) {
       const root = crt();
       root.classList.add("glitching", `glitch-${fx.intensity}`);
@@ -835,7 +746,7 @@
         root.style.setProperty("--gx", `${rand(-8, 8) * fx.intensity}px`);
         root.style.setProperty("--gy", `${rand(-3, 3) * fx.intensity}px`);
         root.style.setProperty("--gs", `${rand(0, 100)}%`);
-        if (Math.random() < 0.25 && !has("blackout")) Sound.burst(0.06, 0.15, 4000); // (no power, no crackle)
+        if (Math.random() < 0.25 && !has("blackout")) Sound.burst(0.06, 0.15, 4000);
       }, 90);
       const text = corruptText(fx);
       return {
@@ -865,7 +776,6 @@
       step();
       layer().append(c);
       const stopNoise = Sound.noiseLoop(0.02 * fx.intensity);
-      // (silent while the power is out, back when it returns)
       const power = () => stopNoise.level?.(has("blackout") ? 0 : 0.02 * fx.intensity);
       power();
       document.addEventListener("fxchange", power);
@@ -894,15 +804,8 @@
       return { el: d };
     },
 
-
   };
 
-  // The screen's text decays (part of the glitch): characters turn to junk in sick
-  // colours, words rot in runs, letters sprout stacked marks, lines lurch sideways,
-  // the colours split, and bands of the screen invert and shift hue. It reaches the
-  // header too (not the clock or the buttons), the character buttons (crew file and side sheet), and the player's own character sheet
-  // (the side sheet and the full file): every bit of its text, and its picture,
-  // which jolts, tears, shifts colour and inverts. Everything is put back when it ends.
   function corruptText(fx) {
     const glyphs = "▓▒░█▄▀■□◊¥§¤ØÆ#%&@!?/\\|<>{}[]~^*ΞΨΔ∑∂∆≡≠∞";
     const tints = ["cr-red", "cr-mag", "cr-cyan", "cr-white", "cr-inv", "cr-dim"];
@@ -913,7 +816,7 @@
     const bands = el("fx-corrupt");
     layer().append(bands);
     const targets = () => [
-      ...[...document.querySelectorAll("#lines .line.done")].map((l) => l.querySelector(".lt") || l), // (beside a portrait: just its text)
+      ...[...document.querySelectorAll("#lines .line.done")].map((l) => l.querySelector(".lt") || l),
       ...["hdr-station", "hdr-os", "hdr-access", "crewfile-close", "crewfile-change", "side-change", "side-hide"].map((id) => document.getElementById(id)).filter(Boolean),
       ...document.querySelectorAll("#reveal:not([hidden]) .rv-title, #reveal:not([hidden]) .rv-close"),
     ];
@@ -922,7 +825,7 @@
       let out = "", run = 0;
       for (const ch of orig) {
         if (ch === "\n") { out += "\n"; run = 0; continue; }
-        if (!run && ch !== " " && Math.random() < p * 0.12) run = 3 + ((Math.random() * 8) | 0); // (a whole stretch goes)
+        if (!run && ch !== " " && Math.random() < p * 0.12) run = 3 + ((Math.random() * 8) | 0);
         const hit = run > 0 || (ch !== " " && Math.random() < p);
         if (run > 0) run--;
         if (!hit) { out += esc(ch); continue; }
@@ -932,8 +835,6 @@
       }
       return out;
     };
-    // The character sheet: each bit of its text is wrapped once (so it can rot in place
-    // without the sheet being redrawn: its picture never reloads, its buttons still work).
     const SHEET = "#side .cs-card, #crewfile-body .cs-card";
     const sheetText = () => {
       for (const card of document.querySelectorAll(SHEET)) {
@@ -951,13 +852,12 @@
     };
     let tick = 0;
     const iv = setInterval(() => {
-      if (calm() && tick++ % 6) return; // (less flicker: the text rots a few times a second, not ten)
+      if (calm() && tick++ % 6) return;
       for (const t of sheetText()) t.innerHTML = rot(t.dataset.t);
       for (const card of document.querySelectorAll(SHEET)) {
         if (Math.random() < 0.05 * k) card.style.setProperty("--cs", `${rand(-10, 10) * k}px`), card.classList.add("cr-shift");
         else card.classList.remove("cr-shift");
       }
-      // Their picture (and an adversary's, revealed): jolted, torn into slices, the wrong colours, now and then inverted.
       for (const box of document.querySelectorAll("#side .cs-facebox, #crewfile-body .cs-facebox, #reveal .rv-pic")) {
         box.classList.add("cr-img");
         box.classList.toggle("cr-img-inv", Math.random() < 0.18);
@@ -972,14 +872,11 @@
       for (const t of targets()) {
         if (t.dataset.orig === undefined) t.dataset.orig = t.textContent;
         t.innerHTML = rot(t.dataset.orig);
-        // Now and then a line lurches sideways and goes off-colour.
         const line = t.closest(".line") || t;
         if (Math.random() < 0.06 * k) line.style.setProperty("--cs", `${rand(-14, 14) * k}px`), line.classList.add("cr-shift");
         else line.classList.remove("cr-shift");
       }
-      // The colours split and jitter.
       root.style.setProperty("--cx", `${rand(-2.5, 2.5) * k}px`);
-      // Bands of the screen tear: inverted, or the wrong colours.
       bands.innerHTML = Array.from({ length: Math.random() < 0.35 ? 0 : 1 + ((Math.random() * 2 * k) | 0) }, () =>
         `<i class="${["b-inv", "b-hue", "b-sat"][(Math.random() * 3) | 0]}" style="top:${rand(0, 98).toFixed(1)}%;height:${rand(2, 6 + 10 * k).toFixed(0)}px"></i>`).join("");
       if (Math.random() < 0.15 && !has("blackout")) Sound.burst(0.05, 0.12, 3000);
@@ -1006,7 +903,6 @@
     };
   }
 
-  // fx.quiet: no sound (e.g. a terminal's permanent blood or crack, drawn on arrival).
   function start(fx) {
     if (active.has(fx.id) || !builders[fx.type]) return;
     const wasMuted = Sound.muted;
@@ -1033,7 +929,7 @@
 
   function sync(list) {
     const ids = new Set(list.map((f) => f.id));
-    for (const id of [...active.keys()]) if (!ids.has(id) && !id.startsWith("decor-")) end(id); // (a terminal's own look stays)
+    for (const id of [...active.keys()]) if (!ids.has(id) && !id.startsWith("decor-")) end(id);
     for (const f of list) start(f);
   }
 

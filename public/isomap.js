@@ -1,40 +1,19 @@
-// The station in 3D, seen from above at an angle (isometric): everything the 2D
-// view (stationmap.js draw) shows, in the screen's colour. The decks stacked down
-// the lift, each deck's rooms either side of its corridor, a docked ship outside the
-// room it's docked at, vents and shafts between rooms. A room with a floor plan
-// (rooms.js) is built from it: walls, windows, doors and furniture; one without is an
-// outline. Over each room: its name and its values (camera first). Doors,
-// cameras and the lift take their value's colour (doors also lie open or stand shut),
-// dark decks are dark and flickering ones flicker, quarantined ones red: so the lights,
-// the lift and the doors aren't labelled. The station's own systems are listed above the view and
-// anything not on the map yet below it, as in the 2D view.
-// Drag to turn it, scroll to zoom, right-drag to move it. It starts looking from the
-// south, a little east, so the corridors run across the view.
-// Used by the Warden console (the map's 3D view: values click to change, room names
-// open the room view) and the players' screens (when the Warden shows them the map).
-//   const view = IsoMap.mount(el, { station, layout, rooms, people, editable }, { fg, dim, labelPx })
-//   view.update(data); view.dispose()
-//   people: { roomId: ["ROOK", ...] } (the players' characters, from their terminals)
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
-const DECK_H = 12;       // from one deck down to the next (room to see each deck clear of the next)
-const GAP = 1.5;         // between rooms along a corridor
-const CORR = 3;          // the corridor's width
-const DOCK_GAP = 2.5;    // a docked ship, out from the room it's docked at
-const NO_PLAN = [8, 6];  // a room without a floor plan (tiles)
+const DECK_H = 12;
+const GAP = 1.5;
+const CORR = 3;
+const DOCK_GAP = 2.5;
+const NO_PLAN = [8, 6];
 const WALL_H = 1.5;
-// Furniture: [height, footprint], one tile each.
 const FURN = { T: [0.8, 0.7], B: [0.45, 0.85], K: [0.6, 0.8], S: [0.4, 0.5], L: [1.25, 0.8], C: [0.75, 0.75], M: [1.05, 0.85], R: [1.4, 0.8], P: [0.3, 0.95], X: [0.35, 0.9], V: [0.06, 0.75] };
-const TONES = { warn: "#ffb22e", bad: "#ff4a3d", info: "#8a969e" }; // (ok: the screen's colour)
-// Which of a room's values is its door, and its camera (as the 2D view decides).
+const TONES = { warn: "#ffb22e", bad: "#ff4a3d", info: "#8a969e" };
 const isDoor = (x) => /door|hatch|airlock|access|gate|lock/i.test(x.leaf.path[0]) || /^door|hatch/i.test(x.label);
 const isCam = (x) => /camera|cctv|feed/i.test(x.leaf.path.join("."));
-const LIGHTS = /light|power/i, LIFT = /lift|elevator/i; // (a deck's lights and its lift stop, as the 2D view finds them)
+const LIGHTS = /light|power/i, LIFT = /lift|elevator/i;
 
-// Words over the map, the same size on screen however far it's zoomed (HTML, drawn by CSS2DRenderer).
-// right: anchored by its right edge (it reads leftwards from the point), not its middle.
 function tag(html, cls, at, { right = false, left = false } = {}) {
   const d = document.createElement("div");
   d.className = `iso-l ${cls}`;
@@ -46,7 +25,6 @@ function tag(html, cls, at, { right = false, left = false } = {}) {
   return o;
 }
 
-// Where every deck, room, corridor and the lift go (world units; one tile = 1).
 function plan(m, data) {
   const decks = m.decks.filter((d) => d.rooms.length);
   const served = m.lift ?? new Set(decks.map((d) => d.id).filter((id) => /^deck_\d+$/.test(id)));
@@ -58,7 +36,6 @@ function plan(m, data) {
   decks.forEach((d, di) => {
     const y = -di * DECK_H;
     let xn = 0, xs = 0;
-    // Alternate sides of the corridor: north (z < 0), south (z > 0).
     d.rooms.forEach((r, i) => {
       const [w, h] = size(r.id), north = i % 2 === 0;
       const x = north ? xn : xs;
@@ -85,35 +62,29 @@ function build(data, colors) {
   const cFg = new THREE.Color(colors.fg), cDim = new THREE.Color(colors.dim);
   const toneColor = (t) => (t === "ok" ? cFg.clone() : new THREE.Color(TONES[t] || TONES.info));
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-  boxGeo.translate(0, 0.5, 0); // (sits on the floor)
-  // Each deck is drawn as one batch of boxes (so a dark or flickering deck can be dimmed as one).
-  const batches = new Map(); // deck id -> [{ x, y, z, w, h, d, color }]
+  boxGeo.translate(0, 0.5, 0);
+  const batches = new Map();
   const flicker = [];
   const box = (deck, x, y, z, w, h, d, color) => (batches.get(deck) || batches.set(deck, []).get(deck)).push({ x, y, z, w, h, d, color });
   const markers = [];
   const deckLooks = new Map(P.decks.map((d) => [d.deck.id, m.deckLook(d.deck)]));
 
-  // ---- decks: the corridor, the deck's name, its own values (lights...), the lift stop
   for (const D of P.decks) {
     const look = deckLooks.get(D.deck.id), id = D.deck.id;
     const red = new THREE.Color(TONES.bad);
     box(id, -2, D.y - 0.15, -CORR / 2, D.len + 2, 0.15, CORR, look.quarantine ? red.clone().multiplyScalar(0.55) : cDim.clone().multiplyScalar(0.55));
-    // (Its lights and its lift stop show in the drawing: dimmed or flickering, the stop's colour. Only its other values are labelled.)
     const tags = (m.byDeck.get(id) || []).filter((x) => !LIGHTS.test(x.leaf.path.join(".")) && !LIFT.test(x.leaf.path[0])).map((x) => SM.chip(x.leaf, x.label, editable)).join("");
     const state = look.quarantine ? '<span class="iso-q">QUARANTINE</span>' : "";
-    // (its name on two lines, "DECK 2" over "HABITATION / MED BAY": narrower beside the lift)
     const [name, ...what] = D.deck.label.toUpperCase().split(/\s*[·:|]\s*|\s+-\s+/);
     group.add(tag(`<div class="iso-dname">${esc(name)}${state ? ` ${state}` : ""}</div>${what.length ? `<div class="iso-dsub">${esc(what.join(" · "))}</div>` : ""}${tags ? `<div class="mchips">${tags}</div>` : ""}`, "iso-deck", new THREE.Vector3(-7.5, D.y + 0.5, 0), { right: true }));
-    // Where the lift meets this deck: its own value's colour (restricted, fault).
     if (D.served) {
       const leaf = (m.byDeck.get(id) || []).find((x) => LIFT.test(x.leaf.path[0]))?.leaf;
       const ls = leaf ? SM.liftState(leaf.value) : "";
       box(id, -6, D.y - 0.15, -1.6, 3.2, 0.5, 3.2, ls ? new THREE.Color(ls === "perm" ? TONES.warn : TONES.bad) : cDim);
-      box(id, -2.8, D.y - 0.15, -0.6, 0.8, 0.15, 1.2, cDim.clone().multiplyScalar(0.55)); // (to the corridor)
+      box(id, -2.8, D.y - 0.15, -0.6, 0.8, 0.15, 1.2, cDim.clone().multiplyScalar(0.55));
     }
     if (look.flicker) flicker.push(id);
   }
-  // The lift shaft, from the top deck it reaches to the bottom: coloured when the whole lift is out.
   const stops = P.decks.filter((d) => d.served).map((d) => d.y);
   if (stops.length) {
     const whole = [...(m.systems.get("lift") || []), ...(m.systems.get("elevator") || [])];
@@ -123,7 +94,6 @@ function build(data, colors) {
     group.add(tag("LIFT", "iso-small", new THREE.Vector3(-4.4, top + WALL_H + 1.4, 0)));
   }
 
-  // ---- rooms
   const placed = {};
   for (const r of P.rooms) {
     placed[r.id] = r;
@@ -131,7 +101,6 @@ function build(data, colors) {
     const items = m.byRoom.get(r.id) || [];
     const door = items.find(isDoor)?.leaf, cam = items.find(isCam)?.leaf;
     const values = items.filter((x) => !SM.isRoster(x.leaf));
-    // (The door shows in the drawing: its colour, open or shut. The rest are labelled, camera first.)
     const rest = [...values.filter((x) => x.leaf === cam), ...values.filter((x) => x.leaf !== door && x.leaf !== cam)];
     const alarm = values.some((x) => SM.tone(x.leaf.path, x.leaf.value) === "bad");
     const who = SM.names(items.find((x) => x.leaf.path[0] === "occupants")?.leaf.value);
@@ -140,7 +109,6 @@ function build(data, colors) {
     const wall = alarm ? cFg.clone().lerp(new THREE.Color(TONES.bad), 0.6) : cFg.clone();
     const floor = pcs.length ? cFg.clone().multiplyScalar(0.55) : cDim.clone().multiplyScalar(0.7);
     if (look.quarantine) floor.lerp(new THREE.Color(TONES.bad), 0.3);
-    // The door's colour and how far it's shut: open lies flat, closed stands, locked (or worse) stands tall.
     const dt = door ? SM.tone(door.path, door.value) : "";
     const open = door && /OPEN/i.test(String(door.value));
     const doorColor = door ? toneColor(dt).lerp(new THREE.Color("#ffffff"), dt === "ok" ? 0.35 : 0) : new THREE.Color("#ffffff").lerp(cFg, 0.4);
@@ -160,16 +128,13 @@ function build(data, colors) {
     } else {
       box(deck, r.x, r.y - 0.12, r.z, r.w, 0.12, r.h, floor);
       for (const [x, z, w, d] of [[r.x, r.z, r.w, 0.3], [r.x, r.z + r.h - 0.3, r.w, 0.3], [r.x, r.z, 0.3, r.h], [r.x + r.w - 0.3, r.z, 0.3, r.h]]) box(deck, x, r.y, z, w, 0.6, d, wall);
-      // (its door, in the wall it opens through: towards the corridor, or the room it's docked at)
       const dz = r.north ? r.z + r.h - 0.3 : r.z;
       box(deck, r.x + r.w / 2 - 0.7, r.y, dz - 0.05, 1.4, Math.max(doorH, 0.1), 0.4, doorColor);
     }
-    // Its camera, up on the back wall: the camera value's colour.
     if (cam) {
       const back = r.north ? r.z + 0.2 : r.z + r.h - 0.8;
       box(deck, r.x + r.w - 1.2, r.y + WALL_H, back, 0.7, 0.45, 0.6, toneColor(SM.tone(cam.path, cam.value)));
     }
-    // The way in: a docking collar to the parent room, or a doorway onto the corridor.
     if (r.dock) {
       const p = r.dock, z0 = r.north ? r.z + r.h : p.z + p.h, z1 = r.north ? p.z : r.z;
       box(deck, r.x + r.w / 2 - 0.6, r.y, Math.min(z0, z1), 1.2, 0.9, Math.abs(z1 - z0), cDim);
@@ -177,8 +142,6 @@ function build(data, colors) {
       const z0 = r.north ? r.z + r.h : -CORR / 2, z1 = r.north ? -CORR / 2 : r.z;
       if (z1 > z0) box(deck, r.x + r.w / 2 - 0.5, r.y - 0.12, z0, 1, 0.12, z1 - z0, cDim.clone().multiplyScalar(0.55));
     }
-    // Over the room: its name (the Warden: click for the room view; who and what is there on hover)
-    // and its values (camera first, two of them, then how many more). No head counts: the 2D view has those.
     const roster = [...pcs.map((n) => `${n} (player)`), ...who, ...(what.length ? ["-", ...what] : [])].join("\n");
     const more = rest.slice(2).map((x) => `${x.label} ${x.leaf.value}`).join("\n");
     const head = editable ? ` data-room="${esc(r.id)}" data-label="${esc(r.label)}" data-deck="${esc(r.dock ? `docked at ${r.dock.label}` : r.deck.label)}"` : "";
@@ -186,7 +149,6 @@ function build(data, colors) {
       ${rest.length ? `<div class="mchips">${rest.slice(0, 2).map((x) => SM.chip(x.leaf, x.label, editable)).join("")}${rest.length > 2 ? `<span class="iso-more" title="${esc(more)}">+${rest.length - 2}</span>` : ""}</div>` : ""}`,
     `iso-room${pcs.length ? " here" : ""}${alarm ? " alarm" : ""}`, new THREE.Vector3(r.x + r.w / 2, r.y + WALL_H + 1.2, r.z + r.h / 2)));
     if (/airlock/.test(r.id)) group.add(tag("&#9656; SPACE", "iso-small iso-space", new THREE.Vector3(r.x + r.w / 2, r.y + 0.4, r.north ? r.z - 1.2 : r.z + r.h + 1.2)));
-    // The players' characters there: a marker and their names.
     if (pcs.length) {
       const mk = new THREE.Mesh(new THREE.OctahedronGeometry(0.6), new THREE.MeshLambertMaterial({ color: new THREE.Color("#ffffff").lerp(cFg, 0.3) }));
       mk.position.set(r.x + r.w / 2, r.y + WALL_H + 3.4, r.z + r.h / 2);
@@ -197,7 +159,6 @@ function build(data, colors) {
     }
   }
 
-  // ---- vents, ducts, maintenance shafts: dashed arcs between the rooms they join
   for (const l of m.links) {
     const a = placed[l.a], b = placed[l.b];
     if (!a || !b) continue;
@@ -211,7 +172,6 @@ function build(data, colors) {
     if (l.label) group.add(tag(esc(l.label.toUpperCase()), "iso-small iso-link", curve.getPoint(0.5).add(new THREE.Vector3(0.6, 0, 0)), { left: true }));
   }
 
-  // ---- the boxes: one batch per deck, dimmed when the deck's dark
   const mats = new Map();
   for (const [id, list] of batches) {
     const look = deckLooks.get(id) || {};
@@ -231,7 +191,7 @@ function build(data, colors) {
 
 function dispose(obj) {
   obj.traverse((o) => {
-    o.element?.remove(); // (a label)
+    o.element?.remove();
     o.geometry?.dispose();
     for (const mt of [].concat(o.material || [])) { mt.map?.dispose(); mt.dispose(); }
   });
@@ -240,7 +200,6 @@ function dispose(obj) {
 export function mount(el, data, opts = {}) {
   const css = getComputedStyle(el);
   const colors = { fg: opts.fg || css.getPropertyValue("--fg").trim() || "#3bff7a", dim: opts.dim || css.getPropertyValue("--dim").trim() || "#1d8a43" };
-  // The station's systems above the view, anything not on the map yet below it (as in the 2D view).
   const wrap = document.createElement("div");
   wrap.className = "iso-wrap";
   wrap.innerHTML = '<div class="iso-sys"></div><div class="iso-view"></div><div class="iso-else"></div>';
@@ -253,7 +212,7 @@ export function mount(el, data, opts = {}) {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   view.append(renderer.domElement);
   renderer.domElement.style.cssText = "display: block; width: 100%; height: 100%; touch-action: none;";
-  const words = new CSS2DRenderer(); // (the labels, over the drawing)
+  const words = new CSS2DRenderer();
   words.domElement.style.cssText = "position: absolute; inset: 0; pointer-events: none; overflow: hidden;";
   view.append(words.domElement);
   const scene = new THREE.Scene();
@@ -264,18 +223,15 @@ export function mount(el, data, opts = {}) {
   const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, -500, 500);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.minPolarAngle = controls.maxPolarAngle = Math.atan(Math.SQRT2); // (the isometric tilt, turning only around)
+  controls.minPolarAngle = controls.maxPolarAngle = Math.atan(Math.SQRT2);
   controls.minZoom = 0.4;
   controls.maxZoom = 8;
   let built = null, shapeKey = "", fit = { w: 20, h: 20 };
 
-  // Frame everything: looking down at the isometric angle, from the south and a little east
-  // (so the corridors run across the view and the decks stack down it), with the whole
-  // station in view (measured as the camera sees it).
   const TILT = Math.atan(1 / Math.SQRT2), TURN = (25 * Math.PI) / 180;
   function frame() {
     const bb = new THREE.Box3().setFromObject(built.group);
-    bb.min.x -= 12; // (the decks' names, reading leftwards from the lift)
+    bb.min.x -= 12;
     const c = bb.getCenter(new THREE.Vector3());
     controls.target.copy(c);
     camera.position.copy(c).add(new THREE.Vector3(Math.sin(TURN) * Math.cos(TILT), Math.sin(TILT), Math.cos(TURN) * Math.cos(TILT)).multiplyScalar(200));
@@ -294,7 +250,7 @@ export function mount(el, data, opts = {}) {
     const w = view.clientWidth || 1, h = view.clientHeight || 1, a = w / h;
     renderer.setSize(w, h, false);
     words.setSize(w, h);
-    const ch = Math.max(fit.h, fit.w / a); // (as tall as needed to fit both ways)
+    const ch = Math.max(fit.h, fit.w / a);
     camera.left = -ch * a / 2; camera.right = ch * a / 2; camera.top = ch / 2; camera.bottom = -ch / 2;
     camera.updateProjectionMatrix();
   }
@@ -305,7 +261,6 @@ export function mount(el, data, opts = {}) {
     scene.add(built.group);
     sysEl.innerHTML = window.StationMap.systemsHtml(built.m, !!data.editable);
     elseEl.innerHTML = window.StationMap.elsewhereHtml(built.m, !!data.editable);
-    // (Re-framed only when the station's shape changes, not when a value changes or someone moves.)
     const key = JSON.stringify([data.layout, data.rooms]);
     if (key !== shapeKey) { shapeKey = key; requestAnimationFrame(frame); }
   }
@@ -316,7 +271,6 @@ export function mount(el, data, opts = {}) {
   const loop = (t) => {
     raf = requestAnimationFrame(loop);
     for (const mk of built.markers) { mk.rotation.y = t / 700; mk.position.y = mk.userData.y + Math.sin(t / 300) * 0.15; }
-    // A flickering deck's lights: mostly on, now and then off for a moment.
     const ph = (t / 2600) % 1, off = (ph > 0.07 && ph < 0.09) || (ph > 0.54 && ph < 0.56);
     for (const mt of built.flicker) mt.color.setScalar(off ? 0.3 : 1);
     controls.update();

@@ -1,13 +1,9 @@
-// Portraits of the cast (cast.js): small pictures shown beside what they say on
-// the players' screens. The console shrinks each to a small square before
-// uploading. Files live on disk under DATA_DIR/portraits/<CODE>/; the cast
-// member's "portrait" names the file.
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 
 export const MAX_PORTRAIT_BYTES = 300 * 1024;
-const MAX_PORTRAITS = 200; // per session (old ones are kept while a restart could bring them back)
+const MAX_PORTRAITS = 200;
 
 let root = null;
 export function setPortraitsDir(dir) {
@@ -20,7 +16,6 @@ const FILE = /^[a-f0-9]{12}\.(png|jpg|webp|gif)$/;
 export const portraitPath = (code, file) => (FILE.test(file) ? path.join(dirFor(code), file) : null);
 export const portraitType = (file) => ({ png: "image/png", jpg: "image/jpeg", webp: "image/webp", gif: "image/gif" })[file.split(".").pop()];
 
-// What kind of image is this? From its first bytes, so only real images are stored.
 function sniff(buf) {
   if (buf.length < 12) return null;
   if (buf[0] === 0x89 && buf.subarray(1, 4).toString("latin1") === "PNG") return "png";
@@ -30,7 +25,6 @@ function sniff(buf) {
   return null;
 }
 
-// Store an uploaded portrait. Returns its file name, or throws with a message for the Warden.
 export function savePortrait(code, buf) {
   if (!buf?.length) throw new Error("That file is empty.");
   if (buf.length > MAX_PORTRAIT_BYTES) throw new Error("That picture is too big.");

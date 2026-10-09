@@ -1,20 +1,8 @@
-// A voice's effects, rendered on the server: the same chain the players' screens
-// build with Web Audio (public/voice.js), for audio that goes somewhere without a
-// browser (the Discord bot, discordbot.js). Player screens still do their own.
-//
-//   renderVoice(wav, fx) -> Promise<Buffer | null>: 48 kHz stereo 16-bit PCM
-//
-// It runs in a worker thread (the reverb is a long convolution), one clip at a
-// time. The chain is worked out at 24 kHz (the voices are no brighter than that)
-// and doubled to 48 kHz at the end.
 import { Worker, isMainThread, parentPort } from "worker_threads";
 import { FX_PARAMS } from "./voices.js";
 
 const SR = 24000;
 
-// ------------------------------------------------------------------ WAV in
-// Mono floats at SR, from a 16-bit or 32-bit-float WAV (any rate, any channels),
-// played at `rate` (faster and higher, as Web Audio's playbackRate does).
 function readWav(buf, rate = 1) {
   if (buf.length < 44 || buf.toString("latin1", 0, 4) !== "RIFF") return null;
   let p = 12, fmt = null, data = null;
@@ -36,7 +24,6 @@ function readWav(buf, rate = 1) {
     }
     mono[i] = sum / fmt.channels;
   }
-  // Resample (linear) to SR, sped up by rate.
   const step = (fmt.rate / SR) * rate;
   const out = new Float64Array(Math.max(0, Math.floor((frames - 1) / step)));
   for (let i = 0; i < out.length; i++) {
@@ -46,9 +33,6 @@ function readWav(buf, rate = 1) {
   return out;
 }
 
-// ------------------------------------------------------------------ pieces
-// Web Audio's BiquadFilterNode (Audio EQ Cookbook). For lowpass and highpass its Q
-// is in dB; for bandpass, plain Q.
 function biquad(type, freq, q) {
   const w = (2 * Math.PI * Math.min(freq, SR * 0.49)) / SR, cos = Math.cos(w), sin = Math.sin(w);
   let b0, b1, b2, a0, a1, a2;
@@ -70,7 +54,6 @@ function biquad(type, freq, q) {
   };
 }
 
-// A delay line, read at any (fractional) delay in seconds.
 function delayLine(maxSeconds) {
   const n = Math.ceil(maxSeconds * SR) + 4, buf = new Float64Array(n);
   let w = 0;
@@ -84,13 +67,11 @@ function delayLine(maxSeconds) {
   };
 }
 
-// Seeded noise, so a voice sounds the same every time.
 function noise(seed) {
   let s = seed >>> 0;
   return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296) * 2 - 1;
 }
 
-// In-place radix-2 FFT (inverse when inv).
 function fft(re, im, inv) {
   const n = re.length;
   for (let i = 1, j = 0; i < n; i++) {
@@ -117,8 +98,6 @@ function fft(re, im, inv) {
   if (inv) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
 }
 
-// The reverb's impulse: 4.5 s of decaying noise per channel (as voice.js makes it),
-// scaled the way a ConvolverNode normalises its buffer. Its spectrum is kept per size.
 const IMPULSE_SECONDS = 4.5;
 const IMPULSE_LEN = Math.floor(SR * IMPULSE_SECONDS);
 let impulse = null;
@@ -134,7 +113,7 @@ function impulseSpectrum(size) {
     for (const ch of impulse) for (let i = 0; i < len; i++) ch[i] *= scale;
   }
   if (!impulseSpectra.has(size)) {
-    impulseSpectra.clear(); // (one size at a time is plenty)
+    impulseSpectra.clear();
     impulseSpectra.set(size, impulse.map((ch) => {
       const re = new Float64Array(size), im = new Float64Array(size);
       re.set(ch.subarray(0, size));
@@ -145,7 +124,6 @@ function impulseSpectrum(size) {
   return impulseSpectra.get(size);
 }
 
-// Mono in, stereo reverb out (each channel its own impulse), length n.
 function convolve(input, n) {
   let size = 1;
   while (size < input.length + IMPULSE_LEN) size <<= 1;
@@ -161,17 +139,12 @@ function convolve(input, n) {
   });
 }
 
-// ------------------------------------------------------------------ the chain
-// voice.js chain(), sample by sample: band-limit, saturate, ring mod, then the dry
-// voice, comb, chorus, echo and radio hiss, with a shared reverb fed by the voice,
-// chorus and echoes.
 const FX_DEFAULTS = Object.fromEntries(Object.entries(FX_PARAMS).map(([k, [, , def]]) => [k, def]));
 function render(wav, fx = {}) {
   const p = { ...FX_DEFAULTS, ...fx };
   const src = readWav(wav, p.rate || 1);
   if (!src || !src.length) return null;
   const len = src.length;
-  // Tails: the reverb rings for its impulse; echoes until they've died away.
   let tail = 0.05;
   if (p.echo > 0) tail = Math.max(tail, Math.min(6, p.echoTime * (p.echoFeedback > 0.01 ? Math.log(0.001 / p.echo) / Math.log(p.echoFeedback) + 1 : 1)));
   if (p.reverb > 0) tail = Math.max(tail, IMPULSE_SECONDS);
@@ -222,7 +195,6 @@ function render(wav, fx = {}) {
   }
 
   const [left, right] = verbIn ? convolve(verbIn, n).map((ch) => ch.map((x, i) => out[i] + x * p.reverb)) : [out, out];
-  // Trim trailing silence, then 24 kHz -> 48 kHz stereo 16-bit.
   let end = n;
   while (end > len && Math.abs(left[end - 1]) < 1e-4 && Math.abs(right[end - 1]) < 1e-4) end--;
   const pcm = Buffer.alloc(end * 2 * 4);
@@ -239,7 +211,6 @@ function render(wav, fx = {}) {
   return pcm;
 }
 
-// ------------------------------------------------------------------ the worker
 if (!isMainThread && parentPort) {
   parentPort.on("message", ({ id, wav, fx }) => {
     let pcm = null;
