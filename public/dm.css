@@ -265,7 +265,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
 
 #mapExpand { padding: 2px 8px; font-weight: 400; font-size: 12px; }
 .smap { display: flex; flex-direction: column; gap: 10px; }
-.smap .iso { height: 420px; }
+.smap .iso { height: clamp(420px, 62vh, 680px); }
 .smap.compact .msystems { grid-template-columns: 1fr 1fr; }
 .smap.compact .mrooms { grid-template-columns: 1fr 1fr; }
 .mapdlg { width: min(1100px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; }

@@ -2,6 +2,7 @@ import { clampInt } from "./clean.js";
 import { randInt, rollDice, rollWithAdv } from "./dice.js";
 import { SAVES, playable, gainStress, setVital } from "./crew.js";
 import { combineAdvantage } from "./rolls.js";
+import { ageDays } from "./hazards.js";
 import { PANIC_TABLE } from "./cast.js";
 import { spend, exact } from "./money.js";
 
@@ -229,12 +230,18 @@ export function sanitizeDowntime(d, crew = []) {
   return { downtime: { day: clampInt(d?.day, 0, 99999, 0), pending: pend, last } };
 }
 
-// Days pass: Conditions with an "(until day N)" that is now over end. Returns the lines for the log.
+// Days pass: Conditions with an "(until day N)" that is now over end, and the timed ones (Stimpak doses, cryosickness, a lethal dose) run down. Returns the lines for the log.
 export function passDays(p, crews, n) {
   const days = clampInt(n, 0, 3650, 0), lines = [];
   p.downtime.day += days;
+  const aged = new Set(), told = new Set();
   for (const crew of crews) {
     for (const pc of crew) {
+      if (days && pc.cond && !aged.has(pc.cond)) {
+        aged.add(pc.cond);
+        const said = ageDays(pc, days);
+        if (said.length && !told.has(pc.id)) { told.add(pc.id); lines.push(`${pc.name}: ${said.join("; ")}.`); }
+      }
       const gone = pc.cond.tags.filter((t) => expiry(t) && expiry(t) <= p.downtime.day);
       if (!gone.length) continue;
       pc.cond.tags = pc.cond.tags.filter((t) => !gone.includes(t));

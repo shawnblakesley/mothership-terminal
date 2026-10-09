@@ -76,13 +76,16 @@
 
 .iso-wrap { display: flex; flex-direction: column; gap: 8px; height: 100%; }
 .iso-sys:empty, .iso-else:empty { display: none; }
-.iso-view { position: relative; flex: 1; min-height: 200px; background: #050805; border-radius: 8px; overflow: hidden; cursor: grab; }
+.iso-sys, .iso-else { flex: 0 1 auto; min-height: 0; max-height: 28%; overflow: auto; }
+.iso-view { order: -1; position: relative; flex: 1 0 auto; min-height: 280px; background: #050805; border-radius: 8px; overflow: hidden; cursor: grab; }
 .iso-l { pointer-events: none; text-align: center; font-family: var(--mono, monospace); }
 .iso-l .mchip, .iso-l [data-room], .iso-l [title] { pointer-events: auto; }
 .iso-l .mchip:disabled { pointer-events: none; }
 .iso-l .mchips { justify-content: center; margin-top: 3px; flex-wrap: nowrap; }
 .iso-l .mchip { background: rgba(5, 8, 5, 0.85); font-size: calc(var(--iso-px) * 0.72); padding: 1px 5px; white-space: nowrap; cursor: pointer; }
 .iso-l .mchip:disabled { cursor: default; }
+.iso-room .iso-name { max-width: calc(var(--u, 8) * var(--ppu, 12) * 1.3px); min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
+.iso-view.far .mchips, .iso-view.far .iso-dsub, .iso-view.far .iso-link { display: none; }
 .iso-name { font: var(--iso-px)/1 VT323, Consolas, monospace; letter-spacing: 0.06em; color: var(--iso-fg); text-shadow: 0 0 4px #000, 0 0 2px #000; white-space: nowrap; }
 .iso-name[data-room] { cursor: pointer; }
 .iso-name[data-room]:hover { text-decoration: underline; }

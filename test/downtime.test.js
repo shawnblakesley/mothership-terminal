@@ -346,3 +346,22 @@ test("an X-class shore leave cost of 00 on the d100 is 100 x 10kcr, never free",
   const cost = shoreCost("X", (lo) => lo);
   assert.equal(cost.total, 100 * 10000);
 });
+
+test("Pass days ages every character's timed conditions, each sheet once, and reports a lethal death", () => {
+  const [p, a] = rich();
+  Object.assign(a.cond, { stims: [1, 2], boost: 30, cryo: 168, lethal: 48 });
+  const lines = passDays(p, [[a], [a, ...p.crew]], 30);
+  assert.deepEqual([a.cond.stims, a.cond.boost, a.cond.cryo], [[], 0, 0]);
+  assert.equal(a.cond.dead, "lethal radiation dose");
+  assert.equal(lines.filter((l) => l.startsWith(a.name + ": ") && /died/.test(l)).length, 1);
+});
+
+test("Pass days ages both copies of a character (live crew and campaign clone) but reports each character once", () => {
+  const [p, a] = rich();
+  Object.assign(a.cond, { cryo: 168, lethal: 24 });
+  const twin = structuredClone(a);
+  const lines = passDays(p, [[a], [twin]], 10);
+  assert.equal(twin.cond.cryo, 0);
+  assert.equal(twin.cond.dead, "lethal radiation dose");
+  assert.equal(lines.filter((l) => l.startsWith(a.name + ": ")).length, 1);
+});

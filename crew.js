@@ -160,7 +160,7 @@ export function sanitizeCrew(list) {
     seen.add(id);
     const items = mergeAmmo(Array.isArray(c.items) ? c.items.map((s) => str(s, 60).trim()).filter(Boolean) : itemsFrom(c.loadout)).slice(0, MAX_ITEMS);
     const minStress = int(c.minStress, 0, MAX_STRESS, 2);
-    out.push({
+    const pc = {
       id,
       name,
       pronouns: str(c.pronouns, 20),
@@ -194,8 +194,11 @@ export function sanitizeCrew(list) {
       epitaph: str(c.epitaph, 140),
       endedIn: str(c.endedIn, 80),
       finalWords: str(c.finalWords, 240),
-    });
-    if (out.filter(playable).length >= MAX_CREW || out.length >= MAX_CREW * 3) break;
+    };
+    // Only living characters count toward the cap of 4: the dead and retired stay on the record, up to MAX_CREW * 3 files.
+    if (out.length >= MAX_CREW * 3) break;
+    if (playable(pc) && out.filter(playable).length >= MAX_CREW) continue;
+    out.push(pc);
   }
   return out;
 }
@@ -300,6 +303,8 @@ export function applyDamage(pc, amount, { type = "blunt", woundAdv = "", aa = fa
     if (pc.wounds.current >= pc.wounds.max) res.deathSave = true;
     if (res.deathSave) break;
   }
+  // House rule (the PSG gives Wounds only up to the maximum): a hit that takes a character at Maximum Wounds to 0 Health calls a Death Save.
+  if (!res.deathSave && !res.dead && m.through > 0 && h <= 0 && pc.wounds.current >= pc.wounds.max) res.deathSave = true;
   pc.health.current = Math.max(0, Math.min(pc.health.max, h));
   if (res.dead) res.deathSave = false;
   return res;

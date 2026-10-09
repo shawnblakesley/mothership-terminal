@@ -475,7 +475,7 @@
   document.addEventListener("fxchange", () => {
     if (FX.has("blackout")) Voice.interrupt();
     form.classList.toggle("disabled", lockedOut());
-    input.disabled = lockedOut() || watching();
+    input.disabled = lockedOut() || watching() || departed();
     const typingElsewhere = document.activeElement && document.activeElement !== input && document.activeElement.matches("input, textarea, select");
     if (!lockedOut() && !spectate && !typingElsewhere) input.focus();
   });
@@ -483,7 +483,7 @@
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = input.value.trim();
-    if (!text || lockedOut() || watching()) return;
+    if (!text || lockedOut() || watching() || departed()) return;
     history.unshift(text);
     histIdx = -1;
     input.value = "";
@@ -552,6 +552,7 @@
   const crewKey = () => `crew:${code}`;
   const mine = () => crew.find((c) => c.id === myId) || null;
   const watching = () => !spectate && crew.length > 0 && !mine();
+  const departed = () => { const c = mine(); return !!c && (!!c.cond?.dead || !!c.retired); };
   let docs = [];
   const SQ = '<span class="sq">■</span>', sq = (html) => `${SQ} ${html} ${SQ}`;
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -582,8 +583,8 @@
       if (!spectate && crew.length) setTimeout(() => { renderPicker(); openPanel("crewpick"); });
     }
     const pc = mine();
-    form.hidden = spectate || watching();
-    input.disabled = lockedOut() || watching();
+    form.hidden = spectate || watching() || departed();
+    input.disabled = lockedOut() || watching() || departed();
     $("watchpick").hidden = !watching();
     $("hdr-file").hidden = $("hdr-file-sep").hidden = spectate || !crew.length;
     $("hdr-file").textContent = pc ? `FILE: ${shortName(pc)}${gone(pc) ? ` (${gone(pc).toUpperCase()})` : ""}` : "FILE: NONE";
@@ -1351,7 +1352,7 @@
   let sr = null;
 
   function openSelfRoll(check) {
-    if (!mine() || !header.selfRolls) return;
+    if (!mine() || departed() || !header.selfRolls) return;
     sr = { check, skill: "", adv: "none" };
     $("sr-dice").value = "";
     $("sr-err").textContent = "";
