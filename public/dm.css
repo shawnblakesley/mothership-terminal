@@ -616,6 +616,18 @@ details.sec > summary:hover h2 { color: var(--fg); }
 .cmplegend .lg.cur { border-color: var(--accent); background: var(--accent-ink); }
 .cmplegend .lg.ship { border: none; background: none; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 11px solid #7fe0ff; }
 @media (max-width: 900px) { .cmpgrid { display: flex; flex-direction: column; overflow-y: auto; } .cmpmapcol, .cmpside { overflow: visible; min-height: auto; flex: none; } }
+
+.pcsheet .combatline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.pcsheet .combatline button, .advstats button { padding: 1px 8px; font-size: 12px; }
+.bad { color: var(--danger); }
+.advstats { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.advstats.dead { opacity: 0.7; }
+.advstats .inl { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.advstats .inl input { width: 56px; padding: 2px 6px; }
+.advstats .advedit { display: flex; flex-direction: column; gap: 6px; }
+.wtrack { display: inline-flex; gap: 3px; }
+.wtrack i { width: 10px; height: 10px; border: 1px solid var(--muted); border-radius: 2px; }
+.wtrack i.on { background: var(--danger); border-color: var(--danger); }
 .pcsheet .conds { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .pcsheet .conds .chip { background: color-mix(in srgb, var(--warn) 12%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: 99px; padding: 1px 9px; font-size: 12px; }
 .pcsheet .conds select { width: auto; max-width: 14em; padding: 1px 6px; font-size: 12px; }

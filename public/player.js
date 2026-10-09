@@ -682,11 +682,21 @@
       <div class="cs-facebox">${portraitHtml(c.portrait, "cs-face") || `<span class="cs-noface">NO PHOTO</span>`}</div>
       <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns)}${field("CLASS", c.className)}${field("ROLE", c.role)}</div>
     </div>`;
+  const combatRow = (c) => {
+    const a = c.armor;
+    const bits = [];
+    if (a) bits.push(`<span class="${a.destroyed ? "cs-bad" : ""}">ARMOR: ${escH(a.name.toUpperCase())} · AP ${a.destroyed ? 0 : a.ap}${a.dr ? ` · DR ${a.dr}` : ""}${a.destroyed ? " · DESTROYED" : ""}</span>`);
+    if (c.cond?.bleeding) bits.push(`<span class="cs-bad">BLEEDING ${c.cond.bleeding} A ROUND</span>`);
+    if (c.cond?.dying) bits.push(`<span class="cs-bad">DYING: DEAD IN ${c.cond.dying} ROUNDS WITHOUT INTERVENTION</span>`);
+    if (c.status) bits.push(`<span class="cs-bad">${escH(c.status.toUpperCase())}${c.statusNote ? ` · ${escH(c.statusNote.toUpperCase())}` : ""}</span>`);
+    if (c.deathSaveIn) bits.push(`<span class="cs-bad">DEATH SAVE IN ${c.deathSaveIn} ROUNDS UNLESS TREATED</span>`);
+    return `${c.cond?.dead ? '<div class="cs-deceased">DECEASED</div>' : ""}<div class="cs-combat">${bits.join("")}</div>`;
+  };
   const statusCard = (c) => `<div class="cs-card cs-status"><div class="cs-title">STATUS REPORT</div><div class="cs-vitals">
       ${pill("health", "HEALTH", c.health.current, c.health.max, ["CURRENT", "MAX"])}
       ${pill("wounds", "WOUNDS", c.wounds.current, c.wounds.max, ["CURRENT", "MAX"])}
       ${pill("stress", "STRESS", c.stress, undefined, ["CURRENT", `MIN ${c.minStress ?? 2}`])}
-    </div></div>`;
+    </div>${combatRow(c)}</div>`;
   const numbersCard = (title, obj, hint = "") => `<div class="cs-card cs-${title.toLowerCase()}"><div class="cs-title">${title}</div>
       <div class="cs-nums">${Object.entries(obj).map(([k, v]) => circle(k, v)).join("")}</div>${hint}</div>`;
   const rollHint = () => (header.selfRolls && !spectate ? '<div class="cs-hint">TAP A STAT OR SAVE TO ROLL IT</div>' : "");

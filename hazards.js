@@ -1,5 +1,6 @@
 import crypto from "crypto";
-import { setVital, newCond } from "./crew.js";
+import { newCond, applyDamage, gainWound } from "./crew.js";
+import { WOUND_TYPES, WOUND_LABELS } from "./wounds.js";
 import { roomId, clampInt } from "./clean.js";
 
 export const ROUND_SECONDS = 10;
@@ -31,7 +32,7 @@ export const HAZARDS = {
   temporal: { name: "Temporal anomaly", kind: "story", source: STORY, per: "exposure", check: "sanity", rule: "Sanity Save on each loop. Failure: the story's consequence." },
 };
 export const hazardInfo = (type) => HAZARDS[type] || null;
-export const WOUND_COLUMN = { blunt: "Blunt Force", bleeding: "Bleeding", gunshot: "Gunshot", fire: "Fire & Explosives", gore: "Gore & Massive" };
+export const WOUND_COLUMN = WOUND_LABELS;
 
 export const OTHER_RULES = {
   exhaustion: { name: "Exhaustion", kind: "psg", source: SURVIVAL, rule: "After 12 hours of activity, a Body Save every hour; failure = 1 Damage. After 24 hours: [-] on all rolls until 8 hours' rest." },
@@ -44,7 +45,7 @@ const d = (sides) => crypto.randomInt(1, sides + 1);
 export const rollDice = (n, sides, rng = d) => Array.from({ length: n }, () => rng(sides)).reduce((a, b) => a + b, 0);
 
 const isAndroid = (pc) => pc.className === "Android";
-const gear = (pc) => [...(pc.items || []), typeof pc.armor === "string" ? pc.armor : pc.armor?.name].filter(Boolean).map(String);
+const gear = (pc) => [...(pc.items || []), typeof pc.armor === "string" ? pc.armor : pc.armor?.destroyed ? "" : pc.armor?.name].filter(Boolean).map(String);
 const SUITS = [
   { re: /vacc?\s?suit/i, name: "vaccsuit", hours: 12, temp: false },
   { re: /hazard suit/i, name: "hazard suit", hours: 1, temp: true },
@@ -144,42 +145,16 @@ export function oxygenDay(supply, crew) {
   return { supply: next, use, breathing: b.length, ...oxygenState(next, b.length) };
 }
 
-const DEATH = [
-  [0, 0, "unconscious; wakes in 2d10 minutes; Maximum Health -1d5", "unconscious"],
-  [1, 2, "unconscious and dying; dead in 1d5 rounds without intervention", "dying"],
-  [3, 4, "comatose", "comatose"],
-  [5, 9, "dead", "dead"],
-];
-export function deathSave(rng = d) {
-  const roll = rng(10) - 1;
-  const [, , text, outcome] = DEATH.find(([lo, hi]) => roll >= lo && roll <= hi);
-  return { roll, text, outcome };
-}
-export function applyDeathSave(pc, res, rng = d) {
-  const c = pc.cond;
-  if (res.outcome === "dead") c.dead = "Death Save";
-  else if (res.outcome === "dying") c.dying = rng(5);
-  else if (res.outcome === "unconscious") {
-    pc.health.max = Math.max(1, pc.health.max - rng(5));
-    pc.health.current = Math.min(pc.health.current, pc.health.max);
-  }
-}
-
-// Every hazard's damage goes through here, so it can point at ticket 01's applyDamage at merge.
-export function hazardDamage(pc, n, type) {
+// Hazard damage and Wounds go through the one pipeline (crew.js applyDamage / gainWound): no armor or DR, a real Wounds Table roll for types that have a column.
+const column = (type) => (WOUND_TYPES.includes(type) ? type : "");
+export function hazardDamage(pc, n, type, opts = {}) {
   if (!(n > 0)) return { n: 0, wound: false, atMax: false, type };
-  const had = pc.health.current;
-  if (n < had) {
-    setVital(pc, "health", had - n);
-    return { n, wound: false, atMax: false, type };
-  }
-  setVital(pc, "wounds", pc.wounds.current + 1);
-  setVital(pc, "health", pc.health.max - (n - had));
-  return { n, wound: true, atMax: pc.wounds.current >= pc.wounds.max, type };
+  const result = applyDamage(pc, n, { type: column(type), direct: true, ...opts });
+  return { n, wound: result.wounds.length > 0, atMax: pc.wounds.current >= pc.wounds.max, type, result };
 }
-export function hazardWound(pc, type) {
-  setVital(pc, "wounds", pc.wounds.current + 1);
-  return { n: 0, wound: true, atMax: pc.wounds.current >= pc.wounds.max, type };
+export function hazardWound(pc, type, opts = {}) {
+  const wound = gainWound(pc, column(type), opts);
+  return { n: 0, wound, atMax: pc.wounds.current >= pc.wounds.max, type };
 }
 
 const need = (pc, kind, check, extra = {}) => {

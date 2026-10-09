@@ -1,5 +1,9 @@
 import { PORTRAIT_FILE } from "./cast.js";
 import { slug, clampInt as int } from "./clean.js";
+import { mitigate, deathSaveOutcome } from "./combat.js";
+import { rollWound, WOUNDS } from "./wounds.js";
+import { rollDice, randInt } from "./dice.js";
+import { armorFrom } from "./weapons.js";
 
 export const MAX_CREW = 4;
 export const CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
@@ -119,6 +123,7 @@ export function sanitizeCrew(list) {
     let id = slug(c.id || name) || `pc${out.length + 1}`;
     while (seen.has(id)) id += "x";
     seen.add(id);
+    const items = Array.isArray(c.items) ? c.items.map((s) => str(s, 60).trim()).filter(Boolean).slice(0, MAX_ITEMS) : itemsFrom(c.loadout);
     const minStress = int(c.minStress, 0, MAX_STRESS, 2);
     out.push({
       id,
@@ -137,7 +142,10 @@ export function sanitizeCrew(list) {
       startStress: int(c.startStress ?? DEFAULT_CREW.find((d) => d.id === slug(c.id || name))?.stress, 0, 20, 2),
       skills: (Array.isArray(c.skills) ? c.skills : String(c.skills || "").split(",")).map(skillOf).filter(Boolean).slice(0, 12),
       loadout: str(c.loadout, 400),
-      items: Array.isArray(c.items) ? c.items.map((s) => str(s, 60).trim()).filter(Boolean).slice(0, MAX_ITEMS) : itemsFrom(c.loadout),
+      items,
+      armor: sanitizeArmor(c.armor, items),
+      ...(STATUSES.includes(c.status) ? { status: c.status, statusNote: str(c.statusNote, 120) } : {}),
+      ...(int(c.deathSaveIn, 0, 99, 0) ? { deathSaveIn: int(c.deathSaveIn, 0, 99, 0) } : {}),
       trinket: str(c.trinket, 160),
       patch: str(c.patch, 80),
       notes: str(c.notes, 1000),
@@ -174,6 +182,117 @@ export function setVital(pc, field, value) {
   return [old, next];
 }
 
+const STATUSES = ["unconscious", "comatose"];
+export const isDead = (pc) => !!pc.cond?.dead;
+function sanitizeArmor(a, items) {
+  if (!a || typeof a !== "object") return armorFrom(items);
+  return { name: str(a.name, 40).trim() || "Armor", ap: int(a.ap, 0, 20, 1), dr: int(a.dr, 0, 20, 0), destroyed: a.destroyed === true };
+}
+export const armorText = (a) => `${a.name} AP ${a.ap}${a.dr ? ` DR ${a.dr}` : ""}${a.destroyed ? " (destroyed)" : ""}`;
+
+// "-1d10" / "+2d10" -> a signed roll.
+const signedRoll = (expr, rng) => {
+  const m = /^([+-])?(.+)$/.exec(expr);
+  return (m[1] === "-" ? -1 : 1) * rollDice(m[2], rng).total;
+};
+
+// Applies one Wounds Table row to the character; returns what was done, in words.
+function applyWound(pc, w, rng) {
+  const done = [];
+  if (w.bleed) {
+    pc.cond ||= newCond();
+    pc.cond.bleeding = Math.min(99, pc.cond.bleeding + w.bleed);
+    done.push(`Bleeding +${w.bleed} (now ${pc.cond.bleeding})`);
+  }
+  if (w.minStress) {
+    const [, to] = raiseMinStress(pc, w.minStress);
+    done.push(`Minimum Stress +${w.minStress} (now ${to})`);
+  }
+  if (w.stress) {
+    const n = rollDice(w.stress, rng).total;
+    const g = gainStress(pc, n);
+    done.push(`Stress +${n} (now ${g.to}${g.over ? `, ${g.over} over the maximum` : ""})`);
+  }
+  for (const [kind, table] of [["stats", w.stat], ["saves", w.save]]) {
+    for (const [k, expr] of Object.entries(table || {})) {
+      const n = signedRoll(expr, rng);
+      pc[kind][k] = Math.max(1, pc[kind][k] + n);
+      done.push(`${k[0].toUpperCase() + k.slice(1)}${kind === "saves" ? " Save" : ""} ${n} (now ${pc[kind][k]})`);
+    }
+  }
+  if (w.deathSaveIn) {
+    pc.deathSaveIn = Math.min(pc.deathSaveIn || Infinity, rollDice("1d10", rng).total);
+    done.push(`Death Save in ${pc.deathSaveIn} rounds unless dealt with`);
+  }
+  if (w.burn) done.push(`on fire: ${w.burn} Damage per round until put out (the Warden applies it)`);
+  return done;
+}
+
+// One Wound: +1 Wound, a Wounds Table roll for the damage type (a type with no column, like toxic, takes the Wound without a roll) and its effects.
+export function gainWound(pc, type, { adv = "", carry = 0, rng = randInt } = {}) {
+  pc.wounds.current++;
+  const w = WOUNDS[type] ? rollWound(type, adv, rng) : { type: "", adv: "", roll: null, all: [], severity: "", text: "No Wounds Table column for this damage: the Warden chooses." };
+  const entry = { ...w, n: pc.wounds.current, carryover: carry, applied: applyWound(pc, w, rng) };
+  if (w.dead) (pc.cond ||= newCond()).dead = "Wounds Table";
+  return entry;
+}
+
+// PSG 28-29: damage to a player character. DR, then armor, then Health; at 0 Health a Wound, a Wounds Table roll and Health back to Maximum minus the carryover.
+// direct: bleeding and other harm that skips armor and DR. armorAP / dr: override the sheet's armor.
+export function applyDamage(pc, amount, { type = "blunt", woundAdv = "", aa = false, direct = false, armorAP, dr, rng = randInt } = {}) {
+  const res = { raw: Math.max(0, Math.floor(Number(amount) || 0)), dealt: 0, dr: 0, armorHit: null, armorDestroyed: false, armorIgnored: false, wounds: [], deathSave: false, dead: false, skipped: false };
+  if (isDead(pc)) return { ...res, skipped: true };
+  const armor = pc.armor || { name: "", ap: 0, dr: 0, destroyed: false };
+  const m = direct ? { ...mitigate(res.raw), through: res.raw } : mitigate(res.raw, { ap: armorAP ?? (armor.destroyed ? 0 : armor.ap), dr: dr ?? armor.dr, aa });
+  Object.assign(res, { dealt: m.through, dr: m.dr, armorDestroyed: m.armorDestroyed, armorIgnored: m.armorIgnored, armorHit: armor.name || null });
+  if (m.armorDestroyed && armorAP === undefined && pc.armor) pc.armor.destroyed = true;
+  let h = pc.health.current - m.through;
+  while (h <= 0 && m.through > 0 && !isDead(pc) && pc.wounds.current < pc.wounds.max) {
+    const carry = -h;
+    const w = gainWound(pc, type, { adv: woundAdv, carry, rng });
+    res.wounds.push(w);
+    if (w.deathSave) res.deathSave = true;
+    if (w.dead) res.dead = true;
+    h = pc.health.max - carry;
+    if (pc.wounds.current >= pc.wounds.max) res.deathSave = true;
+    if (res.deathSave) break;
+  }
+  pc.health.current = Math.max(0, Math.min(pc.health.max, h));
+  if (res.dead) res.deathSave = false;
+  return res;
+}
+
+// PSG 29.2: what a revealed Death Save roll does to the character. Dead and dying live on pc.cond (dead, dying) like every other way to die.
+export function applyDeathSave(pc, roll, rng = randInt) {
+  const o = deathSaveOutcome(roll, rng);
+  pc.cond ||= newCond();
+  delete pc.deathSaveIn;
+  if (o.kind === "dead") { pc.cond.dead = "Death Save"; pc.health.current = 0; }
+  else if (o.kind === "unconscious") {
+    pc.status = "unconscious";
+    pc.statusNote = `Wakes in ${o.minutes} minutes. Maximum Health -${o.maxHealthLoss}.`;
+    pc.health.max = Math.max(1, pc.health.max - o.maxHealthLoss);
+    pc.health.current = Math.min(pc.health.current, pc.health.max);
+  } else if (o.kind === "dying") pc.cond.dying = o.rounds;
+  else Object.assign(pc, { status: "comatose", statusNote: "Comatose." });
+  return o;
+}
+
+export function stabilise(pc) {
+  delete pc.status;
+  delete pc.statusNote;
+  delete pc.deathSaveIn;
+  if (pc.cond) pc.cond.dying = 0;
+}
+
+// A Lethal Injury's countdown: true on the round the Death Save falls due.
+export function deathSaveCountdown(pc) {
+  if (!(pc.deathSaveIn > 0) || isDead(pc)) return false;
+  if (--pc.deathSaveIn > 0) return false;
+  delete pc.deathSaveIn;
+  return true;
+}
+
 export function gainStress(pc, n) {
   const from = pc.stress;
   const want = from + Math.max(0, Math.round(Number(n)) || 0);
@@ -194,7 +313,10 @@ export const closeCrew = (pc, crew, roomOf) => {
 };
 
 export function crewStatus(crew) {
-  return crew.map((c) => `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}. Carrying: ${c.items.join(", ") || "nothing"}`).join("\n");
+  return crew.map((c) => {
+    const extra = [c.armor && `Armor ${armorText(c.armor)}`, c.cond?.bleeding && `BLEEDING ${c.cond.bleeding} per round`, c.cond?.dead && `DECEASED (${c.cond.dead})`, c.cond?.dying && `DYING: dead in ${c.cond.dying} rounds without intervention`, c.status && `${c.status.toUpperCase()}${c.statusNote ? ` (${c.statusNote})` : ""}`, c.deathSaveIn && `a Death Save is due in ${c.deathSaveIn} rounds unless they are treated`].filter(Boolean);
+    return `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}${extra.length ? `, ${extra.join(", ")}` : ""}. Carrying: ${c.items.join(", ") || "nothing"}`;
+  }).join("\n");
 }
 
 export function freshen(pc) {
@@ -202,6 +324,8 @@ export function freshen(pc) {
   pc.wounds.current = 0;
   pc.stress = Math.max(pc.startStress, pc.minStress ?? 0);
   pc.items = itemsFrom(pc.loadout);
+  pc.armor = armorFrom(pc.items);
+  stabilise(pc);
   pc.cond = newCond();
 }
 

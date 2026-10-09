@@ -254,7 +254,7 @@ export function composeDraft(c, story, p, raw) {
     computer,
     broadcastPersona: d.broadcastPersona,
     voices: transit ? voices : [...voices, shipVoice],
-    adversaries: [{ name: story.adversary.name, persona: story.adversary.persona, preset: story.adversary.preset }],
+    adversaries: [{ name: story.adversary.name, persona: story.adversary.persona, preset: story.adversary.preset, ...(story.adversary.combat ? { combat: structuredClone(story.adversary.combat) } : {}) }],
     cast,
     documents: d.documents,
     terminals: transit ? [...c.ship.terminals, ...aiTerminals] : [shipTerminal, ...aiTerminals],

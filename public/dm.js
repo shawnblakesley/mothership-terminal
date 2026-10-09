@@ -324,6 +324,7 @@
     renderVoices();
     renderOutcome();
     renderRoll();
+    renderCombat();
     renderSounds();
     renderClocks();
     renderHazards();
@@ -507,6 +508,12 @@
       ${p.directives?.length ? `<div class="note">⚑ Following your command${p.directives.length > 1 ? "s" : ""}: ${p.directives.map(esc).join(" · ")}</div>` : ""}
       ${r.crew_changes?.length ? `<div class="label">Crew condition</div><ul>${r.crew_changes.map((c, i) =>
         `<li><label><input type="checkbox" data-crw="${i}" ${S.config.agentCrew !== false ? "checked" : ""}> ${esc(c.for)}: ${esc(c.stat)} ${c.change > 0 ? "+" : ""}${c.change}${c.why ? ` <span class="muted">(${esc(c.why)})</span>` : ""}</label></li>`).join("")}</ul>` : ""}
+      ${r.attacks?.length || r.crew_attacks?.length || r.round || r.reveal_death_save?.length ? `<div class="label">Combat <span class="muted">rolled by the app when you send</span></div><ul>${[
+        ...(r.attacks || []).map((a) => `${esc(a.by)} attacks ${esc(a.target)}${a.attack ? ` with ${esc(a.attack)}` : ""}`),
+        ...(r.crew_attacks || []).map((a) => `${esc(a.by)} hits ${esc(a.target)} with ${esc(a.weapon || "Unarmed")}`),
+        ...(r.round ? ["A round passes: Bleeding hurts"] : []),
+        ...(r.reveal_death_save || []).map((n) => `Death Save revealed: ${esc(n)}`),
+      ].map((t) => `<li>${t}</li>`).join("")}</ul>` : ""}
       ${r.station_changes.length ? `<div class="label">Station changes</div><ul>${r.station_changes.map((c, i) =>
         `<li><label><input type="checkbox" data-chg="${i}" checked> ${esc(c.path)} → ${esc(c.value)}</label></li>`).join("")}</ul>` : ""}
       ${r.effects.length ? `<div class="label">Effects</div><ul>${r.effects.map((f, i) =>
@@ -569,7 +576,7 @@
     const panel = $("crew");
     if (!fromDraft) {
       const editing = panel.contains(document.activeElement) || crewTimer !== null || Date.now() - crewSentAt < 1500;
-      const json = JSON.stringify([S.config.crew, S.claims, S.screens, S.config.terminals.map((t) => t.name), discordReady() && S.discord.players]);
+      const json = JSON.stringify([S.config.crew, S.claims, S.screens, S.config.terminals.map((t) => t.name), discordReady() && S.discord.players, S.deathSaves]);
       if ((crewDraft && editing) || panel.dataset.json === json) return;
       panel.dataset.json = json;
       crewDraft = structuredClone(S.config.crew);
@@ -583,7 +590,7 @@
       const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id);
       return `<details class="pc" data-i="${i}">
         <summary>${pickButton(c, `class="pick small" data-pcpic="${i}"`)}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
-          <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
+          <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max} · AP ${c.armor?.destroyed ? 0 : c.armor?.ap ?? 0}${c.cond?.dead ? " · DECEASED" : ""}</span>
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(none yet)</option>') + S.config.terminals.map((t) =>
             `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></span>` : ""}</summary>
@@ -597,7 +604,9 @@
           ${Object.entries(c.saves).map(([k, v]) => num(`saves.${k}`, v, `${k[0].toUpperCase() + k.slice(1)} save`)).join("")}
           ${num("health.current", c.health.current, "Health")}${num("health.max", c.health.max, "Max health")}
           ${num("wounds.current", c.wounds.current, "Wounds")}${num("wounds.max", c.wounds.max, "Max wounds")}
-          ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress")}${num("startStress", c.startStress, "Starting stress")}
+${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress")}${num("startStress", c.startStress, "Starting stress")}
+          ${txt("armor.name", c.armor.name, "Armor")}${num("armor.ap", c.armor.ap, "Armor AP")}${num("armor.dr", c.armor.dr, "Armor DR")}
+          <label>Armor destroyed<input type="checkbox" data-c="armor.destroyed" ${c.armor.destroyed ? "checked" : ""}></label>
           ${txt("skills", c.skills.map(skillStr).join(", "), "Skills")}
           ${txt("crime", c.crime, "Conviction", 2)}
           ${txt("backstory", c.backstory, "Backstory", 4)}
@@ -781,13 +790,94 @@
           </div>
           <input data-a="picture" class="edit-only why" value="${esc(/^https:\/\//.test(v.adversary.picture) ? v.adversary.picture : "")}" placeholder="Or a picture link (https://…)" aria-label="Picture link">
           ${v.adversary.picture ? `<input data-a="credit" class="edit-only why" value="${esc(v.adversary.credit || "")}" placeholder="Picture credit" aria-label="Picture credit">` : ""}
+          ${advStats(v)}
           <textarea data-a="persona" class="edit-only" rows="3" aria-label="What it is" placeholder="What it is, how it acts">${esc(v.persona)}</textarea>
           <div class="play-only small advinfo">${esc(v.persona)}</div>
         </div>
       </div>`).join("") || '<p class="muted small">No adversaries yet.</p>';
   }
+  let combatKey = "";
+  function renderCombat() {
+    const advs = S.config.voices.filter((v) => v.adversary?.stats);
+    const crew = S.config.crew;
+    const side = $("atkSide").value;
+    const key = JSON.stringify([advs.map((v) => [v.id, v.name, v.adversary.stats.attacks, v.adversary.stats.dead]), crew.map((c) => [c.id, c.name, c.cond?.bleeding, c.cond?.dead]), S.weaponsOf, S.deathSaves, side]);
+    if (key === combatKey) return;
+    combatKey = key;
+    const [by, with_, target] = [$("atkBy"), $("atkWith"), $("atkTarget")];
+    const was = [by.value, with_.value, target.value];
+    $("atkAdvWrap").hidden = side !== "crew";
+    $("atkWithLabel").textContent = side === "crew" ? "Weapon" : "Attack";
+    const crewOpts = crew.filter((c) => !c.cond?.dead).map((c) => [c.id, c.name]);
+    const advOpts = advs.filter((v) => !v.adversary.stats.dead).map((v) => [v.id, v.name]);
+    fillSelect(by, side === "crew" ? crewOpts : advOpts, was[0]);
+    fillSelect(target, side === "crew" ? advOpts : crewOpts, was[2]);
+    for (const sel of [by, target]) if (sel.selectedIndex < 0 && sel.options.length) sel.selectedIndex = 0;
+    attackChoices();
+    $("atkGo").disabled = !by.options.length || !target.options.length;
+    $("atkNote").textContent = !advs.length ? "No adversary has combat numbers yet: add them on the Crew tab, under Adversaries." : side === "crew" ? "Use it after the character's Combat check has succeeded. Its damage is rolled and taken off the adversary. A character in a Rage (Panic Table 16) has [+] on Damage rolls for 1d10 hours: pick [+] below." : "";
+    const saves = crew.filter((c) => S.deathSaves?.[c.id]);
+    $("deathSaveList").innerHTML = saves.map((c) => `<li>Death Save rolled (hidden): ${esc(c.name)} <button data-cmb="reveal" data-pc="${esc(c.id)}" class="ghost" title="Someone spent a turn checking their vitals">Reveal</button></li>`).join("");
+  }
+  function attackChoices() {
+    const side = $("atkSide").value, by = $("atkBy").value;
+    const opts = side === "crew" ? (S.weaponsOf?.[by] || ["Unarmed"]) : (S.config.voices.find((v) => v.id === by)?.adversary.stats?.attacks || []).map((a) => `${a.name} (${a.damage} ${a.woundType}${a.woundAdv ? ` [${a.woundAdv}]` : ""})`);
+    const values = side === "crew" ? opts : (S.config.voices.find((v) => v.id === by)?.adversary.stats?.attacks || []).map((a) => a.name);
+    fillSelect($("atkWith"), values.map((v, i) => [v, opts[i]]), $("atkWith").value);
+    if ($("atkWith").selectedIndex < 0 && $("atkWith").options.length) $("atkWith").selectedIndex = 0;
+  }
+  for (const id of ["atkSide"]) $(id).addEventListener("change", () => { combatKey = ""; renderCombat(); });
+  $("atkBy").addEventListener("change", attackChoices);
+  $("atkGo").onclick = () => {
+    const side = $("atkSide").value;
+    send({ t: "attack", attack: side === "crew"
+      ? { side, pc: $("atkBy").value, weapon: $("atkWith").value, target: $("atkTarget").value, damageAdv: $("atkAdv").value }
+      : { side, by: $("atkBy").value, attack: $("atkWith").value, target: $("atkTarget").value } });
+  };
+  $("deathSaveList").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-cmb]");
+    if (b) send({ t: "revealDeathSave", pc: b.dataset.pc });
+  });
+
+  const ATTACK_TIP ="One attack per line: Name | damage dice | wound type | [+] or [-] on its Wounds Table roll | special. Wound types: blunt, bleeding, gunshot, fire, gore.";
+  const attackLines = (s) => s.attacks.map((a) => [a.name, a.damage, a.woundType, a.woundAdv, a.special].join(" | ")).join("\n");
+  const parseAttacks = (text) => text.split("\n").map((l) => l.split("|").map((x) => x.trim())).filter((p) => p[0] && p[1])
+    .map(([name, damage, woundType, woundAdv, special]) => ({ name, damage, woundType: (woundType || "blunt").toLowerCase(), woundAdv: woundAdv === "+" || woundAdv === "-" ? woundAdv : "", special: special || "" }));
+  function advStats(v) {
+    const s = v.adversary.stats;
+    if (!s) return `<div class="row edit-only small"><button data-aact="addstats" title="Combat, Instinct, armor, Wounds and attacks (PSG 40-41)">Add combat numbers</button></div>`;
+    const track = Array.from({ length: s.woundsMax }, (_, i) => `<i class="${i < s.wounds ? "on" : ""}"></i>`).join("");
+    const num = (k, label, min = 0, max = 999) => `<label>${label}<input type="number" data-s="${k}" value="${s[k]}" min="${min}" max="${max}"></label>`;
+    return `<div class="advstats ${s.dead ? "dead" : ""}">
+        <div class="row wrap small">
+          <span><b>Combat ${s.combat}</b> · Instinct ${s.instinct} · ${s.ap ? `AP ${s.ap}${s.armorDestroyed ? " (destroyed)" : ""}` : "no armor"}${s.dr ? ` · DR ${s.dr}` : ""}${s.count ? ` · ${s.count} of them` : ""}</span>
+          <span class="wtrack" title="Wounds left (${s.wounds} of ${s.woundsMax}), ${s.healthPerWound} Health each">${track}</span>
+          <label class="inl">Health <input type="number" data-s="health" value="${s.health}" min="0" max="${s.healthPerWound}"> / ${s.healthPerWound}</label>
+          <label class="inl">Wounds <input type="number" data-s="wounds" value="${s.wounds}" min="0" max="${s.woundsMax}"> / ${s.woundsMax}</label>
+          ${s.dead ? '<b class="bad">DEAD OR DESTROYED</b>' : ""}
+          <button data-aact="resetstats" class="ghost" title="Full Wounds, full Health, armor back">Reset</button>
+        </div>
+        <div class="small advinfo">${s.attacks.map((a) => `${esc(a.name)} ${esc(a.damage)} ${esc(a.woundType)}${a.woundAdv ? ` [${a.woundAdv}]` : ""}${a.special ? ` (${esc(a.special)})` : ""}`).join(" · ") || "No attacks."}${s.special ? `<br>${esc(s.special)}` : ""}${s.note ? `<br>${esc(s.note)}` : ""}</div>
+        <div class="edit-only advedit">
+          <div class="pcgrid">${num("combat", "Combat", 1, 300)}${num("instinct", "Instinct", 1, 300)}${num("ap", "Armor AP", 0, 99)}${num("dr", "DR", 0, 99)}${num("woundsMax", "Wounds", 1, 20)}${num("healthPerWound", "Health per Wound", 1, 999)}${num("count", "Count (groups)", 0, 99)}</div>
+          <textarea data-s="attacks" rows="3" aria-label="Attacks" title="${esc(ATTACK_TIP)}" placeholder="${esc(ATTACK_TIP)}">${esc(attackLines(s))}</textarea>
+          <textarea data-s="special" rows="2" aria-label="Special" placeholder="Special: how it is beaten, what it does">${esc(s.special)}</textarea>
+          <input data-s="note" value="${esc(s.note || "")}" aria-label="Note" placeholder="Note (a group is written per individual)">
+        </div>
+      </div>`;
+  }
   const advPatch = (id, patch) => send({ t: "adversary", id, patch });
   $("adversaries").addEventListener("input", (e) => {
+    const sk = e.target.dataset.s, sid = e.target.closest(".advm")?.dataset.id;
+    if (sk && sid) {
+      clearTimeout(advTimer);
+      advTimer = setTimeout(() => {
+        advTimer = null;
+        const el = e.target;
+        advPatch(sid, { stats: { [sk]: sk === "attacks" ? parseAttacks(el.value) : el.type === "number" ? Number(el.value) : el.value } });
+      }, 600);
+      return;
+    }
     const key = e.target.dataset.a, id = e.target.closest(".advm")?.dataset.id;
     if (!key || !id) return;
     if (key === "revealed") return advPatch(id, { revealed: e.target.checked });
@@ -803,6 +893,8 @@
     if (act === "pic") { advFor = id; $("advFile").value = ""; $("advFile").click(); }
     else if (act === "nopic") advPatch(id, { picture: "" });
     else if (act === "show") send({ t: "adversaryShow", id });
+    else if (act === "addstats") advPatch(id, { stats: {} });
+    else if (act === "resetstats") { const s = v.adversary.stats; advPatch(id, { stats: { wounds: s.woundsMax, health: s.healthPerWound, dead: false, armorDestroyed: false } }); }
     else if (act === "test") Voice.test(v, $("testText").value || "i can hear you.", `api/sessions/${code}/tts-test`, key);
     else if (act === "del" && (await sure(`Remove ${v.name}?`, "Removes it and its voice from the story.", "Remove"))) send({ t: "adversaryDel", id });
   });
@@ -834,13 +926,31 @@
         <label>Wounds <input type="number" data-c="wounds.current" value="${c.wounds.current}" min="0" max="99"> / ${c.wounds.max}</label>
         <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"> Min <input type="number" data-c="minStress" value="${c.minStress}" min="0" max="20" title="Minimum Stress: Stress never goes below it" aria-label="Minimum Stress"></label>
       </div>
+      ${combatLine(c)}
       ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${condLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}${line("Trauma response", S.traumaResponses?.[c.className])}
     </div>`;
   }
+  const combatLine = (c) => {
+    const a = c.armor || { name: "None", ap: 0, dr: 0 };
+    const btn = (cmd, text, title) => `<button type="button" class="small" data-cmb="${cmd}" data-pc="${esc(c.id)}" title="${esc(title)}">${text}</button>`;
+    const bits = [`<span><span class="k">Armor:</span> ${esc(a.name)} AP ${a.ap}${a.dr ? ` DR ${a.dr}` : ""}${a.destroyed ? ' <b class="bad">destroyed</b>' : ""}</span>`];
+    if (a.destroyed) bits.push(btn("repair", "Mark repaired", "Armor repair costs half the armor's original cost"));
+    if (c.cond?.dead) bits.push(`<b class="bad">DECEASED</b> <span class="muted">${esc(c.cond.dead)}</span>`);
+    if (c.status) bits.push(`<b class="bad">${esc(cap(c.status))}</b>${c.statusNote ? ` <span class="muted">${esc(c.statusNote)}</span>` : ""}`);
+    if (c.deathSaveIn) bits.push(`<b class="bad">Death Save due in ${c.deathSaveIn} rounds</b>`);
+    if (S.deathSaves?.[c.id]) bits.push("<b>Death Save rolled (hidden)</b>", btn("reveal", "Reveal", "Someone spent a turn checking their vitals: reveal and apply the result"));
+    if (c.deathSaveIn || c.cond?.dying || c.status) bits.push(btn("dealt", "Dealt with", "Clear the countdown and the status"));
+    return `<div class="combatline">${bits.join(" ")}</div>`;
+  };
   const COND_ACTIONS = [["puncture", "Puncture suit"], ["patch", "Patch suit"], ["air", "Breathing again"], ["putout", "Put out fire"], ["bleed", "+1 Bleeding"], ["stopbleed", "Stop bleeding (First Aid Kit)"], ["ate", "Has eaten"], ["thirst", "Water at the minimum (toggle)"], ["strenuouscheck", "Strenuous activity on minimum water"], ["strenuous", "Strenuous activity (toggle)"], ["rest", "Rested 8 hours"], ["cryosleep", "Into cryosleep"], ["wake", "Wake from cryosleep"], ["stimpak", "Stimpak (cures cryosickness)"], ["pills", "Radiation Pills"], ["clearrad", "Clear radiation penalty"], ["cleartags", "Clear story conditions"]];
   const condLine = (c) => `<div class="conds"><span class="k">Conditions:</span> ${(S.conds?.[c.id] || []).map((x) => `<span class="chip">${esc(x)}</span>`).join("") || '<span class="muted">none</span>'}
     <select data-cond-pick aria-label="Condition for ${esc(c.name)}">${COND_ACTIONS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select><button data-cond-go="${esc(c.id)}">Apply</button></div>`;
   $("crew").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-cmb]");
+    if (b) {
+      const t = { repair: "repairArmor", stop: "stopBleeding", reveal: "revealDeathSave", dealt: "dealtWith" }[b.dataset.cmb];
+      if (t) send({ t, pc: b.dataset.pc });
+    }
     const go = e.target.closest("[data-cond-go]");
     if (go) send({ t: "condition", pc: go.dataset.condGo, action: go.parentElement.querySelector("[data-cond-pick]").value });
   });
@@ -888,7 +998,7 @@
     if (!card || !key) return;
     const c = crewDraft[Number(card.dataset.i)];
     const [a, b] = key.split(".");
-    const val = e.target.type === "number" ? Number(e.target.value) : key === "skills" || key === "items" ? e.target.value.split(",").map((x) => x.trim()).filter(Boolean) : e.target.value;
+    const val = e.target.type === "checkbox" ? e.target.checked : e.target.type === "number" ? Number(e.target.value) : key === "skills" || key === "items" ? e.target.value.split(",").map((x) => x.trim()).filter(Boolean) : e.target.value;
     if (b) c[a][b] = val;
     else c[a] = val;
     saveCrew();

@@ -17,7 +17,7 @@ const FIELDS = {
   Outcome: oneOf("ok", "error"),
   Kind: oneOf("reply", "precheck", "note", "builder", "synopsis", "room", "stat", "save", "panic"),
   Who: oneOf("one", "all", "self"),
-  Action: oneOf("direction", "speak", "note", "effect", "sound", "roll", "retcon", "synopsis", "room_show", "room_draft", "builder_chat", "builder_draft", "builder_apply", "story_restart", "campaign_story"),
+  Action: oneOf("direction", "speak", "note", "effect", "sound", "roll", "retcon", "synopsis", "room_show", "room_draft", "builder_chat", "builder_draft", "builder_apply", "story_restart", "campaign_story", "attack", "next_round"),
   Reason: oneOf("warden", "expired"),
   LatencyMs: count(600_000),
 };

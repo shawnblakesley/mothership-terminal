@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HAZARDS, protection, roundTick, hourTick, vacuumTick, puncture, oxygenState, oxygenDay, settle, deathSave, hazardDamage, normalizeHazards, penalties, withDisadvantage, eventNeeds } from "../hazards.js";
+import { HAZARDS, protection, roundTick, hourTick, vacuumTick, puncture, oxygenState, oxygenDay, settle, hazardDamage, normalizeHazards, penalties, withDisadvantage, eventNeeds } from "../hazards.js";
 import { sanitizeCrew, newCond } from "../crew.js";
+import { armorFrom } from "../weapons.js";
 import { CAMPAIGNS } from "../campaign.js";
 import { Session } from "../session.js";
 
@@ -169,7 +170,7 @@ test("cold and heat: a Body Save every hour unless in a hazard suit; failure is 
   assert.equal(hourTick(pc("Teamster", ["Vaccsuit"]), [{ type: "cold" }]).needs.length, 1);
 });
 
-test("food, cryosickness and the Death Save table", () => {
+test("food and cryosickness", () => {
   const p = pc("Teamster", []);
   for (let h = 0; h < 23; h++) hourTick(p, []);
   assert.deepEqual(penalties(p).filter((x) => /food/.test(x)), []);
@@ -177,10 +178,6 @@ test("food, cryosickness and the Death Save table", () => {
   assert.ok(penalties(p).some((x) => /food/.test(x)));
   p.cond.cryo = 168;
   assert.ok(penalties(p).includes("cryosickness"));
-  assert.equal(deathSave(fixed(1)).outcome, "unconscious");
-  assert.equal(deathSave(fixed(2)).outcome, "dying");
-  assert.equal(deathSave(fixed(4)).outcome, "comatose");
-  assert.equal(deathSave(fixed(6)).outcome, "dead");
 });
 
 test("hazard Damage: Health, then a Wound with the carryover", () => {
@@ -246,7 +243,7 @@ test("a room's vacuum reaches only the characters at terminals in it; Next round
   const [a, b] = s.state.config.crew;
   screen(s, a.id, "t1");
   screen(s, b.id, "t2");
-  a.items = ["Standard crew attire"];
+  a.items = ["Standard crew attire"]; a.armor = armorFrom(a.items);
   s.setHazard("cargo_spine", "vacuum");
   assert.equal(s.state.station.hazards.cargo_spine.type, "vacuum");
   s.advanceRound();
@@ -261,7 +258,7 @@ test("a suited character takes nothing from vacuum, and Retcon-style snapshots k
   const s = session();
   s.state.config.terminals = [{ id: "t1", name: "A", room: "cargo_spine" }];
   const [a] = s.state.config.crew;
-  a.items = ["Vaccsuit"];
+  a.items = ["Vaccsuit"]; a.armor = armorFrom(a.items);
   screen(s, a.id, "t1");
   s.setHazard("cargo_spine", "vacuum");
   s.advanceRound();
@@ -274,7 +271,7 @@ test("Pass time: cold asks the exposed character for a Body Save each hour; the 
   const s = session();
   s.state.config.terminals = [{ id: "t1", name: "A", room: "hold" }];
   const [a] = s.state.config.crew;
-  a.items = [];
+  a.items = []; a.armor = armorFrom(a.items);
   screen(s, a.id, "t1");
   s.setHazard("hold", "cold");
   s.passTime(2);
@@ -300,7 +297,7 @@ test("an agent reply starts a hazard, and Retcon undoes it with the crew conditi
   s.initPlayers = () => {};
   s.state.config.terminals = [{ id: "t1", name: "A", room: "hold" }];
   const [a] = s.state.config.crew;
-  a.items = [];
+  a.items = []; a.armor = armorFrom(a.items);
   screen(s, a.id, "t1");
   s.deliver({ lines: [], hazards: [{ room: "hold", type: "radiation", level: 2 }], time_passes: { hours: 0 } }, "agent");
   assert.equal(s.state.station.hazards.hold.level, 2);
