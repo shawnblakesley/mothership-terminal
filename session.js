@@ -3,7 +3,7 @@ import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLike
 import { warmNeural } from "./tts.js";
 import { VoiceRelay } from "./voicerelay.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, COLD_STATS, OLD_COLD_PICTURES } from "./voices.js";
-import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, finalVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
+import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, isCrew, placeByOccupants, speakingVoice, finalVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
@@ -17,7 +17,7 @@ import { loaded, magazines, spendShot, reload, TANK, STORES } from "./resources.
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
 import { restAndRecover, downtimeLines } from "./downtime-lite.js";
-import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory, stripFactionBrief } from "./campaign.js";
+import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, crewIntoCampaign, crewFromCampaign, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory, stripFactionBrief } from "./campaign.js";
 import { transfer, ledgerLine, exact, DEBT_PAYMENT, DEBT_EVERY } from "./money.js";
 import { downtimeReady, planRoll, settleRoll, mirror, passDays, treat, treatmentList, shoreText, applyConversion } from "./downtime.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
@@ -26,7 +26,7 @@ import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from
 import { shipDm, shipPlayer, shipRollDone, shipClockRan, shipSnapshot, restoreShip, shipDmView, shipPlayerView, applyShipFight } from "./shipfight.js";
 import { track } from "./telemetry.js";
 import { roomId, keyOf } from "./clean.js";
-import { rememberSecret } from "./redact.js";
+import { rememberSecret, playerStation, playerEntry } from "./redact.js";
 import { discordStatus, stopListening, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
@@ -338,6 +338,14 @@ function migrateGame(saved) {
     for (const m of config.cast) m.portrait ||= findCast(DEFAULT_CAST, m.name)?.portrait || "";
     for (const pc of config.crew) pc.portrait ||= DEFAULT_CREW.find((d) => d.id === pc.id && d.name === pc.name)?.portrait || "";
     config.upgrades.push(upgrade);
+  }
+  if (!config.upgrades.includes("no-pc-cast")) {
+    for (const c of [config, saved.storyStart?.config].filter((x) => Array.isArray(x?.cast) && Array.isArray(x.crew))) {
+      const norm = (n) => String(n || "").replace(/\s+/g, " ").trim().toLowerCase();
+      const pcs = new Set(c.crew.map((p) => norm(p.name)).filter(Boolean));
+      c.cast = c.cast.filter((m) => !pcs.has(norm(m.name)));
+    }
+    config.upgrades.push("no-pc-cast");
   }
   if (!config.upgrades.includes("intercom-colour")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
@@ -655,7 +663,7 @@ export class Session {
     const screens = [...this.sockets].filter((c) => c.role === "player" && !c.stream);
     return !screens.length || screens.some((c) => this.sees(c, entry));
   }
-  toEntry(entry, p) { this.toPlayersIf((c) => this.sees(c, entry), p); }
+  toEntry(entry, p) { this.toPlayersIf((c) => this.sees(c, entry), p.entry ? { ...p, entry: playerEntry(p.entry) } : p); }
   toPlayersIf(pred, p) {
     const data = typeof p === "string" ? p : JSON.stringify(p);
     for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && pred(c)) c.send(data);
@@ -709,8 +717,7 @@ export class Session {
   isoView() {
     const view = this.state.mapShown;
     if (!view) return null;
-    const { occupants, ...station } = this.state.station || {};
-    return { view, station, ...this.streamMap(), rooms: this.state.config.rooms };
+    return { view, station: playerStation(this.state.station), ...this.streamMap(), rooms: this.state.config.rooms };
   }
   syncIso() {
     const map = JSON.stringify(this.isoView());
@@ -753,7 +760,7 @@ export class Session {
     const net = ws ? this.netOfSocket(ws) : "";
     const log = ws?.stream
       ? this.state.log.filter((e) => !e.queued && !e.cut)
-      : this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net)));
+      : this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net))).map(playerEntry);
     if (ws?.stream) {
       ws.sent = new Map(log.filter((e) => PRIVATE_KINDS.has(e.kind)).map((e) => [e.id, e.text]));
       ws.mapSent = JSON.stringify(this.streamMap());
@@ -833,6 +840,7 @@ export class Session {
       for (const en of plan.entries) this.addLog("note", ledgerLine(p, en));
       if (plan.days) this.addLog("note", passDays(p, [s.config.crew, p.crew], plan.days).concat(`${plan.days} days pass (day ${p.downtime.day}).`).join(" "));
       if (plan.entries.length) this.moneySync();
+      if (plan.days) this.crewChanged();
       mirror(p, pc);
       s.roll = sanitizeRequest(plan.request, s.config.crew);
       s.roll.downtime = { [pc.id]: plan.dt };
@@ -876,6 +884,7 @@ export class Session {
     for (const en of r.entries) this.addLog("note", ledgerLine(p, en));
     if (r.days) this.addLog("note", passDays(p, [s.config.crew, p.crew], r.days).concat(`${r.days} days pass (day ${p.downtime.day}).`).join(" "));
     mirror(p, pc);
+    if (r.days) this.crewChanged();
     this.moneySync();
   }
 
@@ -1104,6 +1113,7 @@ export class Session {
       this.addLog("note", `${pc.name} ${pc.cond?.dead ? `died: ${pc.cond.dead}` : "retired"}. Their file goes on the memorial (High Score ${pc.highScore}).`);
       if (pc.cond?.dead) this.toPlayersIf((w) => w.character === pc.id, { t: "flatline", id: pc.id });
     }
+    this.syncCampaignCrew();
   }
 
   // The dead character's last line, spoken on every screen in a voice of their own.
@@ -1118,18 +1128,33 @@ export class Session {
 
   // End session: High Score (PSG 18.3, sessions survived; no effect on play) goes up by 1 for each living character.
   endNight() {
-    const s = this.state, up = endSession(s.config.crew);
+    const s = this.state;
+    this.syncCampaignCrew();
+    const up = endSession(s.config.crew);
     if (s.campaign) { endSession(s.campaign.crew); s.campaign.sessions = (s.campaign.sessions || 0) + 1; }
     this.addLog("note", `Game night ended. High Score +1: ${up.map((c) => `${c.name} (${c.highScore})`).join(", ") || "nobody is alive"}. (PSG 18.3: it counts sessions survived and changes no roll.)`);
     this.crewChanged();
   }
 
   crewChanged() {
+    if (this.state.campaign) crewIntoCampaign(this.state.campaign, this.state.config.crew);
     this.noteEndings();
     this.toPlayers({ t: "crew", crew: this.state.config.crew, conds: this.condMap(), claims: this.claims(), played: this.played() });
     this.syncDm();
     const x = this.state.solo;
     if (x?.phase === "play" && !x.opened && Object.keys(this.claims()).length) this.soloOpen();
+  }
+
+  // During a story, who is dead or retired (and their last words) is mirrored into the campaign's crew copy, so it never holds a dead character as alive.
+  syncCampaignCrew() {
+    const p = this.state.campaign;
+    if (!p?.current) return;
+    for (const pc of this.state.config.crew) {
+      const q = p.crew.find((x) => x.id === pc.id);
+      if (!q) continue;
+      q.cond = { ...(q.cond || newCond()), dead: pc.cond?.dead || "" };
+      Object.assign(q, { retired: !!pc.retired, endedIn: pc.endedIn || "", finalWords: pc.finalWords || "" });
+    }
   }
 
   // The campaign's money lives on its own sheets; the story's copies follow it.
@@ -1151,7 +1176,11 @@ export class Session {
     if (msg.t === "pilot") return this.pilotAuth(ws, msg.token);
     if (String(msg.t).startsWith("pilot")) return ws.pilot && this.handlePilot(ws, msg);
     if (msg.t === "input" && this.state.solo && this.state.solo.phase !== "play") return;
-    if (["input", "roll", "selfRoll", "vitals"].includes(msg.t)) this.storyBegins();
+    if (["input", "roll", "selfRoll", "vitals"].includes(msg.t)) {
+      const gone = this.characterOf(ws);
+      if (gone && !playable(gone)) return ws.send(JSON.stringify({ t: "rollError", text: `${gone.name} is ${gone.cond?.dead ? "dead" : "retired"}: no more actions. Only final words are allowed.` }));
+      this.storyBegins();
+    }
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
     if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() }));
     if (msg.t === "sectorVote") return this.sectorVote(ws, String(msg.story || ""));
@@ -1669,7 +1698,10 @@ export class Session {
         if (!r) break;
         if (!r.ok) this.send("dm", { t: "toast", level: "error", text: r.error });
         else {
+          const gone = passDays(s.campaign, [s.config.crew, s.campaign.crew], r.lane.days);
           const at = (id) => c.locations.find((l) => l.id === id).name;
+          for (const l of gone) this.addLog("note", l);
+          this.crewChanged();
           this.addLog("note", `${c.ship.name} travels ${at(r.from)} to ${at(s.campaign.at)} along ${r.lane.name} (${r.lane.days} days): ${r.cost} fuel (house rule: 1 unit per started 3 days), ${r.left} left.`);
           this.sectorSync();
           this.sendHeader();
@@ -1684,6 +1716,7 @@ export class Session {
         else {
           this.addLog("note", `Resupply at ${r.at}: ${r.bought.join(", ") || "nothing"}${r.to ? ` (carried by ${r.to})` : ""}. Total ${exact(r.total)}.${r.fuelFree ? " (No fuel price was set: the fuel was free.)" : ""}`);
           for (const e of r.entries) this.addLog("note", ledgerLine(s.campaign, e));
+          crewFromCampaign(s.campaign, s.config.crew);
           this.moneySync();
           this.sendHeader();
         }
@@ -1895,7 +1928,7 @@ export class Session {
     let any = false;
     for (const ch of Array.isArray(list) ? list : []) {
       if (leaving(ch) !== (step === "after")) continue;
-      const { member, created } = addCast(c.cast, String(ch?.name || "").trim());
+      const { member, created } = addCast(c.cast, String(ch?.name || "").trim(), { crew: c.crew });
       if (!member) continue;
       const room = String(ch.room ?? "").trim().toLowerCase();
       const to = target(ch);
@@ -2332,7 +2365,12 @@ export class Session {
     const now = Date.now();
     if (now - (ws.lastRoll || 0) < 1500) return;
     ws.lastRoll = now;
-    const r = sanitizeRequest({ pc: pc.id, check: msg.check, skill: msg.skill, advantage: msg.advantage }, [pc]);
+    let r;
+    try {
+      r = sanitizeRequest({ pc: pc.id, check: msg.check, skill: msg.skill, advantage: msg.advantage }, [pc]);
+    } catch (err) {
+      return ws.send(JSON.stringify({ t: "rollError", text: err.message }));
+    }
     const req = { ...r, advantage: effectiveAdvantage(r, pc, this.advOpts(pc, r)) };
     const dice = msg.manual ? manualDice(msg.dice) : diceFor(req);
     let result;
@@ -2394,7 +2432,8 @@ export class Session {
 
   // The one Death Save: rolled in secret (1d10, 0-9), kept out of every view, revealed with the Reveal button or the agent's reveal_death_save.
   callDeathSave(pc, why = "") {
-    (this.state.deathSaves ||= {})[pc.id] = rollDeathSave();
+    if ((this.state.deathSaves ||= {})[pc.id] !== undefined) return;
+    this.state.deathSaves[pc.id] = rollDeathSave();
     this.addLog("note", `Death Save rolled (hidden) for ${pc.name}${why ? ` (${why})` : ""}. Reveal it when someone spends a turn checking their vitals.`, { secret: true });
   }
 
@@ -2429,6 +2468,7 @@ export class Session {
     const st = adv?.adversary.stats;
     if (!pc || !adv) return this.addLog("note", `Attack not made: ${!pc ? "no such crew member" : `no adversary named "${target}" with combat numbers`}.`);
     if (isDead(pc)) return this.addLog("note", `Attack not made: ${pc.name} is dead.`);
+    if (st.dead) return this.addLog("note", `Attack not made: ${adv.name} is already dead or destroyed.`);
     const w = this.crewWeapon(pc, weapon);
     if (!spendShot(pc, w)) return this.addLog("note", `Attack not made: ${pc.name}'s ${w.name} is out of shots (0/${w.shots}). Reloading is an action.`);
     const expr = weaponDamage(w, pc.stats.strength);
@@ -2631,7 +2671,7 @@ export class Session {
       if (!r || r.status !== "waiting" || !r.hazard) break;
       for (const p of r.pcs) {
         const pc = this.crewById(p.id);
-        if (pc && !r.results[p.id]) this.rollFor(pc, diceFor(r), { by: "warden" });
+        if (pc && !r.results[p.id]) this.rollFor(pc, null, { by: "warden" });
       }
     }
   }
@@ -2880,9 +2920,10 @@ export class Session {
     let prev = null;
     for (let { voice, character, system, reveal, text, effects: lineFx, variants: rawVariants } of lines) {
       if (voice === BUILTIN.narrator && source === "agent" && config.narrator === false) continue;
+      if (source === "agent" && character && !findCast(config.cast, character) && isCrew(config.crew, character)) continue;
       let member = character && voice === channel ? findCast(config.cast, character) : null;
       if (!member && character && voice === channel) {
-        member = addCast(config.cast, character).member;
+        member = addCast(config.cast, character, { crew: config.crew }).member;
         if (member) this.addLog("note", `Cast: ${member.name} joins the story.`);
       }
       character = member?.name || "";
@@ -3178,6 +3219,7 @@ export class Session {
     if (paid.handout) this.giveHandout(paid.handout);
     this.moneySync();
     const rest = downtimeLines(restAndRecover(p.crew));
+    crewFromCampaign(p, s.config.crew);
     this.addLog("note", `Downtime between stories (short-term recovery and a Rest Save for each, rolled for them):\n${rest.join("\n")}`);
     x.after = { factions, rest, pay: paid.lines };
   }
@@ -3292,6 +3334,10 @@ export class Session {
         else {
           x.error = "";
           const at = (id) => c.locations.find((l) => l.id === id).name;
+          if (r.lane) {
+            for (const l of passDays(p, [this.state.config.crew, p.crew], r.lane.days)) this.addLog("note", l);
+            this.crewChanged();
+          }
           this.addLog("note", r.lane
             ? `${c.ship.name} noses out of ${at(r.from)} and runs ${r.lane.name} (${r.lane.days} days) to ${at(p.at)}: ${r.cost} fuel (house rule), ${r.left} left.`
             : msg.t === "pilotDispatch"
@@ -3391,17 +3437,26 @@ export class Session {
     this.stopSounds();
     if (snap) {
       const pics = new Map([...s.config.cast, ...s.config.crew].map((m) => [m.id, m.portrait]));
+      const now = s.config.crew;
       Object.assign(s.config, structuredClone(snap.config));
       s.config.voices = sanitizeVoices(s.config.voices);
       s.station = structuredClone(snap.station);
       s.config.cast = sanitizeCast(s.config.cast);
+      // The sheets come back as they were when play began (dead, retired, items, ammo, conditions). A replacement accepted since stays, and so does the character it replaced.
+      const joined = now.filter((c) => c.replacedBy || !s.config.crew.some((x) => x.id === c.id));
+      for (const c of joined) {
+        const was = s.config.crew.findIndex((x) => x.id === c.id);
+        const sheet = was < 0 && s.campaign?.crew.find((x) => x.id === c.id) || c;
+        if (was < 0) s.config.crew.push(structuredClone(sheet));
+        else s.config.crew[was] = structuredClone(sheet);
+      }
       s.config.crew = sanitizeCrew(s.config.crew);
       for (const m of [...s.config.cast, ...s.config.crew]) if (pics.has(m.id)) m.portrait = pics.get(m.id);
       s.synopses = structuredClone(savedSynopses(snap));
       delete s.synopses.sofar;
       delete s.synopses.wrapup;
     } else {
-      for (const pc of s.config.crew) freshen(pc);
+      if (!s.campaign) for (const pc of s.config.crew) if (playable(pc)) freshen(pc);
       if (s.config.stationName === "KESTREL-9") {
         s.station = structuredClone(DEFAULT_STATION);
         for (const m of s.config.cast) m.room = findCast(DEFAULT_CAST, m.name)?.room ?? m.room;
@@ -3411,7 +3466,7 @@ export class Session {
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
     s.station.access_level = DEFAULT_STATION.access_level;
     delete s.station.hazards;
-    for (const pc of s.config.crew) pc.cond = newCond();
+    if (s.campaign) for (const pc of s.config.crew) pc.credits = s.campaign.crew.find((x) => x.id === pc.id)?.credits ?? pc.credits;
     Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, storyStart: null, deathSaves: {}, shipFight: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);

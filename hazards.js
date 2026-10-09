@@ -165,6 +165,22 @@ export function airLeft(pc) {
   ].map((s) => ({ ...s, left: Math.max(0, s.hours * 3600 - c.air) / 3600 })).sort((a, b) => b.left - a.left);
   return sources[0] || null;
 }
+// Whole days go by between stories (Pass days, Shore Leave, a medpod, a lane): the clocks hourTick runs hour by hour run out here.
+// Stimpak doses and the [+] are long over, cryosickness (1 week) wears off, a lethal radiation dose (1d5 days) kills when its days are up,
+// and a crew that spent the days resting has had its 8 hours. Returns the lines for what changed.
+export function ageDays(pc, days) {
+  const c = pc.cond, hours = Math.max(0, Math.floor(days)) * 24, lines = [];
+  if (!c || c.dead || !hours) return lines;
+  if (c.stims.length) { c.stims = c.stims.map((a) => a + hours).filter((a) => a < 24); if (!c.stims.length) lines.push("the Stimpak doses are long past"); }
+  c.boost = 0;
+  if (c.cryo > 0) { c.cryo = Math.max(0, c.cryo - hours); if (!c.cryo) lines.push("cryosickness has worn off"); }
+  if (c.lethal > 0) {
+    if (c.lethal <= hours) { c.lethal = 0; c.dead = "lethal radiation dose"; lines.push("died of the lethal radiation dose"); }
+    else c.lethal -= hours;
+  }
+  if (!c.dead && !c.cryosleep) rest(c, 8);
+  return lines;
+}
 export const rest = (c, hours) => { if (hours >= 8) c.active = 0; };
 
 export const oxygenStart = (maxCrew, rng = d) => rng(10) * maxCrew;

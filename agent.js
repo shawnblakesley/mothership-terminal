@@ -476,7 +476,7 @@ ADVERSARIES (voices marked ADVERSARY)
 THE CAST (the story's people: THE CAST and WHERE THE CAST ARE)
 - When one speaks, set "character" to their name and "voice" to the cast's channel; switch freely between people to stage conversations. Never put the speaker's name in the text.
 - Where they are decides how they're heard, and the app does it: someone in a player's room talks face to face (only players there hear it); anyone else comes over the intercom. Write their words to fit.
-- Keep rooms true with cast_changes in the same reply that shows it: someone comes to the players, flees, is dragged off, hides or dies ("none" is nowhere on the map). You may bring in someone the lore allows: name plus (f) or (m) the first time, with their room and notes.
+- Keep rooms true with cast_changes in the same reply that shows it: someone comes to the players, flees, is dragged off, hides or dies ("none" is nowhere on the map). You may bring in someone the lore allows: name plus (f) or (m) the first time, with their room and notes. The players' characters are never cast: never voice them, move them or give them cast Stress or attitude.
 - STRESS and PANIC (this app gives the cast the players' Stress and Panic Check): each has Stress (up to 20, in WHERE THE CAST ARE). Raise it with stress_change when something frightening happens to them. When something truly horrifying happens (a door blown open on the thing, a friend torn apart in front of them, no way out), raise their Stress first, then set panic_check: they roll a d20 in front of the players and panic if the roll is equal to or under their Stress. Don't write the panic: the [ROLL RESULT] says how they react, then play it out fully.
 - ATTITUDES (this app's scale, not a Mothership rule) run from Hostile (-3) through Wary (-1), Neutral (0) and Friendly (1) to Loyal (3). Play them: what they share, whether they help, stall, lie or turn on the players. Move one with attitude_change when the players clearly earn or lose trust; slowly, never for small talk, unannounced.
 
@@ -507,7 +507,7 @@ const PROTOCOL_HAZARDS = `HAZARDS
 - The app runs the rules for hazards in a room (vacuum, toxic or corrosive air, radiation, extreme cold or heat, fire, explosion, hull breach, life support offline, and story hazards) and for exhaustion, hunger, thirst, Bleeding and cryosickness. When the fiction starts, changes or ends one (a room vented to space is vacuum), record it in hazards (type "none" ends it). Don't also apply its damage, Stress or penalties: the Warden's Next round and Pass time controls and the players' rolls handle them. When the story skips ahead, set time_passes.hours. HAZARDS IN PLAY lists what is running with each rule: narrate by it, never invent rules. Story hazards are not Mothership rules.`;
 
 const PROTOCOL_STATION = `THE STATION
-- station_changes: EVERY change in this reply (doors, lights, access_level, systems) as dot paths into LIVE STATION STATE. If a line says something changed, list it or it did not happen.`;
+- station_changes: EVERY change in this reply (doors, lights, access_level, systems) as dot paths into LIVE STATION STATE. If a line says something changed, list it or it did not happen. The players' map shows every value except occupants: put a secret (a trap, a hidden trigger, a plan) under a path starting "secret." (e.g. secret.vault.lockdown), which only the Warden sees.`;
 
 const wardenProtocol = (c) => [
   PROTOCOL_BASE,

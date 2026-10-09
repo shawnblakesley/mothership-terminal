@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+import { frustum, labelScale } from "./isofit.js";
 
 const DECK_H = 12;
 const GAP = 1.5;
@@ -14,9 +15,10 @@ const isDoor = (x) => /door|hatch|airlock|access|gate|lock/i.test(x.leaf.path[0]
 const isCam = (x) => /camera|cctv|feed/i.test(x.leaf.path.join("."));
 const LIGHTS = /light|power/i, LIFT = /lift|elevator/i;
 
-function tag(html, cls, at, { right = false, left = false } = {}) {
+function tag(html, cls, at, { right = false, left = false, units = 0 } = {}) {
   const d = document.createElement("div");
   d.className = `iso-l ${cls}`;
+  if (units) d.style.setProperty("--u", units);
   d.innerHTML = html;
   const o = new CSS2DObject(d);
   o.position.copy(at);
@@ -147,7 +149,7 @@ function build(data, colors) {
     const head = editable ? ` data-room="${esc(r.id)}" data-label="${esc(r.label)}" data-deck="${esc(r.dock ? `docked at ${r.dock.label}` : r.deck.label)}"` : "";
     group.add(tag(`<div class="iso-name"${head} title="${esc(`${r.label}${editable ? " (click for the room view)" : ""}${roster ? `\n${roster}` : ""}`)}">${esc(r.label.toUpperCase())}</div>
       ${rest.length ? `<div class="mchips">${rest.slice(0, 2).map((x) => SM.chip(x.leaf, x.label, editable)).join("")}${rest.length > 2 ? `<span class="iso-more" title="${esc(more)}">+${rest.length - 2}</span>` : ""}</div>` : ""}`,
-    `iso-room${pcs.length ? " here" : ""}${alarm ? " alarm" : ""}`, new THREE.Vector3(r.x + r.w / 2, r.y + WALL_H + 1.2, r.z + r.h / 2)));
+    `iso-room${pcs.length ? " here" : ""}${alarm ? " alarm" : ""}`, new THREE.Vector3(r.x + r.w / 2, r.y + WALL_H + 1.2, r.z + r.h / 2), { units: r.w }));
     if (/airlock/.test(r.id)) group.add(tag("&#9656; SPACE", "iso-small iso-space", new THREE.Vector3(r.x + r.w / 2, r.y + 0.4, r.north ? r.z - 1.2 : r.z + r.h + 1.2)));
     if (pcs.length) {
       const mk = new THREE.Mesh(new THREE.OctahedronGeometry(0.6), new THREE.MeshLambertMaterial({ color: new THREE.Color("#ffffff").lerp(cFg, 0.3) }));
@@ -207,7 +209,8 @@ export function mount(el, data, opts = {}) {
   const [sysEl, view, elseEl] = wrap.children;
   view.style.setProperty("--iso-fg", colors.fg);
   view.style.setProperty("--iso-dim", colors.dim);
-  view.style.setProperty("--iso-px", `${opts.labelPx || 15}px`);
+  const basePx = opts.labelPx || 15;
+  view.style.setProperty("--iso-px", `${basePx}px`);
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   view.append(renderer.domElement);
@@ -226,6 +229,7 @@ export function mount(el, data, opts = {}) {
   controls.minPolarAngle = controls.maxPolarAngle = Math.atan(Math.SQRT2);
   controls.minZoom = 0.4;
   controls.maxZoom = 8;
+  controls.addEventListener("change", scale);
   let built = null, shapeKey = "", fit = { w: 20, h: 20 };
 
   const TILT = Math.atan(1 / Math.SQRT2), TURN = (25 * Math.PI) / 180;
@@ -250,9 +254,20 @@ export function mount(el, data, opts = {}) {
     const w = view.clientWidth || 1, h = view.clientHeight || 1, a = w / h;
     renderer.setSize(w, h, false);
     words.setSize(w, h);
-    const ch = Math.max(fit.h, fit.w / a);
-    camera.left = -ch * a / 2; camera.right = ch * a / 2; camera.top = ch / 2; camera.bottom = -ch / 2;
+    const f = frustum(fit, a);
+    camera.left = -f.w / 2; camera.right = f.w / 2; camera.top = f.h / 2; camera.bottom = -f.h / 2;
     camera.updateProjectionMatrix();
+    scale();
+  }
+  let lastPpu = 0;
+  function scale() {
+    const ppu = (view.clientHeight || 1) / (camera.top - camera.bottom) * camera.zoom;
+    if (Math.abs(ppu - lastPpu) < 0.05) return;
+    lastPpu = ppu;
+    const { px, far } = labelScale(ppu, basePx);
+    view.style.setProperty("--iso-px", `${px}px`);
+    view.style.setProperty("--ppu", ppu.toFixed(2));
+    view.classList.toggle("far", far);
   }
   function update(next) {
     data = next;

@@ -322,6 +322,22 @@ export function carryInto(config, c, story, p, station) {
   return { burned, lane };
 }
 
+// Between stories the live crew is the Warden's to edit; the campaign's copy follows it, credits excepted (the campaign owns those).
+export function crewIntoCampaign(p, crew) {
+  if (p.current || !p.done.length || !crew?.length) return false;
+  const old = new Map(p.crew.map((x) => [x.id, x]));
+  p.crew = sanitizeCrew(structuredClone(crew));
+  for (const pc of p.crew) if (old.has(pc.id)) pc.credits = old.get(pc.id).credits;
+  return true;
+}
+// The other way: the campaign changed a sheet on its own (resupply, a rest on finishing), so the live crew takes it.
+export function crewFromCampaign(p, crew) {
+  for (const pc of crew) {
+    const q = p.crew.find((x) => x.id === pc.id);
+    if (q) Object.assign(pc, structuredClone(q));
+  }
+}
+
 // When a story is finished: remember how it ended, where the rig is, the crew's sheets and how the recurring characters feel.
 // `ticked` are the indexes of the story's affinity entries that happened; only those change a standing. Returns the story and the changes.
 export function finishInto(p, c, config, outcome, ticked = [], station = null) {
