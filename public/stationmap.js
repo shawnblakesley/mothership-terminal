@@ -254,7 +254,10 @@
         const max = w - 20 - (t.classList.contains("sv-roomname") && g.querySelector(".sv-cam") ? 24 : 0);
         let txt = t.textContent;
         if (!(t.getComputedTextLength?.() > max)) return;
+        const full = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        full.textContent = txt;
         while (txt.length > 1 && t.getComputedTextLength() > max) { txt = txt.slice(0, -1); t.textContent = `${txt.trimEnd()}…`; }
+        t.append(full);
       });
     });
   }
