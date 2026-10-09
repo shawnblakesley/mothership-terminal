@@ -1079,11 +1079,21 @@
   function renderSolo() {
     if (!solo) return;
     const building = solo.phase === "building";
-    $("solopick-title").innerHTML = sq(building ? `BUILDING: ${escH(solo.title.toUpperCase())}` : "CHOOSE A STORY");
+    const jobs = solo.jobs;
+    $("solopick-title").innerHTML = sq(building ? `BUILDING: ${escH(solo.title.toUpperCase())}` : jobs ? "THE JOB BOARD" : "CHOOSE A STORY");
     $("solopick-note").textContent = building
       ? "THE AI IS BUILDING THE WORLD AND EVERYONE IN IT. THIS CAN TAKE A FEW MINUTES."
+      : jobs ? `RIM HAULERS: THE RIG IS AT ${jobs.port}, ${jobs.fuel} FUEL. ${jobs.jobs.length ? (isPilot ? "PICK A JOB (PRESS 1-9)." : "THE PILOT IS PICKING A JOB. TALK IT OVER.") : "NO JOBS LEFT HERE."}`
       : `NO WARDEN TONIGHT: THE AI RUNS THE GAME. ${isPilot ? "PICK A STORY (PRESS 1-9)." : "THE PILOT IS PICKING A STORY. TALK IT OVER."}`;
-    $("solopick-list").innerHTML = building ? "" : solo.pitches.map((p, i) => {
+    const board = () => jobs.jobs.map((j, i) => {
+      const name = `[${i + 1}] ${escH(j.title)}`;
+      return `<li>${isPilot ? `<button type="button" class="p-btn pick" data-job="${escH(j.id)}">${name}</button>` : name}<span class="p-dim tags"> · ${escH(j.where.toUpperCase())}${j.lane ? ` · ${escH(j.lane.toUpperCase())}, ${j.days} DAYS, ${j.cost} FUEL${j.short ? " · NOT ENOUGH FUEL" : ""}` : ""}</span>
+        <div class="p-dim p-crime">${escH(j.hook)}</div><div class="p-dim p-crime">${escH(j.job)}</div></li>`;
+    }).join("") + `<li class="p-dim">TRAVEL (HOUSE RULE: 1 FUEL PER STARTED 3 DAYS)${jobs.low ? " · FUEL IS BELOW THE CHEAPEST LANE: REFUEL" : ""}</li>` + jobs.lanes.map((l) =>
+      `<li>${isPilot ? `<button type="button" class="p-btn" data-travel="${escH(l.to)}">[ TRAVEL: ${escH(l.dest)} ]</button>` : `TRAVEL: ${escH(l.dest)}`}<span class="p-dim tags"> · ${escH(l.lane.toUpperCase())}, ${l.days} DAYS, ${l.cost} FUEL${l.short ? " · NOT ENOUGH FUEL" : ""}</span></li>`).join("")
+      + (isPilot && jobs.stuck ? `<li><button type="button" class="p-btn" data-dispatch="1">[ CALL DISPATCH ]</button><span class="p-dim tags"> · LOCAL 1312 ADVANCES THE FUEL FOR THE CHEAPEST LANE; ITS PRICE IS ADDED TO THE NOTE (HOUSE RULE)</span></li>` : "")
+      + (isPilot && jobs.canRefuel ? `<li><button type="button" class="p-btn" data-refuel="1">[ REFUEL ${jobs.fuel}/${jobs.capacity} ]</button><span class="p-dim tags"> · ${jobs.fuelEach.toLocaleString("en-US")}CR A UNIT (HOUSE RULE), FROM THE RIG ACCOUNT&#58; ${jobs.money.toLocaleString("en-US")}CR</span></li>` : "");
+    $("solopick-list").innerHTML = building ? "" : jobs ? board() : solo.pitches.map((p, i) => {
       const name = `[${i + 1}] ${escH(p.title.toUpperCase())}`;
       return `<li>${isPilot ? `<button type="button" class="p-btn pick" data-pick="${i}">${name}</button>` : name}<span class="p-dim tags"> · ${escH(p.tags.toUpperCase())}</span>
         <div class="p-dim p-crime">${escH(p.hook)}</div></li>`;
@@ -1092,6 +1102,7 @@
       : building ? 'BUILDING<span class="dots"></span>' : escH(solo.error.toUpperCase());
     $("solopick-more").hidden = !isPilot || building;
     $("solopick-more").disabled = !!solo.busy;
+    $("solopick-more").textContent = jobs ? "[ LEAVE THE CAMPAIGN ]" : "[ OTHER STORIES ]";
   }
   let endingTimer = null;
   function showEnding() {
@@ -1100,7 +1111,8 @@
     const x = solo;
     $("ending-verdict").textContent = (x.recap?.verdict || "").toUpperCase();
     $("ending-how").textContent = x.ending ? x.ending.toUpperCase() : "";
-    $("ending-recap").innerHTML = (x.recap?.sections || []).map((s) => `<div class="rc-h">${escH(s.heading.toUpperCase())}</div><div class="rc-t">${escH(s.text)}</div>`).join("");
+    const after = x.after && [...(x.after.pay?.length ? [["Pay", x.after.pay.join("\n")]] : []), ...(x.after.factions.length ? [["Faction standing", x.after.factions.join("\n")]] : []), ["Downtime (short-term recovery and a Rest Save, rolled for the crew)", x.after.rest.join("\n")]];
+    $("ending-recap").innerHTML = [...(x.recap?.sections || []).map((s) => [s.heading, s.text]), ...(after || [])].map(([h, t]) => `<div class="rc-h">${escH(h.toUpperCase())}</div><div class="rc-t">${escH(t)}</div>`).join("");
     $("ending-status").innerHTML = x.busy === "recap" ? 'WRITING THE RECAP<span class="dots"></span>' : escH((x.error || "").toUpperCase());
     $("ending-again").hidden = !isPilot;
     if (!isPilot && x.busy !== "recap") $("ending-status").textContent = (x.error ? `${x.error} ` : "").toUpperCase() + "THE PILOT CAN START ANOTHER STORY.";
@@ -1109,11 +1121,22 @@
   $("ending-again").onclick = () => ws?.send(JSON.stringify({ t: "pilotNewStory" }));
 
   const pickStory = (i) => solo?.phase === "pick" && !solo.busy && ws?.send(JSON.stringify({ t: "pilotBuild", i }));
-  $("solopick-list").addEventListener("click", (e) => { const i = e.target.closest("[data-pick]")?.dataset.pick; if (i !== undefined) pickStory(Number(i)); });
-  $("solopick-more").onclick = () => ws?.send(JSON.stringify({ t: "pilotPitches" }));
+  const pickJob = (id) => solo?.phase === "pick" && !solo.busy && ws?.send(JSON.stringify({ t: "pilotJob", id }));
+  $("solopick-list").addEventListener("click", (e) => {
+    const i = e.target.closest("[data-pick]")?.dataset.pick, job = e.target.closest("[data-job]")?.dataset.job;
+    const to = e.target.closest("[data-travel]")?.dataset.travel;
+    if (to) ws?.send(JSON.stringify({ t: "pilotTravel", to }));
+    else if (e.target.closest("[data-dispatch]")) ws?.send(JSON.stringify({ t: "pilotDispatch" }));
+    else if (e.target.closest("[data-refuel]")) ws?.send(JSON.stringify({ t: "pilotRefuel" }));
+    else if (i !== undefined) pickStory(Number(i));
+    else if (job) pickJob(job);
+  });
+  $("solopick-more").onclick = () => ws?.send(JSON.stringify({ t: solo?.jobs ? "pilotLeaveCampaign" : "pilotPitches" }));
   addEventListener("keydown", (e) => {
     if ($("solopick").hidden || !isPilot || e.ctrlKey || e.metaKey || e.altKey || !/^[1-9]$/.test(e.key)) return;
-    if (Number(e.key) <= (solo?.pitches.length || 0)) { e.preventDefault(); pickStory(Number(e.key) - 1); }
+    const n = Number(e.key) - 1;
+    if (solo?.jobs) { if (solo.jobs.jobs[n]) { e.preventDefault(); pickJob(solo.jobs.jobs[n].id); } }
+    else if (n < (solo?.pitches.length || 0)) { e.preventDefault(); pickStory(n); }
   });
 
   function setPilot(info) {
