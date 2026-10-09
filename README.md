@@ -135,6 +135,15 @@ Turn on **create new characters** under Settings, Players. When there is a free 
 
   `node scripts/extract-psg-tables.mjs <your PDF>` writes this file from your own copy of the book (it needs `npm i --no-save pdfjs-dist`). A file that is not exactly this shape is ignored, with a warning in the server log.
 
+### High Score and the memorial
+
+The Player's Survival Guide (18.3) gives every character a **High Score**: the number of sessions that character has survived. New characters start at 0. The book says it has no effect on play and leaves its use to the Warden (a reputation, a luck resource, whatever suits the table). The app implements exactly that and nothing more: a counter. No roll, save, check, panic or damage reads it, and a test keeps it that way.
+
+- **End game night** (Actions tab; not the Settings button that deletes the whole app session) adds 1 to the High Score of every living character and logs it. One game night is one session, however many stories it holds. Dead and retired characters keep the score they died with. In a campaign the score is carried from story to story with the rest of the sheet, and the campaign counts its sessions. The Crew tab can edit a score by hand.
+- **HIGH SCORE** is on every crew file and sheet, and on the character picker.
+- **Memorial** (house rule, not in the book): every dead or retired character goes on a memorial wall with their name struck through, class, High Score, how they died (the DECEASED reason, or "Retired from play"), the story it happened in, their picture if they had one, their final transmission, and a one-line epitaph the Warden types. The Warden sees it on the Crew tab and in the campaign overview (which also shows the campaign's sessions played and its longest-surviving character); players get a **MEMORIAL** button once someone has been lost. In a KESTREL-9 one-shot the wall is that game's own.
+- **Final transmission** (house rule): when a character dies by a Death Save, Head explodes, or the Warden marking them deceased, that player's screen flatlines (the vitals trace goes flat with a held tone) and offers one last line. It is played on every screen as that character's own voice (a speaker picked from their pronouns and name, through the same text-to-speech as every other line), and goes on the memorial.
+
 ### Different messages for different players
 
 Each player reads their own screen as their own character, so one line can say different things to each of them. The agent is told to do this rarely, for special moments: the thing in the system tells the Android it is just a cold machine, while the humans hear that they are warm and full of blood; a voice uses one player's real name; someone hears a private warning the others don't. You can ask for it too ("Marla alone hears him say her brother's name").
