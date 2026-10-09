@@ -797,6 +797,11 @@
       return { el: d };
     },
 
+    sound(fx) {
+      window.Sfx?.play({ pid: fx.id, id: fx.sound, volume: fx.volume ?? 0.8, loop: false });
+      return { stop: () => window.Sfx?.stop(fx.id) };
+    },
+
     banner(fx) {
       const d = el("fx-banner", `<div class="txt">${esc(fx.text || "WARNING")}</div>`);
       layer().append(d);

@@ -9,9 +9,9 @@ import { roomId } from "./clean.js";
 
 export const ALL_EFFECTS = [
   "blood", "goo", "crack", "ice", "alarm", "redalert", "glitch",
-  "static", "blackout", "lockout", "banner",
+  "static", "blackout", "lockout", "banner", "sound",
 ];
-export const AGENT_EFFECTS = ["alarm", "redalert", "glitch", "static", "blackout", "lockout", "banner"];
+export const AGENT_EFFECTS = ["alarm", "redalert", "glitch", "static", "blackout", "lockout", "banner", "sound"];
 const EFFECT_ALIASES = { corrupt: "glitch" };
 export const effectType = (type) => EFFECT_ALIASES[type] || type;
 
@@ -227,7 +227,7 @@ function buildSchema(voices) {
           required: ["title", "text", "for", "voice"],
           properties: {
             title: { type: "string", description: "What the document is, e.g. MEDICAL LOG: DR. SALK, DAY 19." },
-            voice: { type: "string", description: "Empty for a written document. For an audio recording they can play (an audio log, a voicemail, a black box, a distress call): who speaks it, a character's name or a voice's name; then text is exactly what's said, plain words, one sentence per line, no Markdown or stage directions. Several speakers: start each speaker's line with their name in CAPITALS and a colon (OKONKWO: ...); lines without a name are the last speaker's. Someone not in the cast (a voice on a comms channel) by what they're called (HOLLIS-VANE: ...)." },
+            voice: { type: "string", description: "Empty for a written document. For an audio recording they can play (an audio log, a voicemail, a black box, a distress call): who speaks it, a character's name or a voice's name; then text is exactly what's said, plain words, one sentence per line, no Markdown or stage directions. A line of its own [SOUND: name] (a name from AVAILABLE SOUNDS) plays that sound under the next spoken line, with no pause. Several speakers: start each speaker's line with their name in CAPITALS and a colon (OKONKWO: ...); lines without a name are the last speaker's. Someone not in the cast (a voice on a comms channel) by what they're called (HOLLIS-VANE: ...)." },
             text: { type: "string", description: "Its full text, as written in the world, in Markdown: # headings, **bold**, *italic*, __underlined__ (here __text__ means underline), ~~crossed out~~, - lists, > quotes, --- between entries. Used as the document itself would, not overdone." },
             for: { type: "string", description: "A crew member's name if only they get it; empty for everyone." },
           },
@@ -295,7 +295,7 @@ function effectSchema() {
     required: ["type", "text", "seconds"],
     properties: {
       type: { type: "string", enum: AGENT_EFFECTS },
-      text: { type: "string", description: "Caption for alarm/banner/lockout/blackout, else empty." },
+      text: { type: "string", description: "Caption for alarm/banner/lockout/blackout; for sound, the sound's name from AVAILABLE SOUNDS; else empty." },
       seconds: { type: "integer", description: "Duration; 0 means until the Warden clears it." },
     },
   };
@@ -520,7 +520,8 @@ function buildSystem(state) {
 - ROOM FLOOR PLANS (in the per-turn context) are top-down grids, one string per row, one tile per character: ${Object.entries(TILES).map(([c, d]) => `"${c}" ${d}`).join(", ")}. When a room's physical layout changes (a wall breached, debris, a barricade, a crate moved), return its complete new rows in room_plans. Plans show structure and furniture only (the players may be shown them): people and creatures go in occupants, notable things in contents.`,
     `AVAILABLE EFFECTS: ${AGENT_EFFECTS.join(", ")}. ` +
       `alarm = intrusion/hacker alarm, redalert = station-wide emergency, glitch = the display shakes and its text corrupts, static = signal noise, ` +
-      `blackout = terminal loses power, lockout = terminal refuses input, banner = large flashing caption.`,
+      `blackout = terminal loses power, lockout = terminal refuses input, banner = large flashing caption, ` +
+      `sound = a sound effect (text = its name from AVAILABLE SOUNDS): in a line's effects it plays as that line starts, under the words, and never delays them; a line with no text and only a sound plays it with the next line. Use sounds sparingly, for a moment that earns one.`,
   ].join("\n\n");
 }
 
@@ -704,6 +705,7 @@ function buildContext(state, steer, aside = false) {
   if (state.solo?.phase === "play") ctx.push(SOLO);
   ctx.push(TALK[state.config.talk] || TALK.brief);
   if (!state.config.agentEffects) ctx.push("Effects are disabled right now: return an empty effects array.");
+  else if (state.sounds?.length) ctx.push(`AVAILABLE SOUNDS (for sound effects; seconds long):\n${state.sounds.map((s) => `- ${s.name} (${Math.round(s.seconds || 0)}s)`).join("\n")}`);
   if (state.config.agentVariants === false) ctx.push("Per-player variations are disabled: every line's variants must be [].");
   if (state.config.agentCrew === false) ctx.push("The Warden tracks crew health, wounds, stress and items themselves: crew_changes and item_changes must be [].");
   return ctx.join("\n\n");

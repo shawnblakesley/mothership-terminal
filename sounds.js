@@ -1,6 +1,23 @@
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
+
+const KIT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "public", "sounds");
+const KIT = [
+  ["lurking-monster", "Lurking monster", 20.2],
+  ["monster-growl", "Monster growling (long)", 77.1],
+  ["deep-monster-roar", "Deep monster roar", 6.5],
+  ["monster-bite", "Monster bite", 2.1],
+  ["monster-eating", "Monster eating", 19.3],
+  ["tension-drone", "Tension drone (background)", 33.1, 0.5],
+  ["dramatic-riser", "Dramatic riser", 2.8],
+];
+export const KIT_FILES = KIT.map(([file]) => `${file}.mp3`);
+export const kitSounds = () => KIT.flatMap(([file, name, seconds, volume = 0.8]) => {
+  const bytes = fs.statSync(path.join(KIT_DIR, `${file}.mp3`), { throwIfNoEntry: false })?.size;
+  return bytes ? [{ id: `kit-${file}`, kit: `${file}.mp3`, name, ext: "mp3", type: "audio/mpeg", bytes, seconds, volume }] : [];
+});
 
 export const MAX_SOUND_BYTES = Number(process.env.MAX_SOUND_MB || 10) * 1024 * 1024;
 export const MAX_SESSION_SOUND_BYTES = Number(process.env.MAX_SESSION_SOUNDS_MB || 100) * 1024 * 1024;
@@ -13,7 +30,7 @@ export function setSoundsDir(dir) {
 }
 
 const dirFor = (code) => path.join(root, code.replace(/[^A-Z0-9]/g, ""));
-export const soundPath = (code, sound) => path.join(dirFor(code), `${sound.id}.${sound.ext}`);
+export const soundPath = (code, sound) => (sound.kit ? path.join(KIT_DIR, path.basename(sound.kit)) : path.join(dirFor(code), `${sound.id}.${sound.ext}`));
 
 export function sniff(buf) {
   const ascii = (a, b) => buf.subarray(a, b).toString("latin1");
@@ -33,7 +50,7 @@ export function saveSound(code, existing, buf, name, seconds) {
   const kind = sniff(buf);
   if (!kind) throw new Error("That isn't an audio file this can play (use MP3, WAV, OGG, M4A, FLAC or WebM).");
   if (existing.length >= MAX_SOUNDS) throw new Error(`A session can hold up to ${MAX_SOUNDS} sounds. Delete some first.`);
-  const used = existing.reduce((n, s) => n + (s.bytes || 0), 0);
+  const used = existing.filter((s) => !s.kit).reduce((n, s) => n + (s.bytes || 0), 0);
   if (used + buf.length > MAX_SESSION_SOUND_BYTES) throw new Error(`This session's sounds are limited to ${MAX_SESSION_SOUND_BYTES / 1048576} MB in total. Delete some first.`);
   const sound = {
     id: crypto.randomBytes(6).toString("hex"),
@@ -50,7 +67,7 @@ export function saveSound(code, existing, buf, name, seconds) {
 }
 
 export function deleteSoundFile(code, sound) {
-  fs.rmSync(soundPath(code, sound), { force: true });
+  if (!sound.kit) fs.rmSync(soundPath(code, sound), { force: true });
 }
 
 export function deleteSessionSounds(code) {

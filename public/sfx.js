@@ -72,6 +72,7 @@
 
   window.Sfx = {
     setUrl(fn) { urlFor = fn; },
+    preload: load,
     play,
     stop,
     stopAll,

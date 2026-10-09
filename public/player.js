@@ -422,6 +422,7 @@
   }
 
   function onEffect(effect) {
+    if (effect.type === "sound" && FX.Sound.ok()) Sfx.preload(effect.sound);
     const st = effect.atEntry ? cueState.get(effect.atEntry) : "none";
     const due = st === "none" || st === "done" || (st === "showing" && effect.when === "before");
     if (due) return runEffect(effect);
@@ -885,30 +886,44 @@
   const logHtml = (d) => `<div class="alog" data-alog="${escH(d.id)}">
       <div class="alog-head"><span>VOICE: ${escH(d.audio.speaker.toUpperCase())}</span><span class="alog-state">READY</span></div>
       <div class="alog-ctl"><button type="button" class="p-btn" data-alog-play>[ PLAY ]</button> <button type="button" class="p-btn" data-alog-stop hidden>[ STOP ]</button><span class="vwave" aria-hidden="true">${WAVE_BARS}</span></div>
-      <div class="alog-lines">${d.audio.lines.map((l, i) => `<div class="alog-line" data-i="${i}">${l.who ? `<span class="alog-who">${escH(l.who)}:</span> ` : ""}${escH(l.text)}</div>`).join("")}</div>
+      <div class="alog-lines">${d.audio.lines.map((l, i) => (l.sound
+        ? `<div class="alog-line alog-sfx" data-i="${i}">[ ${escH(l.sound.name.toUpperCase())} ]</div>`
+        : `<div class="alog-line" data-i="${i}">${l.who ? `<span class="alog-who">${escH(l.who)}:</span> ` : ""}${escH(l.text)}</div>`)).join("")}</div>
     </div>`;
   function stopLog() {
     $("docs-body").querySelector(".alog")?.classList.remove("talking");
     logGen++;
     log?.clip?.stop();
+    for (const pid of log?.sounds || []) Sfx.stop(pid);
     log = null;
   }
   async function playLog(d) {
     stopLog();
     FX.Sound.unlock();
     const gen = logGen, box = $("docs-body").querySelector(".alog"), lines = [...box.querySelectorAll(".alog-line")];
-    log = { clip: null };
+    log = { clip: null, sounds: [] };
+    for (const l of d.audio.lines) if (l.sound) Sfx.preload(l.sound.id);
     const state = (t) => { box.querySelector(".alog-state").textContent = t; };
     const buttons = (playing) => { box.querySelector("[data-alog-play]").hidden = playing; box.querySelector("[data-alog-stop]").hidden = !playing; };
     buttons(true);
     for (const l of lines) l.classList.remove("now", "said");
-    const fetchPart = (i) => (i < lines.length ? Voice.load(`api/sessions/${code}/handouts/${encodeURIComponent(d.id)}/audio/${i}`) : null);
+    const fetchPart = (i) => (i < lines.length && !d.audio.lines[i].sound ? Voice.load(`api/sessions/${code}/handouts/${encodeURIComponent(d.id)}/audio/${i}`) : null);
     let next = fetchPart(0);
     for (let i = 0; i < lines.length; i++) {
       state(`LOADING ${i + 1}/${lines.length}`);
       const buf = await next;
       if (gen !== logGen) return;
       next = fetchPart(i + 1);
+      const sound = d.audio.lines[i].sound;
+      if (sound) {
+        const pid = `log${gen}-${i}`;
+        log.sounds.push(pid);
+        Sfx.play({ pid, id: sound.id, volume: sound.volume, loop: false });
+        lines[i].classList.add("said");
+        if (i === lines.length - 1) await new Promise((r) => setTimeout(r, Math.min(10, sound.seconds || 3) * 1000));
+        if (gen !== logGen) return;
+        continue;
+      }
       lines[i].classList.add("now");
       lines[i].scrollIntoView({ block: "nearest" });
       state(`PLAYING ${i + 1}/${lines.length}`);
@@ -926,6 +941,8 @@
     }
     state("END OF RECORDING");
     buttons(false);
+    const last = d.audio.lines.at(-1)?.sound ? `log${gen}-${lines.length - 1}` : "";
+    for (const pid of log.sounds) if (pid !== last) Sfx.stop(pid);
     log = null;
   }
   $("docs-body").addEventListener("click", (e) => {
@@ -1549,7 +1566,7 @@
             if (e.timing && e.kind !== "player" && (e.timing.end ?? Infinity) > serverNow()) enqueue(e);
             else renderInstant(e);
           }
-          FX.sync(msg.effects.filter((e) => !(e.atEntry && e.seconds > 0)));
+          FX.sync(msg.effects.filter((e) => !(e.atEntry && e.seconds > 0) && e.type !== "sound"));
           Sfx.sync(msg.playing || []);
           busy = msg.busy;
           updateBusy();

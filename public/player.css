@@ -243,6 +243,7 @@ body {
 .alog-line.now { color: var(--fg); opacity: 1; text-shadow: 0 0 2px var(--glow), 0 0 9px var(--glow), 0 0 18px var(--glow); }
 .alog-line.now::before { content: "> "; }
 .alog-who { color: var(--fg); opacity: 0.8; letter-spacing: 0.04em; }
+.alog-sfx { letter-spacing: 0.06em; }
 .docbody { margin: 0.6em 0; font: inherit; max-height: 60vh; overflow-y: auto; white-space: pre-wrap; }
 .docbody .md-h { color: var(--fg); letter-spacing: 0.08em; text-transform: uppercase; }
 .docbody .md-h1 { border-bottom: 1px solid var(--dim); margin-bottom: 0.2em; }

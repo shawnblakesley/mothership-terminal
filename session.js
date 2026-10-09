@@ -6,7 +6,7 @@ import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, senten
 import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
-import { cleanName } from "./sounds.js";
+import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, changeItem, freshen } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
@@ -180,7 +180,7 @@ export function defaultGame(keys = {}) {
       rooms: structuredClone(DEFAULT_ROOMS),
       startDocs: [WORK_ORDER],
       roomDocs: structuredClone(DEFAULT_ROOM_DOCS),
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all"],
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -189,7 +189,7 @@ export function defaultGame(keys = {}) {
     handouts: [structuredClone(WORK_ORDER)],
     found: [],
     whisper: "",
-    sounds: [],
+    sounds: kitSounds(),
     synopses: {},
   };
 }
@@ -394,6 +394,12 @@ function migrateGame(saved) {
     if (saved.station) for (const [k, v] of Object.entries(ROOM_STATE)) saved.station[k] ??= structuredClone(v);
     config.upgrades.push("rooms");
   }
+  let sounds = Array.isArray(saved.sounds) ? saved.sounds : [];
+  const kit = kitSounds();
+  if (!config.upgrades.includes("sound-kit") && kit.length === KIT_FILES.length) {
+    sounds = [...kit.filter((k) => !sounds.some((s) => s.id === k.id)), ...sounds];
+    config.upgrades.push("sound-kit");
+  }
   return {
     config: { ...config, ...fixSelection(config), voices, mode: config.mode === "auto" ? "auto" : "review" },
     station: saved.station ?? base.station,
@@ -401,7 +407,7 @@ function migrateGame(saved) {
     whisper: String(saved.whisper ?? ""),
     roll: Array.isArray(saved.roll?.pcs) ? saved.roll : null,
     outcomeCheck: saved.outcomeCheck ?? null,
-    sounds: Array.isArray(saved.sounds) ? saved.sounds : [],
+    sounds,
     builder: { messages: Array.isArray(saved.builder?.messages) ? saved.builder.messages.slice(-60) : [], draft: saved.builder?.draft ?? null },
     synopses: savedSynopses(saved),
     handouts: Array.isArray(saved.handouts) ? saved.handouts : [],
@@ -1321,11 +1327,14 @@ export class Session {
     if (raw) raw = { ...raw, type: effectType(raw.type) };
     if (!raw || !ALL_EFFECTS.includes(raw.type)) return;
     if (source === "agent" && !AGENT_EFFECTS.includes(raw.type)) return;
-    const seconds = Math.max(0, Math.min(3600, Number(raw.seconds) || 0));
+    const snd = raw.type === "sound" ? this.findSound(raw.sound || raw.text) : null;
+    if (raw.type === "sound" && !snd) return;
+    const seconds = snd ? Math.ceil(snd.seconds || 10) + 1 : Math.max(0, Math.min(3600, Number(raw.seconds) || 0));
     const effect = {
       id: newId("fx", 4),
       type: raw.type,
-      text: String(raw.text || "").slice(0, 200),
+      text: snd ? snd.name : String(raw.text || "").slice(0, 200),
+      ...(snd ? { sound: snd.id, volume: snd.volume ?? 0.8 } : {}),
       intensity: Math.max(1, Math.min(3, Number(raw.intensity) || 2)),
       seconds,
       source,
@@ -1342,6 +1351,10 @@ export class Session {
     if (source === "agent") this.addLog("note", `Agent triggered effect: ${effect.type}${effect.text ? ` "${effect.text}"` : ""} (${seconds || "∞"}s)${cue ? ` ${cue.when} line #${cue.atEntry}` : ""}`);
   }
 
+  findSound(ref) {
+    const r = String(ref || "").trim().toLowerCase();
+    return r ? this.state.sounds.find((s) => s.id === r || s.name.toLowerCase() === r) || this.state.sounds.find((s) => s.name.toLowerCase().startsWith(r)) : null;
+  }
   addSound(sound) {
     this.state.sounds.push(sound);
     this.touch();
@@ -1849,7 +1862,7 @@ export class Session {
       if (member || this.speaksBySentence(voice)) { text = sentenceLines(text); for (const v of rawVariants || []) v.text = sentenceLines(v.text); }
       const variants = source === "agent" && !this.state.config.agentVariants ? [] : resolveVariants(rawVariants, this.state.config.crew);
       const cues = useEffects ? [...waiting, ...normalizeEffects(lineFx)] : [];
-      if (!text && !variants.length) { waiting = cues.map((c) => ({ ...c, hold: true })); continue; }
+      if (!text && !variants.length) { waiting = cues.map((c) => ({ ...c, hold: c.type !== "sound" })); continue; }
       for (const c of cues) if (c.type === "blackout") c.hold = true;
       waiting = [];
       const named = netNamed(config, system);
@@ -2286,11 +2299,16 @@ export class Session {
     const main = this.logVoice(h.voice);
     if (!main) return [];
     let cur = main;
-    return speechParts(h.text).map((line) => {
+    return speechParts(h.text).flatMap((line) => {
+      const cue = line.match(/^\[\s*(?:SOUND|SFX)\s*:\s*(.+?)\s*\]$/i);
+      if (cue) {
+        const snd = this.findSound(cue[1]);
+        return snd ? [{ who: "", text: "", sound: { id: snd.id, name: snd.name, seconds: snd.seconds, volume: snd.volume ?? 0.8 } }] : [];
+      }
       const m = line.match(/^([A-Z][A-Z .'-]{0,38}[A-Z.]):\s+(.+)$/);
       const sp = m && this.speakerNamed(m[1], main);
       if (sp) cur = sp;
-      return { who: sp ? m[1] : "", text: sp ? m[2] : line, base: cur.base, fx: cur.fx };
+      return [{ who: sp ? m[1] : "", text: sp ? m[2] : line, base: cur.base, fx: cur.fx }];
     });
   }
   speakerNamed(name, main) {
@@ -2308,12 +2326,12 @@ export class Session {
   }
   handoutView(h) {
     const { voice, ...rest } = h, lv = voice && this.logVoice(voice);
-    return lv ? { ...rest, audio: { speaker: lv.name, lines: this.logParts(h).map(({ who, text, fx }) => ({ who, text, fx })) } } : rest;
+    return lv ? { ...rest, audio: { speaker: lv.name, lines: this.logParts(h).map(({ who, text, fx, sound }) => (sound ? { sound } : { who, text, fx })) } } : rest;
   }
   handoutAudio(id, part) {
     const h = (this.state.handouts || []).find((x) => x.id === id);
     const p = h?.voice && this.logParts(h)[part];
-    return p ? this.speech.speak(p.text, p.base, p.fx) : Promise.resolve(null);
+    return p && !p.sound ? this.speech.speak(p.text, p.base, p.fx) : Promise.resolve(null);
   }
 
   roomName(id) {
