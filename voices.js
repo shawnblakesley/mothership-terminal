@@ -1,9 +1,13 @@
 import { clampInt } from "./clean.js";
+import { sanitizeStats } from "./combat.js";
 export const BUILTIN = { terminal: "terminal", broadcast: "broadcast", narrator: "narrator" };
 export const PICTURE_LINK = /^https:\/\/[^\s"'<>()`]{4,600}$/;
 const COLD_PICTURE = "https://vibes1.funnyjunk.com/pictures/The+formless+one+this+is+far+and+away+the+longest_dddc3c_6624090.jpg";
 export const OLD_COLD_PICTURES = ["https://images.squarespace-cdn.com/content/v1/58d3f460d482e9f596028aac/1503694623654-WL23BVBQK0KZH1XVQBSJ/thingarbook_art_03.jpg?format=2500w"];
 const COLD_CREDIT = "Of the Void by thienbao on DeviantArt";
+export const COLD_STATS = { combat: 40, instinct: 60, ap: 0, dr: 0, woundsMax: 4, healthPerWound: 30, wounds: 4, health: 30,
+  attacks: [{ name: "Reaching fingers", damage: "2d10", woundType: "bleeding", woundAdv: "", special: "" }, { name: "Draw out the heat", damage: "1d10", woundType: "blunt", woundAdv: "", special: "Frost creeps over the target." }],
+  special: "The figure is only a projection of the organism in the Deck 3 trunk: it re-forms until the organism is burned or cut off the trunk." };
 export const DEFAULT_COLD = { picture: COLD_PICTURE, credit: COLD_CREDIT };
 export const isAdversary = (v) => !!v?.adversary;
 export const shownName = (v) => (v?.adversary && !v.adversary.revealed ? "???" : v?.name || "");
@@ -195,7 +199,7 @@ export function defaultVoices() {
     { id: "intercom", name: "INTERCOM", style: "label", color: "",
       persona: DEFAULT_PERSONAS.intercom, ...fromPreset("intercom") },
     { id: "unknown", name: "THE COLD", style: "label", color: "#ff5a5a", persona: DEFAULT_PERSONAS.unknown, ...fromPreset("demonic"),
-      preset: "custom", voice: { engine: "neural", speaker: "am_onyx", pace: 0.75 }, adversary: { revealed: false, picture: COLD_PICTURE, credit: COLD_CREDIT } },
+      preset: "custom", voice: { engine: "neural", speaker: "am_onyx", pace: 0.75 }, adversary: { revealed: false, picture: COLD_PICTURE, credit: COLD_CREDIT, stats: structuredClone(COLD_STATS) } },
   ];
 }
 
@@ -233,6 +237,8 @@ export function sanitizeVoices(list) {
     if (!out.at(-1).systems.length) out.at(-1).systems = defaultSystemsFor(id);
     if (raw.adversary && typeof raw.adversary === "object") {
       out.at(-1).adversary = { revealed: !!raw.adversary.revealed, picture: PICTURE_FILE.test(raw.adversary.picture || "") || PICTURE_LINK.test(raw.adversary.picture || "") ? raw.adversary.picture : "", credit: String(raw.adversary.credit || "").replace(/\s+/g, " ").trim().slice(0, 200) };
+      const stats = sanitizeStats(raw.adversary.stats);
+      if (stats) out.at(-1).adversary.stats = stats;
     }
   }
   for (const b of defaults.slice(0, 2)) if (!seen.has(b.id)) out.unshift(b);

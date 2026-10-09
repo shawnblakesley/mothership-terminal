@@ -2,19 +2,23 @@ import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
 import { warmNeural } from "./tts.js";
 import { VoiceRelay } from "./voicerelay.js";
-import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, OLD_COLD_PICTURES } from "./voices.js";
+import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, COLD_STATS, OLD_COLD_PICTURES } from "./voices.js";
 import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
-import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, changeItem, freshen } from "./crew.js";
+import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, changeItem, freshen, applyDamage, applyDeathSave, stabilise, roundTick, armorText } from "./crew.js";
+import { combatCheck, damageAdversary, rollDeathSave, deathSaveText, sanitizeStats, statsLine } from "./combat.js";
+import { rollDice, rollWithAdv, cancelAdv } from "./dice.js";
+import { woundText } from "./wounds.js";
+import { weaponsOf, weaponByName, weaponDamage } from "./weapons.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf } from "./campaign.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
 import { track } from "./telemetry.js";
-import { roomId } from "./clean.js";
+import { roomId, keyOf } from "./clean.js";
 import { rememberSecret } from "./redact.js";
 import { discordStatus, stopListening, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
@@ -35,7 +39,7 @@ const PLAYER_INPUT_GAP_MS = 1200;
 const WARDEN_ACTIONS = {
   command: "direction", inject: "speak", note: "note", heard: "speech", effect: "effect", soundPlay: "sound", rollRequest: "roll", retcon: "retcon",
   synopsis: "synopsis", roomShow: "room_show", roomDraft: "room_draft", builderSay: "builder_chat", builderDraft: "builder_draft",
-  builderApply: "builder_apply", resetSession: "story_restart", adversaryShow: "adversary_show", campaignPlay: "campaign_story",
+  builderApply: "builder_apply", resetSession: "story_restart", adversaryShow: "adversary_show", campaignPlay: "campaign_story", attack: "attack", nextRound: "next_round",
 };
 const newId = (prefix, n) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 2 + n)}`;
 
@@ -358,6 +362,13 @@ function migrateGame(saved) {
     }
     config.upgrades.push("the-cold-picture-2");
   }
+  if (!config.upgrades.includes("cold-combat")) {
+    for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
+      const v = list.find((x) => x.id === "unknown" && x.name === "THE COLD" && x.adversary && !x.adversary.stats);
+      if (v && config.stationName === "KESTREL-9") v.adversary.stats = structuredClone(COLD_STATS);
+    }
+    config.upgrades.push("cold-combat");
+  }
   config.roomDocs = sanitizeRoomDocs(config.roomDocs);
   if (!config.upgrades.includes("room-docs")) {
     if (config.stationName === "KESTREL-9") {
@@ -430,7 +441,7 @@ const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew do
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
 const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
-const STORY_ACTIONS = new Set(["command", "inject", "note", "heard", "rollRequest", "rollFor", "generate", "approve", "outcome", "handout", "clockStart"]);
+const STORY_ACTIONS = new Set(["command", "inject", "note", "heard", "rollRequest", "rollFor", "generate", "approve", "outcome", "handout", "clockStart", "attack", "nextRound"]);
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
   return n ? crew.find((c) => c.name.toLowerCase() === n || c.name.toLowerCase().includes(n))?.id || "" : "";
@@ -726,6 +737,8 @@ export class Session {
       rollOptions: { checks: CHECKS, skillLevels: SKILL_LEVELS },
       voiceOptions: { presets: PRESETS, fxParams: FX_PARAMS, variants: VARIANTS, styles: STYLES, engines: ENGINES, speakers: SPEAKERS },
       panicTable: PANIC_TABLE.slice(1),
+      deathSaves: Object.fromEntries(Object.keys(this.state.deathSaves || {}).map((id) => [id, true])),
+      weaponsOf: Object.fromEntries(this.state.config.crew.map((c) => [c.id, weaponsOf(c.items).map((w) => w.name)])),
     };
   }
 
@@ -982,6 +995,11 @@ export class Session {
         if (typeof p.preset === "string" && PRESETS[p.preset]) Object.assign(v, fromPreset(p.preset));
         if (typeof p.picture === "string") v.adversary.picture = /^[a-f0-9]{12}\.(png|jpg|webp|gif)$/.test(p.picture) || PICTURE_LINK.test(p.picture.trim()) ? p.picture.trim() : "";
         if (typeof p.credit === "string") v.adversary.credit = p.credit.replace(/\s+/g, " ").trim().slice(0, 200);
+        if (p.stats && typeof p.stats === "object") {
+          const merged = { ...v.adversary.stats, ...p.stats };
+          if (p.stats.wounds > 0 && p.stats.dead === undefined) delete merged.dead;
+          v.adversary.stats = sanitizeStats(merged);
+        }
         if (typeof p.revealed === "boolean" && p.revealed !== v.adversary.revealed) {
           v.adversary.revealed = p.revealed;
           this.addLog("note", p.revealed ? `Adversary revealed: players now know ${v.name} by name.` : `${v.name} hidden again: players see ???.`);
@@ -1033,7 +1051,8 @@ export class Session {
       case "approve":
         if (!s.pending || s.pending.status !== "ready") break;
         this.logDirectives(s.pending.directives);
-        this.deliver({ ...msg.reply, outcome_check: s.pending.reply?.outcome_check }, "agent");
+        const { attacks, crew_attacks, round, reveal_death_save } = s.pending.reply || {};
+        this.deliver({ ...msg.reply, outcome_check: s.pending.reply?.outcome_check, attacks, crew_attacks, round, reveal_death_save }, "agent");
         s.pending = null;
         this.setBusy(false);
         break;
@@ -1155,6 +1174,43 @@ export class Session {
       case "retcon":
         this.retcon();
         break;
+      case "nextRound":
+        this.advanceRound();
+        if (s.log.at(-1)?.combat) this.requestReply();
+        break;
+      case "attack": {
+        const a = msg.attack || {};
+        if (a.side === "crew") this.crewAttack({ pc: this.crewById(a.pc), weapon: a.weapon, target: a.target, damageAdv: a.damageAdv });
+        else this.creatureAttack({ by: a.by, attack: a.attack, target: a.target });
+        if (s.log.at(-1)?.combat) this.requestReply();
+        this.syncDm();
+        break;
+      }
+      case "stopBleeding":
+        this.stopBleeding(this.crewById(msg.pc), "by the Warden");
+        break;
+      case "dealtWith": {
+        const pc = this.crewById(msg.pc);
+        if (!pc) break;
+        stabilise(pc);
+        delete s.deathSaves?.[pc.id];
+        this.addLog("note", `${pc.name}: no longer dying or due a Death Save (dealt with by the Warden).`);
+        this.crewChanged();
+        break;
+      }
+      case "revealDeathSave": {
+        const pc = this.crewById(msg.pc);
+        if (pc && this.revealDeathSave(pc) && this.hasKey()) this.requestReply();
+        break;
+      }
+      case "repairArmor": {
+        const pc = this.crewById(msg.pc);
+        if (!pc?.armor?.destroyed) break;
+        pc.armor.destroyed = false;
+        this.addLog("note", `${pc.name}: ${pc.armor.name} repaired.`);
+        this.crewChanged();
+        break;
+      }
       case "outcome": {
         const oc = s.outcomeCheck;
         if (!oc || !["success", "failure"].includes(msg.verdict)) break;
@@ -1798,16 +1854,153 @@ export class Session {
     this.crewChanged();
   }
 
+  adversaryNamed(name) {
+    const norm = (s) => keyOf(String(s || "").replace(/^the\s+/i, ""));
+    const want = norm(name);
+    if (!want) return null;
+    const advs = this.state.config.voices.filter((v) => v.adversary?.stats);
+    return advs.find((v) => v.id === String(name)) || advs.find((v) => norm(v.name) === want) || advs.find((v) => want.length >= 3 && (norm(v.name).includes(want) || want.includes(norm(v.name)))) || null;
+  }
+
+  // What happened to a character in a hit, in the log's words.
+  hitLines(pc, r, before, head) {
+    const armor = pc.armor;
+    const out = [head];
+    out.push(`${r.raw} DAMAGE${r.dr ? ` · DR ${r.dr}` : ""}`);
+    if (r.armorIgnored) out.push(`${armor.name.toUpperCase()} AP ${armor.ap}: ${r.raw - r.dr} IS UNDER IT AND IGNORED`);
+    else if (r.armorDestroyed) out.push(`${armor.name.toUpperCase()} AP ${armor.ap} DESTROYED${r.aa ? " (ANTI-ARMOR)" : ""}`);
+    out.push(`${r.dealt} THROUGH · ${pc.name.toUpperCase()} HEALTH ${before} → ${pc.health.current}/${pc.health.max}`);
+    for (const w of r.wounds) out.push(`WOUND ${w.n}/${pc.wounds.max}${w.carryover ? ` (${w.carryover} carried over)` : ""}: ${woundText(w)}${w.applied.length ? ` [${w.applied.join("; ")}]` : ""}`);
+    if (r.dead) out.push(`${pc.name.toUpperCase()} IS DEAD`);
+    else if (r.deathSave) out.push("DEATH SAVE");
+    return out;
+  }
+
+  hurtCrew(pc, amount, opts, head) {
+    const before = pc.health.current;
+    const r = applyDamage(pc, amount, opts);
+    if (r.skipped) { this.addLog("note", `${pc.name} is already dead.`); return r; }
+    r.aa = !!opts.aa;
+    this.addLog("roll", this.hitLines(pc, r, before, head).join("\n"), { combat: true, by: pc.name });
+    if (r.deathSave) this.callDeathSave(pc);
+    this.crewChanged();
+    return r;
+  }
+
+  callDeathSave(pc) {
+    (this.state.deathSaves ||= {})[pc.id] = rollDeathSave();
+    this.addLog("note", `Death Save rolled (hidden) for ${pc.name}. Reveal it when someone spends a turn checking their vitals.`);
+  }
+
+  revealDeathSave(pc) {
+    const roll = this.state.deathSaves?.[pc.id];
+    if (roll === undefined) return false;
+    delete this.state.deathSaves[pc.id];
+    const o = applyDeathSave(pc, roll);
+    this.addLog("roll", `${pc.name.toUpperCase()}: DEATH SAVE REVEALED · ROLLED ${String(roll).padStart(2, "0")}\n${deathSaveText(o).toUpperCase()}`, { combat: true, by: pc.name });
+    this.crewChanged();
+    return true;
+  }
+
+  creatureAttack({ by, attack, target }) {
+    const adv = this.adversaryNamed(by);
+    const pc = this.state.config.crew.find((c) => c.id === crewTargets(target, this.state.config.crew)[0]);
+    const st = adv?.adversary.stats;
+    if (!adv || !pc) return this.addLog("note", `Attack not made: ${!adv ? `no adversary named "${by}" with combat numbers` : `no crew member "${target}"`}.`);
+    if (st.dead) return this.addLog("note", `Attack not made: ${adv.name} is dead or destroyed.`);
+    const atk = st.attacks.find((a) => keyOf(a.name) === keyOf(attack)) || st.attacks.find((a) => keyOf(attack) && keyOf(a.name).includes(keyOf(attack))) || st.attacks[0];
+    if (!atk) return this.addLog("note", `${adv.name} has no attacks listed.`);
+    const chk = combatCheck(st.combat);
+    const who = shownName(adv).toUpperCase();
+    const head = `${who} ATTACKS ${pc.name.toUpperCase()} WITH ${atk.name.toUpperCase()}${atk.special ? ` (${atk.special.toUpperCase()})` : ""}\nCOMBAT ${st.combat} · ROLLED ${String(chk.d).padStart(2, "0")} · ${chk.success ? (chk.critical ? "CRITICAL SUCCESS" : "HIT") : chk.critical ? "CRITICAL FAILURE" : "MISS"}`;
+    if (!chk.success) return this.addLog("roll", head, { combat: true, by: pc.name });
+    const dmg = rollWithAdv(atk.damage, "");
+    this.hurtCrew(pc, dmg.total, { type: atk.woundType, woundAdv: atk.woundAdv }, `${head}\n${atk.damage}: ${dmg.rolls.join(" + ") || dmg.total}`);
+  }
+
+  crewAttack({ pc, weapon, target, damageAdv = "" }) {
+    const adv = this.adversaryNamed(target);
+    const st = adv?.adversary.stats;
+    if (!pc || !adv) return this.addLog("note", `Attack not made: ${!pc ? "no such crew member" : `no adversary named "${target}" with combat numbers`}.`);
+    if (pc.deceased) return this.addLog("note", `Attack not made: ${pc.name} is dead.`);
+    const w = weaponsOf(pc.items).find((x) => keyOf(x.name) === keyOf(weapon)) || weaponByName(weapon) || weaponsOf(pc.items)[0];
+    const expr = weaponDamage(w, pc.stats.strength);
+    const d = rollWithAdv(expr, cancelAdv(damageAdv));
+    const was = st.wounds;
+    const m = damageAdversary(st, d.total, { aa: w.aa });
+    const who = shownName(adv).toUpperCase();
+    const dice = /d/i.test(expr) ? `${expr}: ${d.rolls.join(" + ")}${d.all.length > 1 ? ` (${d.all.join(" / ")}, kept the ${damageAdv === "+" ? "higher" : "lower"})` : ""} = ` : "";
+    const lines = [`${pc.name.toUpperCase()} HITS ${who} WITH ${w.name.toUpperCase()}`, `${dice}${d.total} DAMAGE${m.dr ? ` · DR ${m.dr}` : ""}`];
+    if (m.armorIgnored) lines.push(`ITS ARMOR ABSORBS IT`);
+    if (m.armorDestroyed) lines.push(`ITS ARMOR IS DESTROYED${w.aa ? " (ANTI-ARMOR)" : ""}`);
+    lines.push(m.dead ? `${who} IS DEAD OR DESTROYED` : m.woundsLost ? `${who} LOSES ${m.woundsLost === 1 ? "A WOUND" : `${m.woundsLost} WOUNDS`}` : `${m.dealt} THROUGH`);
+    this.addLog("roll", lines.join("\n"), { combat: true, by: pc.name });
+    this.addLog("note", `${adv.name}: ${statsLine(st)} (was ${was} Wounds).`);
+    this.syncDm();
+  }
+
+  // A new round (PSG 32.2): Bleeding hurts and the countdowns tick.
+  advanceRound() {
+    const events = roundTick(this.state.config.crew);
+    if (!events.length) return this.addLog("note", "Next round: nobody is bleeding or counting down.");
+    for (const ev of events) {
+      const pc = ev.pc;
+      const lines = [`NEXT ROUND · ${pc.name.toUpperCase()}`];
+      if (ev.bleed) {
+        const b = ev.bleed;
+        lines.push(`BLEEDING ${b.amount}: ${b.dealt} DAMAGE (IGNORES ARMOR AND DR)`, `HEALTH NOW ${pc.health.current}/${pc.health.max}`);
+        for (const w of b.wounds) lines.push(`WOUND ${w.n}/${pc.wounds.max}: ${woundText(w)}${w.applied.length ? ` [${w.applied.join("; ")}]` : ""}`);
+      }
+      if (ev.left) lines.push(ev.left.toUpperCase());
+      if (pc.status === "dying") lines.push(pc.statusNote.toUpperCase());
+      if (ev.died) lines.push(`${pc.name.toUpperCase()} IS DEAD`);
+      else if (ev.deathSave) lines.push("DEATH SAVE");
+      this.addLog("roll", lines.join("\n"), { combat: true, by: pc.name });
+      if (ev.deathSave) this.callDeathSave(pc);
+    }
+    this.crewChanged();
+  }
+
+  stopBleeding(pc, how = "") {
+    if (!pc?.bleeding) return false;
+    pc.bleeding = 0;
+    this.addLog("note", `${pc.name}: Bleeding stopped${how ? ` (${how})` : ""}.`);
+    this.crewChanged();
+    return true;
+  }
+
+  applyAttacks(reply) {
+    const s = this.state, crew = s.config.crew;
+    for (const a of reply?.crew_attacks || []) {
+      const pc = crew.find((c) => c.id === crewTargets(a.by, crew)[0]);
+      const got = pc && s.roll?.check === "combat" && s.roll.results?.[pc.id];
+      if (!got?.result.success || got.attacked) { this.addLog("note", `${pc?.name || a.by}'s attack was not applied: no successful, unspent Combat check.`); continue; }
+      got.attacked = true;
+      this.crewAttack({ pc, weapon: a.weapon, target: a.target });
+    }
+    for (const a of reply?.attacks || []) this.creatureAttack(a);
+    for (const name of reply?.reveal_death_save || []) {
+      const pc = crew.find((c) => c.id === crewTargets(name, crew)[0]);
+      if (pc) this.revealDeathSave(pc);
+    }
+    if (reply?.round) this.advanceRound();
+  }
+
   applyCrewChanges(changes) {
     if (!this.state.config.agentCrew) return;
     let any = false;
     for (const c of changes || []) {
       for (const id of crewTargets(c.for, this.state.config.crew)) {
         const pc = this.state.config.crew.find((x) => x.id === id);
+        if (c.stat === "health" && c.change < 0) {
+          this.hurtCrew(pc, -c.change, { direct: true }, `${pc.name.toUpperCase()} IS HURT${c.why ? `: ${c.why.toUpperCase()}` : ""}`);
+          continue;
+        }
         const cur = c.stat === "stress" ? pc.stress : pc[c.stat]?.current;
         const ch = cur === undefined ? null : setVital(pc, c.stat, cur + c.change);
         if (!ch || ch[0] === ch[1]) continue;
         this.addLog("note", `${pc.name}: ${label(c.stat)} ${ch[0]} → ${ch[1]}${c.why ? ` (${c.why})` : ""}.`);
+        if (c.stat === "wounds" && ch[1] >= pc.wounds.max && ch[0] < pc.wounds.max) this.callDeathSave(pc);
         any = true;
       }
     }
@@ -1840,6 +2033,7 @@ export class Session {
         const did = changeItem(pc, c.action, c.item);
         if (!did) continue;
         this.addLog("note", `${pc.name} ${did}${c.why ? ` (${c.why})` : ""}.`);
+        if (c.action === "remove" && /first aid kit/i.test(did)) this.stopBleeding(pc, "First Aid Kit used");
         any = true;
       }
     }
@@ -1851,7 +2045,7 @@ export class Session {
   }
 
   deliver(reply, source) {
-    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms) };
+    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll) };
     try {
       this.deliverReply(reply, source);
     } finally {
@@ -1874,8 +2068,13 @@ export class Session {
     if (undo.map !== undefined) Object.assign(s.config, { map: undo.map, rooms: undo.rooms });
     for (const pc of s.config.crew) {
       const was = undo.crew.find((x) => x.id === pc.id);
-      if (was) Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, items: was.items });
+      if (!was) continue;
+      for (const k of ["deceased", "status", "statusNote", "dyingIn", "deathSaveIn", "minStress"]) if (k in was) pc[k] = was[k]; else delete pc[k];
+      Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, items: was.items, stats: was.stats, saves: was.saves, armor: was.armor, bleeding: was.bleeding });
     }
+    s.deathSaves = undo.deathSaves;
+    for (const [id, stats] of undo.adversaries || []) { const v = s.config.voices.find((x) => x.id === id); if (v?.adversary) v.adversary.stats = stats; }
+    if (s.roll && undo.roll && s.roll.id === undo.roll.id) s.roll.results = undo.roll.results;
     s.outcomeCheck = undo.outcome;
     this.playhead = 0;
     this.addLog("note", "↶ Retconned the agent's last reply.");
@@ -1955,6 +2154,7 @@ export class Session {
     for (const e of effects) this.startEffect(e, "agent");
     this.applyCrewChanges(reply?.crew_changes);
     this.applyItemChanges(reply?.item_changes);
+    if (source === "agent" && this.state.config.agentCrew) this.applyAttacks(reply);
     if (reply?.story_end?.ended && this.state.solo?.phase === "play") setTimeout(() => this.soloEnd(reply.story_end.how), 0);
     for (const c of reply?.clocks || []) c.action === "stop" ? this.stopClock(c.label) : this.startClock(c.label, c.seconds, "agent");
     for (const f of reply?.found_docs || []) {
@@ -2298,7 +2498,7 @@ export class Session {
     }
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
     s.station.access_level = DEFAULT_STATION.access_level;
-    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null });
+    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null, deathSaves: {} });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);
     this.toPlayers({ t: "roomPlan", rows: null });

@@ -366,6 +366,28 @@
         </div>
         </div>
 
+        <h2>Combat <span class="hint" title="Violent encounters (Player's Survival Guide). No initiative: players declare, you resolve everything at once. Armor, Wounds and Bleeding are tracked on the Crew tab.">?</span></h2>
+        <div class="card stack" id="combatCard">
+          <div class="row wrap">
+            <button id="nextRound" title="A new round (about 10 seconds): everyone Bleeding takes that much Damage, ignoring armor and DR, and Death Save countdowns tick.">Next round</button>
+            <span class="muted small" id="combatBleed"></span>
+          </div>
+          <div class="rollgrid">
+            <label>Who attacks
+              <select id="atkSide"><option value="creature">An adversary</option><option value="crew">A crew member (Combat check already made)</option></select>
+            </label>
+            <label>Attacker <select id="atkBy"></select></label>
+            <label><span id="atkWithLabel">Attack</span> <select id="atkWith"></select></label>
+            <label>Target <select id="atkTarget"></select></label>
+            <label id="atkAdvWrap" hidden>Damage [+] / [−]
+              <select id="atkAdv"><option value="">Normal</option><option value="+">[+] Advantage</option><option value="-">[−] Disadvantage</option></select>
+            </label>
+          </div>
+          <div id="atkNote" class="muted small"></div>
+          <div class="row"><button id="atkGo" class="primary" title="An adversary rolls its Combat (d100 under it, 90-99 always fails) and, on a hit, the attack's damage. A crew member's weapon damage is rolled and applied to the adversary.">Roll attack</button></div>
+          <ul id="deathSaveList" class="fxlist"></ul>
+        </div>
+
         <h2>Handouts <span class="hint" title="Documents that pop up on player screens and stay under DOCS. With a voice, it's an audio log: they play it, and read along.">?</span></h2>
         <div class="card stack">
           <input id="docTitle" placeholder="Title" maxlength="120">
@@ -540,6 +562,7 @@
         <h2>In this app</h2>
         <ul>
           <li><b>Actions → Roll</b> calls a check, save or Panic check. Each player rolls on their own screen; failures add Stress automatically.</li>
+          <li><b>Actions → Combat</b>: <b>Next round</b> makes everyone Bleeding take that much Damage (armor and DR don't help). <b>Roll attack</b> has an adversary roll its Combat and attack, or applies a crew member's weapon damage to an adversary. Armor: damage under its AP is ignored; damage at or over AP destroys it and the rest goes through; Anti-Armor ignores and destroys it; DR always applies first. At 0 Health a character takes a Wound (a Wounds Table roll) and Health resets to Maximum minus the carryover; at Maximum Wounds a Death Save is rolled in secret and stays hidden until you press <b>Reveal</b>.</li>
           <li><b>⚖ Your call</b>: the agent is waiting on an uncertain attempt. It shows the stakes; you say it works, fails, or roll.</li>
           <li>The agent can change Health, Wounds and Stress if Settings allow. Fix them on the Crew tab.</li>
         </ul>

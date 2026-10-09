@@ -1,6 +1,8 @@
 import { BUILTIN, PRESETS, SPEAKERS, defaultVoices, fromPreset, sanitizeVoices } from "./voices.js";
 import { sanitizeCast, addCast } from "./cast.js";
 import { CLASSES, STATS, SAVES, sanitizeCrew } from "./crew.js";
+import { sanitizeStats } from "./combat.js";
+import { WOUND_TYPES } from "./wounds.js";
 import { LOOKS, DEFAULT_TERMINALS, sanitizeTerminals, netKey } from "./terminals.js";
 
 const THEMES = ["green", "amber", "cyan", "white", "red"];
@@ -38,7 +40,7 @@ FIELDS
 - computer: the station computer's display name (e.g. "HV-CORE") and persona: who it is and how it writes (it prints on a monochrome CRT terminal; casing, tone, length), what it knows, how it treats access levels and hacking attempts. Write the persona as instructions addressed to it ("You are ...").
 - broadcastPersona: the automated public-address voice's persona (announces, never converses).
 - voices: other voices that can speak: always one with id "intercom" (preset intercom), the station intercom the cast are heard over when they aren't in the players' room; optionally others (a ship's computer, a radio). Threats aren't voices: they go under adversaries. For each: id (snake_case), name (as shown on screen, e.g. "INTERCOM"), preset (sound: intercom/human for comms, robotic, ethereal, radio, demonic, whisper, clean), color (#rrggbb or ""), persona (what it is and how it sounds; for the intercom, how people sound over it), and systems (where it can be heard: [] for the station's own network, a terminal's system name for a separate machine like the players' ship, or ["ALL"] for something in every machine).
-- adversaries: the story's threats (the creature, the entity, the thing in the walls; usually 1, at most 3): name (its true name, e.g. "THE ORGANISM"; the players only learn it when they see it, until then its lines show as ???), persona (what it is, what it wants, how it acts and, if it can, how it speaks: all lowercase fragments suit something inhuman), and preset (its sound: demonic, ethereal, whisper, robotic, radio).
+- adversaries: the story's threats (the creature, the entity, the thing in the walls; usually 1, at most 3): name (its true name, e.g. "THE ORGANISM"; the players only learn it when they see it, until then its lines show as ???), persona (what it is, what it wants, how it acts and, if it can, how it speaks: all lowercase fragments suit something inhuman), and preset (its sound: demonic, ethereal, whisper, robotic, radio). Optionally combat, its Mothership 1e stat block for a crew of four 1e characters (Health 11-20, Combat 24-44): combat (typically 30-55) and instinct (30-60), ap (armor points, usually 0-5), dr, woundsMax (1-4) with healthPerWound (10-30), attacks (name, damage as dice from 1d10 to 3d10, woundType one of ${WOUND_TYPES.join("/")}, woundAdv "+" or "-" or "", special) and special (how it is beaten, if not by hurting it). A swarm or group is written per individual. Something meant to be unbeatable head-on gets very high numbers and a special line saying how it is beaten.
 - cast: the story's named people the players can meet or hear (not the players' own characters), each with sex (f/m), a voice (a distinct speaker id from the list; never reuse one), room (the map room id where they are when the story starts, or "" for nowhere on the map: missing, hiding somewhere unknown, off-station) and notes (who they are, what they want, how they talk, and anything the AI must keep in mind). Someone in the players' room talks to them face to face; anyone else, over the intercom.
 - terminals: 3-6 physical terminals the players can use, in map rooms (room = a room id from the map), each with a look (any of: ${LOOKS.filter((l) => l !== "portable").join(", ")}; [] for clean), open (can the players reach it at the start?), system and os, and notes (what's there, what happened at it). system is "" for the station's own network; a separate machine that isn't on it (the players' ship, a shuttle, a derelict) gets its own system name, and os the name of its operating system (e.g. "TUG-CORE OS v2.7"), and its screens show only what's said on it. Most terminals are on the station ("" and ""). Make the looks tell the story: clean where they arrive, bloody and cracked where it went wrong. A portable handheld terminal is added automatically.
 - crew: the players' characters (1-4, normally 4), Mothership 1e. className one of ${CLASSES.join(", ")}. Stats ${STATS.join("/")} roughly 20-50 (class strengths higher); Saves ${SAVES.join("/")} roughly 15-40 (Android: Fear 60ish, Sanity lower). Health max 10-20, Wounds max 2 (Android 3), Stress 2. 3-5 skills (e.g. Zero-G, Mechanical Repair, Computers, Chemistry, Firearms, Military Training, Hacking, Piloting, Athletics, Medicine). Give each a role, pronouns, crime or reason they're here (field "crime"; for non-convicts, why they took the job), a 3-5 sentence backstory with a hook, loadout (realistic for why they came), trinket and patch. notes: anything only the Warden should know about them, or "".
@@ -49,6 +51,7 @@ LENGTH (it must fit in one reply): lore and secrets under ~200 words each; each 
 
 const str = { type: "string" };
 const strDesc = (description) => ({ type: "string", description });
+const int = { type: "integer" };
 const obj = (properties) => ({ type: "object", additionalProperties: false, required: Object.keys(properties), properties });
 const num = { type: "integer" };
 
@@ -80,7 +83,24 @@ export const DRAFT_SCHEMA = obj({
       systems: { type: "array", items: str },
     }),
   },
-  adversaries: { type: "array", items: obj({ name: str, persona: str, preset: { type: "string", enum: PRESET_IDS } }) },
+  adversaries: {
+    type: "array",
+    items: {
+      type: "object",
+      additionalProperties: false,
+      required: ["name", "persona", "preset"],
+      properties: {
+        name: str,
+        persona: str,
+        preset: { type: "string", enum: PRESET_IDS },
+        combat: obj({
+          combat: int, instinct: int, ap: int, dr: int, woundsMax: int, healthPerWound: int,
+          attacks: { type: "array", items: obj({ name: str, damage: str, woundType: { type: "string", enum: WOUND_TYPES }, woundAdv: { type: "string", enum: ["", "+", "-"] }, special: str }) },
+          special: str,
+        }),
+      },
+    },
+  },
   cast: {
     type: "array",
     items: obj({ name: str, sex: { type: "string", enum: ["f", "m"] }, voice: { type: "string", enum: Object.keys(SPEAKERS) }, room: str, notes: str }),
@@ -155,7 +175,7 @@ export function normalizeDraft(raw) {
       color: /^#[0-9a-f]{6}$/i.test(v?.color || "") ? v.color : "", persona: s(v?.persona, 8000),
       systems: (Array.isArray(v?.systems) ? v.systems : []).slice(0, 16).map((n) => s(n, 40)).filter(Boolean),
     })).filter((v) => v.name),
-    adversaries: (Array.isArray(d.adversaries) ? d.adversaries : []).slice(0, 3).map((a) => ({ name: s(a?.name, 40).toUpperCase(), persona: s(a?.persona, 8000), preset: PRESET_IDS.includes(a?.preset) ? a.preset : "demonic" })).filter((a) => a.name),
+    adversaries: (Array.isArray(d.adversaries) ? d.adversaries : []).slice(0, 3).map((a) => ({ name: s(a?.name, 40).toUpperCase(), persona: s(a?.persona, 8000), preset: PRESET_IDS.includes(a?.preset) ? a.preset : "demonic", ...(a?.combat && typeof a.combat === "object" ? { stats: sanitizeStats({ ...a.combat, wounds: a.combat.woundsMax, health: a.combat.healthPerWound }) } : {}) })).filter((a) => a.name),
     cast: (Array.isArray(d.cast) ? d.cast : (Array.isArray(d.voices) ? d.voices : []).flatMap((v) => v?.characters || [])).slice(0, 30)
       .map((c) => ({ name: s(c?.name, 40), sex: c?.sex === "m" ? "m" : "f", voice: SPEAKERS[c?.voice] ? c.voice : "", room: s(c?.room, 60), notes: s(c?.notes, 500) })).filter((c) => c.name),
     crew: (Array.isArray(d.crew) ? d.crew : []).slice(0, 4),
@@ -207,7 +227,7 @@ export function applyDraft(d) {
       standingOrders: d.standingOrders,
       map: d.map,
       voices: sanitizeVoices([terminal, broadcast, base.find((v) => v.id === BUILTIN.narrator), ...others.filter((v) => v.id !== BUILTIN.narrator),
-        ...(d.adversaries || []).map((a, i) => ({ id: `adversary-${i + 1}`, name: a.name, style: "label", color: "#ff5a5a", persona: a.persona, ...fromPreset(a.preset), systems: [""], adversary: { revealed: false, picture: "" } }))]),
+        ...(d.adversaries || []).map((a, i) => ({ id: `adversary-${i + 1}`, name: a.name, style: "label", color: "#ff5a5a", persona: a.persona, ...fromPreset(a.preset), systems: [""], adversary: { revealed: false, picture: "", ...(a.stats ? { stats: a.stats } : {}) } }))]),
       crew,
       cast: sanitizeCast(cast),
       castChannel: idOf(channel),
