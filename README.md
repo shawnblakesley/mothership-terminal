@@ -132,6 +132,26 @@ Each player reads their own screen as their own character, so one line can say d
 
 Keep talking to change things, then **Redraft**. **Apply to this session** replaces the station, lore, secrets, voices, map and crew, and clears the log; your provider, key, mode and sounds stay. Players stay connected and pick a new crew file. The builder uses the session's model and key; with DeepSeek a draft takes under a minute and costs a fraction of a cent.
 
+## Campaigns
+
+**Campaign** (top of the console) runs a campaign: many stories on one sector map, with the same crew, their ship and people they meet again. KESTREL-9 stays the one-shot: it's still the story every session starts with, and starting a campaign changes nothing until you play its first story.
+
+- **The sector map** shows every port the crew can travel to, the lanes between them, and the jobs: numbers under a port are stories there, numbers on a lane are stories in transit (played aboard the crew's own ship). The ship's marker shows where the crew are. Played jobs go dashed; the one being played glows.
+- **Click a port** for what it is, who runs it, its jobs and lanes. **Click a job** for its brief: the hook, the job, the event and kind of horror, its adversary, the factions involved, the recurring characters, the secrets, the faction stakes, its map, and its arc in five acts from the Warden's Operations Manual: **Transgression**, **Omens**, **Manifestation**, **Banishment** and **Slumber**.
+- **Play this story** has the agent build it around what's written (a minute or two, on the session's model and key, like Story Builder): it writes the station state, terminals, the computer's persona, lore, extra secrets, the story's own people and the crew's paperwork, and the campaign puts in the fixed parts: the port's map with the crew's ship docked, the adversary, the recurring characters with their own voices, the ship's terminal and computer on its own system, and the arc in the standing orders, so the agent paces the story through the acts. It replaces the story being played and clears the log, like **Apply** in Story Builder.
+- **Finish story** (under the map while one is being played): write how it ended. That's kept and given to the agent when it builds later stories; the crew keep their condition, items and stress; the recurring characters keep how they feel about the crew (and their pictures, once you've picked them); and the ship moves to where the story ended.
+- **Leave campaign** forgets the campaign's progress; the story being played stays.
+
+### Rim Haulers
+
+The first campaign (`campaigns/rim-haulers.js`): *"Whether it's blockade running, smuggling contraband, or just working as a certified owner-operator, there's never a dull shift hauling cargo from one end of the Rim to the other. Watch out for stowaways and customs patrols, and always pay your union dues."*
+
+- **The crew** of the bulk hauler LONG HAUL MARY (its computer, MARY, talks like an old dispatcher): Wanda "Mother" Okafor (owner-operator, Teamster), Kofi "Shotgun" Mensah (ex-customs, Marine), ROSCOE (cargo android whose union card is in litigation) and Dr. Ines Marrow (disgraced quarantine inspector, Scientist).
+- **8 ports:** Port Gallow (the company container port), Tollgate (customs), Halfway House (the union truck stop), Cinder's Reach (a mining moon), Saint Brigid's (a farm colony), the Boneyard (ship-breakers), Lantern (smugglers' port) and Terminus Relay (the edge of the Rim). Ten lanes join them, one of them the uncharted Dark Lane.
+- **8 factions:** Teamsters Local 1312, Gallow-Mercer Logistics, Rim Customs & Excise, the Lantern Syndicate, the Choir of the Open Door, Ardent Mining, the Drift Kin and the Saint Brigid co-op.
+- **10 recurring characters**, among them the union dispatcher Maggie Szabo, Gallow-Mercer's fixer Silas Crane, Inspector Vey, Auntie Lu Bao, Brother Tobiah and a runaway named Kip.
+- **20 stories**, 12 at ports and 8 in transit, each with its own event and adversary: a rogue crane AI, a rage plague, a guilt-eating artifact, android scabs, a two-hundred-year-old trucker, tunnelling pack hunters, a folk-horror harvest, a scrap swarm, a body-hopper, a void cult, a signal that rewrites its listeners, a fungal bloom, an escaped bioweapon, a ghost rig, a smiling killer, corporate hijackers, a leviathan, a customs hunter, a time loop, and whatever is at the end of the line. Under them runs the Black Manifest: Gallow-Mercer's sealed cargo, carried by independents who don't ask, all bound for Terminus Relay. Stories are marked early, mid or late; any can be played in any order.
+
 ## Terminals
 
 Each player's screen is a physical terminal somewhere on the station, or a portable handheld unit. **TERM** in the player's header lists them: they can walk to any terminal marked reachable (if **Settings** allows it), and you can move anyone from their crew card.

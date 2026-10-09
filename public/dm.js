@@ -337,6 +337,7 @@
     renderConnections();
     renderCastPlay();
     renderBuilder();
+    renderCampaign();
     renderSynopsis();
     renderRoom();
     renderMnavDot();
@@ -985,6 +986,188 @@
     send({ t: "builderApply" });
     $("builderDialog").close();
     toast("New story applied.");
+  });
+
+  let campaignData = null, campaignKey = "", cmpSel = { kind: "overview", id: "" }, cmpOutcome = "";
+  async function loadCampaigns() {
+    if (campaignData) return campaignData;
+    const r = await fetch("api/campaigns").catch(() => null);
+    campaignData = r?.ok ? await r.json() : { acts: [], campaigns: [] };
+    return campaignData;
+  }
+  const cmpLoc = (c, id) => c.locations.find((l) => l.id === id);
+  const cmpPlace = (c, s) => (s.at ? `at ${cmpLoc(c, s.at).name}` : `in transit, ${cmpLoc(c, s.from).name} to ${cmpLoc(c, s.to).name}`);
+  const cmpFaction = (c, id) => c.factions.find((f) => f.id === id);
+  const TIERS = { 1: "early", 2: "mid campaign", 3: "late" };
+
+  function sectorSvg(c, p) {
+    const done = new Set(p.done.map((d) => d.id));
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const stars = Array.from({ length: 140 }, () => `<circle cx="${(rnd() * 1100).toFixed(0)}" cy="${(rnd() * 560).toFixed(0)}" r="${(rnd() * 1.3 + 0.3).toFixed(1)}" opacity="${(rnd() * 0.5 + 0.15).toFixed(2)}"/>`).join("");
+    const cls = (s) => ["story", done.has(s.id) && "done", p.current === s.id && "current", cmpSel.kind === "story" && cmpSel.id === s.id && "sel", S.campaignBusy === s.id && "busy"].filter(Boolean).join(" ");
+    const lanes = c.lanes.map((l) => {
+      const a = cmpLoc(c, l.a), b = cmpLoc(c, l.b);
+      return `<line class="lane${l.dark ? " dark" : ""}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${esc(l.name)} · ${l.days} days</title></line>`;
+    }).join("");
+    const transit = c.stories.filter((s) => !s.at).map((s) => {
+      const a = cmpLoc(c, s.from), b = cmpLoc(c, s.to);
+      const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
+      return `<g class="${cls(s)}" data-story="${s.id}" transform="translate(${x} ${y})" tabindex="0" role="button" aria-label="${esc(s.title)}">
+        <title>${s.n}. ${esc(s.title)} (${esc(cmpPlace(c, s))})</title>
+        <rect x="-11" y="-11" width="22" height="22" rx="3" transform="rotate(45)"/><text y="4">${s.n}</text></g>`;
+    }).join("");
+    const nodes = c.locations.map((l) => {
+      const here = c.stories.filter((s) => s.at === l.id);
+      const f = cmpFaction(c, l.faction);
+      const pills = here.map((s, i) => `<g class="${cls(s)}" data-story="${s.id}" transform="translate(${(i - (here.length - 1) / 2) * 30} 52)" tabindex="0" role="button" aria-label="${esc(s.title)}">
+          <title>${s.n}. ${esc(s.title)}</title><rect x="-13" y="-10" width="26" height="20" rx="10"/><text y="4">${s.n}</text></g>`).join("");
+      return `<g class="loc${cmpSel.kind === "loc" && cmpSel.id === l.id ? " sel" : ""}" transform="translate(${l.x} ${l.y})">
+        <g data-loc="${l.id}" tabindex="0" role="button" aria-label="${esc(l.name)}"><title>${esc(l.name)}: ${esc(l.kind)}</title>
+          <circle class="halo" r="24" style="stroke:${f?.color || "#888"}"/><circle class="core" r="9" style="fill:${f?.color || "#888"}"/>
+          <text class="name" y="-32">${esc(l.name)}</text></g>${pills}</g>`;
+    }).join("");
+    const at = cmpLoc(c, p.at);
+    const ship = at ? `<g class="ship" transform="translate(${at.x - 44} ${at.y - 16})"><title>${esc(c.ship.name)} is here</title><path d="M-9 6 L0 -10 L9 6 Z"/><text y="20">${esc(c.ship.computer)}</text></g>` : "";
+    return `<svg class="sector" viewBox="0 0 1100 560" role="img" aria-label="Sector map"><g class="stars">${stars}</g>${lanes}${transit}${nodes}${ship}</svg>`;
+  }
+
+  function cmpStoryLink(c, s, p) {
+    const d = p.done.find((x) => x.id === s.id);
+    return `<button class="cmplink${p.current === s.id ? " current" : ""}" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b> <span class="muted">${esc(s.event)}${d ? " · played" : p.current === s.id ? " · now playing" : ""}</span></button>`;
+  }
+
+  function cmpOverview(c, p) {
+    const played = p.done.map((d) => ({ d, s: c.stories.find((x) => x.id === d.id) })).filter((x) => x.s);
+    return `<div class="btitle">${esc(c.title)}</div>
+      <p class="muted"><i>${esc(c.tagline)}</i></p><p>${esc(c.pitch)}</p>
+      <p class="small muted">Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
+      <details open><summary>Played (${played.length} of ${c.stories.length})</summary>${played.length ? played.map(({ d, s }) => `<div class="bcard"><button class="cmplink" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b></button><div class="small">${esc(d.outcome || "No notes.")}</div></div>`).join("") : '<p class="muted small">Nothing yet. A good first job: 1. FIRST SHIFT at Port Gallow, where the rig starts.</p>'}</details>
+      <details><summary>Factions</summary>${c.factions.map((f) => `<div class="bcard"><b style="color:${f.color}">${esc(f.name)}</b><div class="small">${esc(f.about)}</div></div>`).join("")}</details>
+      <details><summary>Recurring characters</summary>${c.cast.map((m) => `<div class="bcard"><b>${esc(m.name)}</b> <span class="muted small">${esc(cmpFaction(c, m.faction)?.short || "")}${p.cast[m.id] ? ` · ${esc(attLabel(p.cast[m.id].attitude))}` : ""}</span><div class="small">${esc(m.notes)}</div>${p.cast[m.id]?.history ? `<div class="small muted">${esc(p.cast[m.id].history)}</div>` : ""}</div>`).join("")}</details>
+      <details><summary>The crew</summary>${p.crew.map((pc) => `<div class="bcard"><b>${esc(pc.name)}</b> <span class="muted small">${esc([pc.className, pc.role].filter(Boolean).join(" · "))}</span><div class="small mono">HP ${pc.health.current}/${pc.health.max} · Wounds ${pc.wounds.current}/${pc.wounds.max} · Stress ${pc.stress}</div></div>`).join("")}<p class="small muted">They carry their condition, items and stress from story to story. Edit them on the Crew tab while a story is playing.</p></details>`;
+  }
+  const attLabel = (n) => ({ "-3": "Hostile", "-2": "Resentful", "-1": "Wary", 0: "Neutral", 1: "Friendly", 2: "Trusting", 3: "Loyal" })[n] || "Neutral";
+
+  function cmpLocation(c, l, p) {
+    const f = cmpFaction(c, l.faction);
+    const here = c.stories.filter((s) => s.at === l.id);
+    const lanes = c.lanes.filter((x) => x.a === l.id || x.b === l.id);
+    const transit = c.stories.filter((s) => !s.at && (s.from === l.id || s.to === l.id));
+    return `<div class="btitle">${esc(l.name)}</div><div class="muted">${esc(l.kind)} · <span style="color:${f?.color}">${esc(f?.name || "")}</span>${p.at === l.id ? ` · ${esc(c.ship.name)} is here` : ""}</div>
+      <p>${esc(l.description)}</p>
+      <h3 class="cmph">Jobs here</h3>${here.map((s) => cmpStoryLink(c, s, p)).join("") || '<p class="muted small">None.</p>'}
+      <h3 class="cmph">Jobs on the lanes from here</h3>${transit.map((s) => cmpStoryLink(c, s, p)).join("") || '<p class="muted small">None.</p>'}
+      <h3 class="cmph">Lanes</h3><ul class="small">${lanes.map((x) => `<li>${esc(x.name)} to ${esc(cmpLoc(c, x.a === l.id ? x.b : x.a).name)}, ${x.days} days${x.dark ? " (uncharted)" : ""}</li>`).join("")}</ul>
+      <details><summary>Map</summary><div class="smap" id="cmpMap"></div></details>`;
+  }
+
+  function cmpStory(c, s, p) {
+    const d = p.done.find((x) => x.id === s.id);
+    const busy = S.campaignBusy;
+    const acts = campaignData.acts.map(([k, label]) => `<li><b>${esc(label)}.</b> ${esc(s.acts[k])}</li>`).join("");
+    const cast = s.cast.map((id) => c.cast.find((m) => m.id === id)).filter(Boolean);
+    const stakes = (s.affinity || []).map((a) => `<li><span style="color:${cmpFaction(c, a.faction)?.color}">${esc(cmpFaction(c, a.faction)?.short)}</span> ${a.change > 0 ? "+" : ""}${a.change} if ${esc(a.when)}</li>`).join("");
+    const action = busy === s.id
+      ? `<span class="small"><span class="spinner"></span>Building ${esc(s.title)} around its arc… (a minute or two)</span>`
+      : p.current === s.id ? `<span class="pill ok">Now playing</span><button data-replay="${s.id}" ${busy ? "disabled" : ""} title="Build it again from scratch">Rebuild</button>`
+        : `<button class="primary" data-play="${s.id}" ${busy ? "disabled" : ""}>${d ? "Play it again" : "Play this story"}</button>`;
+    return `<div class="row"><div class="grow"><div class="btitle">${s.n}. ${esc(s.title)}</div>
+        <div class="muted">${esc(cmpPlace(c, s))} · ${esc(TIERS[s.tier] || "")}</div></div></div>
+      <div class="row wrap">${action}</div>
+      ${d ? `<div class="bcard"><b>Played</b><div class="small">${esc(d.outcome || "No notes.")}</div></div>` : ""}
+      <p>${esc(s.hook)}</p>
+      <div class="bcard"><b>The job</b><div class="small">${esc(s.job)}</div></div>
+      <div class="small"><b>Event:</b> ${esc(s.event)} · <b>Horror:</b> ${esc(s.horror)}</div>
+      <div class="chips">${s.factions.map((id) => cmpFaction(c, id)).filter(Boolean).map((f) => `<span class="pill" style="color:${f.color}">${esc(f.name)}</span>`).join("")}</div>
+      <details open><summary>Adversary: ${esc(s.adversary.name)} <span class="muted">(${esc(s.adversary.type)})</span></summary><div class="small">${esc(s.adversary.persona)}</div></details>
+      <details open><summary>The arc</summary><ol class="cmpacts small">${acts}</ol></details>
+      <details><summary>Secrets</summary><ul class="small">${s.secrets.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>
+      ${cast.length ? `<details><summary>Recurring characters</summary><ul class="small">${cast.map((m) => `<li><b>${esc(m.name)}</b> ${esc(m.notes)}</li>`).join("")}</ul></details>` : ""}
+      ${stakes ? `<details><summary>Faction stakes</summary><ul class="small">${stakes}</ul></details>` : ""}
+      <div class="small muted">${s.hazards?.length ? `Hazards: ${esc(s.hazards.join(", "))}. ` : ""}${s.resources?.length ? `Resources: ${esc(s.resources.join(", "))}.` : ""}</div>
+      <details><summary>Map</summary><div class="smap" id="cmpMap"></div></details>`;
+  }
+
+  function renderCampaign() {
+    if (!$("campaignDialog").open || !campaignData) return;
+    const p = S.campaign, c = p && campaignData.campaigns.find((x) => x.id === p.id);
+    const key = JSON.stringify([p, S.campaignBusy, cmpSel]);
+    if (key === campaignKey) return;
+    campaignKey = key;
+    $("cmpLeave").hidden = !c;
+    if (!c) {
+      $("cmpTitle").textContent = "Campaigns";
+      $("cmpStatus").textContent = "";
+      $("cmpBody").innerHTML = `<div class="cmplist"><p class="muted small">A campaign is many stories on one sector map, with the same crew, their rig and people they meet again. KESTREL-9 stays the one-shot: starting a campaign changes nothing until you play its first story.</p>
+        ${campaignData.campaigns.map((x) => `<div class="bcard cmpcard"><div class="btitle">${esc(x.title)}</div><p><i>${esc(x.tagline)}</i></p><p class="small">${esc(x.pitch)}</p>
+          <div class="small muted">${x.locations.length} ports · ${x.stories.length} stories · ${x.factions.length} factions · ${x.crew.length} crew</div>
+          <div class="row"><button class="primary" data-start="${x.id}">Start campaign</button></div></div>`).join("")}</div>`;
+      return;
+    }
+    const now = c.stories.find((s) => s.id === p.current);
+    $("cmpTitle").textContent = c.title;
+    $("cmpStatus").textContent = `${p.done.length} of ${c.stories.length} played · ${c.ship.name} at ${cmpLoc(c, p.at)?.name || "?"}`;
+    const banner = now
+      ? `<div class="bcard cmpnow"><div><b>Now playing:</b> ${now.n}. ${esc(now.title)} <span class="muted">(${esc(cmpPlace(c, now))})</span></div>
+          <textarea id="cmpOutcome" rows="2" placeholder="How did it end? Who lived, what they did, what they owe. Later stories are built on it."></textarea>
+          <div class="row"><span class="small muted grow">Finishing keeps the crew's sheets and the recurring characters' attitudes, and moves the rig.</span><button id="cmpFinish" class="primary">Finish story</button></div></div>`
+      : `<div class="small muted">${S.campaignBusy ? `<span class="spinner"></span>Building a story…` : "No campaign story is being played. Pick a job on the map."}</div>`;
+    const side = cmpSel.kind === "story" ? cmpStory(c, c.stories.find((s) => s.id === cmpSel.id), p)
+      : cmpSel.kind === "loc" ? cmpLocation(c, cmpLoc(c, cmpSel.id), p) : cmpOverview(c, p);
+    $("cmpBody").innerHTML = `<div class="cmpgrid"><section class="cmpmapcol">${banner}${sectorSvg(c, p)}
+        <div class="cmplegend small muted"><span><i class="lg loc"></i>port (colour: who runs it)</span><span><i class="lg pill"></i>job at a port</span><span><i class="lg dia"></i>job in transit</span><span><i class="lg done"></i>played</span><span><i class="lg cur"></i>now playing</span><span><i class="lg ship"></i>${esc(c.ship.name)}</span><button class="ghost small" data-overview>Overview</button></div>
+      </section><section class="cmpside">${side}</section></div>`;
+    if ($("cmpOutcome")) {
+      $("cmpOutcome").value = cmpOutcome;
+      $("cmpOutcome").oninput = (e) => (cmpOutcome = e.target.value);
+    }
+    const mapEl = $("cmpMap");
+    if (mapEl) StationMap.draw(mapEl, {}, cmpSel.kind === "story" ? campaignData.campaigns.find((x) => x.id === c.id).maps[cmpSel.id] : cmpLoc(c, cmpSel.id).map, { editable: false });
+  }
+
+  $("campaignBtn").onclick = async () => {
+    campaignKey = "";
+    $("campaignDialog").showModal();
+    await loadCampaigns();
+    renderCampaign();
+  };
+  $("cmpLeave").onclick = async () => {
+    if (!(await sure("Leave the campaign?", "Forgets the campaign's progress: what was played, the crew it carries and how its people feel. The story being played stays.", "Leave campaign"))) return;
+    send({ t: "campaignLeave" });
+    cmpSel = { kind: "overview", id: "" };
+  };
+  const cmpPick = (e) => {
+    const t = e.target.closest("[data-story], [data-loc], [data-overview]");
+    if (!t) return false;
+    cmpSel = t.dataset.story ? { kind: "story", id: t.dataset.story } : t.dataset.loc ? { kind: "loc", id: t.dataset.loc } : { kind: "overview", id: "" };
+    renderCampaign();
+    return true;
+  };
+  $("cmpBody").addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.matches("g[role=button]")) { e.preventDefault(); cmpPick(e); } });
+  $("cmpBody").addEventListener("click", async (e) => {
+    const start = e.target.closest("[data-start]")?.dataset.start;
+    if (start) {
+      cmpSel = { kind: "overview", id: "" };
+      return send({ t: "campaignStart", id: start });
+    }
+    const play = e.target.closest("[data-play], [data-replay]");
+    if (play) {
+      const c = campaignData.campaigns.find((x) => x.id === S.campaign?.id);
+      const s = c?.stories.find((x) => x.id === (play.dataset.play || play.dataset.replay));
+      if (!s) return;
+      const left = c.stories.find((x) => x.id === S.campaign.current);
+      const text = `The agent builds it around its written arc (a minute or two, on the session's model and key). It replaces the story being played and clears the log; the crew carry over, and players pick their crew files again.${left && left !== s ? ` ${left.title} hasn't been finished: finish it first to keep how it ended.` : ""}`;
+      if (await sure(`Play ${s.title}?`, text, "Play story", "primary")) send({ t: "campaignPlay", story: s.id });
+      return;
+    }
+    if (e.target.id === "cmpFinish") {
+      send({ t: "campaignFinish", outcome: $("cmpOutcome").value });
+      cmpOutcome = "";
+      toast("Story finished. Pick the next job on the map.");
+      return;
+    }
+    cmpPick(e);
   });
 
   const SYN_KINDS = {
@@ -2366,7 +2549,7 @@
   $("discordCmd").onfocus = (e) => e.target.select();
   $("keyBtn").onclick = openKeyDialog;
   $("keywarn").onclick = openKeyDialog;
-  for (const [button, dialog] of [["portraitClose", "portraitDialog"], ["builderClose", "builderDialog"], ["synClose", "synopsisDialog"], ["mapClose", "mapDialog"], ["roomClose", "roomDialog"], ["settingsClose", "settingsDialog"]]) $(button).onclick = () => $(dialog).close();
+  for (const [button, dialog] of [["portraitClose", "portraitDialog"], ["builderClose", "builderDialog"], ["campaignClose", "campaignDialog"], ["synClose", "synopsisDialog"], ["mapClose", "mapDialog"], ["roomClose", "roomDialog"], ["settingsClose", "settingsDialog"]]) $(button).onclick = () => $(dialog).close();
   $("sessionCode").onclick = () => copy(playerLink(), "Player link");
   $("copyPlayer").onclick = () => copy(playerLink(), "Player link");
   $("copyWarden").onclick = async () => (await sure("Copy the Warden link?", "Anyone with it can run your session.", "Copy link", "primary")) && copy(wardenLink(), "Warden link");

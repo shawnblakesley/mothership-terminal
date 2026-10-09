@@ -559,3 +559,53 @@ details.sec > summary h2::before { content: "▸"; font-size: 10px; transition: 
 details.sec[open] > summary h2::before { transform: rotate(90deg); }
 details.sec > summary:hover h2 { color: var(--fg); }
 .top .ghost { color: var(--fg); }
+
+.campaigndlg { width: min(1360px, calc(100vw - 32px)); height: calc(100vh - 40px); max-height: none; display: none; }
+.campaigndlg[open] { display: flex; flex-direction: column; gap: 10px; }
+.campaigndlg h2 { font-size: 14px; }
+.cmpbody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cmplist { overflow-y: auto; display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+.cmplist p, .cmpcard p { margin: 0; }
+.cmpcard { gap: 8px; padding: 14px; }
+.cmpgrid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(420px, 1.55fr) minmax(340px, 1fr); gap: 14px; }
+.cmpmapcol { display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; }
+.cmpside { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.cmpside p { margin: 0; }
+.cmpside details > summary { cursor: pointer; }
+.cmpside .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.cmph { margin: 6px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.cmpacts { margin: 4px 0 0; padding-left: 20px; }
+.cmpacts li { margin: 4px 0; }
+.cmpnow { gap: 6px; border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.cmplink { display: block; width: 100%; text-align: left; white-space: normal; background: transparent; border-color: transparent; padding: 4px 6px; }
+.cmplink + .cmplink { margin-top: 2px; }
+.cmplink.current { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.sector { width: 100%; height: auto; display: block; flex: none; background: radial-gradient(ellipse at 30% 40%, #0f1a1f 0%, #070a0c 70%); border: 1px solid var(--line); border-radius: 10px; }
+.sector .stars circle { fill: #c8d6e0; }
+.sector .lane { stroke: #3a4752; stroke-width: 2.5; }
+.sector .lane.dark { stroke: #5a3a44; stroke-dasharray: 7 7; }
+.sector [role=button] { cursor: pointer; outline: none; }
+.sector .loc .halo { fill: rgba(10, 14, 16, 0.85); stroke-width: 2.5; }
+.sector .loc .name { fill: var(--fg); font: 600 13px var(--mono); letter-spacing: 0.08em; text-anchor: middle; paint-order: stroke; stroke: #070a0c; stroke-width: 4px; }
+.sector .loc.sel .halo, .sector [data-loc]:focus-visible .halo { stroke-width: 4; filter: drop-shadow(0 0 6px currentColor); }
+.sector .story rect { fill: #1b2329; stroke: #8fa3b0; stroke-width: 1.5; }
+.sector .story text { fill: var(--fg); font: 700 11px var(--mono); text-anchor: middle; pointer-events: none; }
+.sector .story:hover rect, .sector .story:focus-visible rect { stroke: var(--fg); fill: #26313a; }
+.sector .story.done rect { fill: #0f1417; stroke: #4a5560; stroke-dasharray: 3 2; }
+.sector .story.done text { fill: var(--muted); }
+.sector .story.current rect { fill: var(--accent-ink); stroke: var(--accent); stroke-width: 2.5; filter: drop-shadow(0 0 6px var(--accent)); }
+.sector .story.sel rect { stroke: var(--warn); stroke-width: 2.5; }
+.sector .story.busy rect { stroke: var(--warn); animation: cmpblink 1s ease-in-out infinite; }
+@keyframes cmpblink { 50% { stroke-opacity: 0.2; } }
+.sector .ship path { fill: #7fe0ff; filter: drop-shadow(0 0 4px #7fe0ff); }
+.sector .ship text { fill: #7fe0ff; font: 700 10px var(--mono); text-anchor: middle; }
+.cmplegend { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+.cmplegend span { display: inline-flex; align-items: center; gap: 6px; }
+.cmplegend .lg { display: inline-block; width: 12px; height: 12px; border: 1.5px solid #8fa3b0; background: #1b2329; }
+.cmplegend .lg.loc { border-radius: 50%; border-color: var(--warn); }
+.cmplegend .lg.pill { border-radius: 6px; width: 16px; }
+.cmplegend .lg.dia { transform: rotate(45deg) scale(0.8); }
+.cmplegend .lg.done { border-style: dashed; border-color: #4a5560; background: #0f1417; }
+.cmplegend .lg.cur { border-color: var(--accent); background: var(--accent-ink); }
+.cmplegend .lg.ship { border: none; background: none; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 11px solid #7fe0ff; }
+@media (max-width: 900px) { .cmpgrid { display: flex; flex-direction: column; overflow-y: auto; } .cmpmapcol, .cmpside { overflow: visible; min-height: auto; flex: none; } }

@@ -17,6 +17,7 @@ import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
 import { setSoundsDir, saveSound, soundPath, deleteSoundFile, deleteSessionSounds, MAX_SOUND_BYTES } from "./sounds.js";
 import { track, gauge } from "./telemetry.js";
 import { startDiscord } from "./discordbot.js";
+import { CAMPAIGNS, ACTS, mapFor } from "./campaign.js";
 for (const p of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "DISCORD_BOT_TOKEN"]) rememberSecret(process.env[p]);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -189,6 +190,10 @@ function isLocalRequest(req) {
 router.get("/api/providers", (req, res) => {
   const local = isLocalRequest(req);
   res.json(catalog(local ? { [LOCAL_KEYS]: true } : {}).map(({ configured, ...p }) => ({ ...p, ...(local && configured && !p.free ? { localKey: true } : {}) })));
+});
+
+router.get("/api/campaigns", (_req, res) => {
+  res.json({ acts: ACTS, campaigns: CAMPAIGNS.map((c) => ({ ...c, maps: Object.fromEntries(c.stories.map((x) => [x.id, mapFor(c, x)])) })) });
 });
 
 router.post("/api/sessions", express.json({ limit: "4kb" }), (req, res) => {

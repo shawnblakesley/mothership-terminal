@@ -9,6 +9,7 @@ import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, changeItem, freshen } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
+import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf } from "./campaign.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
@@ -34,7 +35,7 @@ const PLAYER_INPUT_GAP_MS = 1200;
 const WARDEN_ACTIONS = {
   command: "direction", inject: "speak", note: "note", heard: "speech", effect: "effect", soundPlay: "sound", rollRequest: "roll", retcon: "retcon",
   synopsis: "synopsis", roomShow: "room_show", roomDraft: "room_draft", builderSay: "builder_chat", builderDraft: "builder_draft",
-  builderApply: "builder_apply", resetSession: "story_restart", adversaryShow: "adversary_show",
+  builderApply: "builder_apply", resetSession: "story_restart", adversaryShow: "adversary_show", campaignPlay: "campaign_story",
 };
 const newId = (prefix, n) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 2 + n)}`;
 
@@ -418,6 +419,7 @@ function migrateGame(saved) {
     streamKey: typeof saved.streamKey === "string" ? saved.streamKey : "",
     clocks: Array.isArray(saved.clocks) ? saved.clocks : [],
     storyStart: saved.storyStart && saved.storyStart.config ? saved.storyStart : null,
+    campaign: saved.campaign ? sanitizeProgress(saved.campaign) : null,
     solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
 }
@@ -463,6 +465,7 @@ export class Session {
     this.lastActive = saved.lastActive ?? Date.now();
     this.state = { ...migrateGame(saved.game ?? {}), pending: null, effects: [], playing: [] };
     this.builderBusy = "";
+    this.campaignBusy = "";
     this.synopsisBusy = "";
     this.handoutBusy = false;
     this.speech = new VoiceRelay();
@@ -712,6 +715,7 @@ export class Session {
       canRetcon: this.undoStack.length,
       effects: this.state.effects.filter((e) => this.effectRunning(e)),
       builderBusy: this.builderBusy,
+      campaignBusy: this.campaignBusy,
       roomBusy: this.roomBusy,
       synopsisBusy: this.synopsisBusy,
       code: this.code,
@@ -757,7 +761,7 @@ export class Session {
     this.endAllEffects();
     this.stopSounds();
     this.clearClocks();
-    this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, pending: null, effects: [], playing: [], ...extra, localKeys: s.localKeys, streamKey: s.streamKey };
+    this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, campaign: s.campaign && { ...s.campaign, current: "" }, pending: null, effects: [], playing: [], ...extra, localKeys: s.localKeys, streamKey: s.streamKey };
   }
 
   holdForWarden(raw, note) {
@@ -1261,6 +1265,26 @@ export class Session {
         break;
       case "builderApply":
         if (s.builder.draft && !this.builderBusy) this.applyStory(s.builder.draft);
+        if (s.campaign) s.campaign.current = "";
+        break;
+      case "campaignStart": {
+        const c = campaignById(msg.id);
+        if (!c || this.campaignBusy) break;
+        s.campaign = newProgress(c);
+        this.addLog("note", `Campaign started: ${c.title}. Pick its first story on the sector map.`);
+        break;
+      }
+      case "campaignPlay":
+        if (s.campaign && !this.campaignBusy) this.campaignPlay(String(msg.story || ""));
+        return;
+      case "campaignFinish": {
+        const c = campaignById(s.campaign?.id);
+        const story = c && finishInto(s.campaign, c, s.config, msg.outcome);
+        if (story) this.addLog("note", `Campaign story finished: ${story.title}.${s.campaign.done.at(-1).outcome ? ` ${s.campaign.done.at(-1).outcome}` : ""}`);
+        break;
+      }
+      case "campaignLeave":
+        if (!this.campaignBusy) s.campaign = null;
         break;
       case "terminals": {
         const players = [...this.sockets].filter((c) => c.role === "player");
@@ -1576,13 +1600,45 @@ export class Session {
     this.syncDm();
   }
 
-  applyStory(draft) {
+  async campaignPlay(id) {
+    const s = this.state, p = s.campaign, c = campaignById(p?.id);
+    const story = c?.stories.find((x) => x.id === id);
+    if (!story) return;
+    this.campaignBusy = id;
+    this.syncDm();
+    try {
+      let raw;
+      for (let attempt = 1; ; attempt++) {
+        try {
+          raw = await this.ask(campaignRequest(c, story, p), "builder");
+          if (!raw?.lore || !raw?.computer) throw Object.assign(new Error("the story came back incomplete"), { incomplete: true });
+          break;
+        } catch (err) {
+          if (attempt >= 2 || (!err.incomplete && !/cut off|valid JSON|empty/i.test(err?.message || ""))) throw err;
+          console.warn(`[${this.code}] campaign story retry: ${err.message}`);
+        }
+      }
+      if (this.state.campaign !== p) throw new Error("the campaign was left while the story was being built");
+      this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config) => carryInto(config, c, story, p));
+      p.current = story.id;
+      this.addLog("note", `${c.title}, story ${story.n}: ${story.title} (${placeOf(c, story)}). The arc is in the standing orders.`);
+    } catch (err) {
+      console.error(`[${this.code}] campaign story failed:`, err?.message || err);
+      this.send("dm", { t: "toast", level: "error", text: `Couldn't build ${story.title}: ${err?.message || err}` });
+    }
+    this.campaignBusy = "";
+    this.touch();
+    this.syncDm();
+  }
+
+  applyStory(draft, patch) {
     this.clearClocks();
     const s = this.state;
     const { config, station } = applyDraft(draft);
     this.genCounter++;
     this.playhead = 0;
     Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] });
+    patch?.(s.config);
     s.config.roomDocs = sanitizeRoomDocs(config.roomDocs);
     Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopses: {} });
     this.endAllEffects();

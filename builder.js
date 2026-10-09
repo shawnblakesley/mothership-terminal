@@ -6,7 +6,7 @@ import { LOOKS, DEFAULT_TERMINALS, sanitizeTerminals, netKey } from "./terminals
 const THEMES = ["green", "amber", "cyan", "white", "red"];
 const PRESET_IDS = Object.keys(PRESETS);
 
-const APP_BRIEF = `HOW THIS GAME IS PLAYED
+export const APP_BRIEF = `HOW THIS GAME IS PLAYED
 This is a Mothership (sci-fi horror TTRPG) session run through an app. The players sit at a computer terminal aboard a station or ship and type to it. An AI (you, later, in play) voices everything that can talk to them: the station computer (its OS, with its own name and personality), station-wide announcements, and other voices such as the intercom, where several named people can speak, each with their own voice, or something that should not be in the system. The Warden (game master) steers, calls for Mothership rolls (Stats: Strength, Speed, Intellect, Combat; Saves: Sanity, Fear, Body; roll d100 under the number), and can fire screen effects (alarms, glitches, blackouts...).
 The scenario needs: a station or ship; public lore; secrets the computer guards by access level (passwords, company directives, what really happened); a station state the computer tracks (doors, lights per deck, cameras, systems...); a deck/room layout; the cast of people who can be heard; and up to 4 player characters with backstories tied to why they are there.`;
 
@@ -57,7 +57,7 @@ const CHAT_SCHEMA = obj({
   ready: { type: "boolean", description: "True once there's enough to draft the whole scenario." },
 });
 
-const DRAFT_SCHEMA = obj({
+export const DRAFT_SCHEMA = obj({
   title: str,
   pitch: str,
   stationName: str,
@@ -103,7 +103,7 @@ const DRAFT_SCHEMA = obj({
   },
 });
 
-const SPEAKER_LIST = `SPEAKER VOICES (for the cast): ${Object.entries(SPEAKERS).map(([id, d]) => `${id} = ${d}`).join("; ")}.`;
+export const SPEAKER_LIST = `SPEAKER VOICES (for the cast): ${Object.entries(SPEAKERS).map(([id, d]) => `${id} = ${d}`).join("; ")}.`;
 
 function transcript(b) {
   const msgs = b.messages.map((m) => ({ role: m.role === "warden" ? "user" : "assistant", content: m.role === "warden" ? m.text : JSON.stringify({ reply: m.text, ready: false }) }));
