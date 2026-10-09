@@ -339,7 +339,7 @@
     }
     const text = (part.i ? "\n" : "") + (play.pieces[part.i] ?? "");
     const late = serverNow() - part.at;
-    if (audio) audio.then((buf) => play.gen === lineGen && !play.cut && Voice.playNow(buf, play.entry.inPerson ? {} : voiceOf(play.entry)?.fx));
+    if (audio) audio.then((buf) => play.gen === lineGen && !play.cut && (buf?.composed || part.composed ? Voice.playNow(buf, null, part.dur / 1000) : Voice.playNow(buf, play.entry.inPerson ? {} : voiceOf(play.entry)?.fx)));
     if (late > part.dur * 0.6) { textOf(play.div).textContent += text; scrollDown(); }
     else typeInto(textOf(play.div), text, part.dur - Math.max(0, late));
     if (part.last) setTimeout(() => finishLine(play), Math.max(0, part.dur - Math.max(0, late)));
@@ -882,7 +882,7 @@
       lines[i].scrollIntoView({ block: "nearest" });
       state(`PLAYING ${i + 1}/${lines.length}`);
       if (buf) {
-        log.clip = Voice.playClip(buf, d.audio.lines[i].fx);
+        log.clip = buf.composed ? Voice.playClip(buf, null, buf.seconds) : Voice.playClip(buf, d.audio.lines[i].fx);
         if (!(await log.clip.done) || gen !== logGen) return;
       }
       lines[i].classList.replace("now", "said");

@@ -375,6 +375,8 @@ Spoken text is revealed in step with the voice: each line appears as it starts b
 
 A **blackout** cuts off the voice that's speaking instantly. Queued lines wait for the lights to come back, then carry on.
 
+**Voices made on the Warden's computer:** while the Warden's console is open, it makes the voices itself (eSpeak, and the human voices with Kokoro, on WebGPU where the browser has it) and adds each voice's effects, then sends the finished clips through the server to the players and Discord. The server does no speech or effects work for those lines. The human-voice model downloads into the Warden's browser once (about 90 MB, or 300 MB on WebGPU) and is cached after that. The server still makes the voices itself when there's no Warden (games without one), while the human voices are still loading, if a clip takes too long (it then leaves the Warden's computer alone for a minute), or if the Warden turns **make the voices on this computer** off under Settings, Session. Finished clips are bigger than plain speech for voices with reverb, since the ring-out is part of the clip.
+
 **Speed:**
 
 - The human-voice model runs at full precision (`TTS_DTYPE=fp32`) on all CPU cores, which is about 4× faster on CPUs than the 8-bit model.

@@ -9,7 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { synthesize, setCacheDir, warmNeural } from "./tts.js";
-import { sanitizeVoices, speechParts } from "./voices.js";
+import { sanitizeVoices, speechParts, voiceFor } from "./voices.js";
 import { speakingVoice } from "./cast.js";
 import { setPortraitsDir, savePortrait, portraitPath, portraitType, deleteSessionPortraits, MAX_PORTRAIT_BYTES } from "./portraits.js";
 import { getProvider, looksLikeKey, catalog, offered, fixSelection, LOCAL_KEYS } from "./providers/index.js";
@@ -175,6 +175,8 @@ router.get("/stream", (_req, res) => { track("PageView", { Page: "stream" }); no
 router.get("/healthz", (req, res) => res.json({ ok: true, sessions: sessions.size, you: clientIp(req) }));
 router.use("/vendor/three/addons", express.static(path.join(here, "node_modules", "three", "examples", "jsm"), { index: false, maxAge: "7d" }));
 router.use("/vendor/three", express.static(path.join(here, "node_modules", "three", "build"), { index: false, maxAge: "7d" }));
+router.use("/vendor/kokoro", express.static(path.join(here, "node_modules", "kokoro-js", "dist"), { index: false, maxAge: "7d" }));
+router.use("/vendor/mespeak", express.static(path.join(here, "node_modules", "mespeak"), { index: false, maxAge: "7d" }));
 router.use(express.static(pub, { index: false, maxAge: 0 }));
 
 function isLocalRequest(req) {
@@ -217,8 +219,10 @@ const wardenOf = (req) => {
 
 async function sendWav(res, job, empty, what) {
   try {
-    const wav = await job();
+    const clip = await job();
+    const wav = Buffer.isBuffer(clip) ? clip : clip?.wav;
     if (!wav) return res.status(empty).end();
+    if (clip.composed) res.set({ "X-Voice-Composed": "1", "X-Speech-Seconds": String(clip.seconds) });
     res.set("Content-Type", "audio/wav").send(wav);
   } catch (err) {
     console.error(`${what} failed:`, err?.message || err);
@@ -253,7 +257,16 @@ router.get("/api/sessions/:code/tts/:id", async (req, res) => {
   const whole = req.query.v === undefined ? entry.text : entry.variants?.[Number(req.query.v)]?.text;
   const text = whole === undefined ? undefined : req.query.part === undefined ? whole : speechParts(whole)[Number(req.query.part)];
   if (text === undefined) return res.status(404).end();
-  await sendWav(res, () => synthesize(text, speakingVoice(s.state.config, entry)), 204, "tts");
+  const c = s.state.config;
+  await sendWav(res, () => s.speech.speak(text, speakingVoice(c, entry), entry.inPerson ? {} : voiceFor(c.voices, entry)?.fx || {}), 204, "tts");
+});
+
+router.post("/api/sessions/:code/spoken/:id", express.raw({ type: () => true, limit: 16 * 1024 * 1024 }), (req, res) => {
+  noStore(res);
+  const s = wardenOf(req);
+  if (!s) return res.status(403).end();
+  const wav = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  res.status(s.speech.receive(req.params.id, wav, Number(req.get("x-speech-seconds"))) ? 204 : 404).end();
 });
 
 router.get("/api/sessions/:code/handouts/:id/audio/:part", async (req, res) => {
@@ -379,7 +392,7 @@ wss.on("connection", (ws, req) => {
         if (joined) track(wantsStream ? "StreamJoined" : "WardenJoined");
         return;
       }
-      if (ws.role === "dm") session.handleDm(msg);
+      if (ws.role === "dm") session.handleDm(msg, ws);
       else session.handlePlayer(ws, msg);
     } catch (err) {
       console.error(`[${session.code}] handler error`, err);

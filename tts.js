@@ -162,14 +162,20 @@ export function wavSeconds(buf) {
   return 0;
 }
 
-export function synthesize(text, voice) {
+export function prepare(text, voice) {
   const say = speakable(text);
-  if (!say) return Promise.resolve(null);
-  const isNeural = voice.engine === "neural";
-  const opts = isNeural
+  if (!say) return null;
+  const neural = voice.engine === "neural";
+  const opts = neural
     ? { engine: "neural", speaker: voice.speaker, pace: voice.pace }
     : { pitch: voice.pitch, speed: voice.speed, wordgap: voice.wordgap, ...(voice.variant ? { variant: voice.variant } : {}) };
-  const key = `${JSON.stringify(opts)}|${say}`;
+  return { say, neural, opts, text: neural ? sentenceCase(say) : say, key: `${JSON.stringify(opts)}|${say}` };
+}
+
+export function synthesize(text, voice) {
+  const prep = prepare(text, voice);
+  if (!prep) return Promise.resolve(null);
+  const { say, opts, key } = prep, isNeural = prep.neural;
   const hit = cache.get(key);
   if (hit) {
     cache.delete(key);

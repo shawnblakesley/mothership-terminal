@@ -79,9 +79,17 @@
   }
 
   const decodeResponse = (response) => response
-    .then((r) => (r.ok && r.status !== 204 ? r.arrayBuffer() : null))
-    .then((buf) => (buf ? ctx().decodeAudioData(buf) : null))
+    .then(async (r) => {
+      if (!r.ok || r.status === 204) return null;
+      const composed = r.headers.get("X-Voice-Composed") === "1", seconds = Number(r.headers.get("X-Speech-Seconds")) || undefined;
+      return Object.assign(await ctx().decodeAudioData(await r.arrayBuffer()), { composed, seconds });
+    })
     .catch(() => null);
+  const route = (c, src, out, fx, duration) => {
+    if (fx) return chain(c, src, out, fx, duration);
+    src.connect(out);
+    return [];
+  };
   const stopLater = (sources) => setTimeout(() => sources.forEach((s) => { try { s.stop(); } catch {} }), 6000);
   const gain = (c, v) => { const g = c.createGain(); g.gain.value = v; return g; };
   const filter = (c, type, freq, q = 0.7) => {
@@ -203,15 +211,14 @@
   }
 
   let busyUntil = 0;
-  function playNow(buffer, fx = {}) {
+  function playNow(buffer, fx = {}, seconds) {
     if (!buffer || !ready() || blocked()) return;
     const c = ctx();
-    const rate = fx.rate || 1;
     const when = Math.max(c.currentTime, busyUntil);
-    busyUntil = when + buffer.duration / rate;
+    busyUntil = when + (seconds ?? buffer.duration / (fx?.rate || 1));
     const src = c.createBufferSource();
     src.buffer = buffer;
-    const sources = chain(c, src, getMaster(), fx, buffer.duration);
+    const sources = route(c, src, getMaster(), fx, buffer.duration);
     live.add(src);
     src.onended = () => {
       live.delete(src);
@@ -220,20 +227,42 @@
     sources.forEach((x) => x.start(when));
     src.start(when);
   }
-  function playClip(buffer, fx = {}) {
+  function playClip(buffer, fx = {}, seconds) {
     const c = ctx(), src = c.createBufferSource();
     src.buffer = buffer;
-    const sources = chain(c, src, getMaster(), fx, buffer.duration);
+    const sources = route(c, src, getMaster(), fx, buffer.duration);
     let stopped = false;
     const done = new Promise((resolve) => {
       src.onended = () => {
         resolve(!stopped);
         stopLater(sources);
       };
+      if (seconds) setTimeout(() => resolve(!stopped), seconds * 1000);
     });
     sources.forEach((x) => x.start());
     src.start();
     return { done, stop() { stopped = true; try { src.stop(); } catch {} } };
+  }
+  const COMPOSE_RATE = 24000;
+  async function compose(buffer, fx = {}) {
+    const p = { rate: 1, echo: 0, echoTime: 0.4, echoFeedback: 0.35, reverb: 0, ...fx };
+    const seconds = buffer.duration / (p.rate || 1);
+    let tail = 0.3;
+    if (p.echo > 0) tail = Math.max(tail, Math.min(6, p.echoTime * (p.echoFeedback > 0.01 ? Math.log(0.001 / p.echo) / Math.log(p.echoFeedback) + 1 : 1)));
+    if (p.reverb > 0) tail = Math.max(tail, 4.5);
+    const channels = p.reverb > 0 ? 2 : 1;
+    const c = new OfflineAudioContext(channels, Math.ceil((seconds + tail) * COMPOSE_RATE), COMPOSE_RATE);
+    const src = c.createBufferSource();
+    src.buffer = buffer;
+    chain(c, src, c.destination, fx, buffer.duration).forEach((x) => x.start());
+    src.start();
+    const out = await c.startRendering();
+    const data = [...Array(channels)].map((_, ch) => out.getChannelData(ch));
+    let end = out.length;
+    while (end > seconds * COMPOSE_RATE && data.every((d) => Math.abs(d[end - 1]) < 0.002)) end--;
+    const trimmed = new AudioBuffer({ numberOfChannels: channels, length: Math.max(1, end), sampleRate: COMPOSE_RATE });
+    data.forEach((d, ch) => trimmed.copyToChannel(d.subarray(0, end), ch));
+    return { buffer: trimmed, seconds };
   }
   const cutLive = () => { for (const x of live) { try { x.stop(); } catch {} } live.clear(); busyUntil = 0; };
 
@@ -258,6 +287,7 @@
     decode,
     playNow,
     playClip,
+    compose,
     setBlocked(fn) { blocked = fn; },
   };
 })();

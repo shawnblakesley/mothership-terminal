@@ -3,7 +3,7 @@ import { FX_PARAMS } from "./voices.js";
 
 const SR = 24000;
 
-function readWav(buf, rate = 1) {
+function readWav(buf, rate = 1, stereo = false) {
   if (buf.length < 44 || buf.toString("latin1", 0, 4) !== "RIFF") return null;
   let p = 12, fmt = null, data = null;
   while (p + 8 <= buf.length) {
@@ -15,22 +15,26 @@ function readWav(buf, rate = 1) {
   if (!fmt || !data) return null;
   const float = fmt.format === 3 || (fmt.format === 0xfffe && fmt.bits === 32);
   const bytes = fmt.bits / 8, frames = Math.floor(data.length / (bytes * fmt.channels));
-  const mono = new Float64Array(frames);
-  for (let i = 0; i < frames; i++) {
-    let sum = 0;
-    for (let ch = 0; ch < fmt.channels; ch++) {
-      const o = (i * fmt.channels + ch) * bytes;
-      sum += float ? data.readFloatLE(o) : bytes === 2 ? data.readInt16LE(o) / 32768 : 0;
-    }
-    mono[i] = sum / fmt.channels;
-  }
+  const sample = (i, ch) => {
+    const o = (i * fmt.channels + ch) * bytes;
+    return float ? data.readFloatLE(o) : bytes === 2 ? data.readInt16LE(o) / 32768 : 0;
+  };
   const step = (fmt.rate / SR) * rate;
-  const out = new Float64Array(Math.max(0, Math.floor((frames - 1) / step)));
-  for (let i = 0; i < out.length; i++) {
-    const x = i * step, k = Math.floor(x), f = x - k;
-    out[i] = mono[k] * (1 - f) + (mono[k + 1] ?? 0) * f;
-  }
-  return out;
+  const resample = (pick) => {
+    const src = Float64Array.from({ length: frames }, (_, i) => pick(i));
+    const out = new Float64Array(Math.max(0, Math.floor((frames - 1) / step)));
+    for (let i = 0; i < out.length; i++) {
+      const x = i * step, k = Math.floor(x), f = x - k;
+      out[i] = src[k] * (1 - f) + (src[k + 1] ?? 0) * f;
+    }
+    return out;
+  };
+  if (stereo) return [resample((i) => sample(i, 0)), resample((i) => sample(i, fmt.channels - 1))];
+  return resample((i) => {
+    let sum = 0;
+    for (let ch = 0; ch < fmt.channels; ch++) sum += sample(i, ch);
+    return sum / fmt.channels;
+  });
 }
 
 function biquad(type, freq, q) {
@@ -141,6 +145,10 @@ function convolve(input, n) {
 
 const FX_DEFAULTS = Object.fromEntries(Object.entries(FX_PARAMS).map(([k, [, , def]]) => [k, def]));
 function render(wav, fx = {}) {
+  if (fx === null) {
+    const [left, right] = readWav(wav, 1, true) || [];
+    return left?.length ? pcm48(left, right, left.length) : null;
+  }
   const p = { ...FX_DEFAULTS, ...fx };
   const src = readWav(wav, p.rate || 1);
   if (!src || !src.length) return null;
@@ -197,6 +205,10 @@ function render(wav, fx = {}) {
   const [left, right] = verbIn ? convolve(verbIn, n).map((ch) => ch.map((x, i) => out[i] + x * p.reverb)) : [out, out];
   let end = n;
   while (end > len && Math.abs(left[end - 1]) < 1e-4 && Math.abs(right[end - 1]) < 1e-4) end--;
+  return pcm48(left, right, end);
+}
+
+function pcm48(left, right, end) {
   const pcm = Buffer.alloc(end * 2 * 4);
   const s16 = (x) => Math.max(-32768, Math.min(32767, Math.round(x * 32767)));
   for (let i = 0; i < end; i++) {

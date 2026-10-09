@@ -80,7 +80,9 @@
         }
         const groq = S.discord?.enabled && !S.discord.sttKey && store.get("wardenKey:groq");
         if (groq && !autoSttSent) { autoSttSent = true; send({ t: "sttKey", key: groq }); }
-      } else if (msg.t === "toast") toast(msg.text, msg.level);
+        if (!ws.voicesAnnounced) { ws.voicesAnnounced = true; announceVoices(); }
+      } else if (msg.t === "speak") speakHere(msg);
+      else if (msg.t === "toast") toast(msg.text, msg.level);
       else if (msg.t === "handoutWriting") handoutWriting(msg.busy);
       else if (msg.t === "handoutDraft") {
         $("docTitle").value = msg.title;
@@ -89,6 +91,31 @@
         toast("Handout drafted. Review it, then hand it out.");
       }
     };
+  }
+
+  const localVoices = () => store.get("localVoices") !== "0";
+  function announceVoices() {
+    const r = Speech.ready, on = localVoices();
+    $("localVoices").checked = on;
+    $("localVoicesNote").textContent = !on ? "off: the server makes them"
+      : `${r.espeak ? "ready" : "starting"}; human voices ${r.neural ? "ready" : "loading (a one-time download)"}`;
+    if (!on) return send({ t: "voiceEngine", on: false });
+    Speech.start(announceVoices);
+    send({ t: "voiceEngine", on: r.espeak, neural: r.neural });
+  }
+  $("localVoices").onchange = (e) => {
+    store.set("localVoices", e.target.checked ? "1" : "0");
+    if (!e.target.checked) Speech.stop();
+    announceVoices();
+  };
+  async function speakHere({ id, engine, text, opts, fx }) {
+    try {
+      const { wav, seconds } = await Speech.make(engine, text, opts, fx);
+      const r = await fetch(`api/sessions/${code}/spoken/${id}`, { method: "POST", headers: { "X-Warden-Token": key, "X-Speech-Seconds": String(seconds), "Content-Type": "application/octet-stream" }, body: wav });
+      if (!r.ok) throw new Error(r.status);
+    } catch {
+      send({ t: "spokenFailed", id });
+    }
   }
 
   function toast(text, level = "info") {
