@@ -13,6 +13,8 @@ export const CHECKS = {
 };
 
 export const PANIC = "panic";
+// A ship check (SBT, via a summary): rolled like a Stat Check against the ship's Thrusters, Battle or Systems, with one character's skill bonus. req.ship = { stat, label, value }.
+export const SHIP = "ship";
 const PANIC_CHECK = { label: "Panic", kind: "Panic" };
 export const checkInfo = (check) => (check === PANIC ? PANIC_CHECK : CHECKS[check]);
 
@@ -47,6 +49,7 @@ export function sanitizeRequest(raw, crew = []) {
 
 export function rollTarget(req, pc) {
   if (req.check === PANIC) return { stat: pc.stress, bonus: 0 };
+  if (req.check === SHIP) return { stat: req.ship.value, bonus: findSkill(pc, req.skill)?.bonus ?? 0 };
   return { stat: pc.stats[req.check] ?? pc.saves[req.check], bonus: findSkill(pc, req.skill)?.bonus ?? 0 };
 }
 
@@ -105,8 +108,9 @@ function resolvePanic(request, stressValue, dice) {
 const pad = (d) => String(d).padStart(2, "0");
 
 export function checkLabel(req) {
-  const c = checkInfo(req.check);
   const adv = req.advantage === "advantage" ? " [+]" : req.advantage === "disadvantage" ? " [-]" : "";
+  if (req.check === SHIP) return `SHIP ${req.ship.stat.toUpperCase()} CHECK${adv}`;
+  const c = checkInfo(req.check);
   return `${c.label.toUpperCase()} ${c.kind === "Save" ? "SAVE" : "CHECK"}${adv}`;
 }
 
@@ -122,6 +126,7 @@ export function resultText(req, res) {
   if (res.panic) {
     return `${head}\nSTRESS ${res.stat} · ROLLED ${rolled} (D20)\n${res.success ? "KEPT THEIR COOL" : `PANIC · PANIC TABLE RESULT ${res.used}`}`;
   }
-  const tail = res.success ? "" : " · +1 STRESS";
-  return `${head}\nTARGET ${res.target}${res.bonus ? ` (${res.stat}+${res.bonus})` : ""} · ROLLED ${rolled}\n${res.outcome.toUpperCase()}${res.panicCheck ? ": PANIC CHECK" : ""}${tail}`;
+  const ship = req.check === SHIP, who = ship ? "ALL CREW " : "";
+  const tail = res.success ? "" : ship ? " · ALL CREW +1 STRESS" : " · +1 STRESS";
+  return `${head}\nTARGET ${res.target}${res.bonus ? ` (${res.stat}+${res.bonus})` : ""} · ROLLED ${rolled}\n${res.outcome.toUpperCase()}${res.panicCheck ? `: ${who}PANIC CHECK` : ""}${tail}`;
 }

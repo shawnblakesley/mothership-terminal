@@ -23,6 +23,7 @@ import { downtimeReady, planRoll, settleRoll, mirror, passDays, treat, treatment
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
+import { shipDm, shipPlayer, shipRollDone, shipClockRan, shipSnapshot, restoreShip, shipDmView, shipPlayerView, applyShipFight } from "./shipfight.js";
 import { track } from "./telemetry.js";
 import { roomId, keyOf } from "./clean.js";
 import { rememberSecret } from "./redact.js";
@@ -458,6 +459,7 @@ function migrateGame(saved) {
     storyStart: saved.storyStart && saved.storyStart.config ? saved.storyStart : null,
     campaign: saved.campaign ? sanitizeProgress(saved.campaign) : null,
     rationing: saved.rationing === true,
+    shipFight: Array.isArray(saved.shipFight?.ships) && saved.shipFight.ships.length ? saved.shipFight : null,
     solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
 }
@@ -785,6 +787,7 @@ export class Session {
       portraits: Object.fromEntries((c.cast || []).filter((m) => m.portrait).map((m) => [m.name.toLowerCase(), m.portrait])),
       portraitCredit: [...(c.cast || []), ...c.crew].some((m) => m.portrait?.startsWith("kit/")),
       rig: this.rigView(),
+      ship: shipPlayerView(this),
     };
   }
 
@@ -915,6 +918,7 @@ export class Session {
       resupply: this.resupplyOf(),
       downtime: this.downtimeOf(),
       rig: this.rigView(),
+      ships: shipDmView(this),
       sectorShown: this.sectorShown,
       sectorVotes: this.sectorTally(true),
       roomBusy: this.roomBusy,
@@ -1146,6 +1150,7 @@ export class Session {
     if (msg.t === "finalWords") return this.finalWords(ws, msg.text);
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
+    if (msg.t === "shipStation" || msg.t === "shipMove" || msg.t === "shipFire") return shipPlayer(this, ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
     if (String(msg.t).startsWith("cg")) return handleChargen(this, ws, msg);
     if (msg.t === "claim") {
@@ -1183,6 +1188,7 @@ export class Session {
 
   handleDm(msg, ws) {
     const s = this.state;
+    if (String(msg.t).startsWith("ship")) return shipDm(this, msg);
     if (STORY_ACTIONS.has(msg.t)) this.storyBegins();
     const action = WARDEN_ACTIONS[msg.t];
     if (action) track("WardenAction", { Action: action });
@@ -1292,8 +1298,8 @@ export class Session {
       case "approve":
         if (!s.pending || s.pending.status !== "ready") break;
         this.logDirectives(s.pending.directives);
-        const { attacks, crew_attacks, reloads, round, reveal_death_save } = s.pending.reply || {};
-        this.deliver({ ...msg.reply, outcome_check: s.pending.reply?.outcome_check, attacks, crew_attacks, reloads, round, reveal_death_save }, "agent");
+        const { attacks, crew_attacks, reloads, round, reveal_death_save, ship_fight } = s.pending.reply || {};
+        this.deliver({ ...msg.reply, outcome_check: s.pending.reply?.outcome_check, attacks, crew_attacks, reloads, round, reveal_death_save, ship_fight }, "agent");
         s.pending = null;
         this.setBusy(false);
         break;
@@ -2103,7 +2109,7 @@ export class Session {
     Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] });
     patch?.(s.config, station);
     s.config.roomDocs = sanitizeRoomDocs(config.roomDocs);
-    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, synopses: {} });
+    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, synopses: {}, shipFight: null });
     this.endAllEffects();
     this.stopSounds();
     this.hazardUnits = [];
@@ -2151,7 +2157,7 @@ export class Session {
     if (!r || r.status !== "waiting") return null;
     return {
       id: r.id, check: r.check, label: checkLabel(r), skill: skillLabel(r), skillName: r.skill, bonus: r.bonus, reason: r.reason, advantage: r.advantage,
-      panic: r.check === PANIC, all: r.all, stakes: r.stakes || null,
+      panic: r.check === PANIC, all: r.all, stakes: r.stakes || null, ship: r.ship ? { stat: r.ship.stat, label: r.ship.label, value: r.ship.value } : null,
       pcs: r.pcs.map((p) => {
         const pc = this.crewById(p.id);
         const plus = !!pc && r.check === PANIC && this.plusAvailable(pc);
@@ -2178,8 +2184,8 @@ export class Session {
     const usePlus = r.check === PANIC && (plus || r.plus) && this.plusAvailable(pc);
     const req = { ...r, advantage: effectiveAdvantage(r, pc, this.advOpts(pc, r, usePlus)) };
     const { stat, bonus } = rollTarget(r, pc);
-    const result = resolve(req, r.check === PANIC ? stat : stat - (pc.cond?.rad || 0), dice ?? diceFor(req), bonus);
-    track("Roll", { Kind: r.check === PANIC ? "panic" : CHECKS[r.check].kind === "Save" ? "save" : "stat", Who: r.all ? "all" : "one" });
+    const result = resolve(req, r.check === PANIC || r.check === "ship" ? stat : stat - (pc.cond?.rad || 0), dice ?? diceFor(req), bonus);
+    track("Roll", { Kind: r.check === PANIC ? "panic" : r.check === "ship" ? "ship" : CHECKS[r.check].kind === "Save" ? "save" : "stat", Who: r.all ? "all" : "one" });
     r.results[pc.id] = { result, manual, by };
     if (usePlus) {
       s.panicPlus[pc.id] = true;
@@ -2215,6 +2221,7 @@ export class Session {
   }
 
   afterRoll(pc, req, result, fx, ownStress = false) {
+    if (req.check === "ship") return; // a ship check's consequences go to the whole crew when its step resolves (shipfight.js)
     if (result.stress && !ownStress) this.stressFromRoll(pc, result.stress);
     if (fx?.minStress) {
       const [was, now] = raiseMinStress(pc, fx.minStress);
@@ -2252,6 +2259,10 @@ export class Session {
     Object.assign(r, { status: "done", finishedAt: Date.now() });
     this.toPlayers({ t: "roll", roll: null });
     this.syncDm();
+    if (r.ship) {
+      shipRollDone(this, r);
+      if (this.state.roll !== r && this.state.roll?.status === "waiting") return;
+    }
     if (r.downtime) {
       this.nextDowntime();
       return;
@@ -2759,8 +2770,12 @@ export class Session {
     for (const d of directives) this.addLog("warden", d);
   }
 
+  undoSnapshot() {
+    return { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll), ship: shipSnapshot(this) };
+  }
+
   deliver(reply, source) {
-    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll) };
+    this.delivering = this.undoSnapshot();
     try {
       this.deliverReply(reply, source);
     } finally {
@@ -2791,6 +2806,7 @@ export class Session {
     for (const [id, stats] of undo.adversaries || []) { const v = s.config.voices.find((x) => x.id === id); if (v?.adversary) v.adversary.stats = stats; }
     if (s.roll && undo.roll && s.roll.id === undo.roll.id) s.roll.results = undo.roll.results;
     s.outcomeCheck = undo.outcome;
+    restoreShip(this, undo.ship);
     this.playhead = 0;
     this.addLog("note", "↶ Retconned the agent's last reply.");
     this.initPlayers();
@@ -2869,6 +2885,7 @@ export class Session {
     if (source === "agent") {
       this.applyHazardChanges(reply?.hazards);
       if (reply?.time_passes?.hours > 0) this.passTime(reply.time_passes.hours);
+      applyShipFight(this, reply?.ship_fight);
     }
     for (const e of effects) this.startEffect(e, "agent");
     this.applyCrewChanges(reply?.crew_changes);
@@ -3341,7 +3358,7 @@ export class Session {
     s.station.access_level = DEFAULT_STATION.access_level;
     delete s.station.hazards;
     for (const pc of s.config.crew) pc.cond = newCond();
-    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, storyStart: null, deathSaves: {} });
+    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, storyStart: null, deathSaves: {}, shipFight: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);
     this.toPlayers({ t: "roomPlan", rows: null });
@@ -3521,6 +3538,7 @@ export class Session {
     if (!c) return;
     this.removeClock(c);
     this.clocksChanged();
+    if (shipClockRan(this, c)) return;
     this.addLog("warden", `CLOCK RAN OUT: ${c.label}. Make it happen now, in the fiction, with real consequences.`);
     this.syncDm();
     this.requestReply();

@@ -328,6 +328,7 @@
     renderSounds();
     renderClocks();
     renderHazards();
+    renderShip();
     renderHandouts();
     renderCastLists();
     renderMap();
@@ -517,6 +518,12 @@
         ...(r.round ? ["A round passes: Bleeding hurts"] : []),
         ...(r.reveal_death_save || []).map((n) => `Death Save revealed: ${esc(n)}`),
       ].map((t) => `<li>${t}</li>`).join("")}</ul>` : ""}
+      ${r.ship_fight ? `<div class="label">Ship fight <span class="muted">applied when you send</span></div><ul>${[
+        r.ship_fight.start && `Starts a ship fight with ${esc(r.ship_fight.start.ship)} at ${esc(r.ship_fight.start.range)} range`,
+        r.ship_fight.enemy_move && `The enemy chooses ${esc(r.ship_fight.enemy_move)}${r.ship_fight.fuel ? `, ${r.ship_fight.fuel} fuel` : ""}`,
+        typeof r.ship_fight.enemy_fire === "boolean" && `The enemy ${r.ship_fight.enemy_fire ? "fires" : "holds fire"}`,
+        r.ship_fight.end && "Ends the ship fight",
+      ].filter(Boolean).map((t) => `<li>${t}</li>`).join("")}</ul>` : ""}
       ${r.station_changes.length ? `<div class="label">Station changes</div><ul>${r.station_changes.map((c, i) =>
         `<li><label><input type="checkbox" data-chg="${i}" checked> ${esc(c.path)} → ${esc(c.value)}</label></li>`).join("")}</ul>` : ""}
       ${r.effects.length ? `<div class="label">Effects</div><ul>${r.effects.map((f, i) =>
@@ -1292,7 +1299,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
         <div class="small">${stores}</div></div>
       <h3 class="cmph">Travel from ${esc(cmpLoc(c, p.at)?.name || "")}</h3>${travel || '<p class="muted small">No lanes.</p>'}
       <h3 class="cmph">Resupply</h3>${shop}
-    </details>`;
+    </details>${window.ShipUI?.rig(S) || ""}`;
   }
   const TANK_UNITS = 10, DEBT_EVERY = 2, DUES_PCT = 4;
 
@@ -1422,7 +1429,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   function renderCampaign() {
     if (!$("campaignDialog").open || !campaignData) return;
     const p = S.campaign, c = p && campaignData.campaigns.find((x) => x.id === p.id);
-    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes, S.rig, cmpFin, cmpMove.from, cmpMove.to, S.downtime, cmpDt, cmpTr, S.config.crew.map((x) => [x.stress, x.minStress, x.health, x.wounds, x.saves, x.stats, x.cond?.tags, x.credits]), S.config.crew.map((x) => [x.id, x.cond?.dead, x.retired, x.highScore, x.endedIn, x.finalWords, x.epitaph])]);
+    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes, S.rig, S.ships?.rig, cmpFin, cmpMove.from, cmpMove.to, S.downtime, cmpDt, cmpTr, S.config.crew.map((x) => [x.stress, x.minStress, x.health, x.wounds, x.saves, x.stats, x.cond?.tags, x.credits]), S.config.crew.map((x) => [x.id, x.cond?.dead, x.retired, x.highScore, x.endedIn, x.finalWords, x.epitaph])]);
     if (key === campaignKey || document.activeElement?.matches?.("#cmpBody [data-epitaph]")) return;
     campaignKey = key;
     $("cmpLeave").hidden = !c;
@@ -1507,6 +1514,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   });
   $("cmpBody").addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.matches("g[role=button]")) { e.preventDefault(); cmpPick(e); } });
   $("cmpBody").addEventListener("click", async (e) => {
+    const shipBtn = e.target.closest("[data-ship]");
+    if (shipBtn) return window.ShipUI.rigClick(shipBtn, S, send, sure);
     const start = e.target.closest("[data-start]")?.dataset.start;
     if (start) {
       cmpSel = { kind: "overview", id: "" };
@@ -2993,6 +3002,10 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     }).join("") : '<li class="muted small">None running.</li>';
   }
   setInterval(() => S?.clocks?.some((c) => !c.paused) && renderClocks(), 1000);
+  function renderShip() {
+    $("shipHead").hidden = !S.ships;
+    window.ShipUI?.warden($("shipCard"), S, send);
+  }
   const hazardTag = (i) => (i.kind === "psg" ? "Mothership rule" : "story hazard");
   function renderHazards() {
     const rooms = roomLabels();

@@ -7,6 +7,7 @@ import { rigBrief } from "./resources.js";
 import { statsLine } from "./combat.js";
 import { WOUND_LABELS } from "./wounds.js";
 import { HAZARDS, hazardBrief } from "./hazards.js";
+import { shipBrief, normalizeShipFight } from "./ships.js";
 import { terminalsBrief, netOf, systemsOf, systemName, screensBrief } from "./terminals.js";
 import { TILES } from "./rooms.js";
 import { roomId } from "./clean.js";
@@ -352,6 +353,18 @@ function buildSchema(voices) {
           how: { type: "string", description: "If it ended: one line, e.g. \"They escaped on the tug; Rook stayed behind.\"" },
         },
       },
+      ship_fight: {
+        type: "object",
+        description: "Ship-to-ship combat (see SHIP-TO-SHIP COMBAT): start a fight with a ship from the story, play the enemy's move this round, or end the fight. The app applies it. Omit it when nothing changes.",
+        additionalProperties: false,
+        properties: {
+          start: { type: "object", description: "Begin a ship fight against one of the story's ships.", additionalProperties: false, required: ["ship"], properties: { ship: { type: "string", description: "A ship id from SHIP-TO-SHIP COMBAT." }, range: { type: "string", enum: ["detection", "firing", "contact"], description: "Starting range band; firing if unsure." } } },
+          end: { type: "boolean", description: "True when the fight is over." },
+          enemy_move: { type: "string", enum: ["maintain", "evade", "pursue"], description: "The enemy's secret movement choice for the current round." },
+          enemy_fire: { type: "boolean", description: "Whether the enemy fires this round (default true when it is armed, false when unarmed)." },
+          fuel: { type: "integer", description: "Fuel the enemy spends on that move (Evade: at least 3 at Contact, 2 at Firing, 1 at Detection; 0 for maintain)." },
+        },
+      },
       dm_note: { type: "string", description: "Private note to the Warden: reasoning, what the players may be trying, suggestions, answers to Warden questions. Never shown to players." },
     },
   };
@@ -521,6 +534,7 @@ COMBAT (Mothership 1e violent encounters)
 - Firearms have shots per magazine (PSG). CREW CONDITION lists each one's rounds loaded and spare magazines under Ammunition. Every crew_attacks with a firearm spends 1 shot; one with 0 shots loaded is refused, so don't set it. Reloading is an action: when a character reloads, set reloads (by, weapon). Stimpaks and First Aid Kits used for their effect go in item_changes with action "use"; the app applies the PSG stimpak effect (and its overdose roll) itself, so don't also change Health or Stress for it.
 - When a creature or person attacks a character, use attacks (by and attack from ADVERSARIES' CONDITION, target a crew member). The app rolls their Combat and, on a hit, the damage, and applies armor (damage under its AP is ignored; damage at or over AP destroys the armor and the rest goes through), Health, Wounds, Wounds Table results and Bleeding. Narrate the outcome from the [ROLL RESULT] entries. Never invent damage numbers or Wounds.
 - Set round to true in the reply where a round (about 10 seconds) passes in a fight: the app then runs every per-round rule, so anyone Bleeding takes damage that ignores armor, and hazards in the room do their damage. A First Aid Kit stops Bleeding: when someone uses one, record it in item_changes (remove).
+- Ship fights (SHIP-TO-SHIP COMBAT in the per-turn context): the app runs the rounds. Start one only with ship_fight.start, play the enemy's secret move for a round with ship_fight.enemy_move and ship_fight.fuel when asked (before movement resolves), and end it with ship_fight.end. Each round a ship fires or holds fire; an armed enemy fires by default (ship_fight.enemy_fire = false holds it). A broken enemy hails (morale) and you voice it; boarding at Contact range and surrender are always options.
 - A Death Save is rolled secretly by the app and nobody knows the result, you included. CREW CONDITION says when one is due. Don't say whether that character lives, dies or wakes. Only when someone in the fiction spends a turn checking their vitals, put the character's name in reveal_death_save and narrate what the [ROLL RESULT] says.
 - ADVERSARIES' CONDITION (per-turn context) has each adversary's numbers and its current Health and Wounds. At 0 Wounds it is dead or destroyed: narrate that.
 
@@ -779,6 +793,7 @@ function buildContext(state, steer, aside = false) {
   const plans = Object.entries(state.config.rooms || {});
   if (plans.length) ctx.push(`ROOM FLOOR PLANS (now):\n${plans.map(([id, p]) => `${id}:\n${p.rows.join("\n")}`).join("\n\n")}`);
   if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
+  { const ships = shipBrief(state); if (ships) ctx.push(ships); }
   if (state.campaign && state.station?.rig) ctx.push(`${rigBrief(state.station)}${state.rationing ? "\n- RATIONING: food and water are cut off; the app tracks hunger every hour (PSG 32.5)." : ""}`);
   const fighters = state.config.voices.filter((v) => v.adversary?.stats);
   if (fighters.length) ctx.push(`ADVERSARIES' CONDITION (now; Warden's eyes only):\n${fighters.map((v) => {
@@ -912,6 +927,7 @@ export function parseReply(text, voices) {
     effects: normalizeEffects(r?.effects),
     outcome_check: normalizeCheck(r?.outcome_check),
     story_end: { ended: r?.story_end?.ended === true, how: String(r?.story_end?.how ?? "").trim().slice(0, 300) },
+    ship_fight: normalizeShipFight(r?.ship_fight),
     layout: String(r?.layout ?? "").trim().slice(0, 4000),
     room_plans: (Array.isArray(r?.room_plans) ? r.room_plans : []).filter((p) => p && p.room && Array.isArray(p.rows)).slice(0, 8)
       .map((p) => ({ room: roomId(p.room), rows: p.rows.map(String) })),

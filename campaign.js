@@ -6,6 +6,7 @@ import { sanitizeCast, findCast, PORTRAIT_FILE } from "./cast.js";
 import { SPEAKERS, fromPreset } from "./voices.js";
 import { sanitizeResources, rigStation, resourcesFrom, fuelCost, portMult, PRICES, MRE_PACK, TANK, firearms, addMagazines } from "./resources.js";
 import { weaponByName } from "./weapons.js";
+import { sanitizeRig, sanitizeShip } from "./ships.js";
 import { sanitizeDowntime } from "./downtime.js";
 import { sanitizeMoney, startingCredits, DEBT_PAYMENT, DEBT_EVERY, DELIVERY, finalFee, upfrontOf, duesOf, debtDue, book, spend, exact, debtLetter, DUES_PCT } from "./money.js";
 
@@ -36,7 +37,7 @@ export const endsAt = (story) => story.at || story.to;
 
 export function newProgress(c, rng) {
   const crew = sanitizeCrew(structuredClone(c.crew));
-  const p = { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew, cast: {}, sessions: 0, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {}, resources: sanitizeResources(c.ship.resources, c.ship.resources), ...sanitizeMoney({}, c, crew), ...sanitizeDowntime({}, crew) };
+  const p = { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew, cast: {}, sessions: 0, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {}, resources: sanitizeResources(c.ship.resources, c.ship.resources), ship: sanitizeRig(null, c.ship.combat), ...sanitizeMoney({}, c, crew), ...sanitizeDowntime({}, crew) };
   // Starting credits are 2d10x10 per character, rolled once here (PSG), and shown in the ledger.
   for (const pc of p.crew) {
     pc.base = { stats: { ...pc.stats }, saves: { ...pc.saves } };
@@ -77,6 +78,7 @@ export function sanitizeProgress(p) {
     favours: Object.fromEntries(c.factions.filter((f) => p.favours?.[f.id]).map((f) => [f.id, true])),
     nudges: Object.fromEntries(c.cast.map((m) => [m.id, Math.max(-1, Math.min(1, Math.round(Number(p.nudges?.[m.id]) || 0)))]).filter(([, n]) => n)),
     resources: sanitizeResources(p.resources, c.ship.resources),
+    ship: sanitizeRig(p.ship, c.ship.combat),
     ...sanitizeMoney(p, c, crew),
     ...sanitizeDowntime(p.downtime, crew),
   };
@@ -286,6 +288,8 @@ export function carryInto(config, c, story, p, station) {
   config.crew = sanitizeCrew(structuredClone(p.crew));
   for (const pc of config.crew) pc.cond = { ...newCond(), cryo: pc.cond.cryo, lethal: pc.cond.lethal, dead: pc.cond.dead, tags: pc.cond.tags };
   config.shipCrew = c.ship.crew;
+  config.ships = (story.ships || []).map((x) => sanitizeShip(x));
+  p.ship = sanitizeRig(p.ship, c.ship.combat);
   p.favours = {};
   p.nudges = {};
   for (const m of presentIn(c, config)) {
