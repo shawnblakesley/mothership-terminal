@@ -330,6 +330,7 @@
     renderCastLists();
     renderMap();
     renderCrew();
+    renderNewChars();
     renderCast();
     renderAdversaries();
     renderTerminals();
@@ -582,7 +583,7 @@
       const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id);
       return `<details class="pc" data-i="${i}">
         <summary>${pickButton(c, `class="pick small" data-pcpic="${i}"`)}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
-          <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
+          <span class="muted small">${esc(c.className)}${c.status ? ` · ${esc(c.status.toUpperCase())}` : ""} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(none yet)</option>') + S.config.terminals.map((t) =>
             `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></span>` : ""}</summary>
@@ -605,13 +606,33 @@
           ${txt("trinket", c.trinket, "Trinket")}
           ${txt("patch", c.patch, "Patch")}
           ${txt("notes", c.notes, "Warden notes, hidden from players", 2)}
+          <label>Status<select data-c="status"><option value="">Playing</option>${["deceased", "retired"].map((k) => `<option value="${k}" ${c.status === k ? "selected" : ""}>${cap(k)}</option>`).join("")}</select></label>
         </div>
         <div class="row edit-only"><span class="grow"></span><button data-cact="del" class="danger">Remove character</button></div>
       </details>`;
     }).join("") || `<p class="muted small">No player characters. Add some, or build a story.</p>`;
     for (const i of openCrew) panel.querySelector(`.pc[data-i="${i}"]`)?.setAttribute("open", "");
-    $("addCrew").disabled = crewDraft.length >= 4;
+    $("addCrew").disabled = crewDraft.filter((c) => !c.status).length >= 4;
   }
+  let newCharsKey = "";
+  function renderNewChars() {
+    const list = S.newChars || [], key = JSON.stringify(list);
+    if (key === newCharsKey) return;
+    newCharsKey = key;
+    const nums = (o) => Object.entries(o).map(([k, v]) => `${cap(k)} ${v}`).join(", ");
+    $("newChars").innerHTML = list.map((n) => {
+      const c = n.sheet, old = n.replaces && S.config.crew.find((x) => x.id === n.replaces);
+      return `<div class="pc newchar" data-id="${esc(n.id)}"><h3>New character waiting: ${esc(c.name)}</h3>
+        <div class="muted small">${esc(c.className)}${esc(c.pronouns ? `, ${c.pronouns}` : "")}${old ? `. Replaces ${esc(old.name)} (${esc(old.status)}).` : ""}</div>
+        <div class="small">Stats: ${esc(nums(c.stats))}<br>Saves: ${esc(nums(c.saves))}<br>Health ${c.health.max}, Wounds ${c.wounds.max}, Stress ${c.stress} (min ${c.minStress}).<br>Skills: ${esc(c.skills.map(skillStr).join(", "))}<br>Loadout: ${esc(c.loadout || "(not filled in)")}<br>Trinket: ${esc(c.trinket || "(not filled in)")}<br>Patch: ${esc(c.patch || "(not filled in)")}<br>${esc(c.notes)}</div>
+        <details><summary class="muted small">Every roll</summary><ul class="small">${n.history.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></details>
+        <div class="row wrap"><button data-cg="accept" class="primary">Accept</button><input data-cg-note placeholder="Note for the player, if rejecting" size="28" aria-label="Rejection note"><button data-cg="reject" class="danger">Reject with a note</button></div></div>`;
+    }).join("");
+  }
+  $("newChars").addEventListener("click", (e) => {
+    const act = e.target.closest("[data-cg]")?.dataset.cg, card = e.target.closest(".newchar");
+    if (act && card) send({ t: act === "accept" ? "cgAccept" : "cgReject", id: card.dataset.id, note: card.querySelector("[data-cg-note]").value });
+  });
   let castDraft = null, castTimer = null, castSentAt = 0;
   const ATTITUDES = [[-3, "Hostile"], [-2, "Resentful"], [-1, "Wary"], [0, "Neutral"], [1, "Friendly"], [2, "Trusting"], [3, "Loyal"]];
   const portraitUrl = (file) => (file.startsWith("kit/") ? `portraits/${file.slice(4)}` : `api/sessions/${code}/portraits/${file}`);
@@ -907,7 +928,7 @@
     sendCrewNow();
   });
   $("addCrew").onclick = () => {
-    if (crewDraft.length >= 4) return;
+    if (crewDraft.filter((c) => !c.status).length >= 4) return;
     crewDraft.push({
       name: "New convict", pronouns: "", className: "Teamster", role: "", crime: "", backstory: "",
       stats: { strength: 30, speed: 30, intellect: 30, combat: 30 }, saves: { sanity: 25, fear: 25, body: 25 },
@@ -1857,6 +1878,7 @@
     }
     growStory();
     for (const id of SETTING_SWITCHES) $(id).checked = c[id] !== false;
+    for (const id of ["playerCreate", "createRerolls"]) $(id).checked = c[id] === true;
     renderVoicesOn();
     if (!dirty.has("station") && document.activeElement !== $("station")) $("station").value = JSON.stringify(S.station, null, 2);
   }
@@ -1874,7 +1896,7 @@
     el.addEventListener("blur", () => dirty.has(id) && save());
   }
   for (const id of ["theme", "talk", "provider", "model", "effort"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.value } }));
-  for (const id of SETTING_SWITCHES) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.checked } }));
+  for (const id of [...SETTING_SWITCHES, "playerCreate", "createRerolls"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.checked } }));
   $("settingsBtn").onclick = () => $("settingsDialog").showModal();
 
   $("station").addEventListener("input", () => { dirty.add("station"); $("stationErr").textContent = "unsaved changes"; });

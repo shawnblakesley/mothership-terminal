@@ -15,6 +15,8 @@ export const TRAUMA_RESPONSES = {
 export const traumaResponse = (pc) => TRAUMA_RESPONSES[pc?.className] || "";
 export const maxWoundsFor = (className) => (className === "Marine" || className === "Android" ? 3 : 2);
 const MAX_STRESS = 20;
+export const GONE = ["deceased", "retired"];
+export const playable = (c) => !c.status;
 
 export const DEFAULT_CREW = [
   {
@@ -131,8 +133,10 @@ export function sanitizeCrew(list) {
       patch: str(c.patch, 80),
       notes: str(c.notes, 1000),
       portrait: PORTRAIT_FILE.test(c.portrait || "") ? c.portrait : "",
+      status: GONE.includes(c.status) ? c.status : "",
+      replacedBy: str(c.replacedBy, 30),
     });
-    if (out.length >= MAX_CREW) break;
+    if (out.filter(playable).length >= MAX_CREW || out.length >= MAX_CREW * 3) break;
   }
   return out;
 }
@@ -239,5 +243,5 @@ export const skillText = (s) => `${s.name} +${s.bonus}`;
 export const findSkill = (pc, name) => (name ? (pc?.skills || []).find((s) => s.name.toLowerCase() === String(name).toLowerCase()) : null) || null;
 
 export function crewBrief(crew) {
-  return crew.map((c) => `- ${c.name} (${c.pronouns || "?"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout} Trauma response (${c.className}): ${traumaResponse(c)}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
+  return crew.map((c) => `- ${c.name} (${c.pronouns || "none given: use they/them"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} ${c.status ? `[${c.status.toUpperCase()}: no longer playable] ` : ""}Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout} Trauma response (${c.className}): ${traumaResponse(c)}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
 }

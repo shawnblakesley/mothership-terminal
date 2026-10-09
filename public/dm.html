@@ -112,6 +112,8 @@
       <h3 class="sethead">Players may…</h3>
       <label class="check"><input type="checkbox" id="playerVitals"> <span>change their own health, wounds and stress <em>settled at the table</em></span></label>
       <label class="check"><input type="checkbox" id="playerRolls"> <span>roll their own stats and saves <em>results show in your log</em></span></label>
+      <label class="check"><input type="checkbox" id="playerCreate"> <span>create new characters <em>they roll one up and you approve it; a dead or retired character's player may always make a new one</em></span></label>
+      <label class="check"><input type="checkbox" id="createRerolls"> <span>reroll while creating a character <em>off by default: the rules say no rerolls</em></span></label>
       <label class="check"><input type="checkbox" id="playerTerminals"> <span>move between terminals <em>reachable terminals or the portable unit</em></span></label>
       <h3 class="sethead">Sound</h3>
     <div class="row wrap voicesrow"><span>Voices play</span>
@@ -437,6 +439,7 @@
 
       <div class="tabpanel" data-tabs="side" data-panel="crew">
         <h2>Player characters <span class="hint" title="Each player picks one on their screen.">?</span></h2>
+        <div id="newChars"></div>
         <div id="crew"></div>
         <div class="row edit-only"><button id="addCrew" class="ghost">+ Add character</button></div>
         <h2>Characters <span class="hint" title="The story's people: face to face in the room, otherwise over the intercom.">?</span></h2>

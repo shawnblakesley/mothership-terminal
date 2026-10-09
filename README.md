@@ -115,6 +115,26 @@ Up to four **crew files** per session. Every skill carries its bonus, from its t
 - What a player types is tagged with their character (`[PLAYER · Rook]`), and the agent knows every character's background, so it can answer them personally.
 - The Warden sees and edits every sheet under **Crew** in the console, with who is playing each one.
 
+### Making a new character
+
+Turn on **create new characters** under Settings, Players. When there is a free crew slot (four playable characters at most), the crew-file picker offers **NEW CHARACTER**. The player goes through the steps of Mothership 1e character creation (Player's Survival Guide pages 4-5), one per screen, with the keyboard (numbers and arrows to choose, Enter to go on, Esc to go back) or by tapping:
+
+1. **Stats:** 2d10+25 for Strength, Speed, Intellect and Combat. 2. **Saves:** 2d10+10 for Sanity, Fear and Body. 3. **Class**, with its modifiers and trauma response. A Marine gets +10 Combat, +10 Body, +20 Fear and +1 Max Wounds. An Android gets +20 Intellect, -10 to one Stat of the player's choice, +60 Fear and +1 Max Wounds. A Scientist gets +10 Intellect, +5 to one Stat of the player's choice and +30 Sanity. A Teamster gets +5 to all Stats and +10 to all Saves. 4. **Health:** 1d10+10 Maximum Health, 0 Wounds, Max Wounds 2 (3 for Marines and Androids), Stress and Minimum Stress 2. 5. **Skills:** the class's own plus its choices (Marine and Android: 1 Expert or 2 Trained; Teamster: 1 Trained and 1 Expert; Scientist: a Master Skill with an Expert and a Trained prerequisite, plus 1 Trained). The picker only enables a skill whose prerequisite is already taken, and shows its +10 / +15 / +20. 6. **Loadout, trinket and patch:** a d10 (by class), d100 and d100. 7. **Credits:** 2d10x10. 8. **Name and pronouns** (whatever the player types, never guessed), an optional picture from the picture pack, and a High Score of 0. 9. **Review**, then **Submit**.
+
+- **The dice are rolled on the server** and shown as they happen. **Type my own dice** lets a player enter physical dice instead (each d10 in a sum reads 1-10). Your log shows every roll. **No rerolls**, unless you switch on **reroll while creating a character**.
+- **You approve it.** The submitted character appears at the top of the Crew tab as a card: the sheet, every roll, **Accept**, or **Reject with a note** (the player gets the note and can fix the sheet and send it again). An accepted character joins the crew, the player is put on them, and in a campaign they carry to the next story. The agent is told a new crewmember has joined, and that their arrival is yours to stage. In a game with no Warden, the pilot accepts.
+- **The server checks everything:** Stats and Saves must be in their class's range, Max Wounds must match, and skills must have the right number, tier and prerequisites. A sheet that breaks the rules cannot be submitted.
+- **Replacing a character:** set a character's **Status** to Deceased or Retired on the Crew tab (the sheet stays in the list, not playable). Their player is offered **MAKE A NEW CHARACTER**, even with the switch off. The new character takes that slot, still with your approval.
+- **The book's tables are not in this app.** The loadout, trinket and patch steps show the number rolled and say which page of the Player's Survival Guide to look it up on (7, 8 and 9), and the player types the result. If you own the book, put its tables in `data/tables/psg-tables.json` (under `DATA_DIR` if you set one; the folder is not in git) and the number is looked up and filled in for them, still editable:
+
+  ```json
+  { "loadouts": { "Marine": ["row 0", "... 10 rows, index = the d10 (0-9)"], "Android": [], "Scientist": [], "Teamster": [] },
+    "trinkets": ["row 00", "... 100 rows, index = the d100 (00-99)"],
+    "patches": ["row 00", "... 100 rows"] }
+  ```
+
+  `node scripts/extract-psg-tables.mjs <your PDF>` writes this file from your own copy of the book (it needs `npm i --no-save pdfjs-dist`). A file that is not exactly this shape is ignored, with a warning in the server log.
+
 ### Different messages for different players
 
 Each player reads their own screen as their own character, so one line can say different things to each of them. The agent is told to do this rarely, for special moments: the thing in the system tells the Android it is just a cold machine, while the humans hear that they are warm and full of blood; a voice uses one player's real name; someone hears a private warning the others don't. You can ask for it too ("Marla alone hears him say her brother's name").

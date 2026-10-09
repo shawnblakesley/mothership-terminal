@@ -9,6 +9,7 @@ import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
 import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
+import { handleChargen, decideCharacter } from "./chargen.js";
 import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel } from "./campaign.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
@@ -167,6 +168,8 @@ export function defaultGame(keys = {}) {
       talk: "brief",
       playerVitals: true,
       playerRolls: true,
+      playerCreate: false,
+      createRerolls: false,
       tts: true,
       discordTalk: false,
       voices: defaultVoices().map((v) => ({ ...v, systems: ["*"] })),
@@ -194,6 +197,7 @@ export function defaultGame(keys = {}) {
     synopses: {},
     offers: [],
     panicPlus: {},
+    newChars: [],
   };
 }
 
@@ -421,6 +425,7 @@ function migrateGame(saved) {
     roll: Array.isArray(saved.roll?.pcs) ? saved.roll : null,
     outcomeCheck: saved.outcomeCheck ?? null,
     offers: Array.isArray(saved.offers) ? saved.offers : [],
+    newChars: Array.isArray(saved.newChars) ? saved.newChars : [],
     panicPlus: saved.panicPlus && typeof saved.panicPlus === "object" ? saved.panicPlus : {},
     sounds,
     builder: { messages: Array.isArray(saved.builder?.messages) ? saved.builder.messages.slice(-60) : [], draft: saved.builder?.draft ?? null },
@@ -442,7 +447,7 @@ const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
-const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
+const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
 const STORY_ACTIONS = new Set(["command", "inject", "note", "heard", "rollRequest", "rollFor", "offerRoll", "generate", "approve", "outcome", "handout", "clockStart"]);
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
@@ -749,6 +754,7 @@ export class Session {
       terminals: c.terminals.map((t) => ({ id: t.id, name: t.name, look: t.look, theme: t.theme, system: t.system, os: t.os, open: reachable(t, this.state.station) })),
       moveTerminals: c.playerTerminals,
       selfRolls: c.playerRolls,
+      create: !!c.playerCreate,
       trauma: TRAUMA_RESPONSES,
       voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: shownName(v), style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
       portraits: Object.fromEntries((c.cast || []).filter((m) => m.portrait).map((m) => [m.name.toLowerCase(), m.portrait])),
@@ -956,6 +962,7 @@ export class Session {
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
+    if (String(msg.t).startsWith("cg")) return handleChargen(this, ws, msg);
     if (msg.t === "claim") {
       ws.character = this.state.config.crew.some((c) => c.id === msg.id) ? msg.id : null;
       ws.send(JSON.stringify({ t: "handouts", handouts: this.handoutsFor(ws) }));
@@ -996,7 +1003,7 @@ export class Session {
     if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
@@ -1404,6 +1411,12 @@ export class Session {
       case "moveScreens":
         for (const ws of this.sockets) if (ws.role === "player" && ws.character && ws.character === msg.character) this.playerTerminal(ws, msg.terminal, "warden");
         break;
+      case "cgAccept":
+      case "cgReject": {
+        const bad = decideCharacter(this, msg.t === "cgAccept", String(msg.id), msg.note);
+        if (bad) this.send("dm", { t: "toast", level: "error", text: bad });
+        break;
+      }
       case "crew":
         s.config.crew = sanitizeCrew(msg.crew);
         this.crewChanged();
@@ -2360,7 +2373,7 @@ export class Session {
   }
   sendPilot(ws) {
     const c = this.state.config;
-    ws.send(JSON.stringify({ t: "pilotInfo", providers: catalog(this.keys), config: { provider: c.provider, model: c.model, effort: c.effort } }));
+    ws.send(JSON.stringify({ t: "pilotInfo", providers: catalog(this.keys), config: { provider: c.provider, model: c.model, effort: c.effort }, chargen: this.state.newChars }));
   }
   handlePilot(ws, msg) {
     const x = this.state.solo;
@@ -2389,6 +2402,12 @@ export class Session {
         this.soloChanged();
         if (x.pitches.length < 2) this.soloPitches();
         break;
+      case "pilotCgAccept":
+      case "pilotCgReject": {
+        const bad = decideCharacter(this, msg.t === "pilotCgAccept", String(msg.id), msg.note);
+        if (bad) ws.send(JSON.stringify({ t: "notice", text: bad }));
+        break;
+      }
       case "pilotEnd":
         console.log(`  - session ${this.code} ended by its pilot`);
         this.onEnd?.(this);
