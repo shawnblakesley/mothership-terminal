@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { newCond, applyDamage, gainWound, setVital } from "./crew.js";
+import { newCond, applyDamage, gainWound, setVital, playable } from "./crew.js";
 import { WOUND_TYPES, WOUND_LABELS } from "./wounds.js";
 import { roomId, clampInt } from "./clean.js";
 
@@ -168,7 +168,7 @@ export function airLeft(pc) {
 export const rest = (c, hours) => { if (hours >= 8) c.active = 0; };
 
 export const oxygenStart = (maxCrew, rng = d) => rng(10) * maxCrew;
-export const breathing = (crew) => crew.filter((p) => !isAndroid(p) && !p.cond?.cryosleep && !p.cond?.dead);
+export const breathing = (crew) => crew.filter((p) => !isAndroid(p) && !p.cond?.cryosleep && playable(p));
 export function oxygenState(supply, nBreathing) {
   return { low: supply < 2 * nBreathing, save: supply < nBreathing, gone: supply <= 0 };
 }
@@ -266,7 +266,7 @@ export function hourTick(pc, here, rng = d, { food = true } = {}) {
 // A hazard that happens once when it starts, or each time it is triggered (explosion, hull breach and the story hazards).
 export function eventNeeds(pc, h, rng = d) {
   const info = HAZARDS[h.type];
-  if (!info || pc.cond?.dead || !["event", "exposure"].includes(info.per)) return [];
+  if (!info || !playable(pc) || !["event", "exposure"].includes(info.per)) return [];
   const level = clampInt(h.level, 1, 3, 1);
   const dmg = /level d10/.test(info.damage || "") ? rollDice(level, 10, rng) : info.damage === "1d10" ? rollDice(1, 10, rng) : 0;
   return [need(pc, h.type, info.check, { advantage: info.advantage, dmg, reason: `${info.name.toUpperCase()}${info.kind === "story" ? " (STORY HAZARD)" : ""}` })];
