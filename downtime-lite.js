@@ -1,9 +1,10 @@
 import { judge, rollD100 } from "./rolls.js";
-import { SAVES, isGone, setVital, gainStress } from "./crew.js";
+import { isGone } from "./crew.js";
+import { applyRecovery, applyRest, worstSave } from "./downtime.js";
 
 // Automatic downtime between stories (PSG 20.2): short-term recovery (Body Save; success = Health to Maximum, Wounds stay)
 // and a Rest Save (worst Save; success = Stress down by the ones digit of the roll, failure = +1 Stress).
-// No cryosleep Rest Save (stress isn't usually relieved there). Ticket 06's downtime can replace this.
+// No cryosleep Rest Save (stress isn't usually relieved there). One implementation: the rules are in downtime.js, this only rolls them for everyone at once.
 const word = (j) => (j.success ? (j.critical ? "critical success" : "success") : j.critical ? "critical failure" : "failure");
 const two = (d) => String(d).padStart(2, "0");
 
@@ -13,18 +14,14 @@ export function restAndRecover(crew, rng = rollD100) {
     if (isGone(pc)) continue;
     const r = { id: pc.id, name: pc.name };
     if (pc.health.current < pc.health.max) {
-      const j = judge(rng(), pc.saves.body);
-      const from = pc.health.current;
-      if (j.success) setVital(pc, "health", pc.health.max);
+      const j = judge(rng(), pc.saves.body), from = pc.health.current;
+      applyRecovery(pc, { ...j, used: j.d });
       r.recovery = { roll: j.d, target: pc.saves.body, outcome: word(j), ok: j.success, from, to: pc.health.current };
     }
     if (pc.cond?.cryo) r.cryo = true;
     else {
-      const save = SAVES.reduce((a, b) => (pc.saves[b] < pc.saves[a] ? b : a));
-      const j = judge(rng(), pc.saves[save]);
-      const from = pc.stress;
-      if (j.success) setVital(pc, "stress", pc.stress - (j.d % 10));
-      else gainStress(pc, 1);
+      const save = worstSave(pc), j = judge(rng(), pc.saves[save]), from = pc.stress;
+      applyRest(pc, { ...j, used: j.d });
       r.rest = { save, roll: j.d, target: pc.saves[save], outcome: word(j), ok: j.success, from, to: pc.stress };
     }
     out.push(r);
