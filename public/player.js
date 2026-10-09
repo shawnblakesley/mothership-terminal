@@ -1445,6 +1445,36 @@
     fx.querySelector(".pf-plan").innerHTML = RoomPlan.svg(rows, { cell: 24, title: name });
     chirp();
   }
+  let sector = null;
+  function showSector(msg) {
+    const fx = $("sectorfx");
+    if (msg.hide) { sector = null; fx.hidden = true; return; }
+    const fresh = !sector;
+    sector = msg;
+    const port = (id) => msg.ports.find((p) => p.id === id);
+    const mine = msg.offered.findIndex((o) => o.id === msg.mine);
+    const lanes = msg.lanes.map((l) => `<line class="${l.dark ? "dark" : ""}" x1="${port(l.a).x}" y1="${port(l.a).y}" x2="${port(l.b).x}" y2="${port(l.b).y}"><title>${escH(l.name)} · ${l.days} days</title></line>`).join("");
+    const ports = msg.ports.map((p) => `<g transform="translate(${p.x} ${p.y})"><circle r="9"/><circle r="3" class="core"/><text y="-16">${escH(p.name)}</text></g>`).join("");
+    const jobs = msg.offered.map((o, i) => `<g class="job${i === mine ? " mine" : ""}" data-job="${escH(o.id)}" transform="translate(${o.x} ${o.y})"><rect x="-12" y="-12" width="24" height="24" transform="rotate(45)"/><text y="4">${i + 1}</text></g>`).join("");
+    fx.querySelector(".pf-title").textContent = `SECTOR: ${String(msg.title).toUpperCase()}`;
+    fx.querySelector(".sf-map").innerHTML = `<svg viewBox="0 0 1100 560" role="img" aria-label="Sector map"><g class="lanes">${lanes}</g>${ports}<g class="rig" transform="translate(${msg.rig.x - 40} ${msg.rig.y + 26})"><path d="M-8 6 L0 -9 L8 6 Z"/><text y="20">${escH(msg.rig.name)}</text></g>${jobs}</svg>`;
+    const board = msg.offered.length
+      ? msg.offered.map((o, i) => `<button type="button" class="p-btn sf-job${i === mine ? " mine" : ""}" data-job="${escH(o.id)}"><b>${i + 1}. ${escH(o.title)}</b>${msg.votes[o.id] ? ` <span class="sf-votes">[${"*".repeat(msg.votes[o.id])}]</span>` : ""}<span class="sf-hook">${escH(o.hook)}</span><span class="sf-hook">THE JOB: ${escH(o.job)}</span></button>`).join("")
+      : `<div class="sf-none">NO JOBS ON THE BOARD YET.</div>`;
+    fx.querySelector(".sf-side").innerHTML = `<div class="sf-head">JOB BOARD</div>${board}${msg.played.length ? `<div class="sf-head">DONE</div><div class="sf-played">${msg.played.map((p) => escH(p.title)).join("<br>")}</div>` : ""}`;
+    if (fresh) { fx.hidden = false; chirp(); }
+  }
+  const voteJob = (id) => id && send({ t: "sectorVote", story: id });
+  $("sectorfx").addEventListener("click", (e) => {
+    const job = e.target.closest("[data-job]");
+    if (job) return voteJob(job.dataset.job);
+    if (!e.target.closest(".sf-side, .sf-map")) $("sectorfx").hidden = true;
+  });
+  addEventListener("keydown", (e) => {
+    if ($("sectorfx").hidden || !sector) return;
+    if (e.key === "Escape") $("sectorfx").hidden = true;
+    else if (/^[1-9]$/.test(e.key) && sector.offered[e.key - 1]) { e.preventDefault(); voteJob(sector.offered[e.key - 1].id); }
+  });
   function chirp() { FX.Sound.beep(520, 0.08, 0.05); setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90); }
   function showImage({ title, name, src, credit = "" }) {
     if (!src) return FX.Sound.sting();
@@ -1605,6 +1635,7 @@
         case "isoMap": setIso(msg.map); break;
         case "rollResult": showRollResult(msg); break;
         case "roomPlan": showPlan(msg); break;
+        case "sector": showSector(msg); break;
         case "showImage": showImage(msg); break;
         case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); $("sr-err").textContent = rbErr.textContent; break;
         case "endEffect": dropCue(msg.id); FX.end(msg.id); break;

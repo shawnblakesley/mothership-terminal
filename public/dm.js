@@ -1005,7 +1005,8 @@
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const stars = Array.from({ length: 140 }, () => `<circle cx="${(rnd() * 1100).toFixed(0)}" cy="${(rnd() * 560).toFixed(0)}" r="${(rnd() * 1.3 + 0.3).toFixed(1)}" opacity="${(rnd() * 0.5 + 0.15).toFixed(2)}"/>`).join("");
-    const cls = (s) => ["story", done.has(s.id) && "done", p.current === s.id && "current", cmpSel.kind === "story" && cmpSel.id === s.id && "sel", S.campaignBusy === s.id && "busy"].filter(Boolean).join(" ");
+    const offered = p.offered || [], votes = S.sectorVotes || {};
+    const cls = (s) => ["story", offered.includes(s.id) && "offered", done.has(s.id) && "done", p.current === s.id && "current", cmpSel.kind === "story" && cmpSel.id === s.id && "sel", S.campaignBusy === s.id && "busy"].filter(Boolean).join(" ");
     const lanes = c.lanes.map((l) => {
       const a = cmpLoc(c, l.a), b = cmpLoc(c, l.b);
       return `<line class="lane${l.dark ? " dark" : ""}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${esc(l.name)} · ${l.days} days</title></line>`;
@@ -1015,13 +1016,13 @@
       const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
       return `<g class="${cls(s)}" data-story="${s.id}" transform="translate(${x} ${y})" tabindex="0" role="button" aria-label="${esc(s.title)}">
         <title>${s.n}. ${esc(s.title)} (${esc(cmpPlace(c, s))})</title>
-        <rect x="-11" y="-11" width="22" height="22" rx="3" transform="rotate(45)"/><text y="4">${s.n}</text></g>`;
+        <rect x="-11" y="-11" width="22" height="22" rx="3" transform="rotate(45)"/><text y="4">${s.n}</text>${votes[s.id] ? `<text class="vote" y="-18">${votes[s.id].length}</text>` : ""}</g>`;
     }).join("");
     const nodes = c.locations.map((l) => {
       const here = c.stories.filter((s) => s.at === l.id);
       const f = cmpFaction(c, l.faction);
       const pills = here.map((s, i) => `<g class="${cls(s)}" data-story="${s.id}" transform="translate(${(i - (here.length - 1) / 2) * 30} 52)" tabindex="0" role="button" aria-label="${esc(s.title)}">
-          <title>${s.n}. ${esc(s.title)}</title><rect x="-13" y="-10" width="26" height="20" rx="10"/><text y="4">${s.n}</text></g>`).join("");
+          <title>${s.n}. ${esc(s.title)}</title><rect x="-13" y="-10" width="26" height="20" rx="10"/><text y="4">${s.n}</text>${votes[s.id] ? `<text class="vote" y="-14">${votes[s.id].length}</text>` : ""}</g>`).join("");
       return `<g class="loc${cmpSel.kind === "loc" && cmpSel.id === l.id ? " sel" : ""}" transform="translate(${l.x} ${l.y})">
         <g data-loc="${l.id}" tabindex="0" role="button" aria-label="${esc(l.name)}"><title>${esc(l.name)}: ${esc(l.kind)}</title>
           <circle class="halo" r="24" style="stroke:${f?.color || "#888"}"/><circle class="core" r="9" style="fill:${f?.color || "#888"}"/>
@@ -1041,7 +1042,7 @@
     const played = p.done.map((d) => ({ d, s: c.stories.find((x) => x.id === d.id) })).filter((x) => x.s);
     return `<div class="btitle">${esc(c.title)}</div>
       <p class="muted"><i>${esc(c.tagline)}</i></p><p>${esc(c.pitch)}</p>
-      <p class="small muted">Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
+      <p class="small muted">Offer jobs to put them on the players' job board, then Show players; their votes appear on the map. Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
       <details open><summary>Played (${played.length} of ${c.stories.length})</summary>${played.length ? played.map(({ d, s }) => `<div class="bcard"><button class="cmplink" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b></button><div class="small">${esc(d.outcome || "No notes.")}</div></div>`).join("") : '<p class="muted small">Nothing yet. A good first job: 1. FIRST SHIFT at Port Gallow, where the rig starts.</p>'}</details>
       <details><summary>Factions</summary>${c.factions.map((f) => `<div class="bcard"><b style="color:${f.color}">${esc(f.name)}</b><div class="small">${esc(f.about)}</div></div>`).join("")}</details>
       <details><summary>Recurring characters</summary>${c.cast.map((m) => `<div class="bcard"><b>${esc(m.name)}</b> <span class="muted small">${esc(cmpFaction(c, m.faction)?.short || "")}${p.cast[m.id] ? ` · ${esc(attLabel(p.cast[m.id].attitude))}` : ""}</span><div class="small">${esc(m.notes)}</div>${p.cast[m.id]?.history ? `<div class="small muted">${esc(p.cast[m.id].history)}</div>` : ""}</div>`).join("")}</details>
@@ -1072,9 +1073,11 @@
       ? `<span class="small"><span class="spinner"></span>Building ${esc(s.title)} around its arc… (a minute or two)</span>`
       : p.current === s.id ? `<span class="pill ok">Now playing</span><button data-replay="${s.id}" ${busy ? "disabled" : ""} title="Build it again from scratch">Rebuild</button>`
         : `<button class="primary" data-play="${s.id}" ${busy ? "disabled" : ""}>${d ? "Play it again" : "Play this story"}</button>`;
+    const on = (p.offered || []).includes(s.id), votes = S.sectorVotes?.[s.id] || [];
+    const offer = `<button data-offer="${s.id}" aria-pressed="${on}" title="Put this job on the players' job board (title, hook and job only)">${on ? "Offered" : "Offer"}</button>${votes.length ? `<span class="small">${votes.length} vote${votes.length > 1 ? "s" : ""}: ${esc(votes.join(", "))}</span>` : ""}`;
     return `<div class="row"><div class="grow"><div class="btitle">${s.n}. ${esc(s.title)}</div>
         <div class="muted">${esc(cmpPlace(c, s))} · ${esc(TIERS[s.tier] || "")}</div></div></div>
-      <div class="row wrap">${action}</div>
+      <div class="row wrap">${action}${offer}</div>
       ${d ? `<div class="bcard"><b>Played</b><div class="small">${esc(d.outcome || "No notes.")}</div></div>` : ""}
       <p>${esc(s.hook)}</p>
       <div class="bcard"><b>The job</b><div class="small">${esc(s.job)}</div></div>
@@ -1092,7 +1095,7 @@
   function renderCampaign() {
     if (!$("campaignDialog").open || !campaignData) return;
     const p = S.campaign, c = p && campaignData.campaigns.find((x) => x.id === p.id);
-    const key = JSON.stringify([p, S.campaignBusy, cmpSel]);
+    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes]);
     if (key === campaignKey) return;
     campaignKey = key;
     $("cmpLeave").hidden = !c;
@@ -1116,7 +1119,7 @@
     const side = cmpSel.kind === "story" ? cmpStory(c, c.stories.find((s) => s.id === cmpSel.id), p)
       : cmpSel.kind === "loc" ? cmpLocation(c, cmpLoc(c, cmpSel.id), p) : cmpOverview(c, p);
     $("cmpBody").innerHTML = `<div class="cmpgrid"><section class="cmpmapcol">${banner}${sectorSvg(c, p)}
-        <div class="cmplegend small muted"><span><i class="lg loc"></i>port (colour: who runs it)</span><span><i class="lg pill"></i>job at a port</span><span><i class="lg dia"></i>job in transit</span><span><i class="lg done"></i>played</span><span><i class="lg cur"></i>now playing</span><span><i class="lg ship"></i>${esc(c.ship.name)}</span><button class="ghost small" data-overview>Overview</button></div>
+        <div class="cmplegend small muted"><span><i class="lg loc"></i>port (colour: who runs it)</span><span><i class="lg pill"></i>job at a port</span><span><i class="lg dia"></i>job in transit</span><span><i class="lg done"></i>played</span><span><i class="lg cur"></i>now playing</span><span><i class="lg ship"></i>${esc(c.ship.name)}</span><button class="ghost small" data-overview>Overview</button><button class="small" data-sector="show" title="Put the sector map and the offered jobs on every player screen">Show players</button>${S.sectorShown ? '<button class="ghost small" data-sector="hide">Hide</button>' : ""}</div>
       </section><section class="cmpside">${side}</section></div>`;
     if ($("cmpOutcome")) {
       $("cmpOutcome").value = cmpOutcome;
@@ -1151,6 +1154,14 @@
       cmpSel = { kind: "overview", id: "" };
       return send({ t: "campaignStart", id: start });
     }
+    const sec = e.target.closest("[data-sector]")?.dataset.sector;
+    if (sec) {
+      send({ t: "campaignShow", hide: sec === "hide" });
+      if (sec === "show") toast("Showing the players the sector map and job board.");
+      return;
+    }
+    const offer = e.target.closest("[data-offer]")?.dataset.offer;
+    if (offer) return send({ t: "campaignOffer", story: offer, on: !S.campaign.offered?.includes(offer) });
     const play = e.target.closest("[data-play], [data-replay]");
     if (play) {
       const c = campaignData.campaigns.find((x) => x.id === S.campaign?.id);

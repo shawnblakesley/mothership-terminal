@@ -9,7 +9,7 @@ import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, changeItem, freshen } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
-import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf } from "./campaign.js";
+import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload } from "./campaign.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
@@ -466,6 +466,8 @@ export class Session {
     this.state = { ...migrateGame(saved.game ?? {}), pending: null, effects: [], playing: [] };
     this.builderBusy = "";
     this.campaignBusy = "";
+    this.sectorVotes = new Map();
+    this.sectorShown = false;
     this.synopsisBusy = "";
     this.handoutBusy = false;
     this.speech = new VoiceRelay();
@@ -543,6 +545,7 @@ export class Session {
     ws.on("close", () => {
       this.sockets.delete(ws);
       this.speech.detach(ws);
+      if (this.sectorVotes.delete(ws)) this.sectorSync();
       if (ws.character) this.crewChanged();
     });
     if (role === "dm") ws.send(JSON.stringify({ t: "state", state: this.dmView() }));
@@ -599,7 +602,36 @@ export class Session {
     const data = typeof p === "string" ? p : JSON.stringify(p);
     for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && pred(c)) c.send(data);
   }
-  sendInit(ws) { ws.send(JSON.stringify({ t: "init", ...this.playerView(ws) })); }
+  sendInit(ws) {
+    ws.send(JSON.stringify({ t: "init", ...this.playerView(ws) }));
+    if (this.sectorShown) ws.send(JSON.stringify(this.sectorMsg(ws)));
+  }
+  sectorTally(names) {
+    const out = {};
+    for (const [ws, id] of this.sectorVotes) (out[id] ||= []).push(names ? this.characterOf(ws)?.name || "A player" : 1);
+    return out;
+  }
+  sectorMsg(ws) {
+    const p = this.state.campaign, c = campaignById(p?.id);
+    if (!c) return { t: "sector", hide: true };
+    const votes = Object.fromEntries(Object.entries(this.sectorTally()).map(([id, v]) => [id, v.length]));
+    return { ...sectorPayload(c, p), votes, mine: this.sectorVotes.get(ws) || "" };
+  }
+  sectorSync() {
+    for (const ws of this.sockets) if (ws.role === "player" && ws.readyState === 1) ws.send(JSON.stringify(this.sectorShown ? this.sectorMsg(ws) : { t: "sector", hide: true }));
+  }
+  sectorVote(ws, id) {
+    const p = this.state.campaign;
+    if (!this.sectorShown || !p?.offered?.includes(id)) return;
+    const was = this.sectorVotes.get(ws) === id;
+    if (was) this.sectorVotes.delete(ws);
+    else this.sectorVotes.set(ws, id);
+    const c = campaignById(p.id), story = c?.stories.find((x) => x.id === id);
+    const who = this.characterOf(ws)?.name || "A player";
+    this.addLog("note", was ? `${who} took back their vote for ${story.title}.` : `${who} voted for the job ${story.title}.`);
+    this.sectorSync();
+    this.syncDm();
+  }
   castDelivery(member, asked) {
     const voice = channelOf(this.state.config);
     const there = member.room && this.screensAtTerminals().find((x) => this.roomOfSocket(x) === member.room);
@@ -716,6 +748,8 @@ export class Session {
       effects: this.state.effects.filter((e) => this.effectRunning(e)),
       builderBusy: this.builderBusy,
       campaignBusy: this.campaignBusy,
+      sectorShown: this.sectorShown,
+      sectorVotes: this.sectorTally(true),
       roomBusy: this.roomBusy,
       synopsisBusy: this.synopsisBusy,
       code: this.code,
@@ -897,6 +931,7 @@ export class Session {
     if (["input", "roll", "selfRoll", "vitals"].includes(msg.t)) this.storyBegins();
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
     if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() }));
+    if (msg.t === "sectorVote") return this.sectorVote(ws, String(msg.story || ""));
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
@@ -1267,10 +1302,27 @@ export class Session {
         if (s.builder.draft && !this.builderBusy) this.applyStory(s.builder.draft);
         if (s.campaign) s.campaign.current = "";
         break;
+      case "campaignOffer": {
+        const c = campaignById(s.campaign?.id), id = String(msg.story || "");
+        if (!c || !c.stories.some((x) => x.id === id)) break;
+        const o = s.campaign.offered || [];
+        s.campaign.offered = msg.on === false ? o.filter((x) => x !== id) : o.includes(id) || o.length >= 9 ? o : [...o, id];
+        this.sectorVotes.forEach((v, ws) => { if (!s.campaign.offered.includes(v)) this.sectorVotes.delete(ws); });
+        this.sectorSync();
+        break;
+      }
+      case "campaignShow":
+        this.sectorShown = !msg.hide && !!s.campaign;
+        if (this.sectorShown) this.addLog("note", "Showed the players the sector map and the job board.");
+        this.sectorSync();
+        break;
       case "campaignStart": {
         const c = campaignById(msg.id);
         if (!c || this.campaignBusy) break;
         s.campaign = newProgress(c);
+        this.sectorShown = false;
+        this.sectorVotes.clear();
+        this.sectorSync();
         this.addLog("note", `Campaign started: ${c.title}. Pick its first story on the sector map.`);
         break;
       }
@@ -1284,7 +1336,12 @@ export class Session {
         break;
       }
       case "campaignLeave":
-        if (!this.campaignBusy) s.campaign = null;
+        if (!this.campaignBusy) {
+          s.campaign = null;
+          this.sectorShown = false;
+          this.sectorVotes.clear();
+          this.sectorSync();
+        }
         break;
       case "terminals": {
         const players = [...this.sockets].filter((c) => c.role === "player");
@@ -1621,6 +1678,10 @@ export class Session {
       if (this.state.campaign !== p) throw new Error("the campaign was left while the story was being built");
       this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config) => carryInto(config, c, story, p));
       p.current = story.id;
+      p.offered = (p.offered || []).filter((x) => x !== story.id);
+      this.sectorVotes.clear();
+      this.sectorShown = false;
+      this.sectorSync();
       this.addLog("note", `${c.title}, story ${story.n}: ${story.title} (${placeOf(c, story)}). The arc is in the standing orders.`);
     } catch (err) {
       console.error(`[${this.code}] campaign story failed:`, err?.message || err);
