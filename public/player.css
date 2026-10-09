@@ -636,7 +636,7 @@ body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #
 .cb-cam { width: var(--cb-cam); }
 .cb-face { position: relative; width: var(--cb-face); height: var(--cb-face); border: 2px solid var(--dim); display: grid; place-items: center; overflow: hidden; }
 .cb-pc.talking .cb-face { border-color: var(--fg); box-shadow: 0 0 10px var(--glow); }
-.cb-waves { position: absolute; z-index: 2; left: 0; right: 0; bottom: calc(100% + 0.25em); height: calc(var(--cb-face) * 0.18); display: flex; align-items: flex-end; gap: 1.2%; padding: 0 6%; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
+.cb-waves { position: absolute; z-index: 2; left: 0; right: 0; top: calc(100% + 0.3em); height: calc(var(--cb-face) * 0.18); display: flex; align-items: flex-end; gap: 1.2%; padding: 0 6%; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
 .cb-pc.talking .cb-waves { opacity: 1; transition-duration: 0.1s; }
 .cb-waves i { flex: 1; height: 100%; background: var(--fg); opacity: 0.75; box-shadow: 0 0 2px var(--glow); border-radius: 1px 1px 0 0; transform-origin: bottom; transform: scaleY(0.12); }
 .cb-pc.talking .cb-waves i, body.calm .cb-pc.talking .cb-waves i { animation: cb-wave var(--t) ease-in-out var(--d, 0s) infinite !important; }
