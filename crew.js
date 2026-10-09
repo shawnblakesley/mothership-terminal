@@ -6,6 +6,17 @@ export const CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
 export const STATS = ["strength", "speed", "intellect", "combat"];
 export const SAVES = ["sanity", "fear", "body"];
 
+const COND_NUMBERS = { vac: 0, deadAt: 0, air: 0, puncture: 0, rad: 0, pills: 0, lethal: 0, bleeding: 0, active: 0, fed: 0, cryo: 0, dying: 0 };
+const COND_FLAGS = ["out", "leak", "fire", "thirsty", "cryosleep", "strenuous", "spaced"];
+export const newCond = () => ({ ...COND_NUMBERS, ...Object.fromEntries(COND_FLAGS.map((k) => [k, false])), dead: "", tags: [] });
+export function sanitizeCond(c) {
+  const out = newCond();
+  for (const k of Object.keys(COND_NUMBERS)) out[k] = int(c?.[k], 0, 1e7, 0);
+  for (const k of COND_FLAGS) out[k] = c?.[k] === true;
+  out.dead = str(c?.dead, 40);
+  out.tags = (Array.isArray(c?.tags) ? c.tags : []).map((t) => str(t, 60).trim()).filter(Boolean).slice(0, 8);
+  return out;
+}
 export const TRAUMA_RESPONSES = {
   Marine: "Whenever they Panic, every Close friendly player makes a Fear Save.",
   Android: "Fear Saves made by Close friendly players are at [-].",
@@ -130,6 +141,7 @@ export function sanitizeCrew(list) {
       trinket: str(c.trinket, 160),
       patch: str(c.patch, 80),
       notes: str(c.notes, 1000),
+      cond: sanitizeCond(c.cond),
       portrait: PORTRAIT_FILE.test(c.portrait || "") ? c.portrait : "",
     });
     if (out.length >= MAX_CREW) break;
@@ -190,6 +202,7 @@ export function freshen(pc) {
   pc.wounds.current = 0;
   pc.stress = Math.max(pc.startStress, pc.minStress ?? 0);
   pc.items = itemsFrom(pc.loadout);
+  pc.cond = newCond();
 }
 
 const MAX_ITEMS = 24;

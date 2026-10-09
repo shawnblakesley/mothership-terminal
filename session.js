@@ -7,7 +7,8 @@ import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, 
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
-import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen } from "./crew.js";
+import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond } from "./crew.js";
+import { HAZARDS, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, oxygenNeed, settle, hazardDamage, hazardWound, deathSave, applyDeathSave, normalizeHazards, oxygenStart, oxygenDay, oxygenState, breathing, protection, penalties, conditionText, puncture, patch, airRestored, takePills, wake, stimpak, rest } from "./hazards.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel } from "./campaign.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
@@ -443,7 +444,7 @@ const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew do
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
 const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
-const STORY_ACTIONS = new Set(["command", "inject", "note", "heard", "rollRequest", "rollFor", "offerRoll", "generate", "approve", "outcome", "handout", "clockStart"]);
+const STORY_ACTIONS = new Set(["nextRound", "passTime", "hazard", "command", "inject", "note", "heard", "rollRequest", "rollFor", "offerRoll", "generate", "approve", "outcome", "handout", "clockStart"]);
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
   return n ? crew.find((c) => c.name.toLowerCase() === n || c.name.toLowerCase().includes(n))?.id || "" : "";
@@ -502,6 +503,9 @@ export class Session {
     this.undoStack = [];
     this.delivering = null;
     this.rerun = false;
+    this.hazardUnits = [];
+    this.hazardNeeds = [];
+    this.syncHazards();
     this.effectTimers = new Map();
     this.onChange = onChange;
     this.onEnd = onEnd;
@@ -726,6 +730,7 @@ export class Session {
       effects: this.state.effects.filter((e) => e.net === undefined || ws?.stream || shownOn(e.net, net)),
       playing: this.state.playing.filter((p) => p.loop),
       crew: this.state.config.crew,
+      conds: this.condMap(),
       played: this.played(),
       iso: this.isoView(),
       ...(ws?.stream ? { map: this.streamMap() } : {}),
@@ -765,6 +770,9 @@ export class Session {
       claims: this.claims(),
       screens: this.screens(),
       canRetcon: this.undoStack.length,
+      hazardWork: this.hazardWork(),
+      hazardTypes: HAZARDS,
+      conds: this.condMap(),
       effects: this.state.effects.filter((e) => this.effectRunning(e)),
       builderBusy: this.builderBusy,
       campaignBusy: this.campaignBusy,
@@ -935,7 +943,7 @@ export class Session {
   }
 
   crewChanged() {
-    this.toPlayers({ t: "crew", crew: this.state.config.crew, claims: this.claims(), played: this.played() });
+    this.toPlayers({ t: "crew", crew: this.state.config.crew, conds: this.condMap(), claims: this.claims(), played: this.played() });
     this.syncDm();
     const x = this.state.solo;
     if (x?.phase === "play" && !x.opened && Object.keys(this.claims()).length) this.soloOpen();
@@ -1219,11 +1227,33 @@ export class Session {
           return;
         }
         if (s.roll?.status === "waiting") this.addLog("note", "Roll cancelled.");
-        s.roll = null;
-        this.toPlayers({ t: "roll", roll: null });
+        { const was = s.roll;
+          s.roll = null;
+          this.toPlayers({ t: "roll", roll: null });
+          if (was?.hazard) this.pumpHazards(); }
         break;
       case "retcon":
         this.retcon();
+        break;
+      case "nextRound":
+        this.advanceRound();
+        break;
+      case "passTime":
+        this.passTime(msg.hours);
+        break;
+      case "hazard":
+        this.setHazard(msg.room, msg.type, msg.level, msg.supply);
+        break;
+      case "hazardTrigger": {
+        const h = s.station.hazards?.[roomId(msg.room)];
+        if (h) { this.hazardUnits.push({ u: "event", room: roomId(msg.room), type: h.type }); this.pumpHazards(); }
+        break;
+      }
+      case "hazardRollAll":
+        this.rollAllHazard();
+        break;
+      case "condition":
+        this.crewCondition(msg.pc, msg.action, msg.value);
         break;
       case "outcome": {
         const oc = s.outcomeCheck;
@@ -1404,10 +1434,13 @@ export class Session {
       case "moveScreens":
         for (const ws of this.sockets) if (ws.role === "player" && ws.character && ws.character === msg.character) this.playerTerminal(ws, msg.terminal, "warden");
         break;
-      case "crew":
+      case "crew": {
+        const conds = new Map(s.config.crew.map((c) => [c.id, c.cond]));
         s.config.crew = sanitizeCrew(msg.crew);
+        for (const pc of s.config.crew) if (conds.has(pc.id)) pc.cond = conds.get(pc.id);
         this.crewChanged();
         break;
+      }
       case "soundPlay": {
         const snd = s.sounds.find((x) => x.id === msg.id);
         if (!snd) break;
@@ -1754,6 +1787,9 @@ export class Session {
     Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, synopses: {} });
     this.endAllEffects();
     this.stopSounds();
+    this.hazardUnits = [];
+    this.hazardNeeds = [];
+    this.syncHazards();
     for (const ws of this.sockets) if (ws.role === "player") ws.character = null;
     if (this.usesNeural()) warmNeural();
     this.addLog("note", `New story applied: "${draft.title}".`);
@@ -1800,7 +1836,7 @@ export class Session {
       pcs: r.pcs.map((p) => {
         const pc = this.crewById(p.id);
         const plus = !!pc && r.check === PANIC && this.plusAvailable(pc);
-        return { ...p, done: !!r.results[p.id], advantage: pc ? effectiveAdvantage(r, pc, { close: this.closeTo(pc) }) : r.advantage, plus, autoPlus: plus && r.plus };
+        return { ...p, done: !!r.results[p.id], advantage: pc ? effectiveAdvantage(r, pc, this.advOpts(pc, r)) : r.advantage, why: pc ? this.advWhy(pc, r) : [], plus, autoPlus: plus && r.plus };
       }),
     };
   }
@@ -1821,9 +1857,9 @@ export class Session {
     const s = this.state;
     const r = s.roll;
     const usePlus = r.check === PANIC && (plus || r.plus) && this.plusAvailable(pc);
-    const req = { ...r, advantage: effectiveAdvantage(r, pc, { close: this.closeTo(pc), plus: usePlus }) };
+    const req = { ...r, advantage: effectiveAdvantage(r, pc, this.advOpts(pc, r, usePlus)) };
     const { stat, bonus } = rollTarget(r, pc);
-    const result = resolve(req, stat, dice ?? diceFor(req), bonus);
+    const result = resolve(req, r.check === PANIC ? stat : stat - (pc.cond?.rad || 0), dice ?? diceFor(req), bonus);
     track("Roll", { Kind: r.check === PANIC ? "panic" : CHECKS[r.check].kind === "Save" ? "save" : "stat", Who: r.all ? "all" : "one" });
     r.results[pc.id] = { result, manual, by };
     if (usePlus) {
@@ -1834,6 +1870,7 @@ export class Session {
     this.toPlayers({ t: "rollResult", result, label: checkLabel(req), who: pc.name, effect: fx?.name || "" });
     this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(req, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
     this.afterRoll(pc, req, result, fx);
+    if (r.hazard?.[pc.id]) this.settleHazard(pc, r.hazard[pc.id], result);
     if (r.pcs.every((p) => r.results[p.id])) this.finishRoll();
     else {
       this.toPlayers({ t: "roll", roll: this.publicRoll() });
@@ -1881,6 +1918,10 @@ export class Session {
     this.syncDm();
     if (this.state.solo && this.runOffer()) return;
     if (this.state.solo) this.soloNoCheck = true;
+    if (r.hazard) {
+      this.pumpHazards();
+      if (this.state.roll?.status === "waiting") return;
+    }
     if (this.hasKey()) this.generate();
   }
 
@@ -1933,11 +1974,11 @@ export class Session {
     if (now - (ws.lastRoll || 0) < 1500) return;
     ws.lastRoll = now;
     const r = sanitizeRequest({ pc: pc.id, check: msg.check, skill: msg.skill, advantage: msg.advantage }, [pc]);
-    const req = { ...r, advantage: effectiveAdvantage(r, pc, { close: this.closeTo(pc) }) };
+    const req = { ...r, advantage: effectiveAdvantage(r, pc, this.advOpts(pc, r)) };
     const dice = msg.manual ? manualDice(msg.dice) : diceFor(req);
     let result;
     try {
-      result = resolve(req, pc.stats[msg.check] ?? pc.saves[msg.check], dice, r.bonus);
+      result = resolve(req, (pc.stats[msg.check] ?? pc.saves[msg.check]) - (pc.cond?.rad || 0), dice, r.bonus);
     } catch (err) {
       ws.send(JSON.stringify({ t: "rollError", text: req.advantage !== r.advantage ? `${err.message} An Android is close, so this Fear Save is at [-].` : err.message }));
       return;
@@ -1953,6 +1994,200 @@ export class Session {
     const { from, to, over } = gainStress(pc, n);
     this.addLog("note", `${pc.name}: Stress ${from} → ${to} (${why}).`);
     this.stressOver(pc, over);
+    this.crewChanged();
+  }
+
+  syncHazards() {
+    const s = this.state;
+    const raw = s.station?.hazards;
+    const hz = normalizeHazards(raw);
+    for (const [room, h] of Object.entries(hz)) if (h.type === "oxygen" && raw[room]?.supply === undefined) h.supply = this.oxygenStart();
+    if (Object.keys(hz).length) s.station.hazards = hz;
+    else if (s.station) delete s.station.hazards;
+  }
+  oxygenStart() { return oxygenStart(this.state.config.shipCrew || this.state.config.crew.length || 1); }
+
+  hazardsFor(pc) {
+    const h = this.state.station.hazards?.[roomId(this.roomOfPc(pc.id))];
+    return h ? [h] : [];
+  }
+  thinAir(pc) {
+    const live = breathing(this.state.config.crew).length;
+    return this.hazardsFor(pc).some((h) => h.type === "oxygen" && oxygenState(h.supply, live).low) && !protection(pc, "oxygen");
+  }
+  condWhy(pc, req) { return req.check === PANIC ? [] : penalties(pc, { thinAir: this.thinAir(pc) }); }
+  advOpts(pc, req, plus = false) { return { close: this.closeTo(pc), plus, more: this.condWhy(pc, req).length ? ["disadvantage"] : [] }; }
+  advWhy(pc, req) { return [...(req.check === "fear" && this.closeTo(pc).some((c) => c.className === "Android") ? ["an Android is close"] : []), ...this.condWhy(pc, req)]; }
+  condMap() { return Object.fromEntries(this.state.config.crew.map((pc) => [pc.id, conditionText(pc)])); }
+  hazardWork() { return this.hazardUnits.length + this.hazardNeeds.length; }
+
+  setHazard(rawRoom, rawType, level, supply) {
+    const s = this.state;
+    const room = roomId(rawRoom), type = String(rawType ?? "").toLowerCase().trim();
+    if (!room) return false;
+    const hz = s.station.hazards ||= {};
+    const was = hz[room];
+    if (!type || type === "none") {
+      if (!was) return false;
+      delete hz[room];
+      if (!Object.keys(hz).length) delete s.station.hazards;
+      this.addLog("note", `Hazard ended in ${room}: ${HAZARDS[was.type].name}.`);
+    } else {
+      if (!HAZARDS[type]) return false;
+      const same = was?.type === type;
+      const next = normalizeHazards({ [room]: { type, level, since: same ? was.since : undefined, rounds: same ? was.rounds : 0, hours: same ? was.hours : 0, supply: Number.isFinite(Number(supply)) && supply !== "" && supply !== null ? supply : same ? was.supply : this.oxygenStart() } })[room];
+      hz[room] = next;
+      const info = HAZARDS[type];
+      if (same && was.level === next.level && was.supply === next.supply) return false;
+      this.addLog("note", `Hazard in ${room}: ${info.name}${next.level ? ` level ${next.level}` : ""} (${info.kind === "psg" ? "Mothership rule" : "story hazard"}). ${info.rule}`);
+      if (!same && ["event", "exposure"].includes(info.per)) this.hazardUnits.push({ u: "event", room, type });
+    }
+    this.sendHeader();
+    this.pumpHazards();
+    return true;
+  }
+  applyHazardChanges(list) {
+    for (const h of list || []) this.setHazard(h.room, h.type, h.level);
+  }
+
+  hazardDamage(pc, n, type, why = "") {
+    const res = hazardDamage(pc, n, type);
+    if (!res.n) return;
+    const col = WOUND_COLUMN[type];
+    this.addLog("note", `${pc.name} takes ${res.n} Damage${why ? ` (${why})` : ""}: Health ${pc.health.current}/${pc.health.max}.${res.wound ? ` Health hit 0: ${pc.name} gains 1 Wound (${pc.wounds.current}/${pc.wounds.max}). ${col ? `Roll the Wounds Table, ${col} column.` : "No Wounds Table column for this: the Warden chooses."}` : ""}`);
+    if (res.atMax) this.rollDeathSave(pc, "at Maximum Wounds");
+  }
+  rollDeathSave(pc, why) {
+    const res = deathSave();
+    applyDeathSave(pc, res);
+    this.addLog("note", `Death Save for ${pc.name} (${why}), rolled in secret: ${res.roll} = ${res.text}.`, { secret: true });
+  }
+
+  advanceRound() {
+    this.hazardUnits.push({ u: "round" });
+    this.pumpHazards();
+  }
+  passTime(hours) {
+    const n = Math.max(0, Math.min(72, Math.round(Number(hours) || 0)));
+    if (!n) return;
+    this.addLog("note", `${n} hour${n > 1 ? "s" : ""} pass.`);
+    for (let i = 0; i < n; i++) this.hazardUnits.push({ u: "hour" });
+    this.pumpHazards();
+  }
+
+  pumpHazards() {
+    const s = this.state;
+    for (let guard = 0; guard < 2000; guard++) {
+      if (s.roll?.status === "waiting") break;
+      if (this.hazardNeeds.length) { this.startHazardRoll(); break; }
+      const unit = this.hazardUnits.shift();
+      if (!unit) break;
+      this.runUnit(unit);
+    }
+    this.crewChanged();
+  }
+
+  runUnit(unit) {
+    const s = this.state, crew = s.config.crew, hz = s.station.hazards || {};
+    const note = (pc, text) => this.addLog("note", `${pc.name}: ${text}.`);
+    if (unit.u === "event") {
+      const h = hz[unit.room];
+      if (!h || h.type !== unit.type) return;
+      const who = h.type === "breach" ? crew : crew.filter((pc) => roomId(this.roomOfPc(pc.id)) === unit.room);
+      for (const pc of who) this.hazardNeeds.push(...eventNeeds(pc, h));
+      if (!who.length) this.addLog("note", `${HAZARDS[h.type].name} in ${unit.room}: nobody is there.`);
+      return;
+    }
+    const hour = unit.u === "hour";
+    for (const pc of crew) {
+      const res = (hour ? hourTick : roundTick)(pc, this.hazardsFor(pc));
+      for (const e of res.events) note(pc, e);
+      for (const t of res.skipped || []) note(pc, `${HAZARDS[t].name} is a per-round hazard and wasn't run for the hour: use Next round, or rule it`);
+      for (const d of res.damage) this.hazardDamage(pc, d.n, d.type, d.why);
+      this.hazardNeeds.push(...res.needs);
+    }
+    for (const [room, h] of Object.entries(hz)) {
+      if (hour) {
+        h.hours++;
+        if (h.type === "oxygen" && h.hours % 24 === 0) this.oxygenDay(room, h);
+      } else h.rounds++;
+    }
+    if (hour) this.sendHeader();
+  }
+
+  oxygenDay(room, h) {
+    const crew = this.state.config.crew;
+    const r = oxygenDay(h.supply, crew);
+    h.supply = r.supply;
+    this.addLog("note", `Life support offline in ${room}: oxygen supply ${r.supply} after 24 hours (${r.breathing} breathing, ${r.use} used).${r.gone ? " Supply gone: as no oxygen." : r.save ? " Under the breathing crew: Body Save or Death Save." : r.low ? " Under twice the breathing crew: [-] on all rolls." : ""}`);
+    if (!r.save) return;
+    for (const pc of breathing(crew)) if (roomId(this.roomOfPc(pc.id)) === room && !protection(pc, "oxygen")) this.hazardNeeds.push(oxygenNeed(pc));
+  }
+
+  startHazardRoll() {
+    const s = this.state;
+    const key = (n) => `${n.kind}|${n.check}|${n.advantage}|${n.reason}`;
+    const first = this.hazardNeeds[0];
+    const group = this.hazardNeeds.filter((n) => key(n) === key(first));
+    this.hazardNeeds = this.hazardNeeds.filter((n) => key(n) !== key(first));
+    const who = group.map((n) => this.crewById(n.pc)).filter((pc) => pc && !pc.cond.dead);
+    if (!who.length) return;
+    const req = sanitizeRequest({ pc: "all", check: first.check, advantage: first.advantage, reason: first.reason }, who);
+    req.hazard = Object.fromEntries(group.map((n) => [n.pc, n]));
+    s.roll = req;
+    this.addLog("note", `Roll called for ${who.map((p) => p.name).join(", ")}: ${[checkLabel(req), req.reason].filter(Boolean).join(" · ")}`);
+    this.toPlayers({ t: "roll", roll: this.publicRoll() });
+  }
+
+  settleHazard(pc, n, result) {
+    const out = settle(pc, n, result);
+    if (out.text) this.addLog("note", `${pc.name}: ${out.text}.`);
+    if (out.stress) this.stressFromRoll(pc, out.stress, "infohazard");
+    if (out.damage) this.hazardDamage(pc, out.damage, out.dtype, n.reason.toLowerCase());
+    if (out.wounds) {
+      const w = hazardWound(pc, out.dtype);
+      this.addLog("note", `${pc.name} gains 1 Wound (${pc.wounds.current}/${pc.wounds.max}). Roll the Wounds Table, ${WOUND_COLUMN[out.dtype]} column.`);
+      if (w.atMax) this.rollDeathSave(pc, "at Maximum Wounds");
+    }
+    if (out.deathSave) this.rollDeathSave(pc, n.reason.toLowerCase());
+  }
+
+  rollAllHazard() {
+    for (let guard = 0; guard < 500; guard++) {
+      const r = this.state.roll;
+      if (!r || r.status !== "waiting" || !r.hazard) break;
+      for (const p of r.pcs) {
+        const pc = this.crewById(p.id);
+        if (pc && !r.results[p.id]) this.rollFor(pc, diceFor(r), { by: "warden" });
+      }
+    }
+  }
+
+  crewCondition(id, action, value) {
+    const pc = this.crewById(id);
+    if (!pc) return;
+    const c = pc.cond;
+    const say = (t) => this.addLog("note", `${pc.name}: ${t}.`);
+    switch (action) {
+      case "puncture": say(`suit punctured: decompresses in ${puncture(c)} round${c.puncture > 1 ? "s" : ""}`); break;
+      case "patch": patch(c); say("suit patched (Patch Kit; a patched vaccsuit is AP 1)"); break;
+      case "air": airRestored(c); say("breathing again"); break;
+      case "putout": c.fire = false; say("fire put out"); break;
+      case "bleed": c.bleeding = Math.min(99, c.bleeding + (Number(value) || 1)); say(`Bleeding ${c.bleeding}`); break;
+      case "stopbleed": c.bleeding = 0; say("bleeding stopped (First Aid Kit)"); break;
+      case "ate": c.fed = 0; say("has eaten"); break;
+      case "thirst": c.thirsty = !c.thirsty; say(c.thirsty ? "water at the minimum" : "has water"); break;
+      case "rest": rest(c, 8); say("rested 8 hours"); break;
+      case "strenuous": c.strenuous = !c.strenuous; say(c.strenuous ? "strenuous activity" : "not strenuous"); break;
+      case "strenuouscheck": if (c.thirsty) { this.hazardNeeds.push(strenuousNeed(pc)); this.pumpHazards(); } break;
+      case "cryosleep": c.cryosleep = true; say("goes into cryosleep"); break;
+      case "wake": if (!c.cryosleep) return; wake(c); say("wakes from cryosleep: [-] on all rolls for a week (cryosickness)"); break;
+      case "stimpak": if (changeItem(pc, "remove", "stimpak")) { stimpak(c); say("used a stimpak: cryosickness cured"); } else this.send("dm", { t: "toast", level: "error", text: `${pc.name} has no stimpak.` }); break;
+      case "pills": { const n = takePills(c); say("takes Radiation Pills: Radiation Level -1 for 2d10 minutes"); this.hazardDamage(pc, n, "pills", "Radiation Pills"); break; }
+      case "clearrad": c.rad = 0; say("radiation penalty cleared"); break;
+      case "cleartags": c.tags = []; say("conditions cleared"); break;
+      default: return;
+    }
     this.crewChanged();
   }
 
@@ -2038,7 +2273,7 @@ export class Session {
     if (undo.map !== undefined) Object.assign(s.config, { map: undo.map, rooms: undo.rooms });
     for (const pc of s.config.crew) {
       const was = undo.crew.find((x) => x.id === pc.id);
-      if (was) Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, minStress: was.minStress, items: was.items });
+      if (was) Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, minStress: was.minStress, items: was.items, cond: was.cond });
     }
     s.outcomeCheck = undo.outcome;
     this.playhead = 0;
@@ -2066,7 +2301,7 @@ export class Session {
     const changes = (reply?.station_changes || []).filter((c) => c && typeof c.path === "string" && c.path);
     const effects = useEffects ? (reply?.effects || []) : [];
     const mapChanges = this.mapChanges(reply);
-    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], moves: reply?.moves || [], castChanges: reply?.cast_changes || [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], ...mapChanges };
+    let meta = { changes: changes.map(({ path, value }) => ({ path, value })), effects: effects.map(({ type, text, seconds }) => ({ type, text, seconds })), crewChanges: this.state.config.agentCrew ? (reply?.crew_changes || []) : [], itemChanges: this.state.config.agentCrew ? (reply?.item_changes || []) : [], moves: reply?.moves || [], castChanges: reply?.cast_changes || [], clockChanges: reply?.clocks || [], handouts: reply?.handouts || [], hazardChanges: reply?.hazards || [], timePasses: reply?.time_passes?.hours || 0, ...mapChanges };
     let waiting = [];
     let lastEntry = null;
     const config = this.state.config;
@@ -2114,8 +2349,12 @@ export class Session {
       setPath(this.state.station, c.path, c.value);
       this.addLog("note", `Station: ${c.path} → ${c.value}`);
     }
-    if (changes.length) this.sendHeader();
+    if (changes.length) { this.syncHazards(); this.sendHeader(); }
     this.applyMapChanges(mapChanges);
+    if (source === "agent") {
+      this.applyHazardChanges(reply?.hazards);
+      if (reply?.time_passes?.hours > 0) this.passTime(reply.time_passes.hours);
+    }
     for (const e of effects) this.startEffect(e, "agent");
     this.applyCrewChanges(reply?.crew_changes);
     this.applyItemChanges(reply?.item_changes);
@@ -2445,6 +2684,8 @@ export class Session {
     this.playhead = 0;
     this.undoStack = [];
     this.lastNet = "";
+    this.hazardUnits = [];
+    this.hazardNeeds = [];
     this.clearClocks();
     this.endAllEffects();
     this.stopSounds();
@@ -2469,6 +2710,8 @@ export class Session {
     }
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
     s.station.access_level = DEFAULT_STATION.access_level;
+    delete s.station.hazards;
+    for (const pc of s.config.crew) pc.cond = newCond();
     Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, storyStart: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);

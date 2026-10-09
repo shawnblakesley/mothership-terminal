@@ -8,6 +8,7 @@ const SHIP = {
   system: "LONG HAUL MARY",
   os: "HAULCOM 4.1",
   computer: "MARY",
+  crew: 4,
   description: "A Kessler-Pike K-12 \"Longliner\" bulk hauler, 31 years old, owned 51% by Wanda Okafor and 100% by her debt to Gallow-Mercer Finance. A blunt-nosed cab on a long cargo spine that clamps one standard 40-unit container. Three decks: the cab (cockpit, sleeper bunk, galley), engineering (engine room, airlock, crawlway) and the cargo spine.",
   persona: `You are MARY, the HAULCOM 4.1 rig computer of the Longliner bulk hauler LONG HAUL MARY. Thirty-one years on the Rim have given you opinions.
 - You talk like an old long-haul dispatcher: warm, dry, a little drawl, short sentences, plain uppercase on the cab screen. You call the crew "hon", "kid" or by their CB handles. You hate customs, love the union and tolerate Gallow-Mercer because they hold the note on you.

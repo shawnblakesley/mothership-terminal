@@ -300,9 +300,37 @@ Click a room on the map to open it:
 - **Floor plan:** a top-down grid of walls, doors, hatches, windows, consoles, beds, tables, seats, lockers, crates, vents, machinery, reactor cores, pipes and debris. The default story's rooms come drawn; any other room is drawn by the agent the first time you open it (or press **↻ Redraw with agent**). **Unlocking the padlock** lets you paint tiles (click or drag) and add or remove rows and columns; it saves as you go.
 - **Show players:** puts the floor plan on every player's screen, or one player's, as a blueprint in their screen colour. It shows the layout only, never who or what is in the room. They close it with Esc or a click; **Hide** takes it off their screens.
 - **Here now:** the player characters at this room's terminals, who else is there (`occupants.<room>`) and what's there (`contents.<room>`). You can edit both; the agent keeps them current as people move and things happen.
+- **Hazard:** set or clear an environmental hazard in the room, with its level (see Hazards, below).
 - **Room state:** every value for the room (door, camera, anything else), click to change; and the room's terminals.
 
 **The agent can change all of it**, as the story demands: every value on the map (doors, lights, the lift, who and what is where) through the station state; the **layout** itself (a ship docks or leaves, a breach opens a new way through, a shaft collapses, a room is found); and **floor plans** (a wall blown out, a barricade, debris). Each change is noted in your log, and **Retcon** undoes it with the rest of the response.
+
+## Hazards
+
+A room can have an environmental **hazard**. Click the room on the map and use **Hazard** to set it (and its level), or let the agent do it; the room turns amber on the map and the hazards in play are listed under **Actions → Rounds and hazards**. Player characters whose screen is at a terminal in that room are **exposed**. Hazards run through the same rolls as everything else: the players roll their Saves and Checks on their screens, **Roll for them** works, and a failed roll adds its Stress as usual. Damage goes through one function (`hazardDamage` in `hazards.js`); a character who reaches 0 Health gains a Wound and Health resets to Maximum minus the carryover, and the log says which Wounds Table column to roll.
+
+**Time.** **Next round** (Actions) is one round, about 10 seconds: it runs everything that happens per round. **Pass time** (1, 6 or 24 hours) runs the hourly and daily rules, hour by hour. The agent can skip time too, when the story does (`time_passes`). Per-round hazards other than vacuum are not run for a whole hour: the log says so, and you rule it or use Next round. Death Saves are rolled in secret and appear only in your log.
+
+**Mothership rules** (Player's Survival Guide v1.2, as written; the Hull Breach comes from the Shipbreaker's Toolkit):
+
+- **Vacuum (no oxygen):** unconscious after 15 seconds, dead 1d5 minutes later. A punctured vaccsuit decompresses within 1d5 rounds. Sealed suits (vaccsuit 12 hours of air, hazard suit 1 hour, advanced battle dress 1 hour) protect while the air lasts. Androids need no oxygen.
+- **Life support offline:** oxygen supply = 1d10 x the ship's maximum crew (LONG HAUL MARY: 4). Every 24 hours it drops by the breathing crew, 2 more each for strenuous activity (androids and people in cryosleep use none). Under twice the breathing crew: [-] on all rolls. Under the breathing crew: Body Save or Death Save (asked at each 24-hour step). Supply gone: as no oxygen.
+- **Toxic atmosphere:** 1d10 Damage per round; a Body Save halves it (rounded up). A rebreather, a sealed suit or an oxygen tank protects.
+- **Corrosive atmosphere:** 1 (mild) to 10 (high) Damage per round, by the hazard's level.
+- **Radiation:** level 1 trace, nothing; level 2 acute, all Stats and Saves -1 every round (a penalty on the sheet that you clear, and that applies to their rolls); level 3 lethal, a Body Save every round or a lethal dose, shown on the sheet as death in 1d5 days. Vaccsuits, hazard suits and advanced battle dress block all three. Radiation Pills (on the character's Conditions menu) cost 1d5 Damage and lower the level by 1 for 2d10 minutes.
+- **Extreme cold and heat:** a Body Save every hour; the Guide says "succumb" on a failure, and this app reads that as a Death Save. A hazard suit protects.
+- **Fire:** anyone in the room is on fire, 2d10 Damage per round until you put them out.
+- **Explosion and hull breach:** Body Save or take 1 Wound (Fire & Explosives); a Critical Failure is sucked into space (as vacuum). An explosion affects the room, a hull breach everyone aboard.
+- **Exhaustion:** after 12 hours of activity, a Body Save every hour (failure: 1 Damage); after 24 hours, [-] on all rolls until 8 hours' rest.
+- **Food and water:** after 24 hours without food, [-] on all rolls (about 3 weeks without is flagged). At the water minimum, strenuous activity needs a Body Save or the character passes out, and [-] on all rolls.
+- **Bleeding:** 1 Damage per round per point, cumulative, until stopped (a First Aid Kit).
+- **Cryosickness:** [-] on all rolls for a week after cryosleep; a stimpak cures it.
+
+**Story hazards** are not Mothership rules: the campaign stories use them, and the app handles them with the generic rule (a Save or Check; a failure adds the usual Stress, plus the consequence the story names). They are labelled "story hazard" everywhere. **Contagion:** Body Save, failure is infected (a condition on the sheet). **Darkness:** Fear Save. **Crush, collapse, machinery:** Speed Check, failure is 1d10, 2d10 or 3d10 Damage by severity (level 1-3), Blunt Force. **Gravity:** Strength Check to hold on, failure is pulled toward the source. **Acid:** like a corrosive atmosphere. **Ice:** Speed Check or fall, 1d10 Blunt Force. **Entanglement:** Strength Check [-] to escape. **Infohazard:** Sanity Save, failure is 1 extra Stress. **Temporal:** Sanity Save on each loop. These roll when they start and again whenever you press **Trigger again**.
+
+**Conditions** (each character's sheet, Crew tab, and the players' own sheet) lists what is on them: no air, radiation penalty, lethal dose countdown, bleeding, fire, suit punctured, cryosickness, exhaustion, hunger, water. The menu next to it handles what the app can't see: puncture or patch a suit, put out a fire, add or stop bleeding, they've eaten, water at the minimum, rested 8 hours, cryosleep and waking, a stimpak, radiation pills. A character with a [-] condition rolls at [-] when you call a roll for them alone or they roll themselves (and [+] and [-] cancel); rolls called for **All** don't pick that up, so mind it yourself. Hazard rolls always do.
+
+**Campaigns.** Each Rim Haulers story's `hazards` are given to the agent with their rules when the story is built. **Retcon** undoes the agent's hazard and time changes with the rest of its response, and **Restart story** clears all hazards and conditions.
 
 ## Warden vs players
 

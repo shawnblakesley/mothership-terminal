@@ -684,3 +684,5 @@ body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #
 .line.meta { color: var(--dim); text-transform: uppercase; }
 .line.meta.table, .line.meta.heard, .line.meta.warden { color: var(--fg); }
 .line .var { color: var(--dim); margin-top: 0.15em; }
+.cs-conds { display: flex; flex-wrap: wrap; gap: 0.3em; }
+.cs-conds > span { border: 2px solid var(--fg); border-radius: 999px; padding: 2px calc(0.45em + 2px); font-size: 0.85em; }

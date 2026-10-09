@@ -61,8 +61,8 @@ export function combineAdvantage(list) {
   return plus === minus ? "none" : plus ? "advantage" : "disadvantage";
 }
 
-export function effectiveAdvantage(req, pc, { close = [], plus = false } = {}) {
-  const list = [req.advantage];
+export function effectiveAdvantage(req, pc, { close = [], plus = false, more = [] } = {}) {
+  const list = [req.advantage, ...more];
   if (req.check === "fear" && close.some((c) => c.className === "Android")) list.push("disadvantage");
   if (req.check === PANIC && plus && pc.className === "Teamster") list.push("advantage");
   return combineAdvantage(list);
