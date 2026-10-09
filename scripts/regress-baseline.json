@@ -4,7 +4,7 @@
   "effort": "off"
  },
  "runs": 5,
- "at": "2026-10-09T08:32:08.511Z",
+ "at": "2026-10-09T22:49:38.087Z",
  "results": [
   {
    "id": "warden-direction",
@@ -25,10 +25,10 @@
   {
    "id": "password-guess",
    "area": "uncertain outcomes",
-   "passed": 5,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "error: Expected ',' or '}' after property value in JSON at position 106 (line 1 column 107)"
   },
   {
    "id": "correct-code",
@@ -49,10 +49,10 @@
   {
    "id": "fail-forward",
    "area": "uncertain outcomes",
-   "passed": 4,
+   "passed": 3,
    "runs": 5,
    "pass": true,
-   "why": "a failed roll opened the door"
+   "why": "asked for another check instead of narrating the failure"
   },
   {
    "id": "roll-90s-fails",
@@ -60,15 +60,15 @@
    "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": "error: The model didn't return valid JSON. Regenerate, or reply manually."
+   "why": "narrated success on a 90-99"
   },
   {
    "id": "secret-guarded",
    "area": "secrets and access",
-   "passed": 4,
+   "passed": 3,
    "runs": 5,
    "pass": true,
-   "why": "leaked a secret above GUEST: \"DETAILS: RESTRICTED BY DIRECTIVE 7-K\""
+   "why": "leaked a secret above GUEST: \"DIRECTIVE 7-K ACTIVE\""
   },
   {
    "id": "hidden-adversary-speaks",
@@ -97,7 +97,7 @@
   {
    "id": "creature-attacks",
    "area": "combat",
-   "passed": 4,
+   "passed": 3,
    "runs": 5,
    "pass": true,
    "why": "no attacks entry from the creature on a crew member"
@@ -105,10 +105,10 @@
   {
    "id": "crew-attack-success",
    "area": "combat",
-   "passed": 5,
+   "passed": 3,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "no crew_attacks after a successful Combat Check"
   },
   {
    "id": "failed-attack-no-damage",
@@ -121,18 +121,18 @@
   {
    "id": "reload",
    "area": "combat",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "moved the magazine by hand in item_changes"
+   "why": ""
   },
   {
    "id": "stimpak-use",
    "area": "combat",
-   "passed": 3,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": "held a stimpak for a ruling"
+   "why": "changed Health or Stress by hand as well"
   },
   {
    "id": "vent-room",
@@ -177,18 +177,18 @@
   {
    "id": "death-save-reveal",
    "area": "death saves",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "held checking vitals for a ruling"
+   "why": ""
   },
   {
    "id": "player-panic",
    "area": "death saves",
-   "passed": 3,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "applied the panic's Stress itself (the Warden's)"
+   "why": ""
   },
   {
    "id": "question-not-held",
@@ -201,26 +201,26 @@
   {
    "id": "brevity-terse",
    "area": "brevity",
-   "passed": 0,
+   "passed": 5,
    "runs": 5,
-   "pass": false,
-   "why": "a line of 3 sentences at TERSE (limit 2)"
+   "pass": true,
+   "why": ""
   },
   {
    "id": "brevity-brief",
    "area": "brevity",
-   "passed": 2,
+   "passed": 5,
    "runs": 5,
-   "pass": false,
-   "why": "a line of 8 sentences at BRIEF (limit 3)"
+   "pass": true,
+   "why": ""
   },
   {
    "id": "narrator-no-you",
    "area": "narrator",
-   "passed": 3,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": "narrator says \"you\": The lift opens onto Deck 3 and the lights do not come with you. Somewhere past t"
+   "why": "narrator says \"you\": The lift doors grind open on Deck 3, and the dark swallows the car whole. Only o"
   },
   {
    "id": "in-person-vs-intercom",
@@ -241,10 +241,10 @@
   {
    "id": "pronouns-they",
    "area": "pronouns",
-   "passed": 3,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "\"her\" for a character with no pronouns given"
+   "why": ""
   },
   {
    "id": "campaign-opening-act1",
@@ -257,26 +257,26 @@
   {
    "id": "faction-plus2",
    "area": "factions",
-   "passed": 5,
+   "passed": 3,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "advantage \"none\" with the union at +2 (house rule [+])"
   },
   {
    "id": "faction-plus1",
    "area": "factions",
-   "passed": 5,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "gave [+] for a +1 standing (only at +2)"
   },
   {
    "id": "no-warden-ruling",
    "area": "no Warden",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "error: The model didn't return valid JSON. Regenerate, or reply manually."
+   "why": ""
   },
   {
    "id": "no-warden-attempt-held",
@@ -289,10 +289,10 @@
   {
    "id": "story-end-when-over",
    "area": "no Warden",
-   "passed": 2,
+   "passed": 4,
    "runs": 5,
-   "pass": false,
-   "why": "held the departure for a ruling"
+   "pass": true,
+   "why": "error: The model didn't return valid JSON. Regenerate, or reply manually."
   },
   {
    "id": "story-end-not-yet",
@@ -345,10 +345,10 @@
   {
    "id": "first-aid-bleeding",
    "area": "combat",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "held first aid for a ruling"
+   "why": ""
   },
   {
    "id": "item-pickup",
@@ -361,18 +361,18 @@
   {
    "id": "move-screens",
    "area": "where people are",
-   "passed": 5,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "no moves to the reactor terminal (got [{\"for\":\"all\",\"terminal\":\"AIRLOCK A TERMINAL\"}])"
   },
   {
    "id": "cast-leaves",
    "area": "where people are",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "Salk still in the med bay (no cast_changes)"
+   "why": ""
   },
   {
    "id": "clock-start",
@@ -401,10 +401,10 @@
   {
    "id": "ship-fight-enemy-move",
    "area": "ship combat",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "started or ended a fight while choosing a move"
+   "why": ""
   }
  ]
 }

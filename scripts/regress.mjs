@@ -10,7 +10,7 @@
 // baseline fails now (a regression). Roughly 45 calls per run of the whole suite at --runs=1.
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
-import { buildRequest, buildPrecheck, parseReply } from "../agent.js";
+import { buildRequest, buildPrecheck, parseReply, limitLines } from "../agent.js";
 import deepseek from "../providers/deepseek.js";
 import { CAMPAIGNS } from "../campaign.js";
 import { sanitizeShip, newFight } from "../ships.js";
@@ -73,12 +73,14 @@ const like = (a, b) => String(a || "").toUpperCase().includes(String(b).toUpperC
 const opened = (r, door) => has(r?.station_changes, (c) => c.path.includes(door) && /\b(open(ed|ing)?|unlocked|unsealed)\b/i.test(c.value));
 const ok = (cond, why) => (cond ? "" : why);
 const all = (...checks) => checks.find(Boolean) || "";
-// Brevity, against the limits the LENGTH setting states, on the lines as the model wrote them (before the app merges a speaker's
-// consecutive lines): at most N lines with text, each at most M sentences (a "..." inside a sentence doesn't end it), a printout at most R rows.
+// Brevity, against the limits the LENGTH setting states, on the lines the players get: the model's lines as the app trims them to the
+// setting, before it merges a speaker's consecutive lines. At most N lines with text, each at most M sentences (a "..." inside a
+// sentence doesn't end it), a printout at most R rows; and someone still answers.
 const LIMITS = { terse: [2, 2, 4], brief: [3, 3, 8] };
 const trimmed = (raw, talk) => {
   const [lines, most, rows] = LIMITS[talk];
-  const l = (raw?.lines || []).filter((x) => String(x?.text || "").trim());
+  const l = limitLines((raw?.lines || []).map((x) => ({ voice: x?.voice, text: String(x?.text || "").trim(), effects: [], variants: [] })), talk).filter((x) => x.text);
+  if (!l.length) return "nothing said";
   const count = (t) => String(t).replace(/\.\.\.|…/g, "~").split(/(?<=[.!?])\s+|\n+/).filter((x) => /[a-z0-9]/i.test(x)).length;
   const long = l.find((x) => (x.voice === "terminal" ? String(x.text).split("\n").length > rows : count(x.text) > most));
   return all(ok(l.length <= lines, `${l.length} lines at ${talk.toUpperCase()} (limit ${lines})`), ok(!long, `a line of ${long && count(long.text)} sentences at ${talk.toUpperCase()} (limit ${most})`));
@@ -284,7 +286,7 @@ async function runOnce(sc) {
   if (!held) {
     const text = await ask(buildRequest(state, "", { aside: !!sc.aside }));
     try { raw = JSON.parse(String(text).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); } catch { raw = null; }
-    reply = parseReply(text, state.config.voices);
+    reply = parseReply(text, state.config.voices, state.config.talk);
     if (reply.outcome_check.needed && state.config.checkFirst !== false) held = true;
   }
   const why = sc.check({ held, pre, reply, raw, state }) || "";
