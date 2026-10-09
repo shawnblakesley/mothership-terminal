@@ -16,7 +16,7 @@ test("list prices are the PSG equipment list", () => {
 test("house-rule resources: fuel 500, ration crate 70, spare parts 200, flagged as house rules", () => {
   assert.deepEqual(["fuel", "ration_crate", "spare_parts"].map(base), [500, 70, 200]);
   assert.ok(ITEMS.filter((i) => i.cat === "resources").every((i) => i.house));
-  assert.ok(ITEMS.filter((i) => i.cat !== "resources").every((i) => !i.house));
+  assert.ok(ITEMS.filter((i) => i.cat !== "resources" && !i.used).every((i) => !i.house));
 });
 
 test("each port class multiplier", () => {
@@ -144,4 +144,36 @@ test("starting credits are 2d10 x 10, rolled once when missing, and sanitized", 
   assert.equal(sanitizeCrew([b])[0].credits, 450);
   assert.equal(sanitizeCrew([{ name: "Neg", credits: -5 }])[0].credits, 0);
   assert.equal(sanitizeCrew([{ name: "Zero", credits: 0 }])[0].credits, 0);
+});
+
+test("weapon and armor list prices are the PSG's", () => {
+  const psg = { boarding_axe: 150, shotgun: 1400, crowbar: 25, flamethrower: 4000, flare_gun: 25, foam_gun: 500, frag_grenade: 400, gpmg: 4500, hand_welder: 250, laser_cutter: 1200, nail_gun: 150, pulse_rifle: 2400, revolver: 750, rigging_gun: 350, scalpel: 50, smart_rifle: 5000, smg: 1000, stun_baton: 150, tranq_pistol: 250, vibechete: 1000, crew_attire: 100, vaccsuit: 10000, hazard_suit: 4000, battle_dress: 2000, adv_battle_dress: 12000 };
+  for (const [id, price] of Object.entries(psg)) assert.equal(base(id), price, id);
+  assert.equal(ITEMS.filter((i) => i.cat === "weapons").length, 20);
+  assert.equal(priceIn(openShop({ ...everything, portClass: "A" }), "revolver"), 750);
+  assert.equal(priceIn(openShop({ ...everything, portClass: "C" }), "vaccsuit"), 12500);
+});
+
+test("used armor costs half list price, is labelled used and house rule, and only the Boneyard stocks it", () => {
+  const used = ITEMS.filter((i) => i.used);
+  assert.equal(used.length, 5);
+  assert.equal(base("used_vaccsuit"), 5000);
+  assert.equal(base("used_adv_battle_dress"), 6000);
+  for (const u of used) assert.ok(u.house && u.name.startsWith("Used ") && u.cat === "armor");
+  const c = CAMPAIGNS.find((x) => x.locations.some((l) => l.id === "boneyard"));
+  const yard = openShop(c.locations.find((l) => l.id === "boneyard"));
+  assert.equal(priceIn(yard, "used_vaccsuit"), Math.round(5000 * 1.25));
+  assert.equal(priceIn(yard, "vaccsuit"), null);
+  for (const l of c.locations.filter((x) => x.id !== "boneyard")) assert.ok(!l.stock.some((id) => id.startsWith("used_")), l.id);
+  assert.equal(findItem("Used Vaccsuit").id, "used_vaccsuit");
+  assert.equal(findItem("Vaccsuit").id, "vaccsuit");
+});
+
+test("Lantern sells most weapons, and only Lantern sells the Smart Rifle", () => {
+  const c = CAMPAIGNS.find((x) => x.locations.some((l) => l.id === "lantern"));
+  const weapons = ITEMS.filter((i) => i.cat === "weapons").map((i) => i.id);
+  const lantern = c.locations.find((l) => l.id === "lantern");
+  assert.ok(lantern.stock.filter((id) => weapons.includes(id)).length > weapons.length / 2);
+  assert.deepEqual(c.locations.filter((l) => l.stock.includes("smart_rifle")).map((l) => l.id), ["lantern"]);
+  assert.equal(priceIn(openShop(lantern), "revolver"), 1500);
 });

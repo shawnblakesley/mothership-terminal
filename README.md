@@ -429,7 +429,7 @@ Sessions save to `data/sessions/`, so they survive a restart. API keys are the e
 An experiment on the `experiment/shop` branch, not merged. The Warden's **Actions** tab has a **Shop** card: pick a port (it defaults to the campaign's current port) and **Open shop**; a full-screen CRT storefront opens on every player screen, with **SHOP** in the header to reopen it. Players buy and sell for their own character with the keyboard (arrows, **Tab** for buy/sell, **Enter**, **Esc**) or by tapping; it asks before spending and refuses what they can't afford. Every trade is in the Warden's log with a **Refund** button. Each character has a `credits` field, editable on the Crew tab.
 
 - List prices are the Player's Survival Guide equipment list (the shop only stocks items whose PSG price is known).
-- **House rules, not Mothership rules:** port prices by class (X x2, C x1.25, B and A x1, set as `portClass` on each location), each port's stock, selling at half the port's price (only items in the catalogue), the rig resources (fuel unit 500cr, ration crate 70cr, cargo-grade spare parts 200cr), and starting credits of 2d10 x 10 rolled once for a character who has none.
+- **House rules, not Mothership rules:** port prices by class (X x2, C x1.25, B and A x1, set as `portClass` on each location), each port's stock, selling at half the port's price (only items in the catalogue), used armor at the Boneyard (half list price), the rig resources (fuel unit 500cr, ration crate 70cr, cargo-grade spare parts 200cr), and starting credits of 2d10 x 10 rolled once for a character who has none.
 
 ## Credits
 

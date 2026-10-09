@@ -6,6 +6,30 @@ export const CATEGORIES = [
 ];
 export const ITEMS = [
   { id: "crowbar", name: "Crowbar", price: 25, cat: "weapons", desc: "1d5 Blunt Force [+]. Also opens things." },
+  { id: "boarding_axe", name: "Boarding Axe", price: 150, cat: "weapons", desc: "2d10 Gore [+]. Heavy and sharp." },
+  { id: "shotgun", name: "Combat Shotgun", price: 1400, cat: "weapons", desc: "4d10 Gunshot, 4 shots. Only 1d10 at Long Range or further." },
+  { id: "flamethrower", name: "Flamethrower", price: 4000, cat: "weapons", desc: "2d10 Fire [+], 4 shots. Body Save [-] or set on fire." },
+  { id: "flare_gun", name: "Flare Gun", price: 25, cat: "weapons", desc: "1d5 Fire [-], 2 shots." },
+  { id: "foam_gun", name: "Foam Gun", price: 500, cat: "weapons", desc: "1 Blunt Force, 3 shots. Body Save or stuck." },
+  { id: "frag_grenade", name: "Frag Grenade", price: 400, cat: "weapons", desc: "3d10 Fire/Explosives, one use. Hits all Adjacent to the target." },
+  { id: "gpmg", name: "General-Purpose Machine Gun", price: 4500, cat: "weapons", desc: "4d10 Gunshot [+], 5 shots." },
+  { id: "hand_welder", name: "Hand Welder", price: 250, cat: "weapons", desc: "1d10 Bleeding." },
+  { id: "laser_cutter", name: "Laser Cutter", price: 1200, cat: "weapons", desc: "1d100 Bleeding or Gore [+], 6 shots. Recharges for a round." },
+  { id: "nail_gun", name: "Nail Gun", price: 150, cat: "weapons", desc: "1d5 Bleeding, 32 shots." },
+  { id: "pulse_rifle", name: "Pulse Rifle", price: 2400, cat: "weapons", desc: "3d10 Gunshot, 5 shots." },
+  { id: "revolver", name: "Revolver", price: 750, cat: "weapons", desc: "1d10+1 Gunshot, 6 shots." },
+  { id: "rigging_gun", name: "Rigging Gun", price: 350, cat: "weapons", desc: "1d10 Bleeding [+], 1 shot. 2d10 more when removed." },
+  { id: "scalpel", name: "Scalpel", price: 50, cat: "weapons", desc: "1d5 Bleeding [+]." },
+  { id: "smart_rifle", name: "Smart Rifle", price: 5000, cat: "weapons", desc: "4d10 Gunshot [+], Anti-Armor, 3 shots. [-] at Close." },
+  { id: "smg", name: "SMG", price: 1000, cat: "weapons", desc: "2d10 Gunshot, 5 shots." },
+  { id: "stun_baton", name: "Stun Baton", price: 150, cat: "weapons", desc: "1d5 Blunt Force. Body Save or stunned 1 round." },
+  { id: "tranq_pistol", name: "Tranq Pistol", price: 250, cat: "weapons", desc: "1d5 Blunt Force, 6 shots. Body Save or unconscious 1d10 rounds." },
+  { id: "vibechete", name: "Vibechete", price: 1000, cat: "weapons", desc: "3d10 Anti-Armor, Bleeding and Gore." },
+  { id: "crew_attire", name: "Standard Crew Attire", price: 100, cat: "armor", desc: "AP 1." },
+  { id: "vaccsuit", name: "Vaccsuit", price: 10000, cat: "armor", desc: "AP 3, 12 hrs O2, Speed [-], radiation shielding. Decompresses within 1d5 rounds if punctured." },
+  { id: "hazard_suit", name: "Hazard Suit", price: 4000, cat: "armor", desc: "AP 5, 1 hr O2, extreme heat and cold protection, radiation shielding." },
+  { id: "battle_dress", name: "Standard Battle Dress", price: 2000, cat: "armor", desc: "AP 7." },
+  { id: "adv_battle_dress", name: "Advanced Battle Dress", price: 12000, cat: "armor", desc: "AP 10, DR 3, 1 hr O2, Speed [-], Strength [+], radiation shielding." },
   { id: "ammo", name: "Ammo (magazine)", price: 50, cat: "ammo", desc: "One magazine for any firearm." },
   { id: "first_aid", name: "First Aid Kit", price: 75, cat: "medical", desc: "Stops Bleeding." },
   { id: "stimpak", name: "Stimpak", price: 1000, cat: "medical", desc: "Stress -1, +1d10 Health, [+] for 1d10 minutes. Cures cryosickness." },
@@ -29,6 +53,8 @@ export const ITEMS = [
   { id: "ration_crate", name: "Ration crate (7 MREs)", price: 70, cat: "resources", house: true, desc: "Rations for the rig's larder." },
   { id: "spare_parts", name: "Spare parts (cargo-grade)", price: 200, cat: "resources", house: true, desc: "Parts for the rig." },
 ];
+export const USED_ARMOR = ITEMS.filter((i) => i.cat === "armor").map((i) => ({ ...i, id: `used_${i.id}`, name: `Used ${i.name}`, price: i.price / 2, house: true, used: true, desc: `Used, half list price (house rule). ${i.desc}` }));
+ITEMS.push(...USED_ARMOR);
 export const PORT_MULT = { X: 2, C: 1.25, B: 1, A: 1 };
 export const DEFAULT_SHOP = { id: "", name: "Trading post", portClass: "C", stock: ["crowbar", "ammo", "first_aid", "stimpak", "oxygen_tank", "rebreather", "flashlight", "chemlight", "mre", "water_filter", "tool_set", "comms_short", "fuel", "ration_crate"], deals: {} };
 

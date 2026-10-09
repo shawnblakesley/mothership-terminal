@@ -34,7 +34,7 @@ Link: galley - crawlway (vent trunk)`,
 const LOCATIONS = [
   {
     id: "port_gallow", name: "PORT GALLOW", x: 110, y: 290, theme: "amber", faction: "gallow_mercer", dock: "berth_9", computer: "YARDMASTER",
-    portClass: "A", stock: ["crowbar", "ammo", "first_aid", "stimpak", "medscanner", "rad_pills", "oxygen_tank", "rebreather", "geiger", "flashlight", "chemlight", "mre", "water_filter", "patch_kit", "detonator", "mag_boots", "tool_set", "comms_short", "comms_long", "beacon", "fuel", "ration_crate", "spare_parts"],
+    portClass: "A", stock: ["crowbar", "boarding_axe", "shotgun", "flamethrower", "flare_gun", "foam_gun", "frag_grenade", "gpmg", "hand_welder", "laser_cutter", "nail_gun", "pulse_rifle", "revolver", "rigging_gun", "scalpel", "smg", "stun_baton", "tranq_pistol", "vibechete", "crew_attire", "vaccsuit", "hazard_suit", "battle_dress", "adv_battle_dress", "ammo", "first_aid", "stimpak", "medscanner", "rad_pills", "oxygen_tank", "rebreather", "geiger", "flashlight", "chemlight", "mre", "water_filter", "patch_kit", "detonator", "mag_boots", "tool_set", "comms_short", "comms_long", "beacon", "fuel", "ration_crate", "spare_parts"],
     kind: "Corporate container port",
     description: "Gallow-Mercer Logistics' spindle port at the bright end of the Rim: forty thousand containers, nine hundred cranes, one harbourmaster. Where most contracts start and most drivers owe money. The Dock Ward is union; everything above it is company.",
     map: `Deck 1 · Harbourmaster: harbour_office=Harbourmaster's Office, yard_tower=Yard Control Tower
@@ -74,7 +74,7 @@ Link: chapel - records (old vestry door)`,
   },
   {
     id: "cinder", name: "CINDER'S REACH", x: 620, y: 320, theme: "red", faction: "ardent", dock: "loading_dock", computer: "FOREMAN",
-    portClass: "B", stock: ["crowbar", "rad_pills", "oxygen_tank", "rebreather", "geiger", "patch_kit", "detonator", "mag_boots", "tool_set", "fuel", "spare_parts"],
+    portClass: "B", stock: ["crowbar", "boarding_axe", "hand_welder", "nail_gun", "rigging_gun", "hazard_suit", "battle_dress", "rad_pills", "oxygen_tank", "rebreather", "geiger", "patch_kit", "detonator", "mag_boots", "tool_set", "fuel", "spare_parts"],
     kind: "Mining refinery moon",
     description: "Ardent Mining Consortium's refinery on a volcanic moon that never stops shaking. Two hundred miners on fourteen-day rotations dig radiant ore nine levels down and smelt it where they stand. The pay is good because the dying is regular.",
     map: `Deck 1 · Admin: admin=Administration, comms_shack=Comms Shack
@@ -101,7 +101,7 @@ Link: irrigation - wheat_dome (irrigation mains)`,
   },
   {
     id: "boneyard", name: "THE BONEYARD", x: 820, y: 330, theme: "amber", faction: "drift_kin", dock: "visitor_dock", computer: "TALLYMAN",
-    portClass: "C", stock: ["crowbar", "oxygen_tank", "rebreather", "flashlight", "patch_kit", "mag_boots", "tool_set", "comms_short", "comms_long", "spare_parts"],
+    portClass: "C", stock: ["crowbar", "hand_welder", "nail_gun", "used_crew_attire", "used_vaccsuit", "used_hazard_suit", "used_battle_dress", "used_adv_battle_dress", "oxygen_tank", "rebreather", "flashlight", "patch_kit", "mag_boots", "tool_set", "comms_short", "comms_long", "spare_parts"],
     kind: "Ship-breaking salvage yard",
     description: "A drifting ship-breaking yard in a debris field where the Drift Kin salvager clans cut dead ships into parts and parts into money. Everything here is for sale, including the yard's own walls. Hesper Quill runs the auctions and the law, which are the same thing.",
     map: `Deck 1 · Yard Office: visitor_dock=Visitor Dock, quill_office=Quill's Office, auction_floor=Auction Floor
@@ -114,7 +114,7 @@ Link: scrap_rows - camp (crawlspaces)`,
   },
   {
     id: "lantern", name: "LANTERN", x: 900, y: 480, theme: "red", faction: "lantern", dock: "the_mouth", computer: "LAMPLIGHTER",
-    portClass: "X", stock: ["crowbar", "ammo", "stimpak", "detonator", "rebreather", "comms_short"],
+    portClass: "X", stock: ["crowbar", "boarding_axe", "shotgun", "flamethrower", "flare_gun", "frag_grenade", "gpmg", "laser_cutter", "nail_gun", "pulse_rifle", "revolver", "rigging_gun", "smart_rifle", "smg", "stun_baton", "tranq_pistol", "vibechete", "ammo", "stimpak", "detonator", "rebreather", "comms_short"],
     kind: "Smugglers' free port",
     description: "A hollowed-out ice-and-iron asteroid with a single lit cave mouth, off every chart and on every smuggler's. No customs, no company, no questions: only Auntie Lu Bao's toll and Auntie Lu Bao's rules. The Night Bazaar sells what Tollgate seizes. Below it, the old mine shafts go deeper than anyone has mapped.",
     map: `Deck 1 · The Mouth: the_mouth=The Mouth (docking cave), toll_booth=Auntie's Toll Booth
