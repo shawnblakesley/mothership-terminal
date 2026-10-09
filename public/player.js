@@ -1084,11 +1084,14 @@
       ? "THE AI IS BUILDING THE WORLD AND EVERYONE IN IT. THIS CAN TAKE A FEW MINUTES."
       : jobs ? `RIM HAULERS: THE RIG IS AT ${jobs.port}, ${jobs.fuel} FUEL. ${jobs.jobs.length ? (isPilot ? "PICK A JOB (PRESS 1-9)." : "THE PILOT IS PICKING A JOB. TALK IT OVER.") : "NO JOBS LEFT HERE."}`
       : `NO WARDEN TONIGHT: THE AI RUNS THE GAME. ${isPilot ? "PICK A STORY (PRESS 1-9)." : "THE PILOT IS PICKING A STORY. TALK IT OVER."}`;
-    $("solopick-list").innerHTML = building ? "" : jobs ? jobs.jobs.map((j, i) => {
+    const board = () => jobs.jobs.map((j, i) => {
       const name = `[${i + 1}] ${escH(j.title)}`;
-      return `<li>${isPilot ? `<button type="button" class="p-btn pick" data-job="${escH(j.id)}">${name}</button>` : name}<span class="p-dim tags"> · ${escH(j.where.toUpperCase())}${j.lane ? ` · ${escH(j.lane.toUpperCase())}, ${j.days} DAYS` : ""}</span>
+      return `<li>${isPilot ? `<button type="button" class="p-btn pick" data-job="${escH(j.id)}">${name}</button>` : name}<span class="p-dim tags"> · ${escH(j.where.toUpperCase())}${j.lane ? ` · ${escH(j.lane.toUpperCase())}, ${j.days} DAYS, ${j.cost} FUEL${j.short ? " · NOT ENOUGH FUEL" : ""}` : ""}</span>
         <div class="p-dim p-crime">${escH(j.hook)}</div><div class="p-dim p-crime">${escH(j.job)}</div></li>`;
-    }).join("") : solo.pitches.map((p, i) => {
+    }).join("") + `<li class="p-dim">TRAVEL (HOUSE RULE: 1 FUEL PER STARTED 3 DAYS)${jobs.low ? " · FUEL IS BELOW THE CHEAPEST LANE: REFUEL" : ""}</li>` + jobs.lanes.map((l) =>
+      `<li>${isPilot ? `<button type="button" class="p-btn" data-travel="${escH(l.to)}">[ TRAVEL: ${escH(l.dest)} ]</button>` : `TRAVEL: ${escH(l.dest)}`}<span class="p-dim tags"> · ${escH(l.lane.toUpperCase())}, ${l.days} DAYS, ${l.cost} FUEL${l.short ? " · NOT ENOUGH FUEL" : ""}</span></li>`).join("")
+      + (isPilot && jobs.canRefuel ? `<li><button type="button" class="p-btn" data-refuel="1">[ REFUEL ${jobs.fuel}/${jobs.capacity} ]</button><span class="p-dim tags"> · FILLS THE TANK (HOUSE RULE, FREE WHILE CREDITS AREN'T TRACKED)</span></li>` : "");
+    $("solopick-list").innerHTML = building ? "" : jobs ? board() : solo.pitches.map((p, i) => {
       const name = `[${i + 1}] ${escH(p.title.toUpperCase())}`;
       return `<li>${isPilot ? `<button type="button" class="p-btn pick" data-pick="${i}">${name}</button>` : name}<span class="p-dim tags"> · ${escH(p.tags.toUpperCase())}</span>
         <div class="p-dim p-crime">${escH(p.hook)}</div></li>`;
@@ -1119,7 +1122,10 @@
   const pickJob = (id) => solo?.phase === "pick" && !solo.busy && ws?.send(JSON.stringify({ t: "pilotJob", id }));
   $("solopick-list").addEventListener("click", (e) => {
     const i = e.target.closest("[data-pick]")?.dataset.pick, job = e.target.closest("[data-job]")?.dataset.job;
-    if (i !== undefined) pickStory(Number(i));
+    const to = e.target.closest("[data-travel]")?.dataset.travel;
+    if (to) ws?.send(JSON.stringify({ t: "pilotTravel", to }));
+    else if (e.target.closest("[data-refuel]")) ws?.send(JSON.stringify({ t: "pilotRefuel" }));
+    else if (i !== undefined) pickStory(Number(i));
     else if (job) pickJob(job);
   });
   $("solopick-more").onclick = () => ws?.send(JSON.stringify({ t: solo?.jobs ? "pilotLeaveCampaign" : "pilotPitches" }));

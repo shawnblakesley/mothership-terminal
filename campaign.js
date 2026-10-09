@@ -392,9 +392,26 @@ export function jobsAt(c, p) {
   const stories = c.stories.filter((s) => (s.at || s.from) === p.at && !p.done.some((d) => d.id === s.id));
   const jobs = sectorPayload(c, { ...p, offered: stories.map((s) => s.id) }).offered.map(({ id, title, hook, job }) => {
     const s = c.stories.find((x) => x.id === id), l = isTransit(s) && laneBetween(c, s.from, s.to);
-    return { id, title, hook, job, where: placeOf(c, s), ...(l ? { lane: l.name, days: l.days } : {}) };
+    return { id, title, hook, job, where: placeOf(c, s), ...(l ? { lane: l.name, days: l.days, cost: fuelCost(l.days), short: p.resources.fuel < fuelCost(l.days) } : {}) };
   });
-  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, jobs };
+  const lanes = c.lanes.filter((l) => l.a === p.at || l.b === p.at).map((l) => {
+    const to = l.a === p.at ? l.b : l.a, cost = fuelCost(l.days);
+    return { to, dest: loc(c, to).name, lane: l.name, days: l.days, cost, short: p.resources.fuel < cost };
+  });
+  const cheapest = lanes.length ? Math.min(...lanes.map((l) => l.cost)) : 0;
+  const trade = resupplyView(c, p).trade;
+  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, capacity: TANK, low: p.resources.fuel < cheapest, canRefuel: trade && p.resources.fuel < TANK, jobs, lanes };
+}
+
+// No Warden to resupply: the pilot fills the tank at the port the rig is at (house rule; free until credits are tracked).
+export function refuel(p, c) {
+  if (p.current) return { ok: false, error: "Finish the story being played first." };
+  const v = resupplyView(c, p);
+  if (!v.trade) return { ok: false, error: `${v.name} won't trade with the crew.` };
+  const added = TANK - p.resources.fuel;
+  if (added <= 0) return { ok: false, error: "The tank is full." };
+  p.resources.fuel = TANK;
+  return { ok: true, added, at: v.name };
 }
 
 // What the players' screens get of the sector: a whitelist, so nothing of a story's arc, adversary, secrets, cast or description can leak.

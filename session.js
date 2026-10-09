@@ -16,7 +16,7 @@ import { HAZARDS, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, 
 import { loaded, magazines, spendShot, reload, TANK, STORES } from "./resources.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
-import { jobsAt, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView } from "./campaign.js";
+import { jobsAt, refuel, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView } from "./campaign.js";
 import { restAndRecover, downtimeLines } from "./downtime-lite.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
@@ -1949,7 +1949,7 @@ export class Session {
     }
     if (this.state.campaign !== p) throw new Error("the campaign was left while the story was being built");
     let carried;
-    this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config, station) => { carried = carryInto(config, c, story, p, station); });
+    this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config, station) => { carried = carryInto(config, c, story, p, station); }, true);
     p.current = story.id;
     p.offered = (p.offered || []).filter((x) => x !== story.id);
     this.sectorVotes.clear();
@@ -1961,7 +1961,7 @@ export class Session {
     this.sendHeader();
   }
 
-  applyStory(draft, patch) {
+  applyStory(draft, patch, keepClaims = false) {
     this.clearClocks();
     const s = this.state;
     const { config, station } = applyDraft(draft);
@@ -1976,7 +1976,7 @@ export class Session {
     this.hazardUnits = [];
     this.hazardNeeds = [];
     this.syncHazards();
-    for (const ws of this.sockets) if (ws.role === "player") ws.character = null;
+    for (const ws of this.sockets) if (ws.role === "player" && !(keepClaims && this.state.config.crew.some((c) => c.id === ws.character && playable(c)))) ws.character = null;
     if (this.usesNeural()) warmNeural();
     this.addLog("note", `New story applied: "${draft.title}".`);
     this.initPlayers();
@@ -2936,6 +2936,10 @@ export class Session {
     const x = this.state.solo, s = this.state, p = s.campaign, c = campaignById(p?.id);
     const story = c && this.soloJobs()?.jobs.some((j) => j.id === id) && c.stories.find((t) => t.id === id);
     if (!story || x.busy || x.phase !== "pick") return;
+    if (this.soloJobs().jobs.find((j) => j.id === id).short) {
+      x.error = "NOT ENOUGH FUEL for that lane. Refuel first, or take another job.";
+      return this.soloChanged();
+    }
     Object.assign(x, { phase: "building", busy: "build", title: story.title, error: "", opened: false, after: null });
     this.soloChanged();
     try {
@@ -3057,6 +3061,25 @@ export class Session {
       case "pilotJob":
         this.soloJob(String(msg.id || ""));
         break;
+      case "pilotTravel":
+      case "pilotRefuel": {
+        const p = this.state.campaign, c = campaignById(p?.id);
+        if (!c || x.phase !== "pick" || x.busy) break;
+        const r = msg.t === "pilotTravel" ? travelTo(p, c, String(msg.to || "")) : refuel(p, c);
+        if (!r) break;
+        if (!r.ok) x.error = r.error;
+        else {
+          x.error = "";
+          const at = (id) => c.locations.find((l) => l.id === id).name;
+          this.addLog("note", r.lane
+            ? `${c.ship.name} noses out of ${at(r.from)} and runs ${r.lane.name} (${r.lane.days} days) to ${at(p.at)}: ${r.cost} fuel (house rule), ${r.left} left.`
+            : `${c.ship.name} takes on ${r.added} units of fuel at ${r.at} (house rule: free until credits are tracked); the tank is full.`);
+        }
+        this.soloChanged();
+        this.syncDm();
+        this.sendHeader();
+        break;
+      }
       case "pilotLeaveCampaign":
         if (x.phase === "pick" && !x.busy && x.campaign) {
           this.state.campaign = null;

@@ -6,7 +6,7 @@ import { restAndRecover, downtimeLines } from "../downtime-lite.js";
 import { sanitizeCrew } from "../crew.js";
 
 const BANNED = ["acts", "adversary", "secrets", "affinity", "cast", "description", "persona", "factions", "faction", "crew", "notes", "outcome", "event", "horror", "tier"];
-const ALLOWED = ["port", "rig", "fuel", "jobs", "id", "title", "hook", "job", "where", "lane", "days"];
+const ALLOWED = ["port", "rig", "fuel", "capacity", "low", "canRefuel", "jobs", "lanes", "id", "title", "hook", "job", "where", "lane", "days", "cost", "short", "to", "dest"];
 const keys = (v, out = new Set()) => {
   if (Array.isArray(v)) v.forEach((x) => keys(x, out));
   else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { out.add(k); keys(x, out); }
@@ -79,6 +79,54 @@ test("ending a campaign story records the verdict, only the earned faction stake
   assert.ok(s.state.log.some((e) => /Downtime between stories/.test(e.text)));
   assert.ok(s.soloView().jobs.jobs.some((j) => j.title === "QUARANTINE"));
   assert.ok(!s.soloView().jobs.jobs.some((j) => j.title === "FIRST SHIFT"));
+});
+
+test("the pilot can travel a lane, refuel, and is refused a lane the rig can't afford", () => {
+  const s = session();
+  s.startSolo();
+  s.soloBuild(1);
+  const p = s.state.campaign, x = s.state.solo;
+  s.sendHeader = () => {};
+  const board = s.soloJobs();
+  assert.deepEqual(board.lanes.map((l) => l.dest).sort(), ["SAINT BRIGID'S", "TOLLGATE"]);
+  assert.equal(board.lanes.find((l) => l.dest === "TOLLGATE").cost, 1);
+  s.handlePilot({ send() {} }, { t: "pilotTravel", to: "tollgate" });
+  assert.equal(p.at, "tollgate");
+  assert.equal(p.resources.fuel, 9);
+  assert.ok(s.state.log.some((e) => /runs The Bright Lane/.test(e.text)));
+  p.resources.fuel = 0;
+  assert.equal(s.soloJobs().low, true);
+  s.handlePilot({ send() {} }, { t: "pilotTravel", to: "halfway_house" });
+  assert.equal(p.at, "tollgate");
+  assert.match(x.error, /Not enough fuel/);
+  s.handlePilot({ send() {} }, { t: "pilotJob", id: "deadhead" });
+  assert.equal(x.phase, "pick");
+  assert.match(x.error, /NOT ENOUGH FUEL/);
+  s.handlePilot({ send() {} }, { t: "pilotRefuel" });
+  assert.equal(p.resources.fuel, 10);
+  assert.equal(s.soloJobs().canRefuel, false);
+});
+
+test("a campaign story keeps the claims of characters still in the crew", async () => {
+  const s = session();
+  s.startSolo();
+  s.soloBuild(1);
+  s.sendHeader = () => {};
+  s.sectorSync = () => {};
+  s.syncHazards = () => {};
+  s.ask = async () => ({ lore: "L", computer: { persona: "P" }, secrets: "", standingOrders: "", station: [], broadcastPersona: "B", voices: [{ id: "intercom", name: "CB RADIO", preset: "intercom", systems: [] }], cast: [], terminals: [], documents: [] });
+  const mk = (character) => ({ role: "player", readyState: 1, character, send() {} });
+  const a = mk("okafor"), b = mk("ghost"), w = mk(null);
+  s.sockets.add(a).add(b).add(w);
+  const p = s.state.campaign, story = (id) => c.stories.find((t) => t.id === id);
+  await s.buildCampaignStory(c, story("first_shift"), p);
+  assert.equal(a.character, "okafor");
+  assert.equal(b.character, null);
+  assert.equal(w.character, null);
+  p.crew.find((m) => m.id === "okafor").cond.dead = "killed";
+  p.current = "";
+  await s.buildCampaignStory(c, story("quarantine"), p);
+  assert.equal(a.character, null);
 });
 
 const rig = (ds) => () => ds.shift();
