@@ -209,7 +209,7 @@
       const hz = station?.hazards?.[id];
       const hzText = hz ? `${String(hz.type).toUpperCase()}${hz.level ? ` ${hz.level}` : ""}` : "";
       out.fg.push(`<g class="sv-room${bad ? " alarm" : ""}${hz ? " hazard" : ""}${/airlock/.test(id) ? " airlock" : ""}${r.side === "docked" ? " docked" : ""}">
-        <rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="6" ${editable ? `data-room="${esc(id)}" data-label="${esc(r.label)}" data-deck="${esc(r.deck)}"` : ""}/>${title(`${r.label}${editable ? " (click for the room view)" : ""}${roster ? `\n${roster}` : ""}`)}
+        <rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="6" ${editable ? `data-room="${esc(id)}" data-label="${esc(r.label)}" data-deck="${esc(r.deck)}" role="button" tabindex="0" aria-label="Open the room view of ${esc(r.label)}"` : ""}/>${title(`${r.label}${editable ? " (click for the room view)" : ""}${roster ? `\n${roster}` : ""}`)}
         <text class="sv-roomname" x="${r.x + 10}" y="${r.y + 19}">${esc(r.label.toUpperCase())}</text>
         ${rest.slice(0, hz ? 1 : 2).map((x, i) => `<g class="sv-click ${tone(x.leaf.path, x.leaf.value)}" ${path(x.leaf)}><text class="sv-val" x="${r.x + 10}" y="${r.y + 37 + i * 14}">${esc(x.label)} ${esc(x.leaf.value)}</text>${title(x.leaf.path.join("."))}</g>`).join("")}
         ${hz ? `<text class="sv-hazard" x="${r.x + 10}" y="${r.y + 51}">${esc(hzText)}${rest.length > 1 ? ` +${rest.length - 1}` : ""}</text>` : rest.length > 2 ? `<text class="sv-val sv-more" x="${r.x + 10}" y="${r.y + r.h - 7}">+${rest.length - 2}</text>` : ""}

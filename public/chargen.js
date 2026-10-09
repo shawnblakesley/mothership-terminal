@@ -10,6 +10,8 @@ window.Chargen = (() => {
     health: "ROLL 1D10+10 FOR MAXIMUM HEALTH.",
     credits: "ROLL 2D10 AND MULTIPLY BY 10 FOR YOUR STARTING CREDITS.",
   };
+  const INTRO = "THE WARDEN APPROVES YOUR CHARACTER AT THE END: THEY ACCEPT IT, OR SEND IT BACK WITH A NOTE. DICE: 2D10+25 MEANS ROLL TWO TEN-SIDED DICE, ADD THEM, THEN ADD 25. 2D10X10 MEANS ADD TWO D10, THEN MULTIPLY BY 10.";
+  let rolling = "";
   let shown = "", api, view = null, step = 0, cursor = 0, typing = "", err = "", waiting = false, pending = [], fresh = "", faces = null, showFaces = false, isPilot = false;
   const esc = (s) => api.escH(s);
   const up = (s) => esc(String(s).toUpperCase());
@@ -19,15 +21,22 @@ window.Chargen = (() => {
   function send(msg) { err = ""; api.send(msg); }
   function start(replaces = "") { step = 0; cursor = 0; typing = ""; err = ""; waiting = false; showFaces = false; fresh = ""; api.send({ t: "cgStart", replaces }); }
   const set = (patch) => send({ t: "cgSet", set: patch });
-  const roll = (what, dice) => send({ t: "cgRoll", what, ...(dice ? { dice } : {}) });
+  const roll = (what, dice) => {
+    if (rolling || (view?.rolls[what] && !view.rerolls)) return;
+    rolling = what;
+    setTimeout(() => { if (rolling === what) rolling = ""; }, 3000);
+    send({ t: "cgRoll", what, ...(dice ? { dice } : {}) });
+  };
 
   function onMessage(msg) {
+    rolling = "";
     if (msg.error) {
       err = msg.error;
       if (!view && !open()) return api.notice(msg.error);
     }
     if (msg.rejected) { waiting = false; err = `THE WARDEN SENT IT BACK: ${msg.rejected}`; step = STEPS.length - 1; }
     if (msg.submitted) waiting = true;
+    if (msg.withdrawn) { waiting = false; step = STEPS.length - 1; }
     view = msg.view;
     fresh = msg.rolled || "";
     if (view && !open()) api.open();
@@ -72,8 +81,8 @@ window.Chargen = (() => {
 
   function rollBox(what, extra = "") {
     const r = view.rolls[what];
-    if (r) return `${extra}${view.rerolls ? `<div class="cg-acts"><button type="button" class="p-btn" data-act="roll" data-what="${what}">[R] REROLL</button> <button type="button" class="p-btn" data-act="type" data-what="${what}">[T] TYPE MY OWN DICE</button></div>` : ""}${typeBox(what)}`;
-    return `<div class="p-dim">${ROLL_TEXT[what]}</div><div class="cg-acts"><button type="button" class="p-btn" data-act="roll" data-what="${what}">[R] ROLL</button> <button type="button" class="p-btn" data-act="type" data-what="${what}">[T] TYPE MY OWN DICE</button></div>${typeBox(what)}`;
+    if (r) return `${extra}${view.rerolls ? `<div class="cg-acts"><button type="button" class="p-btn" data-act="roll" data-what="${what}">[R] REROLL</button> <button type="button" class="p-btn" data-act="type" data-what="${what}">[T] TYPE MY OWN DICE</button></div>` : '<div class="p-dim">ROLLED. THE WARDEN HAS NOT ALLOWED REROLLS: PRESS ENTER OR [ NEXT ] TO GO ON.</div>'}${typeBox(what)}`;
+    return `<div class="p-dim">${ROLL_TEXT[what]}</div>${step === 0 ? `<div class="p-dim">${INTRO}</div>` : ""}<div class="cg-acts"><button type="button" class="p-btn" data-act="roll" data-what="${what}">[R] ROLL</button> <span class="p-dim">OR</span> <button type="button" class="p-btn" data-act="type" data-what="${what}">[T] TYPE MY OWN DICE (IF YOU ROLLED REAL ONES)</button></div>${typeBox(what)}`;
   }
   const NEED = { stats: [8, "EIGHT D10 (TWO PER STAT, IN ORDER STRENGTH, SPEED, INTELLECT, COMBAT)"], saves: [6, "SIX D10 (TWO PER SAVE, IN ORDER SANITY, FEAR, BODY)"], health: [1, "ONE D10"], credits: [2, "TWO D10"], loadout: [1, "ONE D10 (0-9)"], trinket: [1, "ONE D100 (00-99)"], patch: [1, "ONE D100 (00-99)"] };
   const typeBox = (what) => (typing === what
@@ -88,7 +97,7 @@ window.Chargen = (() => {
     $("cg-next").hidden = waiting;
     if (waiting) {
       $("cg-step").textContent = "SUBMITTED";
-      body.innerHTML = '<div class="p-text">YOUR CHARACTER IS WAITING FOR THE WARDEN TO APPROVE IT.</div>';
+      body.innerHTML = '<div class="p-text">YOUR CHARACTER IS WAITING FOR THE WARDEN TO APPROVE IT. IF THEY ACCEPT IT, YOU PLAY IT. IF THEY TURN IT DOWN, IT COMES BACK HERE WITH THEIR NOTE AND YOU CAN CHANGE IT AND SUBMIT AGAIN.</div><div class="cg-acts"><button type="button" class="p-btn" data-act="withdraw">[ TAKE IT BACK AND KEEP EDITING ]</button></div>';
       return;
     }
     if (!view) { body.innerHTML = ""; return; }
@@ -105,7 +114,7 @@ window.Chargen = (() => {
     if (again) again.focus();
     else if (first && name === "name" && moved && !typing) first.focus();
     if (typing) $("cg-dice")?.focus();
-    if (!$("chargen").contains(document.activeElement) || document.activeElement.disabled) $("chargen").focus({ preventScroll: true });
+    if (!$("chargen").contains(document.activeElement) || document.activeElement.disabled || document.activeElement === $("chargen")) (!typing && [...body.querySelectorAll('[data-act="roll"]')].find((b) => !view.rolls[b.dataset.what]) || $("chargen")).focus({ preventScroll: true });
     body.querySelector(".cg-cur")?.scrollIntoView({ block: "nearest" });
     if (name === "review") api.fit(body);
   }
@@ -161,7 +170,7 @@ window.Chargen = (() => {
       const r = view.rolls[what];
       const book = view.tables ? "" : `<div class="p-dim">LOOK IT UP IN YOUR PLAYER'S SURVIVAL GUIDE, PAGE ${view.pages[what]}, AND TYPE THE RESULT. NO BOOK? TYPE YOUR OWN.</div>`;
       return `<div class="cg-gear"><div><span class="cg-k">${title}</span> ${r ? `<span class="cg-die" data-v="${pad(r.dice[0])}">${pad(r.dice[0])}</span>` : ""}
-        ${!r || view.rerolls ? `<button type="button" class="p-btn" data-act="roll" data-what="${what}">[${n}] ${r ? "REROLL" : `ROLL ${what === "loadout" ? "D10" : "D100"}`}</button> ` : ""}<button type="button" class="p-btn" data-act="type" data-what="${what}">TYPE MY OWN DICE</button></div>
+        ${!r || view.rerolls ? `<button type="button" class="p-btn" data-act="roll" data-what="${what}">[${n}] ${r ? "REROLL" : `ROLL ${what === "loadout" ? "D10" : "D100"}`}</button> <span class="p-dim">OR</span> <button type="button" class="p-btn" data-act="type" data-what="${what}">TYPE MY OWN DICE</button>` : ""}</div>
         ${typeBox(what)}
         ${r ? `${book}<input data-field="${what}" value="${esc(view[what])}" maxlength="${what === "loadout" ? 400 : what === "trinket" ? 160 : 80}" aria-label="${title}">` : ""}</div>`;
     };
@@ -236,6 +245,7 @@ window.Chargen = (() => {
       const card = b.closest(".cg-pend");
       return api.send({ t: a === "accept" ? "pilotCgAccept" : "pilotCgReject", id: card.dataset.id, note: card.querySelector("[data-note]").value });
     }
+    if (a === "withdraw") return api.send({ t: "cgWithdraw" });
     if (!view) return;
     if (a === "roll") roll(what);
     else if (a === "type") { typing = typing === what ? "" : what; render(); }
@@ -278,6 +288,7 @@ window.Chargen = (() => {
       if (e.target.dataset.field === "name" && view.name) return $("cg-body").querySelector('[data-field="pronouns"]')?.focus();
       const r = current();
       if (!stepDone() && r) return roll(r);
+      if (rolling) return;
       if (!inField && STEPS[step] === "skills" && !stepDone()) return;
       return go(1);
     }

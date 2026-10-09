@@ -312,10 +312,18 @@
     list.innerHTML = S.panicTable.map((e) => `<li><b>${esc(e.name)}.</b> ${esc(e.effect[0].toUpperCase() + e.effect.slice(1))}</li>`).join("");
   }
 
+  function renderBuildChip() {
+    if (S.campaignBusy) cmpStarting = "";
+    const text = S.campaignBusy || cmpStarting ? "Building story…" : S.builderBusy === "draft" ? "Drafting story…" : "";
+    $("buildChip").hidden = !text;
+    if (text) $("buildChip").lastChild.textContent = text;
+  }
+
   function render() {
+    renderBuildChip();
     renderAgentPicker();
     renderPanicTable();
-    for (const b of $("mode").children) b.classList.toggle("on", b.dataset.mode === S.config.mode);
+    for (const b of $("mode").children) { b.classList.toggle("on", b.dataset.mode === S.config.mode); b.setAttribute("aria-pressed", String(b.dataset.mode === S.config.mode)); }
     renderLog();
     renderPending();
     renderEffects();
@@ -350,7 +358,7 @@
     renderDiscordButton();
     renderVoicesOn();
     $("retcon").disabled = !S.canRetcon;
-    $("retcon").textContent = S.canRetcon > 1 ? `↶ Retcon last response (${S.canRetcon})` : "↶ Retcon last response";
+    $("retcon").textContent = S.canRetcon > 1 ? `↶ Undo last reply (Retcon, ${S.canRetcon} available)` : "↶ Undo last reply (Retcon)";
   }
 
   const DISCORD_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>';
@@ -462,7 +470,8 @@
       if (!sp) {
         const fx = /^Agent triggered effect: (.*?)(?: (before|after) line #\d+)?$/.exec(e.text);
         const txt = fx ? `${FX_META[fx[1].split(" ")[0]]?.[0] || "⚡"} ${esc(fx[1])}${fx[2] === "after" ? " · after this line" : ""}` : esc(e.text);
-        return `<div class="entry note${fx ? " fx" : ""}"><span class="txt">${txt}</span>${when}${del}</div>`;
+        const jump = /^New character submitted for your approval/.test(e.text) ? ' <button class="small" data-jump="newchars">Review it</button>' : "";
+        return `<div class="entry note${fx ? " fx" : ""}"><span class="txt">${txt}${jump}</span>${when}${del}</div>`;
       }
       return `
       <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? `title="${e.retcon ? "Retconned: removed from screens and agent memory" : "Cut off by a player: never shown or remembered"}"` : ""}>
@@ -479,13 +488,14 @@
   function renderPending() {
     const p = S.pending;
     const card = $("pending");
-    const k = p ? `${p.status}|${p.forEntry}|${JSON.stringify(p.reply || p.error || "")}` : `none|${hasKey()}`;
+    const react = p?.forEntry != null ? S.log.findLast((e) => e.kind === "roll" && e.id > p.forEntry) : null;
+    const k = p ? `${p.status}|${p.forEntry}|${react?.id}|${JSON.stringify(p.reply || p.error || "")}` : `none|${hasKey()}`;
     $("noKeyNote").hidden = hasKey();
     if (k === pendingKey) return;
     pendingKey = k;
     card.hidden = !p;
     const forText = p?.forEntry ? S.log.find((e) => e.id === p.forEntry)?.text : null;
-    const forLine = forText ? `<div class="label">Replying to: <span class="muted">${esc(forText.slice(0, 120))}</span></div>` : "";
+    const forLine = react ? `<div class="label">Reacting to: <span class="muted">${esc(String(react.text).split("\n")[0].slice(0, 120))}</span></div>` : forText ? `<div class="label">Replying to: <span class="muted">${esc(forText.slice(0, 120))}</span></div>` : "";
 
     if (!p) { card.innerHTML = ""; return; }
     if (p.status === "generating") {
@@ -646,7 +656,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
           ${txt("trinket", c.trinket, "Trinket")}
           ${txt("patch", c.patch, "Patch")}
           ${txt("notes", c.notes, "Warden notes, hidden from players", 2)}
-          <label>Standing<select data-cstate="${esc(c.id)}"><option value="">Playing</option>${["deceased", "retired"].map((k) => `<option value="${k}" ${(k === "deceased" ? c.cond?.dead : c.retired) ? "selected" : ""}>${cap(k)}</option>`).join("")}</select></label>
+          <label>Status<select data-cstate="${esc(c.id)}"><option value="">Playing</option>${["deceased", "retired"].map((k) => `<option value="${k}" ${(k === "deceased" ? c.cond?.dead : c.retired) ? "selected" : ""}>${cap(k)}</option>`).join("")}</select></label>
         </div>
         <div class="row edit-only"><span class="grow"></span><button data-cact="del" class="danger">Remove character</button></div>
       </details>`;
@@ -677,12 +687,23 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const id = e.target.closest?.("[data-epitaph]")?.dataset.epitaph;
     if (id) send({ t: "epitaph", pc: id, text: e.target.value });
   });
-  $("endNight").onclick = () => send({ t: "endNight" });
-  let newCharsKey = "";
+  const living = () => S.config.crew.filter((c) => !c.cond?.dead && !c.retired);
+  $("endNight").onclick = async () => {
+    const n = living().length;
+    if (await sure("End the game night?", `Add 1 to High Score for ${n} living character${n === 1 ? "" : "s"}? This counts one game night, and it cannot be undone from here.`, "End game night", "primary")) send({ t: "endNight" });
+  };
+  let newCharsKey = "", seenNew = null;
   function renderNewChars() {
     const list = S.newChars || [], key = JSON.stringify(list);
     if (key === newCharsKey) return;
     newCharsKey = key;
+    for (const n of list) if (seenNew && !seenNew.has(n.id)) toast(`${n.sheet.name} (${n.sheet.className}) was submitted for your approval. Accept or reject on the Crew tab.`, "info");
+    seenNew = new Set(list.map((n) => n.id));
+    for (const b of document.querySelectorAll('.tabs[data-tabs="side"] [data-tab="crew"], #mnav [data-mview="crew"]')) {
+      b.textContent = list.length ? `Crew (${list.length})` : "Crew";
+      b.classList.toggle("waiting", !!list.length);
+      b.title = list.length ? "A new character is waiting for your approval" : "";
+    }
     const nums = (o) => Object.entries(o).map(([k, v]) => `${cap(k)} ${v}`).join(", ");
     $("newChars").innerHTML = list.map((n) => {
       const c = n.sheet, old = n.replaces && S.config.crew.find((x) => x.id === n.replaces);
@@ -858,7 +879,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
             <label class="small check" title="Seen by players? If not, shown as ???">
               <input type="checkbox" data-a="revealed" ${v.adversary.revealed ? "checked" : ""}> revealed</label>
             <span class="pill ${v.adversary.revealed ? "ok" : ""}">${v.adversary.revealed ? "players see its name" : "players see ???"}</span>
-            ${v.adversary.picture ? `<button data-aact="show" class="small" title="Show on every screen. Reveals it.">Show players</button>` : ""}
+            ${v.adversary.picture ? `<button data-aact="show" class="small" title="Show its picture on every screen. Reveals it.">Show picture to players</button>` : ""}
           </div>
           <div class="row wrap edit-only small">
             <select data-a="preset" aria-label="How it sounds">${presets.map((p) => `<option ${p === v.preset ? "selected" : ""}>${p}</option>`).join("")}${v.preset === "custom" ? '<option selected value="custom">custom (Story tab)</option>' : ""}</select>
@@ -1015,6 +1036,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const bits = [`<span><span class="k">Armor:</span> ${esc(a.name)} AP ${a.ap}${a.dr ? ` DR ${a.dr}` : ""}${a.destroyed ? ' <b class="bad">destroyed</b>' : ""}</span>`];
     if (a.destroyed) bits.push(btn("repair", "Mark repaired", "Armor repair costs half the armor's original cost"));
     if (c.cond?.dead) bits.push(`<b class="bad">DECEASED</b> <span class="muted">${esc(c.cond.dead)}</span>`);
+    else if (c.retired) bits.push('<b class="bad">RETIRED</b>');
+    else bits.push(btn("dead", "Mark deceased", "The character has died: the player gets the final transmission and the file goes on the memorial"), btn("retire", "Retire", "The character leaves play (they are not dead): the file goes on the memorial"));
     if (c.status) bits.push(`<b class="bad">${esc(cap(c.status))}</b>${c.statusNote ? ` <span class="muted">${esc(c.statusNote)}</span>` : ""}`);
     if (c.deathSaveIn) bits.push(`<b class="bad">Death Save due in ${c.deathSaveIn} rounds</b>`);
     if (S.deathSaves?.[c.id]) bits.push("<b>Death Save rolled (hidden)</b>", btn("reveal", "Reveal", "Someone spent a turn checking their vitals: reveal and apply the result"));
@@ -1025,9 +1048,12 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   const COND_ACTIONS = [["puncture", "Puncture suit"], ["patch", "Patch suit"], ["air", "Breathing again"], ["putout", "Put out fire"], ["bleed", "+1 Bleeding"], ["stopbleed", "Stop bleeding (First Aid Kit)"], ["ate", "Has eaten"], ["thirst", "Water at the minimum (toggle)"], ["strenuouscheck", "Strenuous activity on minimum water"], ["strenuous", "Strenuous activity (toggle)"], ["rest", "Rested 8 hours"], ["cryosleep", "Into cryosleep"], ["wake", "Wake from cryosleep"], ["stimpak", "Use a stimpak (PSG effect, overdose roll)"], ["tankout", "Oxygen tank used up"],["pills", "Radiation Pills"], ["clearrad", "Clear radiation penalty"], ["cleartags", "Clear story conditions"]];
   const condLine = (c) => `<div class="conds"><span class="k">Conditions:</span> ${(S.conds?.[c.id] || []).map((x) => `<span class="chip">${esc(x)}</span>`).join("") || '<span class="muted">none</span>'}
     <select data-cond-pick aria-label="Condition for ${esc(c.name)}">${COND_ACTIONS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select><button data-cond-go="${esc(c.id)}">Apply</button></div>`;
-  $("crew").addEventListener("click", (e) => {
+  $("crew").addEventListener("click", async (e) => {
     const b = e.target.closest("[data-cmb]");
-    if (b?.dataset.cmb === "reload") send({ t: "reload", pc: b.dataset.pc, weapon: b.dataset.weapon });
+    if (b && ["dead", "retire"].includes(b.dataset.cmb)) {
+      const c = S.config.crew.find((x) => x.id === b.dataset.pc), dead = b.dataset.cmb === "dead";
+      if (c && await sure(dead ? `Mark ${c.name} deceased?` : `Retire ${c.name}?`, dead ? "Their player sees the flatline and may send a final transmission, and the file goes on the memorial. You can put them back in the edit form, under Status." : "They leave play and the file goes on the memorial. You can put them back in the edit form, under Status.", dead ? "Mark deceased" : "Retire")) send({ t: "crewState", pc: c.id, state: dead ? "deceased" : "retired" });
+    } else if (b?.dataset.cmb === "reload") send({ t: "reload", pc: b.dataset.pc, weapon: b.dataset.weapon });
     else if (b) {
       const t = { repair: "repairArmor", stop: "stopBleeding", reveal: "revealDeathSave", dealt: "dealtWith" }[b.dataset.cmb];
       if (t) send({ t, pc: b.dataset.pc });
@@ -1187,7 +1213,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     toast("New story applied.");
   });
 
-  let campaignData = null, campaignKey = "", cmpSel = { kind: "overview", id: "" }, cmpOutcome = "";
+  let campaignData = null, campaignKey = "", cmpSel = { kind: "overview", id: "" }, cmpOutcome = "", cmpStarting = "", cmpShownSel = "";
   async function loadCampaigns() {
     if (campaignData) return campaignData;
     const r = await fetch("api/campaigns").catch(() => null);
@@ -1308,9 +1334,9 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       <div class="small muted">Prices at ${esc(rs.name)}: the PSG price x port class ${esc(rs.portClass || "?")} (x${rs.classMult}, house rule) x the faction's standing (house rule). The price is taken from the account you pick.</div>
       ${Object.entries(BUY).map(row).join("")}
       <div class="row"><label class="grow small">Fuel price per unit, before the port's multiplier <span class="muted">(house rule: the PSG has no fuel price; 500cr unless you change it)</span></label><input type="number" min="0" style="width:6em" data-buy-fuelprice value="${cmpBuy.fuelPrice || 0}" aria-label="Base fuel price per unit"></div>
-      <div class="row"><label class="small grow">Ammo for <select data-buy-ammofor>${rs.firearms.map((w) => `<option ${cmpBuy.ammoFor === w ? "selected" : ""}>${esc(w)}</option>`).join("")}</select></label>
-        <label class="small grow">Carried by <select data-buy-to>${p.crew.map((pc) => `<option value="${esc(pc.id)}" ${cmpBuy.to === pc.id ? "selected" : ""}>${esc(pc.name)}</option>`).join("")}</select></label>
-        <label class="small grow">Paid from <select data-buy-pay><option value="rig" ${cmpBuy.pay === "rig" ? "selected" : ""}>Rig account (${cr(p.money)})</option>${p.crew.map((pc) => `<option value="${esc(pc.id)}" ${cmpBuy.pay === pc.id ? "selected" : ""}>${esc(pc.name)} (${cr(pc.credits || 0)})</option>`).join("")}</select></label></div>
+      <div class="row"><label class="small grow">Ammo for <select data-buy-ammofor aria-label="Ammo for which weapon">${rs.firearms.map((w) => `<option ${cmpBuy.ammoFor === w ? "selected" : ""}>${esc(w)}</option>`).join("")}</select></label>
+        <label class="small grow">Carried by <select data-buy-to aria-label="Ammo carried by">${p.crew.filter((x) => !x.cond?.dead && !x.retired).map((pc) => `<option value="${esc(pc.id)}" ${cmpBuy.to === pc.id ? "selected" : ""}>${esc(pc.name)}</option>`).join("")}</select></label>
+        <label class="small grow">Paid from <select data-buy-pay aria-label="Pay for supplies from"><option value="rig" ${cmpBuy.pay === "rig" ? "selected" : ""}>Rig account (${cr(p.money)})</option>${p.crew.filter((x) => !x.cond?.dead && !x.retired).map((pc) => `<option value="${esc(pc.id)}" ${cmpBuy.pay === pc.id ? "selected" : ""}>${esc(pc.name)} (${cr(pc.credits || 0)})</option>`).join("")}</select></label></div>
       <div class="row"><b class="grow" id="cmpBuyTotal">Total ${cr(buyTotal())}</b><button class="primary" data-buy-go ${idle ? "" : "disabled"} title="${idle ? "Adds the goods to the rig and the crew's sheets" : "Finish the story being played first"}">Buy</button></div>`;
     return `<details open><summary>The rig: fuel and supplies <span class="muted small">(house rules, except the PSG gear prices)</span></summary>
       <div class="bcard"><div class="row wrap"><b>Fuel ${r.fuel} of ${TANK_UNITS}</b><span class="small muted">house rule: a lane costs 1 unit per started 3 days (3 days = 1, 9 days = 3)</span></div>
@@ -1332,7 +1358,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     psychosurgery: [["intellect", "Intellect"], ["sanity", "Sanity Save"], ["fear", "Fear Save"], ["minstress", "Minimum Stress to 2"]],
   };
   function cmpDowntime(c, p) {
-    const d = S.downtime, crew = S.config.crew.filter((x) => !x.cond?.dead && !x.retired);
+    const d = S.downtime, crew = S.downtime?.ready ? S.config.crew.filter((x) => !x.cond?.dead && !x.retired) : [];
     if (!d) return "";
     const off = d.ready ? "" : "disabled";
     const tip = d.ready ? "" : ` title="Downtime comes between stories: finish a story first"`;
@@ -1361,16 +1387,17 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       <div class="bcard"><div class="small"><b>Rest Save</b> (PSG 20.2): the character's worst Save; success reduces Stress by the ones digit of the roll (never below Minimum Stress), failure +1 Stress. The roll goes to the player's screen.</div>
         ${chk("leisure", "A suitable leisure activity [+]")}${chk("helped", "A crewmate gives up their own rest to help [+]")}${chk("unsafe", "An unsafe place [-]")}
         <div class="small muted">The Nightmares Condition makes it [-] automatically.</div>
-        <div class="small"><b>Short-term recovery</b> (PSG 34.1): after 6+ hours of rest, once per day, a Body Save; success brings Health back to Maximum. Wounds stay.</div></div>
+        <div class="small"><b>Short-term recovery</b> (PSG 34.1): after 6+ hours of rest, once per day, a Body Save; success brings Health back to Maximum. Wounds stay.</div>
+        <div class="row wrap"><button class="small" data-dt-go="recovery" data-pc="all" ${off}${tip}>Short-term recovery: everyone</button><button class="small" data-dt-go="rest" data-pc="all" ${off}${tip}>Rest Save: everyone</button></div>
+        <div class="small muted">Everyone rolls in turn on their own screens. A character nobody is playing is rolled for at once with the server's dice.</div></div>
       <div class="bcard"><div class="small"><b>Shore Leave</b> (PSG 39) ${sh ? `at a class ${esc(sh.cls)} port (${esc(sh.name)}): costs ${esc(sh.cost)}; a Sanity Save converts up to ${esc(sh.convert)} (critical success: ${esc(sh.max)}), the rest relieved down to Minimum Stress; about 2d10 days.` : "needs a port with a class."}</div>
-        ${chk("safe", `The port is relatively safe (required)`)}</div>
-      <div class="row wrap"><button class="small" data-dt-go="recovery" data-pc="all" ${off}${tip}>Recovery: everyone</button><button class="small" data-dt-go="rest" data-pc="all" ${off}${tip}>Rest Save: everyone</button></div>
-      ${rows || '<p class="muted small">No playable crew.</p>'}${pend}
+        ${chk("safe", `The port is relatively safe (Shore Leave only: it will not roll without this)`)}</div>
+      ${rows || (d.ready ? '<p class="muted small">No playable crew.</p>' : "")}${pend}
       <div class="bcard"><b>Medical treatment</b> <span class="small muted">(PSG 35; at a port, paid from the account you pick)</span>
         <div class="row wrap"><label class="small">Who <select data-tr="pc">${crew.map((x) => `<option value="${esc(x.id)}" ${pcT?.id === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>
           <label class="small">Treatment <select data-tr="id">${d.treatments.map((t) => `<option value="${t.id}" ${tr.id === t.id ? "selected" : ""}>${esc(t.name)} (${cr(t.cost)})</option>`).join("")}</select></label>
           ${opts.length ? `<label class="small">Choice <select data-tr="choice">${opts.map(([v, n]) => `<option value="${esc(v)}" ${choice === v ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>` : ""}
-          <label class="small">Paid from <select data-tr="pay"><option value="rig" ${payer === "rig" ? "selected" : ""}>Rig account (${cr(p.money)})</option>${p.crew.map((x) => `<option value="${esc(x.id)}" ${payer === x.id ? "selected" : ""}>${esc(x.name)} (${cr(x.credits || 0)})</option>`).join("")}</select></label>
+          <label class="small">Paid from <select data-tr="pay" aria-label="Pay for the treatment from"><option value="rig" ${payer === "rig" ? "selected" : ""}>Rig account (${cr(p.money)})</option>${p.crew.filter((y) => !y.cond?.dead && !y.retired).map((x) => `<option value="${esc(x.id)}" ${payer === x.id ? "selected" : ""}>${esc(x.name)} (${cr(x.credits || 0)})</option>`).join("")}</select></label>
           <button class="small primary" data-tr-go ${off}${tip}>Treat</button></div>
         <div class="small">${esc(tr.text)}${tr.time ? ` (${esc(tr.time)})` : ""} Side effects are recorded as Conditions with an end day (house rule: the PSG gives the durations but not a calendar).</div></div>
     </details>`;
@@ -1380,7 +1407,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const played = p.done.map((d) => ({ d, s: c.stories.find((x) => x.id === d.id) })).filter((x) => x.s);
     return `<div class="btitle">${esc(c.title)}</div>
       <p class="muted"><i>${esc(c.tagline)}</i></p><p>${esc(c.pitch)}</p>
-      <p class="small muted">Offer jobs to put them on the players' job board, then Show players; their votes appear on the map. Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
+      <p class="small muted">Offer jobs to put them on the players' job board, then Show sector map to players; their votes appear on the map. Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
       ${cmpRig(c, p)}
       ${cmpDowntime(c, p)}
       ${cmpMoney(c, p)}
@@ -1418,7 +1445,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
 
   function cmpStory(c, s, p) {
     const d = p.done.find((x) => x.id === s.id);
-    const busy = S.campaignBusy;
+    const busy = S.campaignBusy || cmpStarting;
     const acts = campaignData.acts.map(([k, label]) => `<li><b>${esc(label)}.</b> ${esc(s.acts[k])}</li>`).join("");
     const cast = s.cast.map((id) => c.cast.find((m) => m.id === id)).filter(Boolean);
     const stakes = (s.affinity || []).map((a) => `<li><span style="color:${cmpFaction(c, a.faction)?.color}">${esc(cmpFaction(c, a.faction)?.short)}</span> ${a.change > 0 ? "+" : ""}${a.change} if ${esc(a.when)}</li>`).join("");
@@ -1427,7 +1454,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       : p.current === s.id ? `<span class="pill ok">Now playing</span><button data-replay="${s.id}" ${busy ? "disabled" : ""} title="Build it again from scratch">Rebuild</button>`
         : `<button class="primary" data-play="${s.id}" ${busy ? "disabled" : ""}>${d ? "Play it again" : "Play this story"}</button>`;
     const on = (p.offered || []).includes(s.id), votes = S.sectorVotes?.[s.id] || [];
-    const offer = `<button data-offer="${s.id}" aria-pressed="${on}" title="Put this job on the players' job board (title, hook and job only)">${on ? "Offered" : "Offer"}</button>${votes.length ? `<span class="small">${votes.length} vote${votes.length > 1 ? "s" : ""}: ${esc(votes.join(", "))}</span>` : ""}`;
+    const offer = `<button data-offer="${s.id}" aria-pressed="${on}" title="${on ? "On the players' job board. Click to take it off" : "Put this job on the players' job board (title, hook and job only)"}">${on ? "Offered: take it off" : "Offer"}</button>${votes.length ? `<span class="small">${votes.length} vote${votes.length > 1 ? "s" : ""}: ${esc(votes.join(", "))}</span>` : ""}`;
     return `<div class="row"><div class="grow"><div class="btitle">${s.n}. ${esc(s.title)}</div>
         <div class="muted">${esc(cmpPlace(c, s))} · ${esc(TIERS[s.tier] || "")}</div></div></div>
       <div class="row wrap">${action}${offer}</div>
@@ -1448,7 +1475,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   function renderCampaign() {
     if (!$("campaignDialog").open || !campaignData) return;
     const p = S.campaign, c = p && campaignData.campaigns.find((x) => x.id === p.id);
-    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes, S.rig, S.ships?.rig, cmpFin, cmpMove.from, cmpMove.to, S.downtime, cmpDt, cmpTr, S.config.crew.map((x) => [x.stress, x.minStress, x.health, x.wounds, x.saves, x.stats, x.cond?.tags, x.credits]), S.config.crew.map((x) => [x.id, x.cond?.dead, x.retired, x.highScore, x.endedIn, x.finalWords, x.epitaph])]);
+    const key = JSON.stringify([p, S.campaignBusy, cmpStarting, S.log.slice(-3).map((e) => e.id), cmpSel, S.sectorShown, S.sectorVotes, S.rig, S.ships?.rig, cmpFin, cmpMove.from, cmpMove.to, S.downtime, cmpDt, cmpTr, S.config.crew.map((x) => [x.stress, x.minStress, x.health, x.wounds, x.saves, x.stats, x.cond?.tags, x.credits]), S.config.crew.map((x) => [x.id, x.cond?.dead, x.retired, x.highScore, x.endedIn, x.finalWords, x.epitaph])]);
     if (key === campaignKey || document.activeElement?.matches?.("#cmpBody [data-epitaph]")) return;
     campaignKey = key;
     $("cmpLeave").hidden = !c;
@@ -1473,9 +1500,14 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       : `<div class="small muted">${S.campaignBusy ? `<span class="spinner"></span>Building a story…` : "No campaign story is being played. Pick a job on the map."}</div>`;
     const side = cmpSel.kind === "story" ? cmpStory(c, c.stories.find((s) => s.id === cmpSel.id), p)
       : cmpSel.kind === "loc" ? cmpLocation(c, cmpLoc(c, cmpSel.id), p) : cmpOverview(c, p);
+    const selKey = JSON.stringify(cmpSel), tops = cmpShownSel === selKey ? [".cmpgrid", ".cmpmapcol", ".cmpside"].map((q) => $("cmpBody").querySelector(q)?.scrollTop || 0) : [0, 0, 0];
+    cmpShownSel = selKey;
+    const lastLines = S.log.filter((e) => e.text && e.kind !== "player").slice(-3).map((e) => `<div>${esc(String(e.text).split("\n")[0].slice(0, 200))}</div>`).join("");
     $("cmpBody").innerHTML = `<div class="cmpgrid"><section class="cmpmapcol">${banner}${sectorSvg(c, p)}
-        <div class="cmplegend small muted"><span><i class="lg loc"></i>port (colour: who runs it)</span><span><i class="lg pill"></i>job at a port</span><span><i class="lg dia"></i>job in transit</span><span><i class="lg done"></i>played</span><span><i class="lg cur"></i>now playing</span><span><i class="lg ship"></i>${esc(c.ship.name)}</span><button class="ghost small" data-overview>Overview</button><button class="small" data-sector="show" title="Put the sector map and the offered jobs on every player screen">Show players</button>${S.sectorShown ? '<button class="ghost small" data-sector="hide">Hide</button>' : ""}</div>
-      </section><section class="cmpside">${side}</section></div>`;
+        <div class="cmplegend small muted"><span><i class="lg loc"></i>port (colour: who runs it)</span><span><i class="lg pill"></i>job at a port</span><span><i class="lg dia"></i>job in transit</span><span><i class="lg done"></i>played</span><span><i class="lg cur"></i>now playing</span><span><i class="lg off"></i>offered on the job board</span><span><i class="lg ship"></i>${esc(c.ship.name)}</span><button class="ghost small" data-overview>Overview</button><button class="small${S.sectorShown ? " primary" : ""}" data-sector="${S.sectorShown ? "hide" : "show"}" aria-pressed="${!!S.sectorShown}" title="Put the sector map and the offered jobs on every player screen">${S.sectorShown ? "Showing sector map to players: hide it" : "Show sector map to players"}</button></div>
+      </section><section class="cmpside">${side}</section></div>
+      <div class="cmplast small" role="status" aria-live="polite" title="The last lines of the comms log, which is behind this window">${S.campaignBusy || cmpStarting ? '<div><span class="spinner"></span>Building the story…</div>' : ""}${lastLines}</div>`;
+    [".cmpgrid", ".cmpmapcol", ".cmpside"].forEach((q, i) => { const el = $("cmpBody").querySelector(q); if (el) el.scrollTop = tops[i]; });
     if ($("cmpOutcome")) {
       $("cmpOutcome").value = cmpOutcome;
       $("cmpOutcome").oninput = (e) => (cmpOutcome = e.target.value);
@@ -1543,7 +1575,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const sec = e.target.closest("[data-sector]")?.dataset.sector;
     if (sec) {
       send({ t: "campaignShow", hide: sec === "hide" });
-      if (sec === "show") toast("Showing the players the sector map and job board.");
+      toast(sec === "show" ? "Showing the players the sector map and job board." : "Sector map hidden from the players.");
       return;
     }
     if (e.target.closest("[data-move-go]")) {
@@ -1577,8 +1609,13 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       if (await sure(`${tr.name} for ${pcT.name}?`, `${tr.text} It costs ${cr(tr.cost)}, taken from ${pay === "rig" ? "the rig account" : (S.campaign.crew.find((x) => x.id === pay)?.name || "the account")}, and its side effects are real.`, "Treat", "primary")) send({ t: "campaignTreat", pc: pcT.id, treatment: tr.id, choice, pay });
       return;
     }
-    const trav = e.target.closest("[data-travel]")?.dataset.travel;
-    if (trav) return send({ t: "campaignTravel", to: trav });
+    const trav = e.target.closest("[data-travel]");
+    if (trav) {
+      const c = campaignData.campaigns.find((x) => x.id === S.campaign?.id), lane = c?.lanes.find((l) => (l.a === S.campaign.at && l.b === trav.dataset.travel) || (l.b === S.campaign.at && l.a === trav.dataset.travel));
+      const cost = lane ? fuelCostOf(lane.days) : 0;
+      if (lane && !(await sure(`Travel to ${cmpLoc(c, trav.dataset.travel).name}?`, `${lane.days} days and ${cost} fuel (house rule). The rig moves now and the fuel and days are spent.`, "Travel", "primary"))) return;
+      return send({ t: "campaignTravel", to: trav.dataset.travel });
+    }
     if (e.target.closest("[data-buy-go]")) {
       const total = buyTotal();
       if (!(await sure("Buy these supplies?", `Total ${cr(total)} at ${S.resupply.name}. The goods go onto the rig and the character's sheet now, and the price is taken from ${cmpBuy.pay === "rig" ? "the rig account" : (S.campaign.crew.find((x) => x.id === cmpBuy.pay)?.name || "the rig account")}.`, "Buy", "primary"))) return;
@@ -1605,10 +1642,21 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       if (!s) return;
       const left = c.stories.find((x) => x.id === S.campaign.current);
       const text = `The agent builds it around its written arc (a minute or two, on the session's model and key). It replaces the story being played and clears the log; the crew carry over, and players pick their crew files again.${left && left !== s ? ` ${left.title} hasn't been finished: finish it first to keep how it ended.` : ""}`;
-      if (await sure(`Play ${s.title}?`, text, "Play story", "primary")) send({ t: "campaignPlay", story: s.id });
+      if (await sure(`Play ${s.title}?`, text, "Play story", "primary")) {
+        send({ t: "campaignPlay", story: s.id });
+        cmpStarting = s.id;
+        campaignKey = "";
+        renderBuildChip();
+        renderCampaign();
+        setTimeout(() => { if (cmpStarting === s.id) { cmpStarting = ""; campaignKey = ""; renderBuildChip(); renderCampaign(); } }, 8000);
+      }
       return;
     }
     if (e.target.id === "cmpFinish") {
+      const btn = e.target;
+      btn.disabled = true;
+      btn.textContent = "Finishing…";
+      setTimeout(() => { if (btn.isConnected) { btn.disabled = false; btn.textContent = "Finish story"; } }, 10000);
       send({ t: "campaignFinish", outcome: $("cmpOutcome").value, affinity: [...cmpTicks], delivery: cmpFin.delivery, late: cmpFin.late, skipDues: cmpFin.skipDues, ...(cmpFin.fee === "" ? {} : { fee: Number(cmpFin.fee) || 0 }) });
       cmpOutcome = "";
       cmpTicks = new Set();
@@ -1907,10 +1955,10 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const show = (el) => (mapView === "iso" ? showIso(el, isoData(people))
       : (dropIso(el), StationMap.draw(el, withCast(S.station), S.config.map, { people })));
     for (const b of document.querySelectorAll(".mapShow")) {
-      b.textContent = S.mapShown === mapView ? "Hide from players" : S.mapShown ? "Show players this view" : "Show players";
+      b.textContent = S.mapShown === mapView ? "Showing to players: hide it" : S.mapShown ? "Show this view to players instead" : "Show station map to players";
       b.classList.toggle("primary", S.mapShown === mapView);
     }
-    for (const b of document.querySelectorAll(".mapview button")) b.classList.toggle("on", b.dataset.view === mapView);
+    for (const b of document.querySelectorAll(".mapview button")) { b.classList.toggle("on", b.dataset.view === mapView); b.setAttribute("aria-pressed", String(b.dataset.view === mapView)); }
     show($("map"));
     if ($("mapDialog").open) show($("mapBig"));
     if (document.activeElement !== $("mapLayout") && !dirty.has("map")) $("mapLayout").value = S.config.map;
@@ -1936,6 +1984,10 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       if (p) return editStationValue(JSON.parse(p));
       const r = e.target.closest("[data-room]");
       if (r) openRoom(r.dataset.room, r.dataset.label, r.dataset.deck);
+    });
+    $(id).addEventListener("keydown", (e) => {
+      const r = (e.key === "Enter" || e.key === " ") && e.target.closest?.("[data-room]");
+      if (r) { e.preventDefault(); openRoom(r.dataset.room, r.dataset.label, r.dataset.deck); }
     });
   }
   $("mapExpand").onclick = (e) => {
@@ -2021,7 +2073,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const plan = S.config.rooms?.[room.id];
     const busy = S.roomBusy === room.id;
     const pcs = playersByRoom()[room.id] || [];
-    const key = JSON.stringify([plan, busy, pcs, S.station, S.config.terminals, S.config.crew.map((c) => c.id), roomEditing]);
+    const key = JSON.stringify([plan, busy, pcs, S.station, S.config.terminals, S.config.crew.map((c) => [c.id, !!c.cond?.dead, !!c.retired]), roomEditing]);
     if (!force && key === roomKey) return;
     roomKey = key;
     $("roomTitle").textContent = room.label;
@@ -2040,7 +2092,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     $("roomTools").innerHTML = roomEditing ? RoomPlan.CODES.filter((c) => c !== " ").concat(" ").map((c) =>
       `<button data-tool="${esc(c)}" class="${c === roomTool ? "on" : ""}" title="${esc(RoomPlan.TILES[c][0])}">${c === " " ? "␣ erase" : `${esc(c)} ${esc(RoomPlan.TILES[c][0].split(" ")[0])}`}</button>`).join("")
       + `<button data-tool="+col" title="Add a column">+ col</button><button data-tool="-col" title="Remove the last column">− col</button><button data-tool="+row" title="Add a row">+ row</button><button data-tool="-row" title="Remove the last row">− row</button>` : "";
-    const sel = $("roomShowTo"), who = [["", "All players"], ...S.config.crew.map((c) => [c.id, c.name])];
+    const sel = $("roomShowTo"), who = [["", "All players"], ...living().map((c) => [c.id, c.name])];
     fillSelect(sel, who, who.some(([v]) => v === sel.value) ? sel.value : "");
     const castHere = S.config.cast.filter((c) => c.room === room.id).map((c) => c.name);
     $("roomPlayers").innerHTML = (pcs.length ? pcs.map((n) => `<span class="pcchip">${esc(n)}</span>`).join("") : `<span class="muted small">No player characters here.</span>`) +
@@ -2048,7 +2100,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     for (const [id, k] of [["roomOccupants", "occupants"], ["roomContents", "contents"]]) {
       if (document.activeElement !== $(id) && !dirty.has(id)) $(id).value = String(stationAt([k, room.id]) ?? "");
     }
-    const vals = stationLeaves().filter(([q]) => q.includes(room.id) && !["occupants", "contents"].includes(q[0]));
+    const vals = stationLeaves().filter(([q]) => q.includes(room.id) && !["occupants", "contents", "hazards"].includes(q[0]));
     $("roomValues").innerHTML = vals.length ? vals.map(([p, v]) => `<button class="ghost small" data-path="${esc(JSON.stringify(p))}" title="${esc(p.join("."))}">${esc(p.filter((x) => x !== room.id).join(" ").replace(/_/g, " "))}: <b>${esc(v)}</b></button>`).join("") : `<span class="muted small">Nothing tracked here.</span>`;
     renderRoomHazard();
     const terms = S.config.terminals.filter((t) => t.room === room.id);
@@ -2468,7 +2520,16 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   $("log").addEventListener("click", (e) => {
     const id = e.target.closest("[data-del]")?.dataset.del;
     if (id) send({ t: "deleteEntry", id: Number(id) });
+    if (e.target.closest("[data-jump]")) jumpToNewChars();
   });
+  function jumpToNewChars() {
+    setMview("crew");
+    document.querySelector('.tabs[data-tabs="side"] [data-tab="crew"]')?.click();
+    $("newChars").scrollIntoView({ block: "start" });
+    const card = $("newChars").querySelector(".newchar");
+    card?.setAttribute("tabindex", "-1");
+    card?.focus({ preventScroll: true });
+  }
 
   function approve() {
     const r = S.pending?.reply;
@@ -2511,7 +2572,9 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       else approve();
     }
   });
-  $("retcon").onclick = () => send({ t: "retcon" });
+  $("retcon").onclick = async () => {
+    if (await sure("Undo the agent's last reply?", "Its lines leave the players' screens and the agent's memory, and the changes that reply made are undone. Dice rolls and Roll attack damage already applied stay.", "Undo reply", "primary")) send({ t: "retcon" });
+  };
 
   $("logDownload").onclick = () => {
     if (!S) return;
@@ -2845,7 +2908,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
         <optgroup label="Stress"><option value="panic">Panic check (d20 vs Stress)</option></optgroup>`;
       sel.value = "intellect";
     }
-    const crew = S.config.crew;
+    const crew = living();
     const whoKey = JSON.stringify(crew.map((c) => [c.id, c.name, c.skills]));
     if (whoKey !== rollWhoKey) {
       rollWhoKey = whoKey;
@@ -2861,7 +2924,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   }
 
   function rollFormChanged() {
-    const crew = S.config.crew;
+    const crew = living();
     const who = $("rollWho").value;
     const pcs = who === "all" ? crew : crew.filter((c) => c.id === who);
     const panic = $("rollCheck").value === "panic";
@@ -2912,7 +2975,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       const res = got.result;
       const dice = `${res.dice.map(show).join(" / ")}${res.dice.length > 1 ? ` → ${show(res.used)}` : ""}`;
       const verdict = res.panic
-        ? (res.success ? "kept their cool" : `PANIC · Panic Table ${res.used}`)
+        ? (res.success ? "kept their cool" : `PANIC · Panic Table ${res.used}${S.panicTable?.[res.used - 1] ? `: ${S.panicTable[res.used - 1].name}, ${S.panicTable[res.used - 1].effect}` : ""}`)
         : `${res.outcome.toUpperCase()}${res.panicCheck ? ": PANIC CHECK" : ""}${res.success ? "" : " · +1 STRESS"}`;
       const how = got.by === "warden" ? " (you rolled)" : got.manual ? " (table dice)" : "";
       return `<li class="res ${res.success ? "ok" : "bad"}">${esc(p.name)}: ${dice} ${res.panic ? "vs Stress" : "vs"} ${res.target}${how}: ${esc(verdict)}</li>`;
@@ -2961,7 +3024,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
 
   function renderHandouts() {
     const to = $("docTo");
-    const opts = [["", "Everyone"], ...S.config.crew.map((c) => [c.id, c.name])];
+    const opts = [["", "Everyone"], ...living().map((c) => [c.id, c.name])];
     fillSelect(to, opts, opts.some(([v]) => v === to.value) ? to.value : "");
     fillSelect($("docVoice"), [["", "None (written)"], ...S.config.voices.map((v) => [v.id, v.name]), ...(S.config.cast || []).map((c) => [`cast:${c.id}`, c.name])], $("docVoice").value || "");
     const roomsOf = [...StationMap.parseLayout(S.config.map).flatMap((d) => d.rooms), ...StationMap.parseDocked(S.config.map)];
@@ -3032,7 +3095,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     $("hazardList").innerHTML = hz.length ? hz.map(([id, h]) => {
       const i = S.hazardTypes[h.type];
       return `<li><span class="grow"><b>${esc(id === "rig" ? "The whole rig" : String(rooms.get(id) || id).split(",")[0])}</b>: ${esc(i.name)}${h.level ? ` ${h.level}` : ""}${h.type === "oxygen" ? `, supply ${h.supply}` : ""} <span class="muted">· ${hazardTag(i)} · ${h.rounds} rounds, ${h.hours} h</span></span>
-        <button data-haz-room="${esc(id)}" class="ghost" title="Open the room view">Room</button><button data-haz-end="${esc(id)}" class="ghost danger" title="End this hazard">End</button></li>`;
+        <button data-haz-room="${esc(id)}" class="ghost" title="Open the room view">Open room</button><button data-haz-end="${esc(id)}" class="ghost danger" title="Remove this hazard from the room">End hazard</button></li>`;
     }).join("") : '<li class="muted small">No hazards in play. Click a room on the Map to set one.</li>';
     const waiting = S.roll?.status === "waiting" && S.roll.hazard;
     $("hazardQueue").textContent = [waiting && `Waiting for a hazard roll: ${S.roll.reason}`, S.hazardWork && `${S.hazardWork} step${S.hazardWork > 1 ? "s" : ""} queued`].filter(Boolean).join(" · ");

@@ -741,3 +741,8 @@ body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #
 .cs-deceased { text-align: center; font-weight: bold; letter-spacing: 0.3em; border: 1px solid #ff5a4e; padding: 0.2em; margin-top: 0.5em; }
 .cs-conds { display: flex; flex-wrap: wrap; gap: 0.3em; }
 .cs-conds > span { border: 2px solid var(--fg); border-radius: 999px; padding: 2px calc(0.45em + 2px); font-size: 0.85em; }
+
+/* ux-flows: death bar, job-board key hint */
+.deadbar { border: 1px solid var(--fg); padding: 0.4em 0.7em; margin: 0.4em 0; display: flex; flex-wrap: wrap; gap: 0.3em 1em; align-items: baseline; }
+.deadbar[hidden] { display: none; }
+.sf-hint { color: var(--dim); font-size: 0.85em; }

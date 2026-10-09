@@ -220,7 +220,7 @@
       <h2 class="grow" id="mapTitle">Station map</h2>
       <span class="muted small">Click a door, light, camera or value to change it.</span>
       <span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">2D</button><button data-view="iso">3D</button></span>
-      <button class="mapShow" title="Show this view of the map on the players' screens (without who of the cast is where)">Show players</button>
+      <button class="mapShow" title="Show this view of the map on the players' screens (without who of the cast is where)">Show station map to players</button>
       <button id="mapClose" class="ghost" aria-label="Close">✕</button>
     </div>
     <div id="mapBig" class="smap"></div>
@@ -244,8 +244,8 @@
           <button id="roomRedraw" class="ghost" title="Agent redraws this room">↻ Redraw with agent</button>
           <span class="grow"></span>
           <select id="roomShowTo" aria-label="Show to" title="Who sees the layout"></select>
-          <button id="roomShow" class="primary" title="Layout only, never who or what is inside">Show players</button>
-          <button id="roomHide" class="ghost" title="Remove from player screens">Hide</button>
+          <button id="roomShow" class="primary" title="Layout only, never who or what is inside">Show this room to players</button>
+          <button id="roomHide" class="ghost" title="Remove the room view from player screens">Hide room</button>
         </div>
         <div id="roomTools" class="rptools" hidden></div>
         <div id="roomPlan"></div>
@@ -308,7 +308,7 @@
     <button id="campaignBtn" class="ghost" data-short="Camp" title="Campaigns: many stories on a sector map">Campaign</button>
     <button id="builderBtn" class="ghost" data-short="Build" title="Build a new scenario with the agent">Story Builder</button>
     <button id="settingsBtn" class="ghost" aria-label="Settings" title="Settings">⚙</button>
-    <div class="seg" id="mode" role="radiogroup" aria-label="Response mode">
+    <div class="seg" id="mode" role="group" aria-label="Response mode">
       <button data-mode="auto" title="Agent replies go straight to players">Auto</button>
       <button data-mode="review" title="You approve every agent reply">Review</button>
     </div>
@@ -316,7 +316,7 @@
 
   <div class="grid">
     <section class="col">
-      <h2>Comms log <button id="logDownload" class="ghost small h2btn" title="Save the whole game: the log, the crew and cast, the map, the station and handouts (a .json file)">Download</button></h2>
+      <h2>Comms log <span id="buildChip" class="pill buildchip" role="status" hidden><span class="spinner"></span>Building story…</span> <button id="logDownload" class="ghost small h2btn" title="Save the whole game: the log, the crew and cast, the map, the station and handouts (a .json file)">Download</button></h2>
       <div id="log" class="log"></div>
       <div id="tray" class="tray">
         <div id="outcome" class="card outcome" hidden></div>
@@ -340,7 +340,7 @@
         <div class="row keyrow">
           <button id="micBtn" class="ghost small" aria-pressed="false" title="Transcribe table talk for the agent, not shown to players">Listen</button>
           <span class="muted small keyhint grow">Tab switches · Enter sends · Shift+Enter new line · Ctrl+Enter note</span>
-          <button id="retcon" class="ghost small" title="Undo the agent's last response and its changes">↶ Retcon last response</button>
+          <button id="retcon" class="ghost small" title="Takes the agent's last reply off the players' screens and out of its memory, and undoes the changes that reply made. It does not undo dice rolls or Roll attack damage already applied.">↶ Undo last reply (Retcon)</button>
         </div>
       </div>
     </section>
@@ -355,12 +355,6 @@
       <div class="tabpanel" data-tabs="side" data-panel="actions">
         <p id="noKeyNote" class="muted small" hidden>No AI key. Use Speak, or add a key in Settings.</p>
 
-        <h2>High Score <span class="hint" title="Mothership 1e (PSG 18.3): High Score is the number of sessions a character has survived. It changes no roll; how you use it is up to you.">?</span></h2>
-        <div class="card row wrap">
-          <button id="endNight" title="One game night is one session. Every living character's High Score goes up by 1.">End game night</button>
-          <span class="small muted grow">Adds 1 to every living character's High Score (sessions survived; it changes no roll).</span>
-        </div>
-
         <h2>Rounds and hazards<span class="hint" title="A round is about 10 seconds. Next round runs the per-round rules (bleeding, fire, vacuum, toxic and corrosive atmospheres, radiation) for everyone exposed; Pass time runs the hourly and daily ones (extreme cold and heat, exhaustion, hunger, life support). Hazards are set per room in the room view (click a room on the map). Players at terminals in a hazardous room are exposed.">?</span></h2>
         <div class="card stack" id="hazardCard">
           <div class="row wrap">
@@ -371,7 +365,7 @@
             <button data-pass="6" title="Advance 6 hours">6 hours</button>
             <button data-pass="24" title="Advance 24 hours">24 hours</button>
           </div>
-          <label class="row small" title="Food and water are cut off (a story says so, or the Warden decides). Hunger is then tracked every hour and the PSG 32.5 penalties apply; Has eaten spends a ration from the rig."><input type="checkbox" id="rationing"> Rationing: food and water cut off (PSG 32.5)</label>
+          <label class="row small" title="Food and water are cut off (a story says so, or the Warden decides). Hunger is then tracked every hour and the PSG 32.5 penalties apply; Has eaten spends a ration from the rig."><input type="checkbox" id="rationing" aria-label="Rationing: food and water cut off"> Rationing: food and water cut off (PSG 32.5)</label>
           <div class="row wrap"><span id="hazardQueue" class="muted small grow"></span><button id="hazardRollAll" class="ghost" hidden title="Roll every waiting hazard save with server dice and carry on">Roll for them</button></div>
           <ul id="hazardList" class="fxlist"></ul>
         </div>
@@ -401,7 +395,7 @@
                 <option value="disadvantage">[−] Disadvantage</option>
               </select>
             </label>
-            <label>What for
+            <label>What for (players see this)
               <input id="rollReason" placeholder="bypass a lock">
             </label>
           </div>
@@ -426,7 +420,7 @@
             </label>
           </div>
           <div id="atkNote" class="muted small"></div>
-          <div class="row"><button id="atkGo" class="primary" title="An adversary rolls its Combat (d100 under it, 90-99 always fails) and, on a hit, the attack's damage. A crew member's weapon damage is rolled and applied to the adversary.">Roll attack</button></div>
+          <div class="row"><button id="atkGo" class="primary" title="An adversary rolls its Combat (d100 under it, 90-99 always fails) and, on a hit, the attack's damage, which is taken off the target at once. A crew member's weapon damage is rolled and applied to the adversary.">Roll attack and apply damage</button></div>
           <ul id="deathSaveList" class="fxlist"></ul>
         </div>
 
@@ -483,12 +477,18 @@
         </div>
         <ul id="soundPlaying" class="fxlist"></ul>
         </div>
-    
+
+        <h2>Wrap-up <span class="hint" title="Mothership 1e (PSG 18.3): High Score is the number of sessions a character has survived. It changes no roll; how you use it is up to you.">?</span></h2>
+        <div class="card row wrap">
+          <button id="endNight" title="One game night is one session. Every living character's High Score goes up by 1.">End game night</button>
+          <span class="small muted grow">Adds 1 to every living character's High Score (sessions survived; it changes no roll). Press it once, at the end of the night.</span>
+        </div>
+
       </div>
 
       <div class="tabpanel" data-tabs="side" data-panel="map">
         <div class="row" id="mapPanel"><span class="seg mapview" role="radiogroup" aria-label="Map view"><button data-view="draw">2D</button><button data-view="iso">3D</button></span>
-          <span class="grow"></span><button class="mapShow" title="Show this view of the map on the players' screens (without who of the cast is where)">Show players</button><button id="mapExpand" class="ghost" title="Open the full map">⤢ Expand</button></div>
+          <span class="grow"></span><button class="mapShow" title="Show this view of the map on the players' screens (without who of the cast is where)">Show station map to players</button><button id="mapExpand" class="ghost" title="Open the full map">⤢ Expand</button></div>
         <div id="map" class="smap compact"></div>
       <details class="edit-only">
         <summary>Station state <span class="muted">(agent-editable)</span></summary>

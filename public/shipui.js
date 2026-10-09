@@ -78,8 +78,8 @@
         <label class="small">Range <select id="shipStartRange">${["detection", "firing", "contact"].map((r) => `<option value="${r}" ${ui.startRange === r ? "selected" : ""}>${cap(r)}</option>`).join("")}</select></label>
         <button data-ship-act="start" class="primary">Start fight</button></div>
       <details><summary>Custom ship</summary><div class="small muted">Your own numbers (stats 1-99, the same scale as character stats ${HOUSE}).</div>
-        <div class="rollgrid"><label>Name <input data-ship-custom="name" value="${esc(c.name)}"></label>
-        ${[["class", "Class 0-5"], ["thrusters", "Thrusters"], ["battle", "Battle"], ["systems", "Systems"], ["hull", "Hull"]].map(([k, l]) => `<label>${l} <input type="number" data-ship-custom="${k}" value="${c[k]}"></label>`).join("")}</div>
+        <div class="rollgrid"><label>Name <input data-ship-custom="name" value="${esc(c.name)}" aria-label="Ship name"></label>
+        ${[["class", "Class 0-5", "0 Shuttlecraft, 1 Light Commercial, 2 Medium Commercial, 3 Heavy Commercial, 4 Light Military, 5 Medium Military"], ["thrusters", "Thrusters", "Rolled like a Stat for the movement step (evade or pursue)"], ["battle", "Battle", "Rolled like a Stat for the attack step"], ["systems", "Systems", "Rolled like a Stat for the check after a battle"], ["hull", "Hull", "Subtracted from each hit that lands; what gets past it becomes Megadamage"]].map(([k, l, tip]) => `<label title="${tip}">${l} <input type="number" data-ship-custom="${k}" value="${c[k]}" aria-label="${l}: ${tip}"></label>`).join("")}</div>
         <label class="row small"><input type="checkbox" data-ship-custom="armed" ${c.armed ? "checked" : ""} style="width:auto"> A weapon at Firing range</label>
         <label class="row small"><input type="checkbox" data-ship-custom="railgun" ${c.railgun ? "checked" : ""} style="width:auto"> A railgun (Detection range)</label>
         <div class="row"><button data-ship-act="startCustom">Start with this ship</button></div></details>`;

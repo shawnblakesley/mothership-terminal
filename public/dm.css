@@ -645,3 +645,10 @@ details.sec > summary:hover h2 { color: var(--fg); }
 .shipui .shipcrew { border-color: color-mix(in srgb, var(--player) 55%, var(--line)); }
 .shipui .shipfoe { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
 .shipui .shiplog { margin: 4px 0 0; padding-left: 16px; }
+
+/* ux-flows: campaign window log tail, offered legend, build chip */
+.cmplast { border-top: 1px solid var(--line); padding-top: 6px; max-height: 5.4em; overflow: hidden; color: var(--muted); }
+.cmplegend .lg.off { border-color: var(--accent); border-width: 2.5px; border-style: dashed; border-radius: 6px; width: 16px; }
+.sector .story.offered rect { stroke-dasharray: 4 2; }
+.buildchip { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--warn); order: 1; }
+.tabs [data-tab].waiting, .mnav [data-mview].waiting { color: var(--warn); font-weight: 700; }

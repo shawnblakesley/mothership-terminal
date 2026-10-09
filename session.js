@@ -778,6 +778,7 @@ export class Session {
     const c = this.state.config;
     return {
       stationName: c.stationName,
+      title: c.title || c.stationName,
       accessLevel: String(this.state.station.access_level ?? "GUEST"),
       theme: c.theme,
       tts: this.speaksOnScreens(),
@@ -813,7 +814,7 @@ export class Session {
     const kind = String(msg.kind || ""), o = msg.opts && typeof msg.opts === "object" ? msg.opts : {};
     const opts = { leisure: !!o.leisure, helped: !!o.helped, unsafe: !!o.unsafe, safe: !!o.safe };
     const ids = msg.pc === "all" ? s.config.crew.filter(playable).map((x) => x.id) : [String(msg.pc || "")];
-    this.dtQueue = ids.map((id) => ({ id, kind, opts }));
+    this.dtQueue = ids.map((id) => ({ id, kind, opts, auto: msg.pc === "all" }));
     this.nextDowntime();
   }
 
@@ -835,6 +836,11 @@ export class Session {
       this.addLog("note", `Roll called for ${pc.name}: ${[checkLabel(s.roll), s.roll.reason].filter(Boolean).join(" · ")}`);
       this.toPlayers({ t: "roll", roll: this.publicRoll() });
       this.syncDm();
+      // "Everyone" rolls at once for the characters nobody is playing; the players at a screen roll their own.
+      if (e.auto && !this.played().some((x) => x.id === pc.id)) {
+        this.addLog("note", `${pc.name} isn't being played: the dice roll for them.`);
+        this.rollFor(pc, null, { by: "warden" });
+      }
       return true;
     }
     this.syncDm();
@@ -1945,7 +1951,7 @@ export class Session {
     const result = resolve(req, member.stress ?? 2, diceFor(req));
     const fx = result.success ? null : panicEntry(result.used);
     track("Roll", { Kind: "panic", Who: "cast" });
-    this.toPlayers({ t: "rollResult", result, label: "Panic", who: member.name, effect: fx?.name || "" });
+    this.toPlayers({ t: "rollResult", result, label: "Panic", who: member.name, effect: fx?.name || "", effectText: fx?.effect || "" });
     this.addLog("roll", `${member.name}${by === "warden" ? " (the Warden called it)" : ""}: PANIC CHECK\nSTRESS ${result.target} · ROLLED ${result.used} (D20)\n${fx ? `PANIC · ${fx.name.toUpperCase()}` : "KEPT THEIR COOL"}`,
       { outcome: result.outcome, by: member.name, cast: true, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
     if (this.generating) this.rerun = true;
@@ -2196,7 +2202,7 @@ export class Session {
       this.addLog("note", `Teamster trauma response: ${pc.name} takes [+] on this Panic Check (once per session, now used).`);
     }
     const fx = result.panic && !result.success ? panicEntry(result.used) : null;
-    this.toPlayers({ t: "rollResult", result, label: checkLabel(req), who: pc.name, effect: fx?.name || "" });
+    this.toPlayers({ t: "rollResult", result, label: checkLabel(req), who: pc.name, effect: fx?.name || "", effectText: fx?.effect || "" });
     if (fx) this.panicScreens(pc, result.used, fx.name);
     this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(req, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
     const dt = r.downtime?.[pc.id], dtOut = dt && this.settleDowntime(pc, dt, result);
@@ -2504,7 +2510,7 @@ export class Session {
       if (!was) return false;
       delete hz[room];
       if (!Object.keys(hz).length) delete s.station.hazards;
-      this.addLog("note", `Hazard ended in ${room}: ${HAZARDS[was.type].name}.`);
+      this.addLog("note", `Hazard ended in ${this.roomName(room)}:${HAZARDS[was.type].name}.`);
     } else {
       if (!HAZARDS[type]) return false;
       const same = was?.type === type;
@@ -2512,7 +2518,7 @@ export class Session {
       hz[room] = next;
       const info = HAZARDS[type];
       if (same && was.level === next.level && was.supply === next.supply) return false;
-      this.addLog("note", `Hazard in ${room}: ${info.name}${next.level ? ` level ${next.level}` : ""} (${info.kind === "psg" ? "Mothership rule" : "story hazard"}). ${info.rule}`);
+      this.addLog("note", `Hazard in ${this.roomName(room)}: ${info.name}${next.level ? ` level ${next.level}` : ""} (${info.kind === "psg" ? "Mothership rule" : "story hazard"}). ${info.rule}`);
       if (!same && ["event", "exposure"].includes(info.per)) this.hazardUnits.push({ u: "event", room, type });
     }
     this.sendHeader();

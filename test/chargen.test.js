@@ -334,3 +334,21 @@ test("name and pronouns are separate and never guessed", () => {
   assert.match(crewBrief([b]), /no pronouns given: use they\/them/);
   assert.equal(sanitizeCrew([b])[0].pronouns, "");
 });
+
+test("a player can take a submitted character back while it waits, and edit it", () => {
+  const { sess, ws, sent } = fakeSession(DEFAULT_CREW.slice(0, 1));
+  run(sess, ws, { t: "cgWithdraw" });
+  assert.match(sent.at(-1).error, /Nothing of yours is waiting/);
+  submitOne(sess, ws);
+  assert.equal(sess.state.newChars.length, 1);
+  assert.equal(ws.cg, null);
+  const other = { role: "player", readyState: 1, character: null, send() {} };
+  run(sess, other, { t: "cgWithdraw" });
+  assert.equal(sess.state.newChars.length, 1, "somebody else cannot take it back");
+  run(sess, ws, { t: "cgWithdraw" });
+  assert.equal(sent.at(-1).withdrawn, true);
+  assert.equal(sess.state.newChars.length, 0, "nothing is left for the Warden to decide");
+  assert.ok(ws.cg, "the draft is theirs again");
+  assert.ok(sent.at(-1).view.sheet, "and it is still complete");
+  assert.ok(sess.logs.some(([, t]) => /withdrawn by the player/.test(t)));
+});
