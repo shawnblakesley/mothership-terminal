@@ -1091,6 +1091,7 @@
         <div class="p-dim p-crime">${escH(j.hook)}</div><div class="p-dim p-crime">${escH(j.job)}</div></li>`;
     }).join("") + `<li class="p-dim">TRAVEL (HOUSE RULE: 1 FUEL PER STARTED 3 DAYS)${jobs.low ? " · FUEL IS BELOW THE CHEAPEST LANE: REFUEL" : ""}</li>` + jobs.lanes.map((l) =>
       `<li>${isPilot ? `<button type="button" class="p-btn" data-travel="${escH(l.to)}">[ TRAVEL: ${escH(l.dest)} ]</button>` : `TRAVEL: ${escH(l.dest)}`}<span class="p-dim tags"> · ${escH(l.lane.toUpperCase())}, ${l.days} DAYS, ${l.cost} FUEL${l.short ? " · NOT ENOUGH FUEL" : ""}</span></li>`).join("")
+      + (isPilot && jobs.stuck ? `<li><button type="button" class="p-btn" data-dispatch="1">[ CALL DISPATCH ]</button><span class="p-dim tags"> · LOCAL 1312 ADVANCES THE FUEL FOR THE CHEAPEST LANE; ITS PRICE IS ADDED TO THE NOTE (HOUSE RULE)</span></li>` : "")
       + (isPilot && jobs.canRefuel ? `<li><button type="button" class="p-btn" data-refuel="1">[ REFUEL ${jobs.fuel}/${jobs.capacity} ]</button><span class="p-dim tags"> · ${jobs.fuelEach.toLocaleString("en-US")}CR A UNIT (HOUSE RULE), FROM THE RIG ACCOUNT&#58; ${jobs.money.toLocaleString("en-US")}CR</span></li>` : "");
     $("solopick-list").innerHTML = building ? "" : jobs ? board() : solo.pitches.map((p, i) => {
       const name = `[${i + 1}] ${escH(p.title.toUpperCase())}`;
@@ -1125,6 +1126,7 @@
     const i = e.target.closest("[data-pick]")?.dataset.pick, job = e.target.closest("[data-job]")?.dataset.job;
     const to = e.target.closest("[data-travel]")?.dataset.travel;
     if (to) ws?.send(JSON.stringify({ t: "pilotTravel", to }));
+    else if (e.target.closest("[data-dispatch]")) ws?.send(JSON.stringify({ t: "pilotDispatch" }));
     else if (e.target.closest("[data-refuel]")) ws?.send(JSON.stringify({ t: "pilotRefuel" }));
     else if (i !== undefined) pickStory(Number(i));
     else if (job) pickJob(job);

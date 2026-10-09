@@ -413,7 +413,28 @@ export function jobsAt(c, p) {
   });
   const cheapest = lanes.length ? Math.min(...lanes.map((l) => l.cost)) : 0;
   const v = resupplyView(c, p), trade = v.trade;
-  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, capacity: TANK, money: p.money, fuelEach: trade ? Math.round(FUEL_PRICE * v.fuelFactor) : 0, low: p.resources.fuel < cheapest, canRefuel: trade && p.resources.fuel < TANK, jobs, lanes };
+  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, capacity: TANK, money: p.money, fuelEach: trade ? Math.round(FUEL_PRICE * v.fuelFactor) : 0, low: p.resources.fuel < cheapest, stuck: isStuck(c, p), canRefuel: trade && p.resources.fuel < TANK, jobs, lanes };
+}
+
+// Stuck (no Warden): the rig can't afford the cheapest lane from here and its account can't buy the fuel for it.
+const dispatchNeed = (c, p) => {
+  const costs = c.lanes.filter((l) => l.a === p.at || l.b === p.at).map((l) => fuelCost(l.days));
+  return costs.length ? Math.max(0, Math.min(...costs) - p.resources.fuel) : 0;
+};
+const fuelEach = (c, p) => Math.round(FUEL_PRICE * (resupplyView(c, p).fuelFactor ?? portMult(loc(c, p.at)?.portClass)));
+export function isStuck(c, p) {
+  const need = dispatchNeed(c, p);
+  return need > 0 && (!resupplyView(c, p).trade || need * fuelEach(c, p) > p.money);
+}
+
+// Call dispatch (house rule): Local 1312 advances the fuel for the cheapest lane; its price is added to the note, union standing unchanged.
+export function callDispatch(p, c) {
+  if (p.current) return { ok: false, error: "Finish the story being played first." };
+  if (!isStuck(c, p)) return { ok: false, error: "The rig isn't stuck: dispatch only helps a rig that can't buy the fuel for a lane." };
+  const units = dispatchNeed(c, p), cost = units * fuelEach(c, p);
+  p.resources.fuel += units;
+  const e = book(p, "debt", cost, "Union fuel advance");
+  return { ok: true, units, cost, entries: [e], at: loc(c, p.at).name };
 }
 
 // No Warden to resupply: the pilot buys fuel for the rig account at the port the rig is at, the Warden's resupply at the default 500cr a unit (house rule, the port's multiplier applies), as much as fills the tank or the rig account allows.

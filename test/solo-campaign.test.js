@@ -6,7 +6,7 @@ import { restAndRecover, downtimeLines } from "../downtime-lite.js";
 import { sanitizeCrew } from "../crew.js";
 
 const BANNED = ["acts", "adversary", "secrets", "affinity", "cast", "description", "persona", "factions", "faction", "crew", "notes", "outcome", "event", "horror", "tier"];
-const ALLOWED = ["port", "rig", "fuel", "capacity", "low", "canRefuel", "jobs", "lanes", "id", "title", "hook", "job", "where", "lane", "days", "cost", "short", "to", "dest", "money", "fuelEach"];
+const ALLOWED = ["port", "rig", "fuel", "capacity", "low", "canRefuel", "jobs", "lanes", "id", "title", "hook", "job", "where", "lane", "days", "cost", "short", "to", "dest", "money", "fuelEach", "stuck"];
 const keys = (v, out = new Set()) => {
   if (Array.isArray(v)) v.forEach((x) => keys(x, out));
   else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { out.add(k); keys(x, out); }
@@ -132,6 +132,40 @@ test("a campaign story keeps the claims of characters still in the crew", async 
   p.current = "";
   await s.buildCampaignStory(c, story("quarantine"), p);
   assert.equal(a.character, null);
+});
+
+test("stuck rig: dispatch advances the fuel for the cheapest lane onto the note, only when stuck", () => {
+  const s = session();
+  s.startSolo();
+  s.soloBuild(1);
+  s.sendHeader = () => {};
+  const p = s.state.campaign, pilot = { send() {} };
+  p.resources.fuel = 0;
+  p.money = 1000000;
+  assert.equal(s.soloJobs().stuck, false);
+  s.handlePilot(pilot, { t: "pilotDispatch" });
+  assert.equal(p.resources.fuel, 0);
+  assert.match(s.state.solo.error, /isn't stuck/);
+  p.money = 0;
+  const debt = p.debt, union = p.factions.union;
+  assert.equal(s.soloJobs().stuck, true);
+  s.handlePilot(pilot, { t: "pilotDispatch" });
+  assert.equal(p.resources.fuel, 1);
+  assert.ok(p.debt > debt);
+  assert.equal(p.factions.union, union);
+  assert.ok(p.ledger.some((e) => e.what === "Union fuel advance" && e.acct === "debt"));
+  assert.equal(s.soloJobs().stuck, false);
+});
+
+test("a failed recap pays the job as delivered in full and says so", () => {
+  const s = session();
+  s.startSolo();
+  s.soloBuild(1);
+  s.state.campaign.current = "cold_chain";
+  Object.assign(s.state.solo, { phase: "ended", recap: null, delivery: null, earned: [] });
+  s.state.config.crew = [];
+  s.soloFinish();
+  assert.ok(s.state.log.some((e) => /recap failed; paid as delivered in full/.test(e.text)));
 });
 
 const rig = (ds) => () => ds.shift();

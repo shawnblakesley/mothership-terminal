@@ -17,7 +17,7 @@ import { loaded, magazines, spendShot, reload, TANK, STORES } from "./resources.
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
 import { restAndRecover, downtimeLines } from "./downtime-lite.js";
-import { jobsAt, refuel, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory } from "./campaign.js";
+import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory } from "./campaign.js";
 import { transfer, ledgerLine, exact, DEBT_PAYMENT, DEBT_EVERY } from "./money.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
@@ -3007,7 +3007,8 @@ export class Session {
     if (!done) return;
     this.addLog("note", `Campaign story finished: ${story.title}.${p.done.at(-1).outcome ? ` ${p.done.at(-1).outcome}` : ""}`);
     const factions = done.changes.map((ch) => `${ch.name}: ${standingLabel(ch.from)} to ${standingLabel(ch.to)}${ch.why ? ` (${ch.why})` : ""}.`);
-    const paid = settleStory(p, c, story, { delivery: x.delivery?.delivery ?? "none", late: !!x.delivery?.late });
+    if (!x.delivery) this.addLog("note", "The recap failed; paid as delivered in full: the Warden or pilot can adjust.");
+    const paid = settleStory(p, c, story, { delivery: x.delivery?.delivery ?? "full", late: !!x.delivery?.late });
     factions.push(...paid.changes.map((ch) => `${ch.name}: ${standingLabel(ch.from)} to ${standingLabel(ch.to)}${ch.why ? ` (${ch.why})` : ""}.`));
     for (const l of factions) this.addLog("note", `Faction standing (house rule): ${l}`);
     for (const line of paid.lines) this.addLog("note", line);
@@ -3110,10 +3111,11 @@ export class Session {
         this.soloJob(String(msg.id || ""));
         break;
       case "pilotTravel":
-      case "pilotRefuel": {
+      case "pilotRefuel":
+      case "pilotDispatch": {
         const p = this.state.campaign, c = campaignById(p?.id);
         if (!c || x.phase !== "pick" || x.busy) break;
-        const r = msg.t === "pilotTravel" ? travelTo(p, c, String(msg.to || "")) : refuel(p, c);
+        const r = msg.t === "pilotTravel" ? travelTo(p, c, String(msg.to || "")) : msg.t === "pilotDispatch" ? callDispatch(p, c) : refuel(p, c);
         if (!r) break;
         if (!r.ok) x.error = r.error;
         else {
@@ -3121,6 +3123,8 @@ export class Session {
           const at = (id) => c.locations.find((l) => l.id === id).name;
           this.addLog("note", r.lane
             ? `${c.ship.name} noses out of ${at(r.from)} and runs ${r.lane.name} (${r.lane.days} days) to ${at(p.at)}: ${r.cost} fuel (house rule), ${r.left} left.`
+            : msg.t === "pilotDispatch"
+            ? `Stuck at ${r.at}, the rig calls Local 1312 dispatch, who advance ${r.units} units of fuel (house rule): ${exact(r.cost)} added to the Gallow-Mercer note. Union standing is unchanged.`
             : `${c.ship.name} takes on ${r.added} units of fuel at ${r.at} (house rule: 500cr a unit, times the port's multiplier). Total ${exact(r.total)}.`);
           for (const e of r.entries || []) this.addLog("note", ledgerLine(p, e));
           if (r.entries) this.moneySync();
