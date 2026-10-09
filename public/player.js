@@ -581,6 +581,8 @@
     $("watchpick").hidden = !watching();
     $("hdr-file").hidden = $("hdr-file-sep").hidden = spectate || !crew.length;
     $("hdr-file").textContent = pc ? `FILE: ${shortName(pc)}${gone(pc) ? ` (${gone(pc).toUpperCase()})` : ""}` : "FILE: NONE";
+    $("hdr-memo").hidden = $("hdr-memo-sep").hidden = spectate || !crew.some(gone);
+    if (!$("memorialfx").hidden) renderMemorial();
     $("crewfile-new").hidden = !(pc && gone(pc) && !pc.replacedBy);
     if (!$("crewpick").hidden) renderPicker();
     if (!$("crewfile").hidden) renderFile();
@@ -643,7 +645,7 @@
       const others = (claims[c.id] || 0) - (c.id === myId ? 1 : 0);
       const cls = [c.portrait && "has-face", c.id === myId && "current"].filter(Boolean).join(" ");
       return `<li${cls ? ` class="${cls}"` : ""} data-id="${escH(c.id)}">${portraitHtml(c.portrait, "face")}<button type="button" class="p-btn pick" data-id="${escH(c.id)}"${gone(c) && c.id !== myId ? " disabled" : ""}>[${i + 1}] ${escH(c.name.toUpperCase())}</button>
-        <span class="p-dim"> · ${escH(c.className.toUpperCase())} · ${escH(c.role.toUpperCase())}${gone(c) ? ` · <b>${escH(gone(c).toUpperCase())}</b>` : ""}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>CURRENT FILE</b>" : ""}</span>
+        <span class="p-dim"> · ${escH(c.className.toUpperCase())} · ${escH(c.role.toUpperCase())} · HIGH SCORE ${c.highScore || 0}${gone(c) ? ` · <b>${escH(gone(c).toUpperCase())}</b>` : ""}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>CURRENT FILE</b>" : ""}</span>
         ${gone(c) && !c.replacedBy ? `<div><button type="button" class="p-btn" data-newfor="${escH(c.id)}">[ MAKE A NEW CHARACTER ]</button></div>` : ""}
         <div class="p-dim p-crime">${escH(c.crime)}</div></li>`;
     }).join("") + (canCreate() ? '<li><button type="button" class="p-btn" id="crewpick-new">[N] NEW CHARACTER</button><div class="p-dim p-crime">ROLL UP A NEW CREWMEMBER. THE WARDEN APPROVES THEM.</div></li>' : "");
@@ -684,7 +686,7 @@
   const field = (label, value, always = false) => value || always ? `<div class="cs-field"><span class="cs-k">${label}</span><b>${escH(value.toUpperCase())}</b></div>` : "";
   const sheetHead = (c) => `<div class="cs-card cs-head">
       <div class="cs-facebox">${portraitHtml(c.portrait, "cs-face") || `<span class="cs-noface">NO PHOTO</span>`}</div>
-      <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns, true)}${field("CLASS", c.className)}${field("ROLE", c.role)}${field("STATUS", c.retired ? "retired" : "")}</div>
+      <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns, true)}${field("CLASS", c.className)}${field("ROLE", c.role)}${field("HIGH SCORE", String(c.highScore || 0), true)}${field("STATUS", c.retired ? "retired" : "")}</div>
     </div>`;
   const combatRow = (c) => {
     const a = c.armor;
@@ -1533,6 +1535,46 @@
     if (e.key === "Escape") $("sectorfx").hidden = true;
     else if (/^[1-9]$/.test(e.key) && sector.offered[e.key - 1]) { e.preventDefault(); voteJob(sector.offered[e.key - 1].id); }
   });
+  // The memorial: every character the crew has lost, as a CRT crew manifest. High Score is sessions survived (PSG 18.3).
+  function renderMemorial() {
+    const list = crew.filter(gone);
+    $("memorialfx").querySelector(".mm-body").innerHTML = list.map((c) => `<div class="mm-row">${portraitHtml(c.portrait, "mm-face")}<div>
+      <div class="mm-name">${escH(c.name.toUpperCase())}</div>
+      <div>${escH(c.className.toUpperCase())} · HIGH SCORE ${c.highScore || 0}</div>
+      <div>${escH((c.cond?.dead ? (c.cond.dead === "Warden" ? "MARKED DECEASED BY THE WARDEN" : `DIED: ${c.cond.dead}`) : "RETIRED FROM PLAY").toUpperCase())}${c.endedIn ? ` · ${escH(c.endedIn.toUpperCase())}` : ""}</div>
+      ${c.finalWords ? `<div class="mm-final">FINAL TRANSMISSION: "${escH(c.finalWords.toUpperCase())}"</div>` : ""}
+      ${c.epitaph ? `<div class="mm-epitaph">${escH(c.epitaph.toUpperCase())}</div>` : ""}</div></div>`).join("") || '<div class="sf-none">NOBODY YET.</div>';
+  }
+  $("hdr-memo").onclick = () => { renderMemorial(); $("memorialfx").hidden = !$("memorialfx").hidden; };
+  $("memorialfx").addEventListener("click", (e) => { if (!e.target.closest(".mm-row")) $("memorialfx").hidden = true; });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("memorialfx").hidden) $("memorialfx").hidden = true; });
+
+  // Death: the vitals line goes flat with a held tone, then the player may send one last line, spoken on every screen in their voice.
+  let flatTimer = 0;
+  function flatline() {
+    const fx = $("flatline"), line = fx.querySelector("polyline"), title = fx.querySelector(".fl-title"), form = fx.querySelector(".fl-form");
+    clearInterval(flatTimer);
+    title.hidden = form.hidden = true;
+    fx.hidden = false;
+    const beat = [0, 0, 0, 0, -8, 30, -46, 70, -30, 8, 0, 0, 0, 0, 0, 0];
+    let tick = 0;
+    const pts = () => Array.from({ length: 80 }, (_, i) => { const k = tick * 3 - 79 + i; return `${i * 5},${50 + (k >= 0 && k < 48 ? beat[k % beat.length] : 0)}`; }).join(" ");
+    flatTimer = setInterval(() => {
+      tick++;
+      line.setAttribute("points", pts());
+      if (tick === 44) { FX.Sound.beep(960, 4, 0.05, "sine"); title.hidden = false; }
+      if (tick === 80) { clearInterval(flatTimer); form.hidden = false; $("fl-text").focus(); }
+    }, 70);
+  }
+  const closeFlat = () => { clearInterval(flatTimer); $("flatline").hidden = true; };
+  $("flatline").querySelector(".fl-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = $("fl-text").value.trim();
+    if (text) send({ t: "finalWords", text });
+    $("fl-text").value = "";
+    closeFlat();
+  });
+  $("fl-skip").onclick = closeFlat;
   function chirp() { FX.Sound.beep(520, 0.08, 0.05); setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90); }
   function showImage({ title, name, src, credit = "" }) {
     if (!src) return FX.Sound.sting();
@@ -1696,8 +1738,10 @@
         case "talking": talking = new Set(msg.ids); wardenTalking = !!msg.warden; showTalking(); break;
         case "isoMap": setIso(msg.map); break;
         case "rollResult": showRollResult(msg); break;
+        case "panicFx": PanicFx.play(msg, { me: mine(), crew, input, focusInput: () => { if (!spectate && !input.disabled && document.body.classList.contains("panel-open") === false) input.focus(); } }); break;
         case "roomPlan": showPlan(msg); break;
         case "sector": showSector(msg); break;
+        case "flatline": if (msg.id === myId) flatline(); break;
         case "showImage": showImage(msg); break;
         case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); $("sr-err").textContent = rbErr.textContent; break;
         case "endEffect": dropCue(msg.id); FX.end(msg.id); break;

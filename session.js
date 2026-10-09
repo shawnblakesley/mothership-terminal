@@ -3,11 +3,11 @@ import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLike
 import { warmNeural } from "./tts.js";
 import { VoiceRelay } from "./voicerelay.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, COLD_STATS, OLD_COLD_PICTURES } from "./voices.js";
-import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
+import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, finalVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
-import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText } from "./crew.js";
+import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings } from "./crew.js";
 import { combatCheck, damageAdversary, rollDeathSave, deathSaveText, sanitizeStats, statsLine } from "./combat.js";
 import { rollDice, rollWithAdv, cancelAdv } from "./dice.js";
 import { woundText } from "./wounds.js";
@@ -27,6 +27,7 @@ import { rememberSecret } from "./redact.js";
 import { discordStatus, stopListening, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { panicMessage, nearMessage } from "./panicscreen.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, effectiveAdvantage, PANIC, checkInfo } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, effectType, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -176,6 +177,7 @@ export function defaultGame(keys = {}) {
       talk: "brief",
       playerVitals: true,
       playerRolls: true,
+      panicScreens: true,
       playerCreate: false,
       createRerolls: false,
       tts: true,
@@ -463,7 +465,7 @@ const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
-const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
+const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "panicScreens", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
 const STORY_ACTIONS = new Set(["nextRound", "attack", "reload", "passTime", "hazard", "command", "inject", "note", "heard", "rollRequest", "rollFor", "offerRoll", "generate", "approve", "outcome", "handout", "clockStart"]);
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
@@ -990,7 +992,36 @@ export class Session {
     return this.state.config.crew.filter((c) => out.has(c.id)).map((c) => ({ id: c.id, by: out.get(c.id) }));
   }
 
+  // A character newly dead or retired goes on the memorial; the dead player's screen flatlines and offers a final transmission.
+  noteEndings() {
+    const s = this.state, c = campaignById(s.campaign?.id);
+    const where = (c && s.campaign.current && c.stories.find((x) => x.id === s.campaign.current)?.title) || s.config.title || s.config.stationName;
+    for (const pc of settleEndings(s.config.crew, where)) {
+      this.addLog("note", `${pc.name} ${pc.cond?.dead ? `died: ${pc.cond.dead}` : "retired"}. Their file goes on the memorial (High Score ${pc.highScore}).`);
+      if (pc.cond?.dead) this.toPlayersIf((w) => w.character === pc.id, { t: "flatline", id: pc.id });
+    }
+  }
+
+  // The dead character's last line, spoken on every screen in a voice of their own.
+  finalWords(ws, raw) {
+    const pc = this.characterOf(ws), text = String(raw || "").replace(/\s+/g, " ").trim().slice(0, 240);
+    if (!pc || !text || !pc.cond?.dead || pc.finalWords) return;
+    pc.finalWords = text;
+    const cfg = this.state.config, voice = channelOf(cfg), kind = kindOf(voice);
+    this.addLog(kind, text, { source: "final", net: ALL_NET, character: pc.name, voiceSpeaker: finalVoice(pc, cfg.cast), ...(kind === "entity" ? { entity: voice } : {}) });
+    this.crewChanged();
+  }
+
+  // End session: High Score (PSG 18.3, sessions survived; no effect on play) goes up by 1 for each living character.
+  endNight() {
+    const s = this.state, up = endSession(s.config.crew);
+    if (s.campaign) { endSession(s.campaign.crew); s.campaign.sessions = (s.campaign.sessions || 0) + 1; }
+    this.addLog("note", `Game night ended. High Score +1: ${up.map((c) => `${c.name} (${c.highScore})`).join(", ") || "nobody is alive"}. (PSG 18.3: it counts sessions survived and changes no roll.)`);
+    this.crewChanged();
+  }
+
   crewChanged() {
+    this.noteEndings();
     this.toPlayers({ t: "crew", crew: this.state.config.crew, conds: this.condMap(), claims: this.claims(), played: this.played() });
     this.syncDm();
     const x = this.state.solo;
@@ -1020,6 +1051,7 @@ export class Session {
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
     if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() }));
     if (msg.t === "sectorVote") return this.sectorVote(ws, String(msg.story || ""));
+    if (msg.t === "finalWords") return this.finalWords(ws, msg.text);
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
@@ -1064,7 +1096,7 @@ export class Session {
     if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "panicScreens", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
@@ -1132,6 +1164,12 @@ export class Session {
         const pic = v.adversary.picture;
         this.toPlayers({ t: "showImage", title: v.name, src: this.pictureSrc(pic), credit: v.adversary.credit || "" });
         this.addLog("note", `Showed the players ${v.name}.`);
+        break;
+      }
+      case "panicShow": {
+        const n = Math.round(Number(msg.n));
+        const mine = s.config.crew.filter((x) => [...this.sockets].some((w) => w.role === "player" && w.character === x.id));
+        if (n >= 1 && n <= 20) for (const pc of mine) this.panicScreens(pc, n, n === 18 ? "Compounding problems (7: Nightmares + 9: Deflated)" : "", { force: true });
         break;
       }
       case "castPanic": {
@@ -1584,6 +1622,18 @@ export class Session {
       case "moveScreens":
         for (const ws of this.sockets) if (ws.role === "player" && ws.character && ws.character === msg.character) this.playerTerminal(ws, msg.terminal, "warden");
         break;
+      case "endNight":
+        this.endNight();
+        break;
+      case "epitaph": {
+        const pc = this.crewById(String(msg.pc)), text = String(msg.text || "").replace(/\s+/g, " ").trim().slice(0, 140);
+        if (!pc) break;
+        pc.epitaph = text;
+        const kept = s.campaign?.crew?.find((x) => x.id === pc.id);
+        if (kept) kept.epitaph = text;
+        this.crewChanged();
+        break;
+      }
       case "crewState":
         setCrewState(this, String(msg.pc), String(msg.state));
         break;
@@ -1594,9 +1644,9 @@ export class Session {
         break;
       }
       case "crew": {
-        const conds = new Map(s.config.crew.map((c) => [c.id, c.cond]));
+        const was = new Map(s.config.crew.map((c) => [c.id, c]));
         s.config.crew = sanitizeCrew(msg.crew);
-        for (const pc of s.config.crew) if (conds.has(pc.id)) pc.cond = conds.get(pc.id);
+        for (const pc of s.config.crew) if (was.has(pc.id)) Object.assign(pc, { cond: was.get(pc.id).cond, endedIn: was.get(pc.id).endedIn, finalWords: was.get(pc.id).finalWords, epitaph: was.get(pc.id).epitaph });
         if (s.campaign) for (const pc of s.config.crew) pc.credits = s.campaign.crew.find((x) => x.id === pc.id)?.credits ?? pc.credits;
         this.crewChanged();
         break;
@@ -2036,6 +2086,7 @@ export class Session {
     }
     const fx = result.panic && !result.success ? panicEntry(result.used) : null;
     this.toPlayers({ t: "rollResult", result, label: checkLabel(req), who: pc.name, effect: fx?.name || "" });
+    if (fx) this.panicScreens(pc, result.used, fx.name);
     this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(req, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
     this.afterRoll(pc, req, result, fx);
     if (r.hazard?.[pc.id]) this.settleHazard(pc, r.hazard[pc.id], result);
@@ -2043,6 +2094,21 @@ export class Session {
     else {
       this.toPlayers({ t: "roll", roll: this.publicRoll() });
       this.syncDm();
+    }
+  }
+
+  // The panicking player's own screen panics with them (presentation only). Close crew see a flash if the result was Jumpy.
+  panicScreens(pc, used, name, { force = false } = {}) {
+    if (this.state.config.panicScreens === false && !force) return;
+    const pics = this.state.config.voices.filter((v) => v.adversary?.picture).map((v) => v.adversary.picture);
+    const picture = pics.length ? this.pictureSrc(pics[Math.floor(Math.random() * pics.length)]) : "";
+    const own = panicMessage({ used, name, android: pc.className === "Android", picture });
+    if (!own) return;
+    const near = nearMessage(own.seq), nearIds = near ? new Set(this.closeTo(pc).map((x) => x.id)) : null;
+    for (const ws of this.sockets) {
+      if (ws.role !== "player" || ws.readyState !== 1 || !ws.character) continue;
+      if (ws.character === pc.id) ws.send(JSON.stringify(own));
+      else if (near && nearIds.has(ws.character)) ws.send(JSON.stringify(near));
     }
   }
 
