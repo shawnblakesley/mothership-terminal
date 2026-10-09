@@ -613,10 +613,14 @@
       return Math.min(1, Math.max(0.15, 0.18 + 0.82 * hump + (Math.random() - 0.5) * 0.12));
     });
   }
-  const WAVE_BARS = waveShape().map((h, i) => `<i style="--h: ${h.toFixed(2)}; --t: ${(1.1 + ((i * 7) % 11) * 0.1).toFixed(2)}s"></i>`).join("");
+  const waveSeconds = (i) => 0.55 + ((i * 7) % 11) * 0.05;
+  const WAVE_BARS = waveShape().map((h, i) => `<i style="--h: ${h.toFixed(2)}; --t: ${waveSeconds(i).toFixed(2)}s"></i>`).join("");
   function skewWave(card) {
     const heights = waveShape();
-    card.querySelectorAll(".cb-waves i").forEach((bar, i) => bar.style.setProperty("--h", heights[i].toFixed(2)));
+    card.querySelectorAll(".cb-waves i").forEach((bar, i) => {
+      bar.style.setProperty("--h", heights[i].toFixed(2));
+      bar.style.setProperty("--d", `${(-Math.random() * waveSeconds(i)).toFixed(2)}s`);
+    });
   }
   function showTalking() {
     for (const el of $("cb-crew").querySelectorAll(".cb-pc")) {
