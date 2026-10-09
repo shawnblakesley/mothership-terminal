@@ -829,6 +829,7 @@ export class Session {
       for (const en of plan.entries) this.addLog("note", ledgerLine(p, en));
       if (plan.days) this.addLog("note", passDays(p, [s.config.crew, p.crew], plan.days).concat(`${plan.days} days pass (day ${p.downtime.day}).`).join(" "));
       if (plan.entries.length) this.moneySync();
+      if (plan.days) this.crewChanged();
       mirror(p, pc);
       s.roll = sanitizeRequest(plan.request, s.config.crew);
       s.roll.downtime = { [pc.id]: plan.dt };
@@ -872,6 +873,7 @@ export class Session {
     for (const en of r.entries) this.addLog("note", ledgerLine(p, en));
     if (r.days) this.addLog("note", passDays(p, [s.config.crew, p.crew], r.days).concat(`${r.days} days pass (day ${p.downtime.day}).`).join(" "));
     mirror(p, pc);
+    if (r.days) this.crewChanged();
     this.moneySync();
   }
 
@@ -1665,7 +1667,10 @@ export class Session {
         if (!r) break;
         if (!r.ok) this.send("dm", { t: "toast", level: "error", text: r.error });
         else {
+          const gone = passDays(s.campaign, [s.config.crew, s.campaign.crew], r.lane.days);
           const at = (id) => c.locations.find((l) => l.id === id).name;
+          for (const l of gone) this.addLog("note", l);
+          this.crewChanged();
           this.addLog("note", `${c.ship.name} travels ${at(r.from)} to ${at(s.campaign.at)} along ${r.lane.name} (${r.lane.days} days): ${r.cost} fuel (house rule: 1 unit per started 3 days), ${r.left} left.`);
           this.sectorSync();
           this.sendHeader();
@@ -2627,7 +2632,7 @@ export class Session {
       if (!r || r.status !== "waiting" || !r.hazard) break;
       for (const p of r.pcs) {
         const pc = this.crewById(p.id);
-        if (pc && !r.results[p.id]) this.rollFor(pc, diceFor(r), { by: "warden" });
+        if (pc && !r.results[p.id]) this.rollFor(pc, null, { by: "warden" });
       }
     }
   }
@@ -3288,6 +3293,7 @@ export class Session {
         else {
           x.error = "";
           const at = (id) => c.locations.find((l) => l.id === id).name;
+          if (r.lane) for (const l of passDays(p, [this.state.config.crew, p.crew], r.lane.days)) this.addLog("note", l);
           this.addLog("note", r.lane
             ? `${c.ship.name} noses out of ${at(r.from)} and runs ${r.lane.name} (${r.lane.days} days) to ${at(p.at)}: ${r.cost} fuel (house rule), ${r.left} left.`
             : msg.t === "pilotDispatch"
