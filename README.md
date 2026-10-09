@@ -386,3 +386,8 @@ A **blackout** cuts off the voice that's speaking instantly. Queued lines wait f
 Players have a **volume control** in the top-right corner: a ten-segment meter you can click, drag, scroll or use the arrow keys on. Click **VOL** to mute. It's remembered per device and controls all sound, both effects and voices.
 
 Sessions save to `data/sessions/`, so they survive a restart. API keys are the exception: they're never saved.
+
+## Credits
+
+- **Icons:** the Warden console's effect and lock icons are from [Lucide](https://lucide.dev), under the [ISC licence](https://github.com/lucide-icons/lucide/blob/main/LICENSE). Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT); all other copyright (c) for Lucide are held by Lucide Contributors 2022. Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+- **Portraits:** the [Sci-fi character portraits project](https://ashen-victor.itch.io/sci-fi-character-portraits-poject) by Victor J Merino, under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) (see [Characters](#characters)).

@@ -31,7 +31,6 @@
   const time = (ts) => new Date(ts).toTimeString().slice(0, 5);
   const screensAt = (id) => (S.screens || []).filter((s) => s.terminal === id).map((s) => s.character || "a screen");
 
-  // Each effect's icon (flat line icons from Lucide, ISC licence: lucide.dev) and name.
   const skillStr = (s) => (typeof s === "string" ? s : `${s.name} +${s.bonus}`);
   const fxIcon = (inner) => `<svg class="fxi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
   const fxLabel = (f, icon) => `${FX_META[f.type]?.[0] || icon} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s`;
@@ -1183,7 +1182,6 @@
   addEventListener("resize", () => requestAnimationFrame(growStory));
   document.addEventListener("toggle", (e) => { if (e.target.open && STORY_BOXES.some((id) => e.target.contains($(id)))) growStory(); }, true);
 
-  // Lucide's "lock" and "lock-open" (lucide.dev, ISC licence), inlined.
   const LOCK_SVG = (open) => `<svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="${open ? "M7 11V7a5 5 0 0 1 9.9-1" : "M7 11V7a5 5 0 0 1 10 0v4"}"/></svg>`;
   function setLock(btn, editing, what) {
     btn.innerHTML = LOCK_SVG(editing);
