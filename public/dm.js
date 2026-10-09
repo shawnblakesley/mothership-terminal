@@ -926,7 +926,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const s = v.adversary.stats;
     if (!s) return `<div class="row edit-only small"><button data-aact="addstats" title="Combat, Instinct, armor, Wounds and attacks (PSG 40-41)">Add combat numbers</button></div>`;
     const track = Array.from({ length: s.woundsMax }, (_, i) => `<i class="${i < s.wounds ? "on" : ""}"></i>`).join("");
-    const num = (k, label, min = 0, max = 999) => `<label>${label}<input type="number" data-s="${k}" value="${s[k]}" min="${min}" max="${max}"></label>`;
+    const num = (k, label, min = 0, max = 999) => `<label>${label}<input type="number" data-s="${k}" value="${s[k] ?? ""}" min="${min}" max="${max}"></label>`;
     return `<div class="advstats ${s.dead ? "dead" : ""}">
         <div class="row wrap small">
           <span><b>Combat ${s.combat}</b> · Instinct ${s.instinct} · ${s.ap ? `AP ${s.ap}${s.armorDestroyed ? " (destroyed)" : ""}` : "no armor"}${s.dr ? ` · DR ${s.dr}` : ""}${s.count ? ` · ${s.count} of them` : ""}</span>
@@ -2546,9 +2546,15 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
 
   $("fxButtons").innerHTML = Object.entries(FX_META)
     .map(([type, [ico, label]]) => `<button data-fx="${type}"><span class="ico">${ico}</span>${label}</button>`).join("");
+  const fxBanner = () => {
+    const b = $("fxButtons").querySelector('[data-fx="banner"]'), empty = !$("fxText").value.trim();
+    if (b) { b.disabled = empty; b.title = empty ? "Type a caption first: the banner shows only that text" : ""; }
+  };
+  fxBanner();
+  $("fxText").addEventListener("input", fxBanner);
   $("fxButtons").addEventListener("click", (e) => {
     const type = e.target.closest("[data-fx]")?.dataset.fx;
-    if (!type) return;
+    if (!type || (type === "banner" && !$("fxText").value.trim())) return;
     send({
       t: "effect",
       effect: { type, text: $("fxText").value, seconds: Number($("fxSecs").value) || 0, intensity: Number($("fxIntensity").value) },

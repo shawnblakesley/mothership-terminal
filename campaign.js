@@ -136,6 +136,9 @@ export function factionBrief(c, story, p) {
   return lines.length ? `FACTION STANDING (campaign house rule, not Mothership 1e; it is only [+]/[-], at +2 or more and -2 or less, and how people treat the crew; when it gives [+] or [-] on an outcome_check, set advantage and name the faction in why):\n${lines.join("\n")}` : "";
 }
 
+// Campaign stories built before the standings went live in the context had factionBrief frozen into their standing orders.
+export const stripFactionBrief = (orders) => String(orders ?? "").replace(/(^|\n)FACTION STANDING \(campaign house rule[^\n]*(\n(- |THE FINALE: )[^\n]*)*/, "");
+
 const castById = (c, id) => c.cast.find((m) => m.id === id);
 const recurringNamed = (c, name) => c.cast.find((m) => findCast([{ id: m.id, name: m.name }], name));
 // The campaign's recurring characters in a built story: the ones it lists, and any the agent brought in.

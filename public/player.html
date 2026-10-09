@@ -27,6 +27,7 @@
       <span class="sep">//</span>
       <span id="hdr-clock">00:00:00</span>
       <span id="hdr-link" class="link" title="Connection">● LINK</span>
+      <button id="hdr-menu" class="hdr-btn" type="button" title="Terminal, crew file, documents, settings" aria-expanded="false" aria-controls="hdr">MENU</button>
       <span class="sep">//</span>
       <button id="hdr-term" class="hdr-btn" type="button" title="Your terminal" hidden>TERM</button>
       <span class="sep" id="hdr-term-sep" hidden>//</span>
@@ -160,13 +161,13 @@
   <div id="rollfx" class="rollfx" hidden aria-live="assertive"><div class="rf-dice"></div><div class="rf-out"></div></div>
   <div id="planfx" class="planfx" hidden role="dialog" aria-label="Room layout"><div class="pf-title"></div><div class="pf-plan"></div><div class="pf-hint">[ ESC OR CLICK TO CLOSE ]</div></div>
   <div id="coldopen" class="planfx coldopen" hidden role="dialog" aria-label="Previously on"><div class="co-head"></div><div class="co-stage"><div class="co-pic rv-pic"></div><div class="co-who"></div></div><div class="co-text"></div><div class="co-title" hidden><div class="co-big"></div><div class="co-hook"></div></div><button type="button" class="p-btn pf-hint co-skip">[ ESC TO SKIP ]</button></div>
-  <div id="memorialfx" class="planfx sectorfx" hidden role="dialog" aria-label="Memorial"><div class="pf-title">MEMORIAL</div><div class="mm-body"></div><div class="pf-hint">[ CLICK OR ESC TO CLOSE ]</div></div>
+  <div id="memorialfx" class="planfx sectorfx" hidden role="dialog" aria-label="Memorial"><div class="pf-title">MEMORIAL</div><div class="mm-body"></div><div class="pf-hint">[ CLICK OR ESC TO CLOSE ]</div><button type="button" class="p-btn pf-close">[ CLOSE ]</button></div>
   <div id="flatline" class="planfx flatfx" hidden role="alertdialog" aria-label="You have died" aria-live="assertive">
     <svg class="fl-trace" viewBox="0 0 400 100" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,50 400,50"/></svg>
     <div class="fl-title" hidden>NO VITAL SIGNS</div>
     <form class="fl-form" hidden><label class="pf-title" for="fl-text">FINAL TRANSMISSION</label><input id="fl-text" maxlength="240" autocomplete="off" placeholder="ONE LAST LINE, HEARD ON EVERY SCREEN"><div><button type="submit" class="p-btn">[ TRANSMIT ]</button> <button type="button" class="p-btn" id="fl-skip">[ SAY NOTHING ]</button></div></form>
   </div>
-  <div id="sectorfx"class="planfx sectorfx" hidden role="dialog" aria-label="Sector map and job board"><div class="pf-title"></div><div class="sf-body"><div class="sf-map"></div><div class="sf-side"></div></div><div class="pf-hint">[ NUMBER OR CLICK TO VOTE · ESC TO CLOSE ]</div></div>
+  <div id="sectorfx"class="planfx sectorfx" hidden role="dialog" aria-label="Sector map and job board"><div class="pf-title"></div><div class="sf-body"><div class="sf-map"></div><div class="sf-side"></div></div><div class="pf-hint">[ NUMBER OR CLICK TO VOTE · ESC TO CLOSE ]</div><button type="button" class="p-btn pf-close">[ CLOSE ]</button></div>
   <div id="isofx" class="planfx isofx mapfx" hidden role="dialog" aria-label="Station map"><div class="pf-title">STATION MAP</div><div class="if-map"></div><button type="button" class="p-btn pf-hint if-close">[ DRAG TO TURN · ESC TO CLOSE ]</button></div>
 
   <div id="boot">

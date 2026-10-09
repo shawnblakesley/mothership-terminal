@@ -267,7 +267,7 @@ After a restart the next first move saves the story again, so changes you make i
 
 ## Settings
 
-**⚙** (Settings) in the console header holds the join code and player link, the AI provider, model and **API key**, **how much the characters say** (Terse, Brief, Normal or Expansive; Brief by default, and enforced on every reply), the session actions (clear screen, restart story, factory reset, Warden link, end session), and switches for what the agent and players may do:
+**⚙** (Settings) in the console header holds the join code and player link, the AI provider, model and **API key**, **how much the characters say** (Terse, Brief, Normal or Expansive; Brief by default, and enforced on every reply: the app cuts each line the AI writes to the setting's limit on lines, sentences and printout rows, so in Review mode the draft is already cut and your own edits are not), the session actions (clear screen, restart story, factory reset, Warden link, end session), and switches for what the agent and players may do:
 
 - the agent may check with you first;
 - play "Previously on..." when a campaign story opens (see Campaigns);
