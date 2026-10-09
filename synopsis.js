@@ -141,7 +141,9 @@ const RECAP_SCHEMA = {
   },
 };
 
-export function recapRequest(state, how) {
+const EARNED = `FACTION STAKES: the numbered stakes below are standing changes a faction would give the crew IF the condition clearly happened in this story. In "earned", list the numbers of only the stakes the COMMS LOG clearly shows were earned. Be conservative: when in doubt, leave it out. Two stakes that contradict each other cannot both be earned. [] if none.`;
+
+export function recapRequest(state, how, stakes = []) {
   const c = state.config;
   const log = shownLog(state);
   const context = [
@@ -151,11 +153,11 @@ export function recapRequest(state, how) {
     c.crew?.length ? `THE PLAYERS' CHARACTERS:\n${crewBrief(c.crew)}\n\nCONDITION AT THE END:\n${crewStatus(c.crew)}` : "",
   ].filter(Boolean).join("\n\n");
   return {
-    system: RECAP,
+    system: stakes.length ? `${RECAP}\n\n${EARNED}` : RECAP,
     context,
-    messages: [{ role: "user", content: `COMMS LOG (oldest first):\n${logText(log, c.voices)}\n\nHOW IT ENDED: ${how || "(the players called it a night)"}\n\nWrite the recap.` }],
-    schema: RECAP_SCHEMA,
-    example: { verdict: "...", sections: [{ heading: "What happened", text: "- ..." }, { heading: "The truth", text: "- ..." }, { heading: "The crew", text: "- ..." }] },
+    messages: [{ role: "user", content: `COMMS LOG (oldest first):\n${logText(log, c.voices)}\n\nHOW IT ENDED: ${how || "(the players called it a night)"}${stakes.length ? `\n\nFACTION STAKES:\n${stakes.map((a, i) => `${i}. ${a.name} ${a.change > 0 ? "up" : "down"} ${Math.abs(a.change)} if: ${a.when}`).join("\n")}` : ""}\n\nWrite the recap.` }],
+    schema: stakes.length ? { ...RECAP_SCHEMA, required: [...RECAP_SCHEMA.required, "earned"], properties: { ...RECAP_SCHEMA.properties, earned: { type: "array", items: { type: "integer" } } } } : RECAP_SCHEMA,
+    example: { verdict: "...", sections: [{ heading: "What happened", text: "- ..." }, { heading: "The truth", text: "- ..." }, { heading: "The crew", text: "- ..." }], ...(stakes.length ? { earned: [] } : {}) },
   };
 }
 

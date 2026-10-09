@@ -385,6 +385,17 @@ export function resupply(p, c, { to, lines = {}, ammoFor = "", fuelPrice = 0 } =
   return { ok: true, total, bought, to: pc?.name || "", at: v.name, fuelFree: want.fuel > 0 && !fuelEach };
 }
 
+// The jobs a pilot with no Warden can take: unplayed stories at the port the rig is at, and on the lanes that leave it.
+// Player-safe: the sector payload's whitelist (id, title, hook, job) plus where it is and how long the lane is.
+export function jobsAt(c, p) {
+  const stories = c.stories.filter((s) => (s.at || s.from) === p.at && !p.done.some((d) => d.id === s.id));
+  const jobs = sectorPayload(c, { ...p, offered: stories.map((s) => s.id) }).offered.map(({ id, title, hook, job }) => {
+    const s = c.stories.find((x) => x.id === id), l = isTransit(s) && laneBetween(c, s.from, s.to);
+    return { id, title, hook, job, where: placeOf(c, s), ...(l ? { lane: l.name, days: l.days } : {}) };
+  });
+  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, jobs };
+}
+
 // What the players' screens get of the sector: a whitelist, so nothing of a story's arc, adversary, secrets, cast or description can leak.
 export function sectorPayload(c, p) {
   const at = loc(c, p.at) || loc(c, c.start);

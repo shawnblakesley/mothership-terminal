@@ -16,7 +16,8 @@ import { HAZARDS, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, 
 import { loaded, magazines, spendShot, reload, TANK, STORES } from "./resources.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
-import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView } from "./campaign.js";
+import { jobsAt, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView } from "./campaign.js";
+import { restAndRecover, downtimeLines } from "./downtime-lite.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
@@ -460,6 +461,7 @@ function migrateGame(saved) {
 const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 4471-MAINT", text: "# HOLLIS-VANE EXTRACTION CO.\n## WORK ORDER 4471 - REACTOR SERVICE\n\n**VESSEL:** Penal tug SECOND CHANCE\n**ASSIGNED:** Convict maintenance crew (4)\n**STATION:** KESTREL-9, rimward ice platform\n**FILED:** 23 days prior - STATUS: OVERDUE\n**PRIORITY:** 2 / ROUTINE\n\n**TASK:** Service Deck 4 reactor. Core efficiency 70%. Rated minimum **99%**. Find the bleed, restore rated output.\n\n**TOOLS:** As issued at tender. Nothing is to be drawn from station stores.\n\n**ACCESS**\n- Airlock A inner door (Deck 1): **OVERRIDE CODE 4471-MAINT**. Entry logs to Administrator's console.\n- Reactor access, Deck 4: standard crew hatch.\n\n**DEPARTURE**\nSECOND CHANCE is locked-down to station control. She will not undock until HV-CORE verifies the reactor at **99% or better** and transmits departure clearance. No exceptions, no overrides.\n\n~~Hazard pay authorised for duration of job.~~\n\n**DO NOT** interfere with station operations. Do not alter Deck 3 cargo configuration.\n\nHV-CORE // verified // 4471-MAINT", to: "", at: 0 };
 
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
+const CAMPAIGN_PITCH = { title: "RIM HAULERS (campaign)", hook: "A family trucking rig, a debt, and the long dark lanes of the Rim. Take jobs from port to port; the crew, the rig and every favour you owe carry from story to story.", tags: "campaign · freight · the Rim", builtin: true, campaign: "rim-haulers" };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
 const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
@@ -1873,29 +1875,7 @@ export class Session {
     this.campaignBusy = id;
     this.syncDm();
     try {
-      let raw;
-      for (let attempt = 1; ; attempt++) {
-        try {
-          raw = await this.ask(campaignRequest(c, story, p), "builder");
-          if (!raw?.lore || !raw?.computer) throw Object.assign(new Error("the story came back incomplete"), { incomplete: true });
-          break;
-        } catch (err) {
-          if (attempt >= 2 || (!err.incomplete && !/cut off|valid JSON|empty/i.test(err?.message || ""))) throw err;
-          console.warn(`[${this.code}] campaign story retry: ${err.message}`);
-        }
-      }
-      if (this.state.campaign !== p) throw new Error("the campaign was left while the story was being built");
-      let carried;
-      this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config, station) => { carried = carryInto(config, c, story, p, station); });
-      p.current = story.id;
-      p.offered = (p.offered || []).filter((x) => x !== story.id);
-      this.sectorVotes.clear();
-      this.sectorShown = false;
-      this.sectorSync();
-      this.addLog("note", `${c.title}, story ${story.n}: ${story.title} (${placeOf(c, story)}). The arc is in the standing orders.`);
-      if (carried?.lane) this.addLog("note", `The lane ${carried.lane.name} (${carried.lane.days} days) burns ${carried.burned} fuel (house rule); the rig has ${p.resources.fuel} left.${p.resources.fuel <= 0 ? " The rig is out of fuel: stranded." : ""}`);
-      this.syncHazards();
-      this.sendHeader();
+      await this.buildCampaignStory(c, story, p);
     } catch (err) {
       console.error(`[${this.code}] campaign story failed:`, err?.message || err);
       this.send("dm", { t: "toast", level: "error", text: `Couldn't build ${story.title}: ${err?.message || err}` });
@@ -1903,6 +1883,32 @@ export class Session {
     this.campaignBusy = "";
     this.touch();
     this.syncDm();
+  }
+
+  async buildCampaignStory(c, story, p) {
+    let raw;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        raw = await this.ask(campaignRequest(c, story, p), "builder");
+        if (!raw?.lore || !raw?.computer) throw Object.assign(new Error("the story came back incomplete"), { incomplete: true });
+        break;
+      } catch (err) {
+        if (attempt >= 2 || (!err.incomplete && !/cut off|valid JSON|empty/i.test(err?.message || ""))) throw err;
+        console.warn(`[${this.code}] campaign story retry: ${err.message}`);
+      }
+    }
+    if (this.state.campaign !== p) throw new Error("the campaign was left while the story was being built");
+    let carried;
+    this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config, station) => { carried = carryInto(config, c, story, p, station); });
+    p.current = story.id;
+    p.offered = (p.offered || []).filter((x) => x !== story.id);
+    this.sectorVotes.clear();
+    this.sectorShown = false;
+    this.sectorSync();
+    this.addLog("note", `${c.title}, story ${story.n}: ${story.title} (${placeOf(c, story)}). The arc is in the standing orders.`);
+    if (carried?.lane) this.addLog("note", `The lane ${carried.lane.name} (${carried.lane.days} days) burns ${carried.burned} fuel (house rule); the rig has ${p.resources.fuel} left.${p.resources.fuel <= 0 ? " The rig is out of fuel: stranded." : ""}`);
+    this.syncHazards();
+    this.sendHeader();
   }
 
   applyStory(draft, patch) {
@@ -2771,14 +2777,14 @@ export class Session {
 
   soloView() {
     const x = this.state.solo;
-    return x ? { phase: x.phase, pitches: x.pitches, busy: x.busy || "", error: x.error || "", title: x.title || "", ending: x.ending || "", recap: x.recap || null } : null;
+    return x ? { phase: x.phase, pitches: x.pitches, busy: x.busy || "", error: x.error || "", title: x.title || "", ending: x.ending || "", recap: x.recap || null, after: x.after || null, ...(x.campaign ? { jobs: this.soloJobs() } : {}) } : null;
   }
   soloChanged() {
     this.toPlayers({ t: "solo", solo: this.soloView() });
     this.touch();
   }
   startSolo() {
-    this.state.solo = { phase: "pick", pitches: [KESTREL_PITCH], busy: "", error: "", opened: false };
+    this.state.solo = { phase: "pick", pitches: [KESTREL_PITCH, CAMPAIGN_PITCH], busy: "", error: "", opened: false };
     Object.assign(this.state.config, { mode: "auto", checkFirst: true, agentCrew: true, agentEffects: true });
     this.soloPitches();
   }
@@ -2791,7 +2797,7 @@ export class Session {
     try {
       const fresh = normalizePitches(await this.ask(pitchesRequest(x.pitches.filter((p) => !p.builtin).map((p) => p.title)), "builder"));
       if (!fresh.length) throw new Error("no stories came back");
-      x.pitches = [KESTREL_PITCH, ...fresh];
+      x.pitches = [KESTREL_PITCH, CAMPAIGN_PITCH, ...fresh];
     } catch (err) {
       x.error = `Couldn't get stories: ${err?.message || err}. Try again, or play KESTREL-9.`;
     }
@@ -2802,7 +2808,8 @@ export class Session {
   async soloBuild(i) {
     const x = this.state.solo;
     const p = x?.pitches?.[i];
-    if (!p || x.busy || x.phase !== "pick") return;
+    if (!p || x.busy || x.phase !== "pick" || x.campaign) return;
+    if (p.campaign) return this.soloCampaign(p.campaign);
     Object.assign(x, { title: p.title, error: "", opened: false });
     if (p.builtin) {
       const s = this.state, keep = { provider: s.config.provider, model: s.config.model, effort: s.config.effort };
@@ -2844,20 +2851,76 @@ export class Session {
     this.syncDm();
   }
 
+  soloJobs() {
+    const p = this.state.campaign, c = campaignById(p?.id);
+    return c && !p.current ? jobsAt(c, p) : null;
+  }
+
+  soloCampaign(id) {
+    const x = this.state.solo, c = campaignById(id);
+    if (!c) return;
+    this.state.campaign = newProgress(c);
+    Object.assign(x, { campaign: true, error: "", after: null });
+    this.addLog("note", `Campaign started: ${c.title} (no Warden). The pilot picks the jobs.`);
+    this.soloChanged();
+    this.syncDm();
+  }
+
+  async soloJob(id) {
+    const x = this.state.solo, s = this.state, p = s.campaign, c = campaignById(p?.id);
+    const story = c && this.soloJobs()?.jobs.some((j) => j.id === id) && c.stories.find((t) => t.id === id);
+    if (!story || x.busy || x.phase !== "pick") return;
+    Object.assign(x, { phase: "building", busy: "build", title: story.title, error: "", opened: false, after: null });
+    this.soloChanged();
+    try {
+      await this.buildCampaignStory(c, story, p);
+      x.phase = "play";
+      Object.assign(s.config, { mode: "auto", checkFirst: true, agentCrew: true, agentEffects: true });
+    } catch (err) {
+      console.error(`[${this.code}] campaign job failed:`, err?.message || err);
+      x.phase = "pick";
+      x.error = `Couldn't build "${story.title}": ${err?.message || err}. Try again, or pick another.`;
+    }
+    x.busy = "";
+    this.soloChanged();
+    this.syncDm();
+  }
+
+  // The story is over: record it in the campaign (the recap's verdict is the outcome; only the faction stakes the AI judged clearly earned count), then the crew's downtime.
+  soloFinish() {
+    const x = this.state.solo, s = this.state, p = s.campaign, c = campaignById(p?.id);
+    const story = c?.stories.find((t) => t.id === p.current);
+    if (!story) return;
+    const earned = (x.earned || []).filter((i) => Number.isInteger(i) && i >= 0 && i < (story.affinity || []).length);
+    const done = finishInto(p, c, s.config, x.recap?.verdict || x.ending, earned, s.station);
+    if (!done) return;
+    this.addLog("note", `Campaign story finished: ${story.title}.${p.done.at(-1).outcome ? ` ${p.done.at(-1).outcome}` : ""}`);
+    const factions = done.changes.map((ch) => `${ch.name}: ${standingLabel(ch.from)} to ${standingLabel(ch.to)}${ch.why ? ` (${ch.why})` : ""}.`);
+    for (const l of factions) this.addLog("note", `Faction standing (house rule): ${l}`);
+    const rest = downtimeLines(restAndRecover(p.crew));
+    this.addLog("note", `Downtime between stories (short-term recovery and a Rest Save for each, rolled for them):\n${rest.join("\n")}`);
+    x.after = { factions, rest };
+  }
+
   async soloEnd(how) {
     const x = this.state.solo;
     if (!x || x.phase !== "play") return;
-    Object.assign(x, { phase: "ended", ending: String(how || "").slice(0, 300), recap: null, busy: "recap", error: "" });
+    Object.assign(x, { phase: "ended", ending: String(how || "").slice(0, 300), recap: null, earned: [], after: null, busy: "recap", error: "" });
     this.dropReply();
     for (const c of [...this.state.clocks]) this.stopClock(c.id, true);
     this.clocksChanged();
     this.addLog("note", `The story ended${x.ending ? `: ${x.ending}` : "."}`);
     this.soloChanged();
     try {
-      x.recap = normalizeRecap(await this.ask(recapRequest(this.state, x.ending), "synopsis"));
+      const p = this.state.campaign, c = campaignById(p?.id), story = x.campaign && c?.stories.find((t) => t.id === p.current);
+      const stakes = story ? (story.affinity || []).map((a) => ({ ...a, name: c.factions.find((f) => f.id === a.faction)?.name || a.faction })) : [];
+      const raw = await this.ask(recapRequest(this.state, x.ending, stakes), "synopsis");
+      x.recap = normalizeRecap(raw);
+      x.earned = Array.isArray(raw?.earned) ? raw.earned.map(Number) : [];
     } catch (err) {
       x.error = `Couldn't write the recap (${err?.message || err}).`;
     }
+    if (x.campaign) this.soloFinish();
     x.busy = "";
     this.soloChanged();
   }
@@ -2925,6 +2988,17 @@ export class Session {
       case "pilotBuild":
         this.soloBuild(Number(msg.i));
         break;
+      case "pilotJob":
+        this.soloJob(String(msg.id || ""));
+        break;
+      case "pilotLeaveCampaign":
+        if (x.phase === "pick" && !x.busy && x.campaign) {
+          this.state.campaign = null;
+          Object.assign(x, { campaign: false, after: null, error: "" });
+          this.soloChanged();
+          this.syncDm();
+        }
+        break;
       case "pilotWrapUp":
         this.soloEnd(String(msg.how || "The crew called it a night."));
         break;
@@ -2932,7 +3006,7 @@ export class Session {
         this.dropReply();
         Object.assign(x, { phase: "pick", busy: "", error: "", opened: false, ending: "", recap: null });
         this.soloChanged();
-        if (x.pitches.length < 2) this.soloPitches();
+        if (x.pitches.length < 3 && !x.campaign) this.soloPitches();
         break;
       case "pilotCgAccept":
       case "pilotCgReject": {
