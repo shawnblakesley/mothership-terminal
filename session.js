@@ -9,7 +9,7 @@ import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
 import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, changeItem, freshen } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
-import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf } from "./campaign.js";
+import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, shiftStanding, toggleFavour, standingLabel } from "./campaign.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
@@ -1279,9 +1279,24 @@ export class Session {
         return;
       case "campaignFinish": {
         const c = campaignById(s.campaign?.id);
-        const story = c && finishInto(s.campaign, c, s.config, msg.outcome);
-        if (story) this.addLog("note", `Campaign story finished: ${story.title}.${s.campaign.done.at(-1).outcome ? ` ${s.campaign.done.at(-1).outcome}` : ""}`);
+        const done = c && finishInto(s.campaign, c, s.config, msg.outcome, msg.affinity);
+        if (done) {
+          const { story, changes } = done;
+          this.addLog("note", `Campaign story finished: ${story.title}.${s.campaign.done.at(-1).outcome ? ` ${s.campaign.done.at(-1).outcome}` : ""}`);
+          for (const ch of changes) this.addLog("note", `Faction standing (house rule): ${ch.name} ${standingLabel(ch.from)} to ${standingLabel(ch.to)}${ch.why ? ` (${ch.why})` : ""}.`);
+        }
         break;
+      }
+      case "campaignFaction": {
+        const c = campaignById(s.campaign?.id);
+        const ch = c && shiftStanding(s.campaign, c, String(msg.faction || ""), Math.sign(Number(msg.delta)) || 0, "the Warden's call");
+        if (ch) this.addLog("note", `Faction standing (house rule): ${ch.name} ${standingLabel(ch.from)} to ${standingLabel(ch.to)} (the Warden's call).`);
+        break;
+      }
+      case "campaignFavour": {
+        const c = campaignById(s.campaign?.id);
+        const id = String(msg.faction || "");
+        if (c && toggleFavour(s.campaign, c, id)) this.addLog("note", `Faction favour used (house rule): ${c.factions.find((f) => f.id === id).name}.`);        break;
       }
       case "campaignLeave":
         if (!this.campaignBusy) s.campaign = null;
