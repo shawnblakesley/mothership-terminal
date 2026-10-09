@@ -66,6 +66,21 @@ test("the players' map payload has no occupants and no secret or hidden paths", 
   assert.ok(sent.includes("OPEN"));
 });
 
+test("a line sent to a player socket, live or in the history on connect, has no secret station path", async () => {
+  const s = session();
+  const got = [];
+  s.sockets.add({ role: "player", readyState: 1, send: (m) => got.push(m) });
+  s.deliverReply({ lines: [{ voice: "terminal", text: "ACCESS NOTED." }], station_changes: [{ path: "doors.med_bay", value: "OPEN" }, { path: "secret.vault.lockdown", value: "ARMED - trigger: VAULT BREACH" }, { path: "power.hidden_trigger", value: "x" }] }, "agent");
+  const entry = s.state.log.find((e) => e.text === "ACCESS NOTED.");
+  assert.equal(entry.changes.length, 3, "the Warden's log keeps them");
+  await new Promise((r) => setTimeout(r, 50));
+  const history = JSON.stringify(s.playerView(null).log);
+  const live = got.join("");
+  assert.ok(live.includes("ACCESS NOTED."), "the line reached the player socket");
+  for (const text of [history, live]) assert.ok(!/VAULT BREACH|secret\.vault|hidden_trigger/.test(text));
+  assert.ok(history.includes("doors.med_bay"));
+});
+
 test("the agent is told where to put secrets", () => {
   assert.match(buildRequest(kestrelState(), "").system, /path starting "secret\."/);
 });

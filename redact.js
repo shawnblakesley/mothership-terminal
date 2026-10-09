@@ -16,6 +16,10 @@ export function redact(text) {
 
 // What the players' map may show: not the roster, and nothing the agent keeps under a secret or hidden key.
 const HIDDEN_KEY = /^(secret|hidden)([_.-].*)?$/i;
+export const hiddenPath = (path) => String(path).split(".").some((k) => HIDDEN_KEY.test(k));
+// A log entry as players get it: its station changes without the secret ones.
+export const playerEntry = (e) => (e?.changes?.some((c) => hiddenPath(c.path)) ? { ...e, changes: e.changes.filter((c) => !hiddenPath(c.path)) } : e);
+
 export function playerStation(station) {
   const walk = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !HIDDEN_KEY.test(k)).map(([k, v]) => [k, v && typeof v === "object" && !Array.isArray(v) ? walk(v) : v]));
   const { occupants, ...rest } = station || {};

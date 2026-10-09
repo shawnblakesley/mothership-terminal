@@ -26,7 +26,7 @@ import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from
 import { shipDm, shipPlayer, shipRollDone, shipClockRan, shipSnapshot, restoreShip, shipDmView, shipPlayerView, applyShipFight } from "./shipfight.js";
 import { track } from "./telemetry.js";
 import { roomId, keyOf } from "./clean.js";
-import { rememberSecret, playerStation } from "./redact.js";
+import { rememberSecret, playerStation, playerEntry } from "./redact.js";
 import { discordStatus, stopListening, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
@@ -659,7 +659,7 @@ export class Session {
     const screens = [...this.sockets].filter((c) => c.role === "player" && !c.stream);
     return !screens.length || screens.some((c) => this.sees(c, entry));
   }
-  toEntry(entry, p) { this.toPlayersIf((c) => this.sees(c, entry), p); }
+  toEntry(entry, p) { this.toPlayersIf((c) => this.sees(c, entry), p.entry ? { ...p, entry: playerEntry(p.entry) } : p); }
   toPlayersIf(pred, p) {
     const data = typeof p === "string" ? p : JSON.stringify(p);
     for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && pred(c)) c.send(data);
@@ -756,7 +756,7 @@ export class Session {
     const net = ws ? this.netOfSocket(ws) : "";
     const log = ws?.stream
       ? this.state.log.filter((e) => !e.queued && !e.cut)
-      : this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net)));
+      : this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net))).map(playerEntry);
     if (ws?.stream) {
       ws.sent = new Map(log.filter((e) => PRIVATE_KINDS.has(e.kind)).map((e) => [e.id, e.text]));
       ws.mapSent = JSON.stringify(this.streamMap());
