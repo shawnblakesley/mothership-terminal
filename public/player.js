@@ -604,12 +604,22 @@
     showTalking();
   }
   let talking = new Set();
-  const WAVE_BARS = Array.from({ length: 36 }, (_, i) => {
-    const h = 0.25 + 0.75 * Math.sin((Math.PI * (i + 0.5)) / 36), t = 0.55 + ((i * 7) % 11) * 0.05;
-    return `<i style="--h: ${h.toFixed(2)}; --t: ${t.toFixed(2)}s"></i>`;
-  }).join("");
+  const WAVE_COUNT = 36;
+  const waveHeight = (i, peak) => {
+    const x = (i + 0.5) / WAVE_COUNT;
+    return 0.25 + 0.75 * Math.sin((Math.PI / 2) * (x < peak ? x / peak : (1 - x) / (1 - peak)));
+  };
+  const WAVE_BARS = Array.from({ length: WAVE_COUNT }, (_, i) => `<i style="--h: ${waveHeight(i, 0.5).toFixed(2)}; --t: ${(1.1 + ((i * 7) % 11) * 0.1).toFixed(2)}s"></i>`).join("");
+  function skewWave(card) {
+    const peak = 0.5 + (Math.random() - 0.5) * 0.3;
+    card.querySelectorAll(".cb-waves i").forEach((bar, i) => bar.style.setProperty("--h", waveHeight(i, peak).toFixed(2)));
+  }
   function showTalking() {
-    for (const el of $("cb-crew").querySelectorAll(".cb-pc")) el.classList.toggle("talking", talking.has(el.dataset.id));
+    for (const el of $("cb-crew").querySelectorAll(".cb-pc")) {
+      const on = talking.has(el.dataset.id);
+      if (on && !el.classList.contains("talking")) skewWave(el);
+      el.classList.toggle("talking", on);
+    }
   }
 
   const shortName = (c) => (c.name.match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || c.name.split(" ")[0]).toUpperCase();
