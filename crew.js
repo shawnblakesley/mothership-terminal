@@ -35,6 +35,26 @@ const MAX_STRESS = 20;
 // Not playable: dead (pc.cond.dead) or retired (Panic Table 20). pc.status is combat's unconscious/comatose, a different thing.
 export const isGone = (c) => !!c.cond?.dead || !!c.retired;
 export const playable = (c) => !isGone(c);
+// High Score (PSG 18.3): sessions survived. It has no mechanical effect and nothing in the rules code reads it.
+// End session: every living character's High Score goes up by 1. Returns who it went up for.
+export function endSession(crew) {
+  const living = crew.filter(playable);
+  for (const c of living) c.highScore = Math.min(9999, (c.highScore || 0) + 1);
+  return living;
+}
+// Records where a character's story ended (the memorial's "story") the first time they are gone; clears it if the Warden puts them back in play.
+// Returns the characters newly gone.
+export function settleEndings(crew, where) {
+  const fresh = [];
+  for (const c of crew) {
+    if (isGone(c) && !c.endedIn) { c.endedIn = String(where || "Unknown").slice(0, 80); fresh.push(c); }
+    else if (!isGone(c) && (c.endedIn || c.finalWords)) { c.endedIn = ""; c.finalWords = ""; }
+  }
+  return fresh;
+}
+export const memorialOf = (crew) => crew.filter(isGone).map((c) => ({ id: c.id, name: c.name, className: c.className, highScore: c.highScore || 0, retired: !c.cond?.dead, how: c.cond?.dead === "Warden" ? "Marked deceased by the Warden" : c.cond?.dead || "Retired from play", story: c.endedIn || "", epitaph: c.epitaph || "", finalWords: c.finalWords || "", portrait: c.portrait || "" }));
+// The crew member (living or not) with the highest High Score, or null if nobody has survived a session.
+export const longestSurvivor = (crew) => crew.reduce((best, c) => ((c.highScore || 0) > (best?.highScore || 0) ? c : best), null);
 export const goneWord = (c) => (c.cond?.dead ? "deceased" : c.retired ? "retired" : "");
 const legacy = (cond, status) => (status === "deceased" && !cond.dead ? { ...cond, dead: "Warden" } : cond);
 
@@ -121,6 +141,14 @@ for (const c of DEFAULT_CREW) c.portrait = `kit/sfcp-${DEFAULT_FACES[c.id]}.png`
 
 const str = (v, n) => String(v ?? "").slice(0, n);
 
+// Credits are their own field. Older sheets kept them in the notes as "Credits: Ncr.": move that over.
+const NOTE_CREDITS = /\s*Credits:\s*([\d,]+)\s*cr\.?/i;
+function creditsOf(c) {
+  const note = str(c.notes, 1000), found = NOTE_CREDITS.exec(note);
+  const have = Number.isFinite(Number(c.credits)) && c.credits !== "" && c.credits !== null;
+  return { credits: have ? int(c.credits, 0, 999999999, 0) : found ? int(found[1].replace(/,/g, ""), 0, 999999999, 0) : 0, notes: (found ? note.replace(NOTE_CREDITS, "") : note).trim() };
+}
+
 export function sanitizeCrew(list) {
   const out = [];
   const seen = new Set();
@@ -156,11 +184,15 @@ export function sanitizeCrew(list) {
       ...(int(c.deathSaveIn, 0, 99, 0) ? { deathSaveIn: int(c.deathSaveIn, 0, 99, 0) } : {}),
       trinket: str(c.trinket, 160),
       patch: str(c.patch, 80),
-      notes: str(c.notes, 1000),
+      ...creditsOf(c),
       cond: legacy(sanitizeCond(c.cond), c.status),
       portrait: PORTRAIT_FILE.test(c.portrait || "") ? c.portrait : "",
       retired: !!c.retired || c.status === "retired",
       replacedBy: str(c.replacedBy, 30),
+      highScore: int(c.highScore, 0, 9999, 0),
+      epitaph: str(c.epitaph, 140),
+      endedIn: str(c.endedIn, 80),
+      finalWords: str(c.finalWords, 240),
     });
     if (out.filter(playable).length >= MAX_CREW || out.length >= MAX_CREW * 3) break;
   }

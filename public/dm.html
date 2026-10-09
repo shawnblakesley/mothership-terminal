@@ -112,6 +112,10 @@
       <h3 class="sethead">Players may…</h3>
       <label class="check"><input type="checkbox" id="playerVitals"> <span>change their own health, wounds and stress <em>settled at the table</em></span></label>
       <label class="check"><input type="checkbox" id="playerRolls"> <span>roll their own stats and saves <em>results show in your log</em></span></label>
+      <label class="check"><input type="checkbox" id="panicScreens"> <span>show panic on the player's screen <em>a few seconds of effects on the screen of whoever panics; changes nothing in the rules</em></span></label>
+      <div class="row wrap"><span>Try a panic screen on the players now</span>
+        <select id="panicTry" aria-label="Panic Table result"><option value="1">1 Adrenaline rush</option><option value="2">2 Nervous</option><option value="3">3 Jumpy</option><option value="4">4 Overwhelmed</option><option value="5">5 Coward</option><option value="6">6 Frightened</option><option value="7">7 Nightmares</option><option value="8">8 Loss of confidence</option><option value="9">9 Deflated</option><option value="10">10 Doomed</option><option value="11">11 Suspicious</option><option value="12">12 Haunted</option><option value="13">13 Death wish</option><option value="14">14 Prophetic vision</option><option value="15">15 Catatonic</option><option value="16">16 Rage</option><option value="17">17 Spiraling</option><option value="18">18 Compounding problems</option><option value="19">19 Heart attack / short circuit</option><option value="20">20 Retire</option></select>
+        <button type="button" id="panicTryGo">Show</button></div>
       <label class="check"><input type="checkbox" id="playerCreate"> <span>create new characters <em>they roll one up and you approve it; a dead or retired character's player may always make a new one</em></span></label>
       <label class="check"><input type="checkbox" id="createRerolls"> <span>reroll while creating a character <em>off by default: the rules say no rerolls</em></span></label>
       <label class="check"><input type="checkbox" id="playerTerminals"> <span>move between terminals <em>reachable terminals or the portable unit</em></span></label>
@@ -351,7 +355,13 @@
       <div class="tabpanel" data-tabs="side" data-panel="actions">
         <p id="noKeyNote" class="muted small" hidden>No AI key. Use Speak, or add a key in Settings.</p>
 
-        <h2>Rounds and hazards <span class="hint" title="A round is about 10 seconds. Next round runs the per-round rules (bleeding, fire, vacuum, toxic and corrosive atmospheres, radiation) for everyone exposed; Pass time runs the hourly and daily ones (extreme cold and heat, exhaustion, hunger, life support). Hazards are set per room in the room view (click a room on the map). Players at terminals in a hazardous room are exposed.">?</span></h2>
+        <h2>High Score <span class="hint" title="Mothership 1e (PSG 18.3): High Score is the number of sessions a character has survived. It changes no roll; how you use it is up to you.">?</span></h2>
+        <div class="card row wrap">
+          <button id="endNight" title="One game night is one session. Every living character's High Score goes up by 1.">End game night</button>
+          <span class="small muted grow">Adds 1 to every living character's High Score (sessions survived; it changes no roll).</span>
+        </div>
+
+        <h2>Rounds and hazards<span class="hint" title="A round is about 10 seconds. Next round runs the per-round rules (bleeding, fire, vacuum, toxic and corrosive atmospheres, radiation) for everyone exposed; Pass time runs the hourly and daily ones (extreme cold and heat, exhaustion, hunger, life support). Hazards are set per room in the room view (click a room on the map). Players at terminals in a hazardous room are exposed.">?</span></h2>
         <div class="card stack" id="hazardCard">
           <div class="row wrap">
             <button id="nextRound" class="primary" title="Advance one round (about 10 seconds)">Next round</button>
@@ -492,7 +502,9 @@
         <div id="newChars"></div>
         <div id="crew"></div>
         <div class="row edit-only"><button id="addCrew" class="ghost">+ Add character</button></div>
-        <h2>Characters <span class="hint" title="The story's people: face to face in the room, otherwise over the intercom.">?</span></h2>
+        <h2>Memorial <span class="hint" title="Characters who died or retired. In a campaign it is the campaign's wall; in a one-shot, this session's.">?</span></h2>
+        <div id="memorial"></div>
+        <h2>Characters<span class="hint" title="The story's people: face to face in the room, otherwise over the intercom.">?</span></h2>
         <div class="row wrap edit-only"><label class="small muted">Heard elsewhere over <select id="castChannel" title="Voice used outside the players' room"></select></label></div>
         <div id="cast"></div>
         <div class="row edit-only"><button id="addCast" class="ghost">+ Add character</button></div>
