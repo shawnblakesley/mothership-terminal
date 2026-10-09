@@ -3,6 +3,7 @@ import { BUILTIN, SPEAKERS, shownName, ABBREVIATION, SENTENCE, HIDDEN_DOT } from
 import { channelOf, attitudeLabel } from "./cast.js";
 import { CHECKS, PANIC, ADVANTAGE } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
+import { rigBrief } from "./resources.js";
 import { statsLine } from "./combat.js";
 import { WOUND_LABELS } from "./wounds.js";
 import { HAZARDS, hazardBrief } from "./hazards.js";
@@ -111,7 +112,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "item_changes", "attacks", "crew_attacks", "round", "reveal_death_save", "hazards", "time_passes", "moves", "cast_changes", "clocks", "handouts", "found_docs", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "item_changes", "attacks", "crew_attacks", "reloads", "round", "reveal_death_save", "hazards", "time_passes", "moves", "cast_changes", "clocks", "handouts", "found_docs", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -190,6 +191,19 @@ function buildSchema(voices) {
           },
         },
       },
+      reloads: {
+        type: "array",
+        description: "A player's character swapping in a spare magazine because their firearm is empty or they chose to reload (an action, see COMBAT). The app moves the magazine and refills the shots. Usually empty.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["by", "weapon"],
+          properties: {
+            by: { type: "string", description: "The crew member's name." },
+            weapon: { type: "string", description: "The firearm, as listed under Ammunition in CREW CONDITION." },
+          },
+        },
+      },
       round: { type: "boolean", description: "True once when a round of about 10 seconds passes in this reply (a fight): the app runs the per-round rules, such as Bleeding and hazards. False otherwise." },
       reveal_death_save: { type: "array", items: { type: "string" }, description: "Names of characters whose Death Save is revealed because someone in the fiction spends a turn checking their vitals (see COMBAT). Usually empty." },
       item_changes: {
@@ -201,8 +215,8 @@ function buildSchema(voices) {
           required: ["for", "action", "item", "why"],
           properties: {
             for: { type: "string", description: "A crew member's name." },
-            action: { type: "string", enum: ["add", "remove"] },
-            item: { type: "string", description: "The item, as it's listed (to remove) or a short name (to add), e.g. Flare, Security keycard (Deck 2)." },
+            action: { type: "string", enum: ["add", "remove", "use"], description: "use: a Stimpak or First Aid Kit used for its effect, which the app then applies." },
+            item: { type: "string", description: "The item, as it's listed (to remove) or a short name (to add), e.g. Flare, Security keycard (Deck 2), Ammo (combat shotgun)." },
             why: { type: "string", description: "A few words for the Warden's log." },
           },
         },
@@ -369,6 +383,7 @@ const REPLY_EXAMPLE = {
   item_changes: [],
   attacks: [],
   crew_attacks: [],
+  reloads: [],
   round: false,
   reveal_death_save: [],
   hazards: [],
@@ -503,6 +518,7 @@ COMBAT (Mothership 1e violent encounters)
 - Violence is very dangerous for these workers. Avoid it and let the players feel why: running, hiding, bargaining and sabotage beat fighting, and the biggest threats cannot be beaten head-on (their special line says how they are).
 - There is no initiative. Describe the threat and what happens if nobody responds, let the players declare what they do, then resolve everything together (checks and saves first, then Damage and Wounds) and describe the new situation. A round is about 10 seconds; a turn is an action and a move within Close range, or just running within Long range.
 - A player's attack is a Combat Check; a failed one makes the situation worse. Only when a character's Combat check has just succeeded against an adversary, set crew_attacks with a weapon they carry (CREW CONDITION lists their items; with none, "Unarmed"). The app rolls the damage.
+- Firearms have shots per magazine (PSG). CREW CONDITION lists each one's rounds loaded and spare magazines under Ammunition. Every crew_attacks with a firearm spends 1 shot; one with 0 shots loaded is refused, so don't set it. Reloading is an action: when a character reloads, set reloads (by, weapon). Stimpaks and First Aid Kits used for their effect go in item_changes with action "use"; the app applies the PSG stimpak effect (and its overdose roll) itself, so don't also change Health or Stress for it.
 - When a creature or person attacks a character, use attacks (by and attack from ADVERSARIES' CONDITION, target a crew member). The app rolls their Combat and, on a hit, the damage, and applies armor (damage under its AP is ignored; damage at or over AP destroys the armor and the rest goes through), Health, Wounds, Wounds Table results and Bleeding. Narrate the outcome from the [ROLL RESULT] entries. Never invent damage numbers or Wounds.
 - Set round to true in the reply where a round (about 10 seconds) passes in a fight: the app then runs every per-round rule, so anyone Bleeding takes damage that ignores armor, and hazards in the room do their damage. A First Aid Kit stops Bleeding: when someone uses one, record it in item_changes (remove).
 - A Death Save is rolled secretly by the app and nobody knows the result, you included. CREW CONDITION says when one is due. Don't say whether that character lives, dies or wakes. Only when someone in the fiction spends a turn checking their vitals, put the character's name in reveal_death_save and narrate what the [ROLL RESULT] says.
@@ -763,6 +779,7 @@ function buildContext(state, steer, aside = false) {
   const plans = Object.entries(state.config.rooms || {});
   if (plans.length) ctx.push(`ROOM FLOOR PLANS (now):\n${plans.map(([id, p]) => `${id}:\n${p.rows.join("\n")}`).join("\n\n")}`);
   if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
+  if (state.campaign && state.station?.rig) ctx.push(`${rigBrief(state.station)}${state.rationing ? "\n- RATIONING: food and water are cut off; the app tracks hunger every hour (PSG 32.5)." : ""}`);
   const fighters = state.config.voices.filter((v) => v.adversary?.stats);
   if (fighters.length) ctx.push(`ADVERSARIES' CONDITION (now; Warden's eyes only):\n${fighters.map((v) => {
     const s = v.adversary.stats;
@@ -795,7 +812,7 @@ function buildContext(state, steer, aside = false) {
   if (!state.config.agentEffects) ctx.push("Effects are disabled right now: return an empty effects array.");
   else if (state.sounds?.length) ctx.push(`AVAILABLE SOUNDS (for sound effects; seconds long):\n${state.sounds.map((s) => `- ${s.name} (${Math.round(s.seconds || 0)}s)`).join("\n")}`);
   if (state.config.agentVariants === false) ctx.push("Per-player variations are disabled: every line's variants must be [].");
-  if (state.config.agentCrew === false) ctx.push("The Warden tracks crew health, wounds, stress and items themselves: crew_changes, item_changes, attacks and crew_attacks must be [], round false and reveal_death_save [].");
+  if (state.config.agentCrew === false) ctx.push("The Warden tracks crew health, wounds, stress and items themselves: crew_changes, item_changes, attacks, crew_attacks and reloads must be [], round false and reveal_death_save [].");
   return ctx.join("\n\n");
 }
 
@@ -846,7 +863,7 @@ export function parseReply(text, voices) {
       .slice(0, 12)
       .map((c) => ({ for: String(c.for).slice(0, 60), stat: c.stat, change: Math.max(-20, Math.min(20, Math.round(Number(c.change)))), why: String(c.why ?? "").slice(0, 120) })),
     item_changes: (Array.isArray(r?.item_changes) ? r.item_changes : [])
-      .filter((c) => c && c.for && ["add", "remove"].includes(c.action) && String(c.item ?? "").trim())
+      .filter((c) => c && c.for && ["add", "remove", "use"].includes(c.action) && String(c.item ?? "").trim())
       .slice(0, 12)
       .map((c) => ({ for: String(c.for).slice(0, 60), action: c.action, item: String(c.item).trim().slice(0, 60), why: String(c.why ?? "").slice(0, 120) })),
     attacks: (Array.isArray(r?.attacks) ? r.attacks : [])
@@ -857,6 +874,10 @@ export function parseReply(text, voices) {
       .filter((a) => a && String(a.by ?? "").trim() && String(a.target ?? "").trim())
       .slice(0, 4)
       .map((a) => ({ by: String(a.by).trim().slice(0, 60), weapon: String(a.weapon ?? "").trim().slice(0, 60), target: String(a.target).trim().slice(0, 60) })),
+    reloads: (Array.isArray(r?.reloads) ? r.reloads : [])
+      .filter((a) => a && String(a.by ?? "").trim())
+      .slice(0, 4)
+      .map((a) => ({ by: String(a.by).trim().slice(0, 60), weapon: String(a.weapon ?? "").trim().slice(0, 60) })),
     round: r?.round === true,
     reveal_death_save: (Array.isArray(r?.reveal_death_save) ? r.reveal_death_save : []).map((x) => String(x ?? "").trim().slice(0, 60)).filter(Boolean).slice(0, 4),
     hazards: (Array.isArray(r?.hazards) ? r.hazards : [])

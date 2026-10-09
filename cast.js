@@ -131,7 +131,19 @@ export function shiftAttitude(member, change, why = "") {
   return [before, member.attitude];
 }
 
+// A dead character has no cast voice: they get a speaker by pronouns and name, apart from the cast's where there is room.
+export function finalVoice(pc, cast = []) {
+  const sex = /^(she|her)\b/i.test(pc.pronouns || "") ? "f" : /^(he|him)\b/i.test(pc.pronouns || "") ? "m" : "";
+  let pool = Object.keys(SPEAKERS).filter((id) => !sex || id[1] === sex);
+  const used = new Set(cast.map((m) => m.voice));
+  if (pool.some((id) => !used.has(id))) pool = pool.filter((id) => !used.has(id));
+  let h = 0;
+  for (const ch of String(pc.name).toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return pool[h % pool.length] || "am_michael";
+}
+
 export function speakingVoice(config, entry) {
+  if (entry.voiceSpeaker && SPEAKERS[entry.voiceSpeaker]) return { engine: "neural", speaker: entry.voiceSpeaker, pace: 1 };
   const member = entry.character ? findCast(config.cast, entry.character) : null;
   return member ? castVoice(member) : voiceFor(config.voices, entry).voice;
 }
