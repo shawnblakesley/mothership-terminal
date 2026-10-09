@@ -775,6 +775,11 @@ body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #
 .cs-conds { display: flex; flex-wrap: wrap; gap: 0.3em; }
 .cs-conds > span { border: 2px solid var(--fg); border-radius: 999px; padding: 2px calc(0.45em + 2px); font-size: 0.85em; }
 
+/* ux-flows: death bar, job-board key hint */
+.deadbar { border: 1px solid var(--fg); padding: 0.4em 0.7em; margin: 0.4em 0; display: flex; flex-wrap: wrap; gap: 0.3em 1em; align-items: baseline; }
+.deadbar[hidden] { display: none; }
+.sf-hint { color: var(--dim); font-size: 0.85em; }
+
 .rulesdlg { border: 2px solid var(--fg); border-radius: 0; background: var(--bg); color: var(--fg); font: inherit; font-size: clamp(18px, 4.6vw, 22px); line-height: 1.2; box-shadow: 0 0 18px color-mix(in srgb, var(--fg) 30%, transparent); text-shadow: 0 0 2px var(--glow); }
 .rules-head { border-bottom: 2px solid var(--dim); }
 .rules-head h1 { font-size: 1.2em; font-weight: normal; color: var(--fg); letter-spacing: 0.12em; text-transform: uppercase; }

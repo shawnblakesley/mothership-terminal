@@ -235,7 +235,7 @@ function describe(what, dice) {
 export function rollFor(draft, what, { typed = null, rerolls = false, rng = crypto.randomInt, tables = null } = {}) {
   if (!ROLLS[what]) return { error: "Unknown roll." };
   if (what === "loadout" && !draft.className) return { error: "Choose a class first: the loadout table is by class." };
-  if (draft.dice[what] && !rerolls) return { error: "Already rolled. The Warden has not allowed rerolls." };
+  if (draft.dice[what] && !rerolls) return { error: "That one is already rolled, and the Warden has not allowed rerolls. Press Enter to go on." };
   const dice = typed ? typed : rollDice(what, rng);
   if (typed) {
     const bad = checkDice(what, typed);
@@ -323,6 +323,18 @@ export function handleChargen(sess, ws, msg) {
     else if (active(cfg.crew) + s.newChars.filter((n) => !n.replaces).length >= MAX_CREW) return fail("The crew is full.");
     ws.cg = newDraft(replaces);
     return reply();
+  }
+  if (msg.t === "cgWithdraw") {
+    const at = s.newChars.findIndex((n) => ownersOf(sess).get(n.id)?.ws === ws);
+    if (at < 0) return fail("Nothing of yours is waiting.");
+    const [gone] = s.newChars.splice(at, 1);
+    ws.cg = ownersOf(sess).get(gone.id).draft;
+    ownersOf(sess).delete(gone.id);
+    sess.addLog("note", `New character withdrawn by the player: ${gone.sheet.name}.`);
+    sess.touch();
+    sess.syncDm();
+    pilots(sess);
+    return reply({ withdrawn: true });
   }
   if (!ws.cg) return fail("Start a new character first.");
   const draft = ws.cg;

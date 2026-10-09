@@ -486,8 +486,10 @@
   function scrollDown() { screenEl.scrollTop = screenEl.scrollHeight; }
 
   let busySince = 0;
+  let sentAt = 0;
   function updateBusy() {
-    busyEl.hidden = !(busy && !plays.size);
+    const echo = Date.now() - sentAt < 2000;
+    busyEl.hidden = !((busy || echo) && !plays.size);
     if (busy && !busySince) busySince = Date.now();
     if (!busy) busySince = 0;
     tickBusy();
@@ -535,6 +537,9 @@
     const m = /^\/(?:msg|m)(?:\s+(.*))?$/i.exec(text);
     if (m) return sendMsg(m[1] || "");
     send({ t: "input", text });
+    sentAt = Date.now();
+    updateBusy();
+    setTimeout(updateBusy, 2050);
   });
 
   input.addEventListener("keydown", (e) => {
@@ -603,10 +608,18 @@
   const setLabel = (el, t) => { if (el.dataset.orig !== undefined) el.dataset.orig = t; else el.textContent = t; };
   const focusPick = () => ($("crewpick-list").querySelector("li.current button") || $("crewpick-list").querySelector("button"))?.focus();
 
+  function renderDead() {
+    const pc = mine(), out = !!pc && !spectate && !!gone(pc) && !pc.replacedBy && !document.body.classList.contains("panel-open");
+    $("deadbar").hidden = !out;
+    if (out) $("deadbar-text").textContent = `${shortName(pc)} IS ${gone(pc).toUpperCase()}. YOU CAN PLAY A NEW CHARACTER: THE WARDEN APPROVES IT.`;
+  }
+  $("deadbar-new").onclick = () => Chargen.start(mine()?.id);
+
   function openPanel(id) {
     if (id !== "docs") stopLog();
     for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "msgpick", "solopick", "docs", "ending", "chargen"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
+    renderDead();
     if (id === "crewpick" && bootEl.classList.contains("gone")) focusPick();
     if (!id && !spectate) input.focus();
     renderSide();
@@ -636,6 +649,7 @@
     $("hdr-msg").hidden = $("hdr-msg-sep").hidden = spectate || !pc || !!gone(pc) || !peers().length;
     if (!$("memorialfx").hidden) renderMemorial();
     $("crewfile-new").hidden = !(pc && gone(pc) && !pc.replacedBy);
+    renderDead();
     if (!$("crewpick").hidden) renderPicker();
     if (!$("crewfile").hidden) renderFile();
     renderSide();
@@ -692,12 +706,22 @@
   const nameOf = (id) => shortName(crew.find((c) => c.id === id) || { name: id });
   const peopleNames = (people) => Object.fromEntries(Object.entries(people).map(([room, ids]) => [room, ids.map((id) => nameOf(id))]));
 
+  let pickNote = "";
+  const welcome = (c) => c && !gone(c) && notice(`You are ${shortName(c)} aboard ${header.title || header.stationName}. Type what you do and press Enter: the Warden answers. RULES in the header explains rolls.`);
+  function storyChanged(title) {
+    const name = String(title || header.stationName).toUpperCase(), pick = !spectate && crew.length && !mine() && (!solo || solo.phase === "play");
+    pickNote = pick ? `NEW STORY: ${name}. CHOOSE YOUR CREW FILE.` : "";
+    notice(`New story: ${name}. The Warden is setting the scene.${pick ? " Choose your crew file." : ""}`);
+    if (pick) { renderPicker(); openPanel("crewpick"); } else if (mine()) welcome(mine());
+  }
+
   function renderPicker() {
+    $("crewpick-note").textContent = pickNote;
     $("crewpick-list").innerHTML = crew.map((c, i) => {
       const others = (claims[c.id] || 0) - (c.id === myId ? 1 : 0);
       const cls = [c.portrait && "has-face", c.id === myId && "current"].filter(Boolean).join(" ");
       return `<li${cls ? ` class="${cls}"` : ""} data-id="${escH(c.id)}">${portraitHtml(c.portrait, "face")}<button type="button" class="p-btn pick" data-id="${escH(c.id)}"${gone(c) && c.id !== myId ? " disabled" : ""}>[${i + 1}] ${escH(c.name.toUpperCase())}</button>
-        <span class="p-dim"> · ${escH(c.className.toUpperCase())} · ${escH(c.role.toUpperCase())} · HIGH SCORE ${c.highScore || 0}${gone(c) ? ` · <b>${escH(gone(c).toUpperCase())}</b>` : ""}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>CURRENT FILE</b>" : ""}</span>
+        <span class="p-dim"> · ${escH(c.className.toUpperCase())}${c.role.toLowerCase() === c.className.toLowerCase() ? "" : ` · ${escH(c.role.toUpperCase())}`} · HIGH SCORE ${c.highScore || 0}${gone(c) ? ` · <b>${escH(gone(c).toUpperCase())}</b>` : ""}${others > 0 ? " · <b>IN USE</b>" : ""}${c.id === myId ? " · <b>CURRENT FILE</b>" : ""}</span>
         ${gone(c) && !c.replacedBy ? `<div><button type="button" class="p-btn" data-newfor="${escH(c.id)}">[ MAKE A NEW CHARACTER ]</button></div>` : ""}
         <div class="p-dim p-crime">${escH(c.crime)}</div></li>`;
     }).join("") + (canCreate() ? '<li><button type="button" class="p-btn" id="crewpick-new">[N] NEW CHARACTER</button><div class="p-dim p-crime">ROLL UP A NEW CREWMEMBER. THE WARDEN APPROVES THEM.</div></li>' : "");
@@ -738,7 +762,7 @@
   const field = (label, value, always = false) => value || always ? `<div class="cs-field"><span class="cs-k">${label}</span><b>${escH(value.toUpperCase())}</b></div>` : "";
   const sheetHead = (c) => `<div class="cs-card cs-head">
       <div class="cs-facebox">${portraitHtml(c.portrait, "cs-face") || `<span class="cs-noface">NO PHOTO</span>`}</div>
-      <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns, true)}${field("CLASS", c.className)}${field("ROLE", c.role)}${field("HIGH SCORE", String(c.highScore || 0), true)}${field("STATUS", c.retired ? "retired" : "")}</div>
+      <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns, true)}${field("CLASS", c.className)}${c.role?.toLowerCase() === c.className.toLowerCase() ? "" : field("ROLE", c.role)}${field("HIGH SCORE", String(c.highScore || 0), true)}${field("STATUS", c.retired ? "retired" : "")}</div>
     </div>`;
   const combatRow = (c) => {
     const a = c.armor;
@@ -848,6 +872,7 @@
 
   function claim(id) {
     myId = id;
+    pickNote = "";
     ls.set(crewKey(), id || "none");
     send({ t: "claim", id });
     setCrew(crew, claims, played);
@@ -887,6 +912,7 @@
   addEventListener("keydown", (e) => {
     if ($("crewpick").hidden || !bootEl.classList.contains("gone") || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key.toLowerCase() === "n" && canCreate()) { e.preventDefault(); return Chargen.start(); }
+    if (e.key === "0") { e.preventDefault(); claim(null); return openPanel(null); }
     const c = crew[Number(e.key) - 1];
     if (c && !(gone(c) && c.id !== myId)) { e.preventDefault(); showPicked(c.id); $("crewfile-change").focus(); }
   });
@@ -1294,7 +1320,7 @@
   };
   const toPicker = () => { renderPicker(); openPanel("crewpick"); focusPick(); };
   $("crewfile-close").onclick = () => (confirming ? toPicker() : openPanel(null));
-  $("crewfile-change").onclick = () => (confirming ? openPanel(null) : toPicker());
+  $("crewfile-change").onclick = () => { if (confirming) { openPanel(null); welcome(mine()); } else toPicker(); };
   addEventListener("keydown", (e) => {
     if (e.key === "Escape" && document.body.classList.contains("panel-open") && !$("crewfile").hidden) openPanel(null);
   });
@@ -1570,7 +1596,7 @@
   }
 
   function playRollResult() {
-    const { result, label, who, effect } = rollQueue[0];
+    const { result, label, who, effect, effectText } = rollQueue[0];
     const fx = $("rollfx"), diceEl = fx.querySelector(".rf-dice"), outEl = fx.querySelector(".rf-out");
     const show = result.panic ? String : (d) => String(d).padStart(2, "0");
     const random = () => (result.panic ? 1 + Math.floor(Math.random() * 20) : Math.floor(Math.random() * 100));
@@ -1587,7 +1613,7 @@
       clearInterval(tumble);
       diceEl.textContent = result.dice.length > 1 ? `${result.dice.map(show).join(" / ")} → ${show(result.used)}` : show(result.used);
       outEl.textContent = name + (result.panic
-        ? (result.success ? `KEPT THEIR COOL (ABOVE STRESS ${result.target})` : `PANIC! (STRESS ${result.target}) · ${effect ? effect.toUpperCase() : `PANIC TABLE ${result.used}`}`)
+        ? (result.success ? `KEPT THEIR COOL (ABOVE STRESS ${result.target})` : `PANIC! (STRESS ${result.target}) · ${effect ? effect.toUpperCase() : `PANIC TABLE ${result.used}`}${effectText ? `: ${effectText.toUpperCase()}` : ""}`)
         : `${result.outcome.toUpperCase()}${result.panicCheck ? ": PANIC CHECK" : ""} (UNDER ${result.target})${result.success ? "" : " · +1 STRESS"}`);
       fx.classList.add(result.success ? "pass" : "fail");
       if (result.critical) fx.classList.add("crit");
@@ -1623,9 +1649,9 @@
     fx.querySelector(".pf-title").textContent = `SECTOR: ${String(msg.title).toUpperCase()}`;
     fx.querySelector(".sf-map").innerHTML = `<svg viewBox="0 0 1100 560" role="img" aria-label="Sector map"><g class="lanes">${lanes}</g>${ports}<g class="rig" transform="translate(${msg.rig.x - 40} ${msg.rig.y + 26})"><path d="M-8 6 L0 -9 L8 6 Z"/><text y="20">${escH(msg.rig.name)}</text></g>${jobs}</svg>`;
     const board = msg.offered.length
-      ? msg.offered.map((o, i) => `<button type="button" class="p-btn sf-job${i === mine ? " mine" : ""}" data-job="${escH(o.id)}"><b>${i + 1}. ${escH(o.title)}</b>${msg.votes[o.id] ? ` <span class="sf-votes">[${"*".repeat(msg.votes[o.id])}]</span>` : ""}<span class="sf-hook">${escH(o.hook)}</span><span class="sf-hook">THE JOB: ${escH(o.job)}</span></button>`).join("")
+      ? msg.offered.map((o, i) => `<button type="button" class="p-btn sf-job${i === mine ? " mine" : ""}" data-job="${escH(o.id)}"><b>${i + 1}. ${escH(o.title)}</b>${msg.votes[o.id] ? ` <span class="sf-votes">[${"*".repeat(msg.votes[o.id])}] ${msg.votes[o.id]} VOTE${msg.votes[o.id] > 1 ? "S" : ""}</span>` : ""}${i === mine ? " <span class=\"sf-votes\">· YOUR VOTE</span>" : ""}<span class="sf-hook">${escH(o.hook)}</span><span class="sf-hook">THE JOB: ${escH(o.job)}</span></button>`).join("")
       : `<div class="sf-none">NO JOBS ON THE BOARD YET.</div>`;
-    fx.querySelector(".sf-side").innerHTML = `<div class="sf-head">JOB BOARD</div>${board}${msg.played.length ? `<div class="sf-head">DONE</div><div class="sf-played">${msg.played.map((p) => escH(p.title)).join("<br>")}</div>` : ""}`;
+    fx.querySelector(".sf-side").innerHTML = `<div class="sf-head">JOB BOARD</div><div class="sf-hint">PRESS A JOB'S NUMBER OR CLICK IT TO VOTE. [*] IS ONE VOTE. ESC TO CLOSE.</div>${board}${msg.played.length ? `<div class="sf-head">DONE</div><div class="sf-played">${msg.played.map((p) => escH(p.title)).join("<br>")}</div>` : ""}`;
     if (fresh) { fx.hidden = false; chirp(); }
   }
   const voteJob = (id) => id && send({ t: "sectorVote", story: id });
@@ -1856,8 +1882,9 @@
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       switch (msg.t) {
-        case "init":
+        case "init": {
           if (newCode(msg.version)) return;
+          const wasTitle = header.title;
           applyHeader(msg.header);
           lineGen++;
           plays.clear();
@@ -1885,8 +1912,10 @@
           applySolo(msg.solo);
           if (!mine() && (!msg.solo || msg.solo.phase === "play")) crewOnInit();
           terminalOnInit();
+          if (wasTitle && msg.header.title !== wasTitle) storyChanged(msg.header.title);
           scrollDown();
           break;
+        }
         case "solo": applySolo(msg.solo); break;
         case "clocks": setClocks(msg.clocks); break;
         case "handout": gotDoc(msg.handout); break;

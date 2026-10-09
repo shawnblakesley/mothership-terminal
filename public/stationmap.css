@@ -104,3 +104,4 @@
 .iso-who { font: calc(var(--iso-px) * 1.05)/1 VT323, Consolas, monospace; color: #050805; background: var(--iso-fg); padding: 1px 5px; box-shadow: 0 0 8px var(--iso-fg); white-space: nowrap; }
 .sv .sv-room.hazard > rect { stroke: var(--warn); stroke-width: 2.2; fill: color-mix(in srgb, var(--warn) 14%, var(--panel2)); }
 .sv .sv-hazard { font-size: 10.5px; font-weight: 700; fill: var(--warn); }
+.sv .sv-room rect[data-room]:focus-visible { outline: none; stroke: var(--accent); stroke-width: 2.5; }

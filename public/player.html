@@ -23,7 +23,7 @@
       <span class="grow"></span>
       <span id="hdr-rig" title="The rig's fuel and stores (campaign house rules)" hidden></span>
       <span class="sep" id="hdr-rig-sep" hidden>//</span>
-      <span>ACCESS: <b id="hdr-access">GUEST</b></span>
+      <span title="Your clearance on this terminal. It only changes what the station will show you; the story and the Warden raise it.">ACCESS: <b id="hdr-access">GUEST</b></span>
       <span class="sep">//</span>
       <span id="hdr-clock">00:00:00</span>
       <span id="hdr-link" class="link" title="Connection">● LINK</span>
@@ -56,9 +56,10 @@
     <main id="screen">
       <section id="crewpick" class="panel" hidden>
         <div class="p-title"><span class="sq">■</span> CREW IDENTIFICATION <span class="sq">■</span></div>
-        <div class="p-dim">SELECT YOUR CREW FILE (PRESS 1-4).</div>
+        <div class="p-dim" id="crewpick-note" role="status"></div>
+        <div class="p-dim">SELECT YOUR CREW FILE: PRESS ITS NUMBER, THEN ENTER TO CONFIRM.</div>
         <ol id="crewpick-list"></ol>
-        <button type="button" id="crewpick-none" class="p-btn">[ NO FILE: JUST WATCHING ]</button>
+        <button type="button" id="crewpick-none" class="p-btn">[0] NO FILE: JUST WATCHING</button>
       </section>
       <section id="solopick" class="panel" hidden>
         <div class="p-title" id="solopick-title"><span class="sq">■</span> CHOOSE A STORY <span class="sq">■</span></div>
@@ -149,6 +150,7 @@
           <div id="rb-err" role="alert"></div>
         </form>
       </section>
+      <div id="deadbar" class="deadbar" role="status" hidden><span id="deadbar-text"></span> <button type="button" id="deadbar-new" class="p-btn">[ MAKE A NEW CHARACTER ]</button></div>
       <form id="inputrow" autocomplete="off">
         <label id="prompt" for="in">GUEST&gt;</label>
         <input id="in" spellcheck="false" autocapitalize="characters" autofocus>
