@@ -685,7 +685,7 @@
   const statusCard = (c) => `<div class="cs-card cs-status"><div class="cs-title">STATUS REPORT</div><div class="cs-vitals">
       ${pill("health", "HEALTH", c.health.current, c.health.max, ["CURRENT", "MAX"])}
       ${pill("wounds", "WOUNDS", c.wounds.current, c.wounds.max, ["CURRENT", "MAX"])}
-      ${pill("stress", "STRESS", c.stress, undefined, ["CURRENT"])}
+      ${pill("stress", "STRESS", c.stress, undefined, ["CURRENT", `MIN ${c.minStress ?? 2}`])}
     </div></div>`;
   const numbersCard = (title, obj, hint = "") => `<div class="cs-card cs-${title.toLowerCase()}"><div class="cs-title">${title}</div>
       <div class="cs-nums">${Object.entries(obj).map(([k, v]) => circle(k, v)).join("")}</div>${hint}</div>`;
@@ -727,6 +727,7 @@
         ${c.backstory ? `<div class="p-text">${escH(c.backstory)}</div>` : ""}
         ${c.trinket ? `<div><span class="cs-k">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
         ${c.patch ? `<div><span class="cs-k">PATCH</span> ${escH(c.patch)}</div>` : ""}
+        ${header.trauma?.[c.className] ? `<div><span class="cs-k">TRAUMA RESPONSE</span> ${escH(header.trauma[c.className])}</div>` : ""}
       </div>`;
 
   let sideOpen = ls.get("side-open") !== "0";
@@ -1342,11 +1343,27 @@
   const rollbox = $("rollbox"), rbDice = $("rb-dice"), rbErr = $("rb-err");
   let curRoll = null, alerted = "";
 
+  const ADV_MARK = { none: "NORMAL", advantage: "[+]", disadvantage: "[-]" };
+  const plusBox = $("rb-plus-box");
+  const myEntry = (own = mine()) => curRoll?.pcs.find((p) => p.id === own?.id);
+  function diceNeeded() {
+    const e = myEntry();
+    let adv = e?.advantage ?? curRoll.advantage;
+    if (e?.plus && (e.autoPlus || plusBox.checked)) adv = adv === "disadvantage" ? "none" : "advantage";
+    return adv === "none" ? 1 : 2;
+  }
+  function setPlaceholder() {
+    rbDice.placeholder = curRoll.panic ? (diceNeeded() === 1 ? "14" : "14 6") : (diceNeeded() === 1 ? "47" : "47 82");
+  }
+  plusBox.addEventListener("change", () => curRoll && setPlaceholder());
+
   function rollTargetText(roll, pc) {
-    if (roll.panic) return `YOUR STRESS: ${pc.stress} · ROLL ABOVE IT ON A D20 TO KEEP YOUR COOL`;
+    const own = myEntry(pc);
+    const mark = own && own.advantage !== roll.advantage ? ` · YOURS IS ${ADV_MARK[own.advantage]}${roll.check === "fear" ? " (AN ANDROID IS CLOSE)" : ""}` : "";
+    if (roll.panic) return `YOUR STRESS: ${pc.stress} · ROLL ABOVE IT ON A D20 TO KEEP YOUR COOL${mark}`;
     const stat = pc.stats[roll.check] ?? pc.saves[roll.check];
     const bonus = skillBonus(pc, roll.skillName);
-    return `YOUR ${roll.check.toUpperCase()}: ${stat}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}`;
+    return `YOUR ${roll.check.toUpperCase()}: ${stat}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}${mark}`;
   }
 
   function showRoll(roll) {
@@ -1366,7 +1383,11 @@
     if (!mustRoll) return;
     $("rb-target").textContent = rollTargetText(roll, own);
     $("rb-roll").textContent = roll.panic ? "[ ROLL D20 ]" : "[ ROLL D100 ]";
-    rbDice.placeholder = roll.panic ? (roll.advantage === "none" ? "14" : "14 6") : (roll.advantage === "none" ? "47" : "47 82");
+    const entry = myEntry(own);
+    $("rb-plus").hidden = !entry?.plus;
+    plusBox.checked = !!entry?.autoPlus;
+    plusBox.disabled = !!entry?.autoPlus;
+    setPlaceholder();
     if (alerted === `${roll.id}:${own.id}`) return;
     alerted = `${roll.id}:${own.id}`;
     rbDice.value = "";
@@ -1383,7 +1404,7 @@
     const msg = { t: "roll", id: curRoll.id };
     if (manual) {
       const dice = readDice(rbDice.value);
-      const need = curRoll.advantage === "none" ? 1 : 2;
+      const need = diceNeeded();
       const [lo, hi, die, eg] = curRoll.panic ? [1, 20, "D20", "14 6"] : [0, 99, "D100", "47 82"];
       if (dice.length !== need || dice.some((d) => d < lo || d > hi)) {
         rbErr.textContent = need === 1 ? `ENTER ONE ${die} ROLL (${curRoll.panic ? "1-20" : "00-99"}).` : `ENTER BOTH ${die} ROLLS, E.G. ${eg}.`;
@@ -1391,6 +1412,7 @@
       }
       Object.assign(msg, { manual: true, dice });
     }
+    if (myEntry()?.plus && plusBox.checked) msg.plus = true;
     rbErr.textContent = "ROLLING...";
     send(msg);
   }
@@ -1424,7 +1446,7 @@
       diceEl.textContent = result.dice.length > 1 ? `${result.dice.map(show).join(" / ")} → ${show(result.used)}` : show(result.used);
       outEl.textContent = name + (result.panic
         ? (result.success ? `KEPT THEIR COOL (ABOVE STRESS ${result.target})` : `PANIC! (STRESS ${result.target}) · ${effect ? effect.toUpperCase() : `PANIC TABLE ${result.used}`}`)
-        : `${result.outcome.toUpperCase()} (UNDER ${result.target})${result.success ? "" : " · +1 STRESS"}`);
+        : `${result.outcome.toUpperCase()}${result.panicCheck ? ": PANIC CHECK" : ""} (UNDER ${result.target})${result.success ? "" : " · +1 STRESS"}`);
       fx.classList.add(result.success ? "pass" : "fail");
       if (result.critical) fx.classList.add("crit");
       if (result.success) { FX.Sound.beep(880, 0.12, 0.08); setTimeout(() => FX.Sound.beep(1320, 0.2, 0.08), 120); }

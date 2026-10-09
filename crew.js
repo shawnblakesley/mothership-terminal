@@ -6,6 +6,16 @@ export const CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
 export const STATS = ["strength", "speed", "intellect", "combat"];
 export const SAVES = ["sanity", "fear", "body"];
 
+export const TRAUMA_RESPONSES = {
+  Marine: "Whenever they Panic, every Close friendly player makes a Fear Save.",
+  Android: "Fear Saves made by Close friendly players are at [-].",
+  Scientist: "Whenever they fail a Sanity Save, all Close friendly players gain 1 Stress.",
+  Teamster: "Once per session, they may take [+] on a Panic Check.",
+};
+export const traumaResponse = (pc) => TRAUMA_RESPONSES[pc?.className] || "";
+export const maxWoundsFor = (className) => (className === "Marine" || className === "Android" ? 3 : 2);
+const MAX_STRESS = 20;
+
 export const DEFAULT_CREW = [
   {
     id: "rusk",
@@ -62,7 +72,7 @@ export const DEFAULT_CREW = [
     loadout: "Integrated diagnostic port, cutting torch, 30 m cable, company ID tag (scratched off).",
     trinket: "A child's plastic star it can't remember receiving.",
     patch: "\"OBEY\" (with the O scratched out)",
-    notes: "Android: Fear saves as above; other crew's Fear saves are made at [−] when MOLL-7 panics.",
+    notes: "Android: Fear saves as above; while MOLL-7 is close, other crew's Fear saves are made at [−].",
   },
   {
     id: "oyelaran",
@@ -98,6 +108,7 @@ export function sanitizeCrew(list) {
     let id = slug(c.id || name) || `pc${out.length + 1}`;
     while (seen.has(id)) id += "x";
     seen.add(id);
+    const minStress = int(c.minStress, 0, MAX_STRESS, 2);
     out.push({
       id,
       name,
@@ -110,7 +121,8 @@ export function sanitizeCrew(list) {
       saves: Object.fromEntries(SAVES.map((k) => [k, int(c.saves?.[k], 1, 99, 30)])),
       health: { current: int(c.health?.current, 0, 99, 12), max: int(c.health?.max, 1, 99, 12) },
       wounds: { current: int(c.wounds?.current, 0, 9, 0), max: int(c.wounds?.max, 1, 9, 2) },
-      stress: int(c.stress, 0, 20, 2),
+      stress: Math.max(int(c.stress, 0, MAX_STRESS, 2), minStress),
+      minStress,
       startStress: int(c.startStress ?? DEFAULT_CREW.find((d) => d.id === slug(c.id || name))?.stress, 0, 20, 2),
       skills: (Array.isArray(c.skills) ? c.skills : String(c.skills || "").split(",")).map(skillOf).filter(Boolean).slice(0, 12),
       loadout: str(c.loadout, 400),
@@ -144,11 +156,30 @@ export function setVital(pc, field, value) {
   const n = Math.round(Number(value));
   if (!Number.isFinite(n) || !VITALS.includes(field)) return null;
   const old = field === "stress" ? pc.stress : pc[field].current;
-  const next = field === "stress" ? Math.max(0, Math.min(20, n)) : Math.max(0, Math.min(pc[field].max, n));
+  const next = field === "stress" ? Math.max(pc.minStress ?? 0, Math.min(MAX_STRESS, n)) : Math.max(0, Math.min(pc[field].max, n));
   if (field === "stress") pc.stress = next;
   else pc[field].current = next;
   return [old, next];
 }
+
+export function gainStress(pc, n) {
+  const from = pc.stress;
+  const want = from + Math.max(0, Math.round(Number(n)) || 0);
+  const [, to] = setVital(pc, "stress", want);
+  return { from, to, over: Math.max(0, want - MAX_STRESS) };
+}
+
+export function raiseMinStress(pc, n) {
+  const from = pc.minStress ?? 2;
+  pc.minStress = Math.min(MAX_STRESS, from + n);
+  if (pc.stress < pc.minStress) pc.stress = pc.minStress;
+  return [from, pc.minStress];
+}
+
+export const closeCrew = (pc, crew, roomOf) => {
+  const room = roomOf(pc.id);
+  return room ? crew.filter((c) => c.id !== pc.id && roomOf(c.id) === room) : [];
+};
 
 export function crewStatus(crew) {
   return crew.map((c) => `- ${c.name}: Health ${c.health.current}/${c.health.max}, Wounds ${c.wounds.current}/${c.wounds.max}, Stress ${c.stress}. Carrying: ${c.items.join(", ") || "nothing"}`).join("\n");
@@ -157,7 +188,7 @@ export function crewStatus(crew) {
 export function freshen(pc) {
   pc.health.current = pc.health.max;
   pc.wounds.current = 0;
-  pc.stress = pc.startStress;
+  pc.stress = Math.max(pc.startStress, pc.minStress ?? 0);
   pc.items = itemsFrom(pc.loadout);
 }
 
@@ -208,5 +239,5 @@ export const skillText = (s) => `${s.name} +${s.bonus}`;
 export const findSkill = (pc, name) => (name ? (pc?.skills || []).find((s) => s.name.toLowerCase() === String(name).toLowerCase()) : null) || null;
 
 export function crewBrief(crew) {
-  return crew.map((c) => `- ${c.name} (${c.pronouns || "?"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
+  return crew.map((c) => `- ${c.name} (${c.pronouns || "?"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout} Trauma response (${c.className}): ${traumaResponse(c)}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
 }
