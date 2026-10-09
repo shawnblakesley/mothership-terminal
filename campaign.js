@@ -6,6 +6,7 @@ import { sanitizeCast, findCast, PORTRAIT_FILE } from "./cast.js";
 import { SPEAKERS, fromPreset } from "./voices.js";
 import { sanitizeResources, rigStation, resourcesFrom, fuelCost, portMult, PRICES, MRE_PACK, TANK, firearms, addMagazines } from "./resources.js";
 import { weaponByName } from "./weapons.js";
+import { sanitizeMoney, startingCredits, DEBT_PAYMENT, DEBT_EVERY, DELIVERY, finalFee, upfrontOf, duesOf, debtDue, book, spend, exact, debtLetter, DUES_PCT } from "./money.js";
 
 export const CAMPAIGNS = [RIM_HAULERS];
 export const campaignById = (id) => CAMPAIGNS.find((c) => c.id === id) || null;
@@ -32,8 +33,16 @@ export const isTransit = (story) => !story.at;
 export const placeOf = (c, story) => (story.at ? loc(c, story.at).name : `${loc(c, story.from).name} to ${loc(c, story.to).name}`);
 export const endsAt = (story) => story.at || story.to;
 
-export function newProgress(c) {
-  return { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew: sanitizeCrew(structuredClone(c.crew)), cast: {}, sessions: 0, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {}, resources: sanitizeResources(c.ship.resources, c.ship.resources) };
+export function newProgress(c, rng) {
+  const crew = sanitizeCrew(structuredClone(c.crew));
+  const p = { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew, cast: {}, sessions: 0, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {}, resources: sanitizeResources(c.ship.resources, c.ship.resources), ...sanitizeMoney({}, c, crew) };
+  // Starting credits are 2d10x10 per character, rolled once here (PSG), and shown in the ledger.
+  for (const pc of p.crew) {
+    const r = startingCredits(rng);
+    pc.credits = 0;
+    book(p, pc.id, r.total, `starting credits, 2d10x10: (${r.dice[0]}+${r.dice[1]})x10`);
+  }
+  return p;
 }
 
 export function sanitizeProgress(p) {
@@ -51,6 +60,7 @@ export function sanitizeProgress(p) {
       history: String(x.history || "").slice(-600),
     };
   }
+  const crew = sanitizeCrew(Array.isArray(p.crew) && p.crew.length ? p.crew : structuredClone(c.crew));
   return {
     id: c.id,
     startedAt: Number(p.startedAt) || Date.now(),
@@ -59,12 +69,13 @@ export function sanitizeProgress(p) {
     sessions: Math.max(0, Math.min(9999, Math.round(Number(p.sessions) || 0))),
     offered: [...new Set(Array.isArray(p.offered) ? p.offered : [])].filter(has).slice(0, 9),
     done: (Array.isArray(p.done) ? p.done : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, outcome: String(d.outcome || "").slice(0, 1500), at: Number(d.at) || 0 })).slice(-100),
-    crew: sanitizeCrew(Array.isArray(p.crew) && p.crew.length ? p.crew : structuredClone(c.crew)),
+    crew,
     cast,
     factions: Object.fromEntries(c.factions.map((f) => [f.id, clampStanding(p.factions?.[f.id])])),
     favours: Object.fromEntries(c.factions.filter((f) => p.favours?.[f.id]).map((f) => [f.id, true])),
     nudges: Object.fromEntries(c.cast.map((m) => [m.id, Math.max(-1, Math.min(1, Math.round(Number(p.nudges?.[m.id]) || 0)))]).filter(([, n]) => n)),
     resources: sanitizeResources(p.resources, c.ship.resources),
+    ...sanitizeMoney(p, c, crew),
   };
 }
 
@@ -359,8 +370,8 @@ export function resupplyView(c, p) {
   };
 }
 
-// Buys supplies for the rig and one character; the Warden takes the credits until money is tracked. lines: counts of fuel, ammo (for `ammoFor`), aid, stimpak, mre, tank.
-export function resupply(p, c, { to, lines = {}, ammoFor = "", fuelPrice = 0 } = {}) {
+// Buys supplies for the rig and one character, paid from the rig account or a character (`pay`). lines: counts of fuel, ammo (for `ammoFor`), aid, stimpak, mre, tank.
+export function resupply(p, c, { to, lines = {}, ammoFor = "", fuelPrice = 0, pay = "rig" } = {}) {
   if (p.current) return { ok: false, error: "Finish the story being played first." };
   const v = resupplyView(c, p);
   if (!v.trade) return { ok: false, error: `${v.name} won't trade with the crew.` };
@@ -375,6 +386,8 @@ export function resupply(p, c, { to, lines = {}, ammoFor = "", fuelPrice = 0 } =
   if (pc && pc.items.length + slots > 24) return { ok: false, error: `${pc.name} can't carry that many items.` };
   const fuelEach = Math.round(Math.max(0, Number(fuelPrice) || 0) * v.fuelFactor);
   const total = want.fuel * fuelEach + want.ammo * v.prices.ammo + want.aid * v.prices.aid + want.stimpak * v.prices.stimpak + want.mre * v.prices.mre + want.tank * v.prices.tank;
+  const paid = spend(p, pay, total, `resupply at ${v.name}`);
+  if (!paid.ok) return paid;
   const bought = [];
   if (want.fuel) { p.resources.fuel += want.fuel; bought.push(`${want.fuel} fuel`); }
   if (want.mre) { p.resources.stores.rations = Math.min(99, p.resources.stores.rations + want.mre * MRE_PACK); bought.push(`${want.mre * MRE_PACK} MREs for the rig`); }
@@ -383,7 +396,7 @@ export function resupply(p, c, { to, lines = {}, ammoFor = "", fuelPrice = 0 } =
     for (let i = 0; i < want[k]; i++) pc.items.push(item[0].toUpperCase() + item.slice(1));
     if (want[k]) bought.push(`${want[k]} ${item}${want[k] > 1 ? "s" : ""}`);
   }
-  return { ok: true, total, bought, to: pc?.name || "", at: v.name, fuelFree: want.fuel > 0 && !fuelEach };
+  return { ok: true, total, bought, to: pc?.name || "", at: v.name, fuelFree: want.fuel > 0 && !fuelEach, entries: paid.entries };
 }
 
 // What the players' screens get of the sector: a whitelist, so nothing of a story's arc, adversary, secrets, cast or description can leak.
@@ -400,4 +413,69 @@ export function sectorPayload(c, p) {
     played: p.done.map((d) => story(d.id)).filter(Boolean).map(({ id, title }) => ({ id, title })),
     offered: (p.offered || []).map(story).filter(Boolean).map(({ id, title, hook, job }) => ({ id, title, hook, job, ...(({ x, y }) => ({ x, y }))(spot(story(id))) })),
   };
+}
+
+// ---- Pay, debt and union dues (campaign house rules; credits notation and starting credits are PSG)
+
+// A story's fee goes to the rig account, less the union's dues (house rule: 4% of the pay). Skipping the dues keeps the 4% and costs Union standing.
+function payIn(p, c, story, gross, why, skipDues) {
+  const out = { lines: [], entries: [], changes: [] };
+  if (gross <= 0) return out;
+  const dues = duesOf(gross);
+  out.entries.push(book(p, "rig", gross, `${story.title}: fee, ${why}`));
+  if (!skipDues && dues) out.entries.push(book(p, "rig", -dues, `${story.title}: union dues, ${DUES_PCT}% (house rule)`));
+  out.lines.push(`Pay for ${story.title} (house rule): ${exact(gross)} fee, ${skipDues ? "union dues skipped (kept " + exact(dues) + ")" : `less ${DUES_PCT}% union dues ${exact(dues)}`}, ${exact(gross - (skipDues ? 0 : dues))} to the rig account.`);
+  if (skipDues && dues) {
+    const ch = shiftStanding(p, c, "union", -1, "skipped the union dues");
+    if (ch) out.changes.push(ch);
+  }
+  return out;
+}
+
+// When a story is played: any part of its fee paid up front goes in at once (dues taken), once per play.
+export function payUpfront(p, c, story) {
+  const out = { lines: [], entries: [], changes: [] };
+  const amount = upfrontOf(story);
+  if (!amount || p.upfront?.[story.id]) return out;
+  p.upfront = { ...p.upfront, [story.id]: amount };
+  return payIn(p, c, story, amount, "paid up front", false);
+}
+
+// When a story is finished: the fee by how it was delivered, the debt's schedule, and the finale's payoff.
+// o: { delivery: full|partly|none, late, skipDues, fee } (fee overrides the computed remainder). Call after finishInto.
+export function settleStory(p, c, story, o = {}) {
+  const delivery = DELIVERY[o.delivery] === undefined ? "full" : o.delivery;
+  const paid = p.upfront?.[story.id] || 0;
+  const out = { lines: [], entries: [], changes: [], handout: null, delivery };
+  const take = (r) => { out.lines.push(...r.lines); out.entries.push(...r.entries); out.changes.push(...r.changes); };
+  if (story.payoff) {
+    const owed = p.debt, cleared = Math.round(owed * DELIVERY[delivery]);
+    if (cleared) {
+      book(p, "debt", -cleared, `${story.title}: the finale ${delivery === "full" ? "pays off" : "pays down"} the note`);
+      out.entries.push(p.ledger.at(-1));
+      out.lines.push(`${story.title} (house rule): ${delivery === "full" ? "the note to Gallow-Mercer Finance is paid off" : `half the note is paid off (${exact(cleared)})`}.`);
+    } else out.lines.push(`${story.title}: not delivered, so the note stands at ${exact(p.debt)}.`);
+  } else {
+    const fee = o.fee === undefined || o.fee === "" || o.fee === null ? finalFee(story, delivery, !!o.late, paid) : Math.max(0, Math.round(Number(o.fee) || 0));
+    if (story.late && o.late) out.lines.push(`${story.title}: delivered late, which voids the fee (house rule).`);
+    if (fee) take(payIn(p, c, story, fee, DELIVERY[delivery] < 1 ? (delivery === "none" ? "not delivered" : "delivered in part, half the fee") : "delivered in full", !!o.skipDues));
+    else if (!(story.late && o.late)) out.lines.push(`${story.title}: no fee to pay${paid ? ` (${exact(paid)} was paid up front)` : ""}.`);
+  }
+  delete p.upfront?.[story.id];
+  p.finished = (p.finished || 0) + 1;
+  if (debtDue(p.finished, p.debt) && !story.payoff) {
+    const due = Math.min(DEBT_PAYMENT, p.debt);
+    if (p.money >= due) {
+      out.entries.push(book(p, "rig", -due, "payment on the Gallow-Mercer Finance note"), book(p, "debt", -due, "scheduled payment"));
+      p.missed = 0;
+      out.lines.push(`Debt payment due (house rule: ${exact(DEBT_PAYMENT)} every ${DEBT_EVERY} finished stories): ${exact(due)} paid from the rig account; ${exact(p.debt)} still owed to Gallow-Mercer Finance.`);
+    } else {
+      p.missed++;
+      const ch = shiftStanding(p, c, "gallow_mercer", -1, "missed a payment");
+      if (ch) out.changes.push(ch);
+      out.handout = debtLetter(p, c, due);
+      out.lines.push(`Debt payment MISSED (house rule): ${exact(due)} was due and the rig account has ${exact(p.money)}. Gallow-Mercer Finance has sent a letter; ${exact(p.debt)} still owed.`);
+    }
+  }
+  return out;
 }

@@ -595,6 +595,9 @@ details.sec > summary:hover h2 { color: var(--fg); }
 .stand-pill.s1 { color: #7bd88f; border-color: #7bd88f; }
 .stand-pill.s-1 { color: #ff6b6b; border-color: #ff6b6b; }
 .cmpfx { display: flex; gap: 6px; align-items: baseline; margin: 2px 0; }
+.ledger { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.ledger td { padding: 2px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.ledger .num { text-align: right; white-space: nowrap; }
 .sector .story rect { fill: #1b2329; stroke: #8fa3b0; stroke-width: 1.5; }
 .sector .story text { fill: var(--fg); font: 700 11px var(--mono); text-anchor: middle; pointer-events: none; }
 .sector .story:hover rect, .sector .story:focus-visible rect { stroke: var(--fg); fill: #26313a; }

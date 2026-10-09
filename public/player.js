@@ -743,6 +743,7 @@
         ${c.crime ? `<div><span class="cs-k">CONVICTION</span> ${escH(c.crime)}</div>` : ""}
         ${c.backstory ? `<div class="p-text">${escH(c.backstory)}</div>` : ""}
         ${c.trinket ? `<div><span class="cs-k">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
+        ${c.credits ? `<div><span class="cs-k">CREDITS</span> ${c.credits.toLocaleString("en-US")} CR</div>` : ""}
         ${c.patch ? `<div><span class="cs-k">PATCH</span> ${escH(c.patch)}</div>` : ""}
         ${header.trauma?.[c.className] ? `<div><span class="cs-k">TRAUMA RESPONSE</span> ${escH(header.trauma[c.className])}</div>` : ""}
       </div>`;

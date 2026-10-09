@@ -156,6 +156,7 @@ test("resupply: PSG prices times the port class (X x2, C x1.25, B x1, A x1) time
 test("resupply buys fuel, magazines, kits, stimpaks, MREs and tanks and totals the price", () => {
   const p = newProgress(c);
   p.at = "tollgate";
+  p.money = 100000;
   p.resources.fuel = 4;
   const who = p.crew[1];
   const before = who.items.length;

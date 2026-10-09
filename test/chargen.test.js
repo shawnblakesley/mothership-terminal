@@ -118,7 +118,7 @@ test("the Scientist example builds a valid sheet", () => {
   assert.deepEqual(errors, []);
   assert.deepEqual(sheet.skills.map((s) => [s.name, s.bonus]), [["Zoology", 10], ["Chemistry", 10], ["Pathology", 15], ["Surgery", 20]]);
   assert.ok(sanitizeCrew([sheet]).length === 1);
-  assert.match(sheet.notes, /Credits: \d+cr/);
+  assert.ok(sheet.credits >= 20 && sheet.credits <= 200 && !/Credits/.test(sheet.notes));
 });
 
 test("validateCharacter rejects what the rules do not allow", () => {
