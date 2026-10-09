@@ -7,6 +7,7 @@ import { rigBrief } from "./resources.js";
 import { statsLine } from "./combat.js";
 import { WOUND_LABELS } from "./wounds.js";
 import { HAZARDS, hazardBrief } from "./hazards.js";
+import { shipBrief, normalizeShipFight } from "./ships.js";
 import { terminalsBrief, netOf, systemsOf, systemName, screensBrief } from "./terminals.js";
 import { TILES } from "./rooms.js";
 import { roomId } from "./clean.js";
@@ -111,7 +112,7 @@ const outcomeCheckSchema = () => ({
 const CREW_REF = "A crew member's name, a class (Android, Marine, Scientist, Teamster), or Humans.";
 
 // The reply schema. Fields for features that are switched off, or that don't apply to this game, are left out entirely.
-function buildSchema(voices, config = {}, { solo = false, files = false } = {}) {
+function buildSchema(voices, config = {}, { solo = false, files = false, ships = false } = {}) {
   const crew = !!config.agentCrew, fx = !!config.agentEffects, variants = !!config.agentVariants;
   const properties = {
     lines: {
@@ -352,6 +353,20 @@ function buildSchema(voices, config = {}, { solo = false, files = false } = {}) 
         },
       },
     } : {}),
+    ...(ships ? {
+      ship_fight: {
+        type: "object",
+        description: "Ship-to-ship combat (SHIP-TO-SHIP COMBAT): start a fight, set the enemy's move and fire for this round, or end it. The app rolls and applies the rest. {} when nothing changes.",
+        additionalProperties: false,
+        properties: {
+          start: { type: "object", description: "Begin a fight against one of the story's ships, only when the fiction makes it one.", additionalProperties: false, required: ["ship"], properties: { ship: { type: "string", description: "A ship id from SHIP-TO-SHIP COMBAT." }, range: { type: "string", enum: ["detection", "firing", "contact"], description: "Starting range band; firing if unsure." } } },
+          end: { type: "boolean", description: "True when the fight is over (ceasefire, surrender, one side gone, a boarding that settles it)." },
+          enemy_move: { type: "string", enum: ["maintain", "evade", "pursue"], description: "The enemy's secret movement choice for the current round, before movement resolves." },
+          enemy_fire: { type: "boolean", description: "Whether the enemy fires this round; leave it out for the default (an armed ship fires, an unarmed one holds)." },
+          fuel: { type: "integer", description: "Fuel the enemy spends on that move (Evade: at least 3 at Contact, 2 at Firing, 1 at Detection; 0 for maintain)." },
+        },
+      },
+    } : {}),
     dm_note: { type: "string", description: "Private note to the Warden: reasoning, what the players may be trying, answers to Warden questions. Players never see it." },
   };
   return { type: "object", additionalProperties: false, required: Object.keys(properties), properties };
@@ -397,6 +412,7 @@ const REPLY_EXAMPLE = {
   effects: [],
   outcome_check: NO_CHECK,
   story_end: { ended: false, how: "" },
+  ship_fight: {},
   dm_note: "Salk begged them not to open the cargo door.",
 };
 
@@ -729,6 +745,7 @@ function buildContext(state, steer, aside = false) {
   const plans = Object.entries(state.config.rooms || {});
   if (plans.length) ctx.push(`ROOM FLOOR PLANS (now):\n${plans.map(([id, p]) => `${id}:\n${p.rows.join("\n")}`).join("\n\n")}`);
   if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
+  { const ships = shipBrief(state); if (ships) ctx.push(ships); }
   if (state.campaign && state.station?.rig) ctx.push(`${rigBrief(state.station)}${state.rationing ? "\n- RATIONING: food and water are cut off; the app tracks hunger every hour (PSG 32.5)." : ""}`);
   const fighters = state.config.voices.filter((v) => v.adversary?.stats);
   if (fighters.length) ctx.push(`ADVERSARIES' CONDITION (now; Warden's eyes only):\n${fighters.map((v) => {
@@ -777,7 +794,7 @@ export function buildRequest(state, steer, { aside = false } = {}) {
   const last = messages.at(-1);
   if (!aside && last?.role === "user") last.content += "\n\n(Follow the LENGTH setting; earlier replies may be longer.)";
   const found = new Set(state.found || []);
-  const schema = buildSchema(agentVoices(state.config), state.config, { solo: state.solo?.phase === "play", files: (state.config.roomDocs || []).some((d) => !found.has(d.id)) });
+  const schema = buildSchema(agentVoices(state.config), state.config, { solo: state.solo?.phase === "play", files: (state.config.roomDocs || []).some((d) => !found.has(d.id)), ships: !!(state.config.ships?.length || state.shipFight) });
   return {
     system: buildSystem(state),
     context: buildContext(state, steer, aside),
@@ -859,6 +876,7 @@ export function parseReply(text, voices) {
     effects: normalizeEffects(r?.effects),
     outcome_check: normalizeCheck(r?.outcome_check),
     story_end: { ended: r?.story_end?.ended === true, how: String(r?.story_end?.how ?? "").trim().slice(0, 300) },
+    ship_fight: normalizeShipFight(r?.ship_fight),
     layout: String(r?.layout ?? "").trim().slice(0, 4000),
     room_plans: (Array.isArray(r?.room_plans) ? r.room_plans : []).filter((p) => p && p.room && Array.isArray(p.rows)).slice(0, 8)
       .map((p) => ({ room: roomId(p.room), rows: p.rows.map(String) })),

@@ -117,6 +117,7 @@
 
   function applyHeader(h) {
     header = h;
+    renderShip();
     showCredit();
     applyTerminal();
     renderSide();
@@ -566,10 +567,15 @@
     renderSide();
   }
 
+  function renderShip() {
+    if (window.ShipUI && $("shipbar")) ShipUI.player($("shipbar"), header?.ship || null, spectate ? null : mine(), send);
+  }
+
   function setCrew(list, taken, playedBy) {
     crew = list || [];
     claims = taken || {};
     played = playedBy || [];
+    renderShip();
     renderCastbar();
     if (myId && !mine()) {
       myId = null;
@@ -1422,6 +1428,10 @@
     const mark = own && own.advantage !== roll.advantage ? ` · YOURS IS ${ADV_MARK[own.advantage]}${why}` : why ? ` ·${why}` : "";
     const rad = pc.cond?.rad || 0;
     if (roll.panic) return `YOUR STRESS: ${pc.stress} · ROLL ABOVE IT ON A D20 TO KEEP YOUR COOL${mark}`;
+    if (roll.ship) {
+      const sb = skillBonus(pc, roll.skillName);
+      return `${roll.ship.label.toUpperCase()}: ${roll.ship.value}${sb ? ` + ${roll.skillName.toUpperCase()} ${sb}` : ""} · ROLL UNDER ${roll.ship.value + sb}${mark}`;
+    }
     const stat = Math.max(1, (pc.stats[roll.check] ?? pc.saves[roll.check]) - rad);
     const bonus = skillBonus(pc, roll.skillName);
     return `YOUR ${roll.check.toUpperCase()}: ${stat}${rad ? ` (-${rad} RADIATION)` : ""}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}${mark}`;
