@@ -2303,7 +2303,11 @@ export class Session {
       const was = pc.wounds.max;
       pc.wounds.max = Math.max(1, was + f.maxWounds);
       this.addLog("note", `${pc.name}: Maximum Wounds ${was} → ${pc.wounds.max} (${entry.name}).`);
-      if (pc.wounds.current >= pc.wounds.max && !isDead(pc)) this.callDeathSave(pc, "at Maximum Wounds");
+      if (pc.wounds.current >= pc.wounds.max && !isDead(pc)) {
+        pc.wounds.current = pc.wounds.max;
+        this.addLog("note", `${pc.name} is now at Maximum Wounds. The Panic Table doesn't say so: this is the app's reading of "on reaching Maximum Wounds: Death Save" (PSG 29).`);
+        this.callDeathSave(pc, "at Maximum Wounds");
+      }
     }
     if (f.retire) {
       this.addLog("note", `${pc.name} retires (${entry.name}): their player rolls up a new character.`);
@@ -2798,7 +2802,7 @@ export class Session {
     if (!group) return this.addLog("note", `${pc.name}: Stress over 20: reduce the most relevant Stat or Save by ${over} (PSG 20.1). Edit it on the Crew tab.`);
     const was = group[check];
     group[check] = Math.max(1, was - over);
-    this.addLog("note", `${pc.name}: Stress over 20 by ${over}, so ${CHECKS[check].label}${CHECKS[check].kind === "Save" ? " Save" : ""} ${was} → ${group[check]} (PSG 20.1: the Stat or Save that was just rolled).`);
+    this.addLog("note", `${pc.name}: Stress over 20 by ${over}, so ${CHECKS[check].label}${CHECKS[check].kind === "Save" ? " Save" : ""} ${was} → ${group[check]} (PSG 20.1 says "the most relevant Stat or Save"; taking the one just rolled is the app's reading).`);
   }
 
   applyCrewChanges(changes) {
