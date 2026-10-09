@@ -594,7 +594,7 @@
     $("cb-crew").innerHTML = pcs.map(({ c, by }) => {
       const wounds = Array.from({ length: c.wounds.max }, (_, i) => `<i class="${i < c.wounds.current ? "on" : ""}"></i>`).join("");
       return `<div class="cb-pc" data-id="${escH(c.id)}">
-        <span class="cb-waves" aria-hidden="true">${WAVE_BARS}</span>
+        <span class="vwave" aria-hidden="true">${WAVE_BARS}</span>
         <div class="cb-face">${portraitHtml(c.portrait, "cb-portrait") || '<span class="cb-noface">NO PHOTO</span>'}</div>
         <div class="cb-name"><span>${escH(shortName(c))}</span><span class="cb-wounds" title="Wounds">${wounds}</span></div>
         <div class="cb-vit"><span>HP ${c.health.current}/${c.health.max}</span><span>STRESS ${c.stress}</span></div>
@@ -615,10 +615,10 @@
   }
   const waveSeconds = (i) => 0.55 + ((i * 7) % 11) * 0.05;
   const WAVE_BARS = waveShape().map((h, i) => `<i style="--h: ${h.toFixed(2)}; --t: ${waveSeconds(i).toFixed(2)}s"></i>`).join("");
-  document.querySelector(".cb-cam .cb-waves").innerHTML = WAVE_BARS;
+  document.querySelector(".cb-cam .vwave").innerHTML = WAVE_BARS;
   function skewWave(card) {
     const heights = waveShape();
-    card.querySelectorAll(".cb-waves i").forEach((bar, i) => {
+    card.querySelectorAll(".vwave i").forEach((bar, i) => {
       bar.style.setProperty("--h", heights[i].toFixed(2));
       bar.style.setProperty("--d", `${(-Math.random() * waveSeconds(i)).toFixed(2)}s`);
     });
@@ -884,10 +884,11 @@
   let logGen = 0;
   const logHtml = (d) => `<div class="alog" data-alog="${escH(d.id)}">
       <div class="alog-head"><span>VOICE: ${escH(d.audio.speaker.toUpperCase())}</span><span class="alog-state">READY</span></div>
-      <div class="alog-ctl"><button type="button" class="p-btn" data-alog-play>[ PLAY ]</button> <button type="button" class="p-btn" data-alog-stop hidden>[ STOP ]</button></div>
+      <div class="alog-ctl"><button type="button" class="p-btn" data-alog-play>[ PLAY ]</button> <button type="button" class="p-btn" data-alog-stop hidden>[ STOP ]</button><span class="vwave" aria-hidden="true">${WAVE_BARS}</span></div>
       <div class="alog-lines">${d.audio.lines.map((l, i) => `<div class="alog-line" data-i="${i}">${l.who ? `<span class="alog-who">${escH(l.who)}:</span> ` : ""}${escH(l.text)}</div>`).join("")}</div>
     </div>`;
   function stopLog() {
+    $("docs-body").querySelector(".alog")?.classList.remove("talking");
     logGen++;
     log?.clip?.stop();
     log = null;
@@ -913,7 +914,11 @@
       state(`PLAYING ${i + 1}/${lines.length}`);
       if (buf) {
         log.clip = buf.composed ? Voice.playClip(buf, null, buf.seconds) : Voice.playClip(buf, d.audio.lines[i].fx);
-        if (!(await log.clip.done) || gen !== logGen) return;
+        skewWave(box);
+        box.classList.add("talking");
+        const finished = await log.clip.done;
+        box.classList.remove("talking");
+        if (!finished || gen !== logGen) return;
       }
       lines[i].classList.replace("now", "said");
       await new Promise((r) => setTimeout(r, 350));
