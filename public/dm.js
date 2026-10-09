@@ -93,6 +93,15 @@
     };
   }
 
+  document.addEventListener("click", (e) => {
+    const h = e.target.closest(".hint[title]");
+    if (!h) return;
+    e.preventDefault();
+    toast(h.title);
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => ($("toast").hidden = true), 12000);
+  });
+
   const localVoices = () => store.get("localVoices") !== "0";
   function announceVoices() {
     const r = Speech.ready, on = localVoices();
