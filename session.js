@@ -468,8 +468,8 @@ export class Session {
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
     this.lastNet = this.state.log.findLast((e) => e.net !== "*")?.net || "";
     this.clockTimers = new Map();
-    this.talkers = new Set();
-    this.talkingSent = "";
+    this.talkers = new Map();
+    this.talkingSent = "|false";
     for (const c of this.state.clocks) this.scheduleClock(c);
     this.genCounter = 0;
     this.playhead = 0;
@@ -2432,14 +2432,16 @@ export class Session {
     return { enabled: true, ...d, players, sttKey: !!this.sttKey };
   }
 
-  talking(userId, on) {
+  talking(userId, on, warden = false) {
     if (userId === null) this.talkers.clear();
-    else if (on) this.talkers.add(userId);
+    else if (on) this.talkers.set(userId, warden);
     else this.talkers.delete(userId);
-    const ids = [...new Set([...this.talkers].map((u) => this.state.discordPlayers?.[u]?.crew).filter(Boolean))];
-    if (ids.join() === this.talkingSent) return;
-    this.talkingSent = ids.join();
-    this.toPlayersIf((c) => c.stream, { t: "talking", ids });
+    const ids = [...new Set([...this.talkers.keys()].map((u) => this.state.discordPlayers?.[u]?.crew).filter(Boolean))];
+    const wardenTalking = [...this.talkers.values()].some(Boolean);
+    const sent = `${ids.join()}|${wardenTalking}`;
+    if (sent === this.talkingSent) return;
+    this.talkingSent = sent;
+    this.toPlayersIf((c) => c.stream, { t: "talking", ids, warden: wardenTalking });
   }
   playerOf(userId) {
     const id = this.state.discordPlayers?.[userId]?.crew;

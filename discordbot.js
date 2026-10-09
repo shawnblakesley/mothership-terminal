@@ -290,7 +290,7 @@ async function onListen(i) {
   }
   connection.receiver.speaking.on("start", (userId) => {
     if (links.get(i.guildId) !== link) return;
-    getSession(link.session)?.talking(userId, true);
+    getSession(link.session)?.talking(userId, true, userId === link.wardenId);
     capture(i.guild, link, userId);
   });
   connection.receiver.speaking.on("end", (userId) => links.get(i.guildId) === link && getSession(link.session)?.talking(userId, false));

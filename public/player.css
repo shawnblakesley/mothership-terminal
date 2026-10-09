@@ -632,16 +632,17 @@ body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #
 .mm-pcs { font-size: 20px; }
 #cb-crew { display: flex; gap: 2.5vh; align-items: flex-end; }
 .cb-pc, .cb-cam { display: flex; flex-direction: column; gap: 0.15em; font-size: max(14px, 2vh); line-height: 1.1; text-transform: uppercase; }
-.cb-pc { width: var(--cb-face); }
+.cb-pc { position: relative; width: var(--cb-face); }
 .cb-cam { width: var(--cb-cam); }
 .cb-face { position: relative; width: var(--cb-face); height: var(--cb-face); border: 2px solid var(--dim); display: grid; place-items: center; overflow: hidden; }
 .cb-pc.talking .cb-face { border-color: var(--fg); box-shadow: 0 0 10px var(--glow); }
-.cb-waves { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; height: 18%; display: flex; align-items: flex-end; gap: 1.2%; padding: 0 6% 5%; background: linear-gradient(to top, rgba(0, 0, 0, 0.85), transparent); opacity: 0; transition: opacity 0.4s; pointer-events: none; }
-.cb-pc.talking .cb-waves { opacity: 1; transition-duration: 0.1s; }
+.cb-waves { position: absolute; z-index: 2; left: 0; right: 0; top: calc(100% + 0.3em); height: calc(var(--cb-face) * 0.18); display: flex; align-items: flex-end; gap: 1.2%; padding: 0 6%; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
+.talking .cb-waves { opacity: 1; transition-duration: 0.1s; }
+.cb-cam { position: relative; }
 .cb-waves i { flex: 1; height: 100%; background: var(--fg); opacity: 0.75; box-shadow: 0 0 2px var(--glow); border-radius: 1px 1px 0 0; transform-origin: bottom; transform: scaleY(0.12); }
-.cb-pc.talking .cb-waves i { animation: cb-wave var(--t) infinite ease-in-out; }
+.talking .cb-waves i, body.calm .talking .cb-waves i { animation: cb-wave var(--t) ease-in-out var(--d, 0s) infinite !important; }
 .cb-waves { -webkit-mask: var(--static) 0 0 / 48px 48px; mask: var(--static) 0 0 / 48px 48px; --static: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='1' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1.5 -0.1'/></filter><rect width='48' height='48' filter='url(%23n)'/></svg>"); }
-.cb-pc.talking .cb-waves { animation: cb-static 0.32s infinite steps(4); }
+.talking .cb-waves { animation: cb-static 0.32s infinite steps(4); }
 @keyframes cb-static { 25% { -webkit-mask-position: 17px 31px; mask-position: 17px 31px; } 50% { -webkit-mask-position: 35px 7px; mask-position: 35px 7px; } 75% { -webkit-mask-position: 9px 22px; mask-position: 9px 22px; } }
 @keyframes cb-wave { 0%, 100% { transform: scaleY(0.12); } 50% { transform: scaleY(var(--h)); } }
 .cb-face .portrait { width: 100%; height: 100%; outline: 0; box-shadow: none; }

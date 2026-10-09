@@ -594,7 +594,8 @@
     $("cb-crew").innerHTML = pcs.map(({ c, by }) => {
       const wounds = Array.from({ length: c.wounds.max }, (_, i) => `<i class="${i < c.wounds.current ? "on" : ""}"></i>`).join("");
       return `<div class="cb-pc" data-id="${escH(c.id)}">
-        <div class="cb-face">${portraitHtml(c.portrait, "cb-portrait") || '<span class="cb-noface">NO PHOTO</span>'}<span class="cb-waves" aria-hidden="true">${WAVE_BARS}</span></div>
+        <span class="cb-waves" aria-hidden="true">${WAVE_BARS}</span>
+        <div class="cb-face">${portraitHtml(c.portrait, "cb-portrait") || '<span class="cb-noface">NO PHOTO</span>'}</div>
         <div class="cb-name"><span>${escH(shortName(c))}</span><span class="cb-wounds" title="Wounds">${wounds}</span></div>
         <div class="cb-vit"><span>HP ${c.health.current}/${c.health.max}</span><span>STRESS ${c.stress}</span></div>
         ${by ? `<div class="cb-by">${escH(by.toUpperCase())}</div>` : ""}
@@ -603,12 +604,32 @@
     showTalking();
   }
   let talking = new Set();
-  const WAVE_BARS = Array.from({ length: 36 }, (_, i) => {
-    const h = 0.25 + 0.75 * Math.sin((Math.PI * (i + 0.5)) / 36), t = 0.55 + ((i * 7) % 11) * 0.05;
-    return `<i style="--h: ${h.toFixed(2)}; --t: ${t.toFixed(2)}s"></i>`;
-  }).join("");
+  const WAVE_COUNT = 36;
+  function waveShape() {
+    const humps = [0.3, 0.68].map((c) => ({ c: c + (Math.random() - 0.5) * 0.14, w: 0.1 + Math.random() * 0.08, a: 0.7 + Math.random() * 0.3 }));
+    return Array.from({ length: WAVE_COUNT }, (_, i) => {
+      const x = (i + 0.5) / WAVE_COUNT;
+      const hump = Math.max(...humps.map(({ c, w, a }) => a * Math.exp(-(((x - c) / w) ** 2))));
+      return Math.min(1, Math.max(0.15, 0.18 + 0.82 * hump + (Math.random() - 0.5) * 0.12));
+    });
+  }
+  const waveSeconds = (i) => 0.55 + ((i * 7) % 11) * 0.05;
+  const WAVE_BARS = waveShape().map((h, i) => `<i style="--h: ${h.toFixed(2)}; --t: ${waveSeconds(i).toFixed(2)}s"></i>`).join("");
+  document.querySelector(".cb-cam .cb-waves").innerHTML = WAVE_BARS;
+  function skewWave(card) {
+    const heights = waveShape();
+    card.querySelectorAll(".cb-waves i").forEach((bar, i) => {
+      bar.style.setProperty("--h", heights[i].toFixed(2));
+      bar.style.setProperty("--d", `${(-Math.random() * waveSeconds(i)).toFixed(2)}s`);
+    });
+  }
+  let wardenTalking = false;
   function showTalking() {
-    for (const el of $("cb-crew").querySelectorAll(".cb-pc")) el.classList.toggle("talking", talking.has(el.dataset.id));
+    const cam = document.querySelector(".cb-cam");
+    for (const [el, on] of [...[...$("cb-crew").querySelectorAll(".cb-pc")].map((el) => [el, talking.has(el.dataset.id)]), [cam, wardenTalking]]) {
+      if (on && !el.classList.contains("talking")) skewWave(el);
+      el.classList.toggle("talking", on);
+    }
   }
 
   const shortName = (c) => (c.name.match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || c.name.split(" ")[0]).toUpperCase();
@@ -1558,7 +1579,7 @@
         case "crew": setCrew(msg.crew, msg.claims, msg.played); break;
         case "wardenLog": onWardenLog(msg); break;
         case "streamMap": stationMap = msg.map; renderCastbar(); break;
-        case "talking": talking = new Set(msg.ids); showTalking(); break;
+        case "talking": talking = new Set(msg.ids); wardenTalking = !!msg.warden; showTalking(); break;
         case "isoMap": setIso(msg.map); break;
         case "rollResult": showRollResult(msg); break;
         case "roomPlan": showPlan(msg); break;
