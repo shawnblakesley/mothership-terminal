@@ -74,7 +74,7 @@ On the existing distribution:
   ```bash
   read -rs KEY && aws ssm put-parameter --region us-west-2 --name /mothership/openrouter-api-key --type SecureString --value "$KEY" --overwrite; unset KEY
   ```
-- **Sound pack:** the built-in sounds (`sounds.js`, `KIT`) aren't in git; their licence doesn't allow sharing the files on their own. They're in the private bucket `mothership-sounds-773206830395` (us-west-2), under `sounds/`. MothershipStack should own the bucket (private, blocked from public access) and let the server's role read `sounds/*` (`s3:GetObject`). Each deploy, `update.sh` runs `deploy/sounds.mjs`, which downloads any that are missing into `public/sounds/` with the role's credentials; until it can, stories go without them. To upload or replace them, from a machine with AWS access and the files in `public/sounds/`:
+- **Sound pack:** the built-in sounds (`sounds.js`, `KIT`) aren't in git; their licence doesn't allow sharing the files on their own. They're in the private bucket `mothership-sounds-773206830395` (us-west-2), under `sounds/`. MothershipStack owns the bucket (private, blocked from public access) and lets the server's role read `sounds/*`. Each deploy, `update.sh` runs `deploy/sounds.mjs`, which downloads any that are missing into `public/sounds/` with the role's credentials; until it can, stories go without them. To upload or replace them, from a machine with AWS access and the files in `public/sounds/`:
   ```bash
   aws s3 cp public/sounds/ s3://mothership-sounds-773206830395/sounds/ --recursive --exclude "*" --include "*.mp3"
   ```
