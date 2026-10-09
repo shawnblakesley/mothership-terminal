@@ -326,6 +326,7 @@
     renderRoll();
     renderSounds();
     renderClocks();
+    renderShop();
     renderHandouts();
     renderCastLists();
     renderMap();
@@ -457,7 +458,8 @@
       if (!sp) {
         const fx = /^Agent triggered effect: (.*?)(?: (before|after) line #\d+)?$/.exec(e.text);
         const txt = fx ? `${FX_META[fx[1].split(" ")[0]]?.[0] || "⚡"} ${esc(fx[1])}${fx[2] === "after" ? " · after this line" : ""}` : esc(e.text);
-        return `<div class="entry note${fx ? " fx" : ""}"><span class="txt">${txt}</span>${when}${del}</div>`;
+        const refund = e.shop && !e.shop.refunded ? `<button class="small" data-refund="${e.id}" title="Undo this trade: money back, item back">Refund</button>` : "";
+        return `<div class="entry note${fx ? " fx" : ""}"><span class="txt">${txt}</span>${refund}${when}${del}</div>`;
       }
       return `
       <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? `title="${e.retcon ? "Retconned: removed from screens and agent memory" : "Cut off by a player: never shown or remembered"}"` : ""}>
@@ -597,6 +599,8 @@
           ${num("health.current", c.health.current, "Health")}${num("health.max", c.health.max, "Max health")}
           ${num("wounds.current", c.wounds.current, "Wounds")}${num("wounds.max", c.wounds.max, "Max wounds")}
           ${num("stress", c.stress, "Stress")}${num("startStress", c.startStress, "Starting stress")}
+          <label title="House rule: starts at 2d10 x 10, rolled once">Credits<input type="number" data-c="credits" value="${c.credits ?? 0}" min="0" max="9999999"></label>
+
           ${txt("skills", c.skills.map(skillStr).join(", "), "Skills")}
           ${txt("crime", c.crime, "Conviction", 2)}
           ${txt("backstory", c.backstory, "Backstory", 4)}
@@ -832,6 +836,7 @@
         <label>Health <input type="number" data-c="health.current" value="${c.health.current}" min="0" max="99"> / ${c.health.max}</label>
         <label>Wounds <input type="number" data-c="wounds.current" value="${c.wounds.current}" min="0" max="99"> / ${c.wounds.max}</label>
         <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"></label>
+        <label>Credits <input type="number" data-c="credits" value="${c.credits ?? 0}" min="0" max="9999999" style="width:6em"></label>
       </div>
       ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
     </div>`;
@@ -2004,6 +2009,8 @@
   $("micBtn").onclick = () => (discordReady() ? (S.discord.listening ? send({ t: "discordStop" }) : copyDiscordCommand()) : micUnavailable ? toast(micUnavailable, "error") : setListening(!listening));
 
   $("log").addEventListener("click", (e) => {
+    const refund = e.target.closest("[data-refund]")?.dataset.refund;
+    if (refund) return send({ t: "shopRefund", id: Number(refund) });
     const id = e.target.closest("[data-del]")?.dataset.del;
     if (id) send({ t: "deleteEntry", id: Number(id) });
   });
@@ -2530,6 +2537,19 @@
     if (del) send({ t: "handoutDelete", id: del });
   });
 
+  let shopKey = "";
+  function renderShop() {
+    const ports = S.shopPorts?.length ? S.shopPorts : [{ id: "", name: "Trading post (default stock)", portClass: "C" }];
+    const key = JSON.stringify([ports, S.campaign?.at]);
+    if (key !== shopKey) {
+      shopKey = key;
+      $("shopPort").innerHTML = ports.map((p) => `<option value="${esc(p.id)}" ${p.id === S.campaign?.at ? "selected" : ""}>${esc(p.name)} (class ${p.portClass || "C"})</option>`).join("");
+    }
+    $("shopState").textContent = S.shop ? `Open: ${S.shop.name}, class ${S.shop.portClass}, prices x${S.shop.mult}.` : "Closed.";
+    $("shopClose").disabled = !S.shop;
+  }
+  $("shopOpen").onclick = () => { send({ t: "shopOpen", port: $("shopPort").value }); toast("Shop open on the players' screens."); };
+  $("shopClose").onclick = () => send({ t: "shopClose" });
   function renderClocks() {
     const list = S?.clocks || [];
     $("clockList").innerHTML = list.length ? list.map((c) => {

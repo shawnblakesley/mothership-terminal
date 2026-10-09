@@ -88,6 +88,8 @@ const DEFAULT_FACES = { rusk: "94", varga: "20", moll: "45", oyelaran: "21" };
 for (const c of DEFAULT_CREW) c.portrait = `kit/sfcp-${DEFAULT_FACES[c.id]}.png`;
 
 const str = (v, n) => String(v ?? "").slice(0, n);
+// PSG starting credits: 2d10 x 10 (d10 reads 1-10 here).
+export const startingCredits = (rand = Math.random) => (2 + Math.floor(rand() * 10) + Math.floor(rand() * 10)) * 10;
 
 export function sanitizeCrew(list) {
   const out = [];
@@ -111,6 +113,7 @@ export function sanitizeCrew(list) {
       health: { current: int(c.health?.current, 0, 99, 12), max: int(c.health?.max, 1, 99, 12) },
       wounds: { current: int(c.wounds?.current, 0, 9, 0), max: int(c.wounds?.max, 1, 9, 2) },
       stress: int(c.stress, 0, 20, 2),
+      credits: int(c.credits ?? startingCredits(), 0, 9_999_999, 0),
       startStress: int(c.startStress ?? DEFAULT_CREW.find((d) => d.id === slug(c.id || name))?.stress, 0, 20, 2),
       skills: (Array.isArray(c.skills) ? c.skills : String(c.skills || "").split(",")).map(skillOf).filter(Boolean).slice(0, 12),
       loadout: str(c.loadout, 400),

@@ -583,6 +583,7 @@
     $("hdr-file").textContent = pc ? `FILE: ${shortName(pc)}` : "FILE: NONE";
     if (!$("crewpick").hidden) renderPicker();
     if (!$("crewfile").hidden) renderFile();
+    if (shop && shopOpenNow()) renderShop();
     renderSide();
   }
   let stationMap = null;
@@ -1475,6 +1476,89 @@
     if (e.key === "Escape") $("sectorfx").hidden = true;
     else if (/^[1-9]$/.test(e.key) && sector.offered[e.key - 1]) { e.preventDefault(); voteJob(sector.offered[e.key - 1].id); }
   });
+  let shop = null, shopMode = "buy", shopCat = "all", shopSel = 0, shopAsk = null, shopNote = null;
+  const shopKey = (s) => String(s || "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+  const shopOpenNow = () => !$("shopfx").hidden;
+  function shopRows() {
+    const c = mine();
+    const inCat = (r) => shopCat === "all" || r.cat === shopCat;
+    if (shopMode === "buy") return shop.items.filter(inCat).map((i) => ({ ...i, owned: (c?.items || []).filter((x) => shopKey(x) === i.key).length, why: !c ? "NO FILE" : c.credits < i.price ? "CAN'T AFFORD" : "" }));
+    const rows = [], seen = new Map();
+    for (const x of c?.items || []) {
+      const k = shopKey(x), hit = shop.items.find((i) => i.key === k), miss = hit ? null : shop.others.find((i) => i.key === k);
+      if (!hit && !miss) continue;
+      if (seen.has(k)) { seen.get(k).owned++; continue; }
+      const row = { ...(hit || miss), name: x, price: hit ? hit.sell : 0, owned: 1, why: hit ? "" : "PORT WON'T TRADE THIS" };
+      seen.set(k, row);
+      rows.push(row);
+    }
+    return rows.filter(inCat);
+  }
+  function renderShop() {
+    if (!shop) return;
+    const c = mine(), rows = shopRows();
+    shopSel = Math.max(0, Math.min(rows.length - 1, shopSel));
+    $("sh-title").textContent = `SHOP: ${shop.name.toUpperCase()} · CLASS ${shop.portClass} · PRICES x${shop.mult} (HOUSE RULE)`;
+    $("sh-credits").textContent = c ? `CREDITS: ${c.credits ?? 0}CR` : "NO FILE";
+    for (const b of $("shopfx").querySelectorAll("[data-mode]")) b.classList.toggle("on", b.dataset.mode === shopMode);
+    $("sh-cats").innerHTML = [["all", "All"], ...shop.categories].map(([id, name]) => `<button type="button" class="p-btn sh-cat${id === shopCat ? " on" : ""}" data-cat="${id}">${escH(name.toUpperCase())}</button>`).join("");
+    $("sh-rows").innerHTML = rows.length ? rows.map((r, i) => `<div class="sh-row${i === shopSel ? " sel" : ""}${r.why ? " dim" : ""}" data-row="${i}" role="option" aria-selected="${i === shopSel}"><span class="sh-name">${escH(r.name)}${r.house ? " [HOUSE RULE]" : ""}</span><span class="sh-price">${r.why === "PORT WON'T TRADE THIS" ? "-" : `${r.price}CR`}</span><span class="sh-own">${r.owned ? `OWNED ${r.owned}` : ""}</span><span class="sh-desc">${escH(r.why && r.why !== "NO FILE" ? `${r.desc} · ${r.why}` : r.desc)}</span></div>`).join("")
+      : `<div class="sf-none">${shopMode === "sell" ? "NOTHING YOU CARRY SELLS HERE." : "NOTHING IN THIS CATEGORY."}</div>`;
+    $("sh-rows").querySelector(".sel")?.scrollIntoView({ block: "nearest" });
+    $("sh-msg").innerHTML = shopAsk ? `${escH(shopAsk.text)} <button type="button" class="p-btn" data-shop-yes>[ YES ]</button> <button type="button" class="p-btn" data-shop-no>[ NO ]</button>` : escH(shopNote || (shopMode === "sell" ? "SELLING AT HALF THIS PORT'S PRICE (HOUSE RULE)." : ""));
+  }
+  function showShop(msg) {
+    const was = shop;
+    shop = msg.shop;
+    shopAsk = shopNote = null;
+    if (!shop) { $("shopfx").hidden = true; return shopButton(); }
+    if (!was) { shopMode = "buy"; shopCat = "all"; shopSel = 0; }
+    shopButton();
+    if (!was && !spectate) { $("shopfx").hidden = false; document.activeElement?.blur(); chirp(); }
+    if (shopOpenNow()) renderShop();
+  }
+  function shopButton() {
+    $("hdr-shop").hidden = $("hdr-shop-sep").hidden = !shop || spectate;
+  }
+  function shopTry() {
+    const r = shopRows()[shopSel];
+    if (!r) return;
+    if (!mine()) shopNote = "PICK A CHARACTER FILE TO TRADE.";
+    else if (r.why) shopNote = `${r.why}.`;
+    else shopAsk = shopMode === "buy"
+      ? { text: `BUY ${r.name.toUpperCase()} FOR ${r.price}CR?`, msg: { t: "shopBuy", id: r.id } }
+      : { text: `SELL ${r.name.toUpperCase()} FOR ${r.price}CR?`, msg: { t: "shopSell", name: r.name } };
+    if (!shopAsk) FX.Sound.beep(180, 0.12, 0.05);
+    renderShop();
+  }
+  function shopGo(ok) {
+    const ask = shopAsk;
+    shopAsk = shopNote = null;
+    if (ok && ask) send(ask.msg);
+    renderShop();
+  }
+  const shopSetMode = (m) => { shopMode = m; shopSel = 0; shopAsk = shopNote = null; renderShop(); };
+  $("hdr-shop").onclick = () => { $("shopfx").hidden = false; document.activeElement?.blur(); renderShop(); };
+  $("shopfx").addEventListener("click", (e) => {
+    const mode = e.target.closest("[data-mode]")?.dataset.mode, cat = e.target.closest("[data-cat]")?.dataset.cat, row = e.target.closest("[data-row]");
+    if (mode) return shopSetMode(mode);
+    if (cat) { shopCat = cat; shopSel = 0; shopAsk = shopNote = null; return renderShop(); }
+    if (e.target.closest("[data-shop-yes]")) return shopGo(true);
+    if (e.target.closest("[data-shop-no]")) return shopGo(false);
+    if (row) { const i = Number(row.dataset.row); const again = i === shopSel; shopSel = i; shopAsk = shopNote = null; return again ? shopTry() : renderShop(); }
+    if (!e.target.closest(".sh-body, .sh-modes, .sh-msg")) $("shopfx").hidden = true;
+  });
+  addEventListener("keydown", (e) => {
+    if (!shopOpenNow() || !shop || e.ctrlKey || e.metaKey || e.altKey) return;
+    const cats = ["all", ...shop.categories.map((c) => c[0])], rows = shopRows();
+    const go = (fn) => { e.preventDefault(); shopAsk = shopNote = null; fn(); renderShop(); };
+    if (e.key === "Escape") return shopAsk ? (e.preventDefault(), shopGo(false)) : void ($("shopfx").hidden = true);
+    if (e.key === "Tab") go(() => { shopMode = shopMode === "buy" ? "sell" : "buy"; shopSel = 0; });
+    else if (e.key === "ArrowDown") go(() => { shopSel = Math.min(rows.length - 1, shopSel + 1); });
+    else if (e.key === "ArrowUp") go(() => { shopSel = Math.max(0, shopSel - 1); });
+    else if (e.key === "ArrowRight" || e.key === "ArrowLeft") go(() => { shopCat = cats[(cats.indexOf(shopCat) + (e.key === "ArrowRight" ? 1 : cats.length - 1)) % cats.length]; shopSel = 0; });
+    else if (e.key === "Enter") { e.preventDefault(); if (shopAsk) shopGo(true); else shopTry(); }
+  });
   function chirp() { FX.Sound.beep(520, 0.08, 0.05); setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90); }
   function showImage({ title, name, src, credit = "" }) {
     if (!src) return FX.Sound.sting();
@@ -1636,6 +1720,8 @@
         case "rollResult": showRollResult(msg); break;
         case "roomPlan": showPlan(msg); break;
         case "sector": showSector(msg); break;
+        case "shop": showShop(msg); break;
+        case "shopResult": shopAsk = null; shopNote = msg.text; if (shopOpenNow()) renderShop(); break;
         case "showImage": showImage(msg); break;
         case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); $("sr-err").textContent = rbErr.textContent; break;
         case "endEffect": dropCue(msg.id); FX.end(msg.id); break;

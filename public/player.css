@@ -138,6 +138,32 @@ body {
 .sf-hook { color: var(--dim); font-size: 0.85em; }
 .sf-none, .sf-played { color: var(--dim); }
 @media (max-width: 800px) { .sf-body { grid-template-columns: minmax(0, 1fr); } }
+.shopfx { cursor: default; justify-content: flex-start; overflow-y: auto; padding: 3vh 3vw; }
+.sh-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.4em 2em; width: 100%; max-width: 1100px; }
+.sh-credits { letter-spacing: 0.15em; }
+.sh-modes { display: flex; gap: 1.5em; width: 100%; max-width: 1100px; }
+.sh-modes .p-btn { padding: 0.1em 0.6em; border: 1px solid var(--dim); }
+.sh-modes .p-btn.on { background: var(--fg); color: var(--bg); text-shadow: none; }
+.sh-body { display: grid; grid-template-columns: 12em minmax(0, 1fr); gap: 1.2em; width: 100%; max-width: 1100px; align-items: start; }
+.sh-cats { display: flex; flex-direction: column; gap: 0.2em; }
+.sh-cat { padding: 0.15em 0.5em; }
+.sh-cat.on { border-left: 3px solid var(--fg); }
+.sh-rows { display: flex; flex-direction: column; gap: 0.3em; }
+.sh-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0 1.2em; padding: 0.3em 0.6em; border: 1px solid transparent; cursor: pointer; }
+.sh-row.sel { border-color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
+.sh-row.dim .sh-name, .sh-row.dim .sh-price { color: var(--dim); }
+.sh-price { text-align: right; }
+.sh-own { color: var(--dim); min-width: 5em; text-align: right; }
+.sh-desc { grid-column: 1 / -1; color: var(--dim); font-size: 0.85em; }
+.sh-msg { width: 100%; max-width: 1100px; min-height: 1.6em; }
+.sh-rule { width: 100%; max-width: 1100px; color: var(--dim); font-size: 0.8em; }
+@media (max-width: 700px) {
+  .sh-body { grid-template-columns: minmax(0, 1fr); gap: 0.6em; }
+  .sh-cats { flex-direction: row; flex-wrap: wrap; gap: 0.2em 0.8em; }
+  .sh-cat.on { border-left: 0; text-decoration: underline; }
+  .sh-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .sh-own { grid-column: 1 / -1; text-align: left; }
+}
 .isofx { cursor: default; padding: 3vh 3vw; }
 .isofx .if-map { flex: 1; min-height: 0; width: 100%; overflow: auto; text-shadow: none; scrollbar-width: none; }
 .isofx .if-map.iso { overflow: hidden; }

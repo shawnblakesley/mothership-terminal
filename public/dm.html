@@ -366,6 +366,13 @@
         </div>
         </div>
 
+        <h2>Shop <span class="hint" title="Experiment. Puts a store on player screens. List prices are the PSG's; port prices by class, the stock of each port and selling at half price are house rules.">?</span></h2>
+        <div class="card stack">
+          <div class="row wrap"><label class="small muted">Port <select id="shopPort"></select></label><span class="grow"></span><button id="shopOpen" class="primary">Open shop</button><button id="shopClose" class="ghost">Close shop</button></div>
+          <div id="shopState" class="muted small"></div>
+          <div class="muted small">House rules: port prices by class (X x2, C x1.25, B and A x1), each port's stock, selling at half price, rig resources, and credits starting at 2d10 x 10. Refund a trade from its line in the log.</div>
+        </div>
+
         <h2>Handouts <span class="hint" title="Documents that pop up on player screens and stay under DOCS. With a voice, it's an audio log: they play it, and read along.">?</span></h2>
         <div class="card stack">
           <input id="docTitle" placeholder="Title" maxlength="120">

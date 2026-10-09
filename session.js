@@ -12,6 +12,7 @@ import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, 
 import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel } from "./campaign.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
+import { openShop, shopView, buy as shopBuy, sell as shopSell, refund as shopRefund } from "./shop.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
 import { track } from "./telemetry.js";
 import { roomId } from "./clean.js";
@@ -468,6 +469,7 @@ export class Session {
     this.campaignBusy = "";
     this.sectorVotes = new Map();
     this.sectorShown = false;
+    this.shop = null;
     this.synopsisBusy = "";
     this.handoutBusy = false;
     this.speech = new VoiceRelay();
@@ -605,6 +607,42 @@ export class Session {
   sendInit(ws) {
     ws.send(JSON.stringify({ t: "init", ...this.playerView(ws) }));
     if (this.sectorShown) ws.send(JSON.stringify(this.sectorMsg(ws)));
+    if (this.shop) ws.send(JSON.stringify({ t: "shop", shop: shopView(this.shop) }));
+  }
+  shopPorts() {
+    const c = campaignById(this.state.campaign?.id);
+    return c ? c.locations.map(({ id, name, portClass }) => ({ id, name, portClass })) : [];
+  }
+  shopSync() {
+    this.toPlayers({ t: "shop", shop: this.shop ? shopView(this.shop) : null });
+  }
+  shopOpen(port) {
+    const c = campaignById(this.state.campaign?.id);
+    this.shop = openShop(c?.locations.find((l) => l.id === port));
+    this.addLog("note", `Opened the shop at ${this.shop.name} (class ${this.shop.portClass}, prices x${this.shop.mult}: port prices and selling at half price are a house rule).`);
+    this.shopSync();
+  }
+  shopTrade(ws, msg) {
+    const pc = this.characterOf(ws), shop = this.shop;
+    const reply = (text, ok = false) => ws.send(JSON.stringify({ t: "shopResult", ok, text }));
+    if (!shop) return reply("THE SHOP IS CLOSED.");
+    if (!pc) return reply("PICK A CHARACTER FILE FIRST.");
+    const buying = msg.t === "shopBuy";
+    const r = buying ? shopBuy(pc, shop, String(msg.id)) : shopSell(pc, shop, String(msg.name));
+    if (r.error) return reply(r.error);
+    this.addLog("note", `${pc.name} ${buying ? "bought" : "sold"} ${r.item} for ${r.cr}cr at ${shop.name}. Credits now ${pc.credits}cr.`, { shop: { pc: pc.id, kind: buying ? "buy" : "sell", item: r.item, cr: r.cr } });
+    reply(`${buying ? "BOUGHT" : "SOLD"} ${r.item.toUpperCase()} FOR ${r.cr}CR.`, true);
+    this.crewChanged();
+  }
+  shopRefund(id) {
+    const trade = this.state.log.find((e) => e.id === id)?.shop;
+    const pc = trade && !trade.refunded && this.crewById(trade.pc);
+    if (!pc) return;
+    const r = shopRefund(pc, trade);
+    if (r.error) return this.addLog("note", `Refund failed: ${r.error}`);
+    trade.refunded = true;
+    this.addLog("note", `Refunded ${pc.name}: ${trade.kind === "buy" ? "bought" : "sold"} ${trade.item}, ${trade.cr}cr. Credits now ${pc.credits}cr.`);
+    this.crewChanged();
   }
   sectorTally(names) {
     const out = {};
@@ -749,6 +787,8 @@ export class Session {
       builderBusy: this.builderBusy,
       campaignBusy: this.campaignBusy,
       sectorShown: this.sectorShown,
+      shop: this.shop && { name: this.shop.name, portClass: this.shop.portClass, mult: this.shop.mult },
+      shopPorts: this.shopPorts(),
       sectorVotes: this.sectorTally(true),
       roomBusy: this.roomBusy,
       synopsisBusy: this.synopsisBusy,
@@ -932,6 +972,7 @@ export class Session {
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
     if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() }));
     if (msg.t === "sectorVote") return this.sectorVote(ws, String(msg.story || ""));
+    if (msg.t === "shopBuy" || msg.t === "shopSell") return this.shopTrade(ws, msg);
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
@@ -1350,6 +1391,16 @@ export class Session {
         const id = String(msg.faction || "");
         if (c && toggleFavour(s.campaign, c, id)) this.addLog("note", `Faction favour used (house rule): ${c.factions.find((f) => f.id === id).name}.`);        break;
       }
+      case "shopOpen":
+        this.shopOpen(String(msg.port || ""));
+        break;
+      case "shopClose":
+        this.shop = null;
+        this.shopSync();
+        break;
+      case "shopRefund":
+        this.shopRefund(Number(msg.id));
+        break;
       case "campaignLeave":
         if (!this.campaignBusy) {
           s.campaign = null;
