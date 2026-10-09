@@ -1115,8 +1115,8 @@ export class Session {
       case "approve":
         if (!s.pending || s.pending.status !== "ready") break;
         this.logDirectives(s.pending.directives);
-        const { attacks, crew_attacks, round, reveal_death_save } = s.pending.reply || {};
-        this.deliver({ ...msg.reply, outcome_check: s.pending.reply?.outcome_check, attacks, crew_attacks, round, reveal_death_save }, "agent");
+        const { lines, station_changes, crew_changes, effects, ...kept } = s.pending.reply || {};
+        this.deliver({ ...kept, ...msg.reply }, "agent");
         s.pending = null;
         this.setBusy(false);
         break;
@@ -2381,7 +2381,11 @@ export class Session {
       const ids = everyone ? null : new Set(crewTargets(m.for, this.state.config.crew));
       for (const ws of this.sockets) {
         if (ws.role !== "player" || !ws.terminal || ws.terminal === t.id) continue;
-        if (everyone || ids.has(ws.character)) this.playerTerminal(ws, t.id, "agent");
+        if (everyone || ids.has(ws.character)) {
+          const was = ws.terminal;
+          this.playerTerminal(ws, t.id, "agent");
+          if (ws.terminal !== was) this.delivering?.moved.push([ws, was]);
+        }
       }
     }
   }
@@ -2407,7 +2411,7 @@ export class Session {
   }
 
   deliver(reply, source) {
-    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll) };
+    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll), clocks: structuredClone(this.state.clocks || []), handouts: [], found: [], moved: [] };
     try {
       this.deliverReply(reply, source);
     } finally {
@@ -2438,10 +2442,32 @@ export class Session {
     for (const [id, stats] of undo.adversaries || []) { const v = s.config.voices.find((x) => x.id === id); if (v?.adversary) v.adversary.stats = stats; }
     if (s.roll && undo.roll && s.roll.id === undo.roll.id) s.roll.results = undo.roll.results;
     s.outcomeCheck = undo.outcome;
+    this.undoDelivered(undo);
     this.playhead = 0;
     this.addLog("note", "↶ Retconned the agent's last reply.");
     this.initPlayers();
     this.crewChanged();
+  }
+
+  // The parts of an agent reply that are not in the saved state: clocks, handouts and found files given out, screens moved.
+  undoDelivered(undo) {
+    const s = this.state;
+    const now = Date.now();
+    for (const c of [...s.clocks]) if (!undo.clocks.some((x) => x.id === c.id)) this.removeClock(c);
+    for (const c of undo.clocks) {
+      if (s.clocks.some((x) => x.id === c.id) || (!c.paused && c.ends <= now)) continue;
+      const back = structuredClone(c);
+      s.clocks.push(back);
+      this.scheduleClock(back);
+    }
+    this.clocksChanged();
+    const gone = new Set(undo.handouts);
+    if (gone.size) {
+      s.handouts = s.handouts.filter((h) => !gone.has(h.id));
+      for (const id of gone) this.toPlayers({ t: "handoutGone", id });
+    }
+    s.found = (s.found || []).filter((id) => !undo.found.includes(id));
+    for (const [ws, terminal] of undo.moved) if (this.sockets.has(ws) && ws.terminal !== terminal) this.playerTerminal(ws, terminal, "agent");
   }
 
   deliverReply(reply, source) {
@@ -2893,6 +2919,7 @@ export class Session {
     if (voice && this.logVoice(voice)) h.voice = String(voice);
     if (!h.title || !h.text) return;
     this.state.handouts.push(h);
+    this.delivering?.handouts.push(h.id);
     if (this.state.handouts.length > 60) this.state.handouts.shift();
     const who = h.to ? this.crewById(h.to)?.name : "everyone";
     this.addLog("note", note || `${who} received "${h.title}"`);
@@ -2977,6 +3004,7 @@ export class Session {
     const d = (this.state.config.roomDocs || []).find((x) => x.id === id);
     if (!d || (this.state.found ||= []).includes(id)) return;
     this.state.found.push(id);
+    this.delivering?.found.push(id);
     this.giveHandout({ title: d.title, text: d.text, voice: d.voice, to }, finder ? `${finder} found "${d.title}" in ${this.roomName(d.room)}` : "");
   }
 

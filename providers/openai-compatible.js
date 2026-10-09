@@ -53,8 +53,11 @@ export function openAICompatible({ id, label, envKey, keyHint, keyUrl, keyPatter
   };
 }
 
-function jsonInstructions(schema, example) {
+// additionalProperties and required only matter to a strict schema validator (Claude's), not to the text a JSON-mode model reads; the example shows every field.
+const readable = (schema) => JSON.stringify(schema, (k, v) => (k === "additionalProperties" || (k === "required" && Array.isArray(v)) ? undefined : v));
+
+export function jsonInstructions(schema, example) {
   return `OUTPUT FORMAT
 Respond with ONE json object and nothing else, matching this JSON Schema:
-${JSON.stringify(schema)}${example ? `\n\nExample (shape only):\n${JSON.stringify(example)}` : ""}`;
+${readable(schema)}${example ? `\n\nExample (shape only; include every field):\n${JSON.stringify(example)}` : ""}`;
 }

@@ -375,6 +375,6 @@ export function skillOf(raw) {
 export const skillText = (s) => `${s.name} +${s.bonus}`;
 export const findSkill = (pc, name) => (name ? (pc?.skills || []).find((s) => s.name.toLowerCase() === String(name).toLowerCase()) : null) || null;
 
-export function crewBrief(crew) {
-  return crew.map((c) => `- ${c.name} (${c.pronouns ? `pronouns ${c.pronouns}` : "no pronouns given: use they/them"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout} Trauma response (${c.className}): ${traumaResponse(c)}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
+export function crewBrief(crew, { trauma = true } = {}) {
+  return crew.map((c) => `- ${c.name} (${c.pronouns ? `pronouns ${c.pronouns}` : "no pronouns given: use they/them"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout}${trauma ? ` Trauma response (${c.className}): ${traumaResponse(c)}` : ""}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
 }
