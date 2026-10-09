@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { findSkill, playable } from "./crew.js";
 import { clampInt } from "./clean.js";
+import { rangeOf } from "./weapons.js";
 
 export const CHECKS = {
   strength: { label: "Strength", kind: "Stat" },
@@ -41,6 +42,7 @@ export function sanitizeRequest(raw, crew = []) {
     bonus,
     advantage: ADVANTAGE.includes(raw?.advantage) ? raw.advantage : "none",
     reason: String(raw?.reason || "").trim().slice(0, 140),
+    ...(check === "combat" && !(raw?.pc === "all" || some) && rangeOf(raw?.range) ? { range: rangeOf(raw.range), weapon: String(raw?.weapon || "").trim().slice(0, 40) } : {}),
     all: raw?.pc === "all",
     plus: panic && !!raw?.plus,
     pcs: who.map((c) => ({ id: c.id, name: c.name })),

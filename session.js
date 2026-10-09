@@ -11,8 +11,8 @@ import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTarg
 import { combatCheck, damageAdversary, rollDeathSave, deathSaveText, sanitizeStats, statsLine } from "./combat.js";
 import { rollDice, rollWithAdv, cancelAdv } from "./dice.js";
 import { woundText } from "./wounds.js";
-import { weaponsOf, weaponByName, weaponDamage } from "./weapons.js";
-import { HAZARDS, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, oxygenNeed, settle, hazardDamage, hazardWound, normalizeHazards, oxygenStart, oxygenDay, oxygenState, breathing, protection, penalties, conditionText, puncture, patch, airRestored, takePills, wake, stimpak, rest, useStimpak } from "./hazards.js";
+import { weaponsOf, weaponByName, weaponDamage, rangeOf, checkAdvantage, RANGE_LABELS } from "./weapons.js";
+import { HAZARDS, hazardTag, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, oxygenNeed, settle, hazardDamage, hazardWound, normalizeHazards, oxygenStart, oxygenDay, oxygenState, breathing, protection, penalties, conditionText, puncture, patch, airRestored, takePills, wake, stimpak, rest, useStimpak } from "./hazards.js";
 import { loaded, magazines, spendShot, reload, TANK, STORES } from "./resources.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
@@ -1437,7 +1437,7 @@ export class Session {
           this.setBusy(false);
         }
         const who = s.roll.all ? "everyone" : s.roll.pcs.map((p) => p.name).join(", ");
-        this.addLog("note", `Roll called for ${who}: ${[checkLabel(s.roll), skillLabel(s.roll), s.roll.reason].filter(Boolean).join(" · ")}`);
+        this.addLog("note", `Roll called for ${who}: ${[checkLabel(s.roll), skillLabel(s.roll), s.roll.range && `${s.roll.weapon ? `${s.roll.weapon} at ` : ""}${RANGE_LABELS[s.roll.range]} Range`, s.roll.reason].filter(Boolean).join(" · ")}`);
         this.toPlayers({ t: "roll", roll: this.publicRoll() });
         break;
       }
@@ -1508,7 +1508,7 @@ export class Session {
         break;
       case "attack": {
         const a = msg.attack || {};
-        if (a.side === "crew") this.crewAttack({ pc: this.crewById(a.pc), weapon: a.weapon, target: a.target, damageAdv: a.damageAdv });
+        if (a.side === "crew") this.crewAttack({ pc: this.crewById(a.pc), weapon: a.weapon, target: a.target, damageAdv: a.damageAdv, range: a.range });
         else this.creatureAttack({ by: a.by, attack: a.attack, target: a.target });
         if (s.log.at(-1)?.combat) this.requestReply();
         this.syncDm();
@@ -2308,12 +2308,13 @@ export class Session {
 
   afterRoll(pc, req, result, fx, ownStress = false) {
     if (req.check === "ship") return; // a ship check's consequences go to the whole crew when its step resolves (shipfight.js)
-    if (result.stress && !ownStress) this.stressFromRoll(pc, result.stress);
+    if (result.stress && !ownStress) this.stressFromRoll(pc, result.stress, "failed roll", req.check);
     if (fx?.minStress) {
       const [was, now] = raiseMinStress(pc, fx.minStress);
       this.addLog("note", `${pc.name}: Minimum Stress ${was} → ${now} (${fx.name}).`);
       this.crewChanged();
     }
+    if (fx?.fx) this.panicEffects(pc, fx);
     if (result.panicCheck) this.offerRoll(`Panic check for ${pc.name} (critical failure)`, { pc: pc.id, check: PANIC, reason: "Critical failure" });
     const near = this.closeTo(pc);
     if (req.check === "sanity" && !result.success && pc.className === "Scientist") {
@@ -2326,6 +2327,38 @@ export class Session {
       this.addLog("note", `Marine trauma response: every Close friendly player makes a Fear Save (${pc.name} panicked).`);
       if (near.length) this.offerRoll(`Fear Save for ${near.map((c) => c.name).join(", ")} (Marine trauma response)`, { pc: near.map((c) => c.id), check: "fear", reason: "Marine trauma response" });
     }
+  }
+
+  // The Panic Table results the app can apply (PSG 21): Stress, Stress to the crew, Stress dropped, Maximum Wounds, Retire. A failed Panic Check adds no Stress of its own.
+  panicEffects(pc, entry) {
+    const f = entry.fx, crew = this.state.config.crew;
+    const gain = (c, n, why) => {
+      const g = gainStress(c, n);
+      this.addLog("note", `${c.name}: Stress ${g.from} → ${g.to} (${why}).`);
+      this.stressOver(c, g.over);
+    };
+    if (f.stress) gain(pc, f.stress, entry.name);
+    if (f.close) for (const c of this.closeTo(pc).filter(playable)) gain(c, f.close, `${pc.name}: ${entry.name}`);
+    if (f.all) for (const c of crew.filter(playable)) gain(c, f.all, `${pc.name}: ${entry.name}`);
+    for (const expr of f.drop || []) {
+      const n = rollDice(expr).total, [was, now] = setVital(pc, "stress", pc.stress - n);
+      this.addLog("note", `${pc.name}: Stress ${was} → ${now} (${entry.name}: ${expr} rolled ${n}${was - now < n ? `, Stress never goes below Minimum Stress ${pc.minStress ?? 0}` : ""}).`);
+    }
+    if (f.maxWounds) {
+      const was = pc.wounds.max;
+      pc.wounds.max = Math.max(1, was + f.maxWounds);
+      this.addLog("note", `${pc.name}: Maximum Wounds ${was} → ${pc.wounds.max} (${entry.name}).`);
+      if (pc.wounds.current >= pc.wounds.max && !isDead(pc)) {
+        pc.wounds.current = pc.wounds.max;
+        this.addLog("note", `${pc.name} is now at Maximum Wounds. The Panic Table doesn't say so: this is the app's reading of "on reaching Maximum Wounds: Death Save" (PSG 29).`);
+        this.callDeathSave(pc, "at Maximum Wounds");
+      }
+    }
+    if (f.retire) {
+      this.addLog("note", `${pc.name} retires (${entry.name}): their player rolls up a new character.`);
+      setCrewState(this, pc.id, "retired");
+    }
+    this.crewChanged();
   }
 
   offerRoll(label, roll) {
@@ -2432,10 +2465,10 @@ export class Session {
     if (this.state.solo) this.runOffer();
     this.syncDm();
   }
-  stressFromRoll(pc, n, why = "failed roll") {
+  stressFromRoll(pc, n, why = "failed roll", check = "") {
     const { from, to, over } = gainStress(pc, n);
     this.addLog("note", `${pc.name}: Stress ${from} → ${to} (${why}).`);
-    this.stressOver(pc, over);
+    this.stressOver(pc, over, check);
     this.crewChanged();
   }
 
@@ -2502,13 +2535,13 @@ export class Session {
     if (!atk) return this.addLog("note", `${adv.name} has no attacks listed.`);
     const chk = combatCheck(st.combat);
     const who = shownName(adv).toUpperCase();
-    const head = `${who} ATTACKS ${pc.name.toUpperCase()} WITH ${atk.name.toUpperCase()}${atk.special ? ` (${atk.special.toUpperCase()})` : ""}\nCOMBAT ${st.combat} · ROLLED ${String(chk.d).padStart(2, "0")} · ${chk.success ? (chk.critical ? "CRITICAL SUCCESS" : "HIT") : chk.critical ? "CRITICAL FAILURE" : "MISS"}`;
+    const head = `${who} ATTACKS ${pc.name.toUpperCase()} WITH ${atk.name.toUpperCase()}${atk.aa ? " (ANTI-ARMOR)" : ""}${atk.special ? ` (${atk.special.toUpperCase()})` : ""}\nCOMBAT ${st.combat} · ROLLED ${String(chk.d).padStart(2, "0")} · ${chk.success ? (chk.critical ? "CRITICAL SUCCESS" : "HIT") : chk.critical ? "CRITICAL FAILURE" : "MISS"}`;
     if (!chk.success) return this.addLog("roll", head, { combat: true, by: pc.name });
     const dmg = rollWithAdv(atk.damage, "");
-    this.hurtCrew(pc, dmg.total, { type: atk.woundType, woundAdv: atk.woundAdv }, `${head}\n${atk.damage}: ${dmg.rolls.join(" + ") || dmg.total}`);
+    this.hurtCrew(pc, dmg.total, { type: atk.woundType, woundAdv: atk.woundAdv, aa: !!atk.aa }, `${head}\n${atk.damage}: ${dmg.rolls.join(" + ") || dmg.total}`);
   }
 
-  crewAttack({ pc, weapon, target, damageAdv = "" }) {
+  crewAttack({ pc, weapon, target, damageAdv = "", range = "" }) {
     const adv = this.adversaryNamed(target);
     const st = adv?.adversary.stats;
     if (!pc || !adv) return this.addLog("note", `Attack not made: ${!pc ? "no such crew member" : `no adversary named "${target}" with combat numbers`}.`);
@@ -2516,13 +2549,15 @@ export class Session {
     if (st.dead) return this.addLog("note", `Attack not made: ${adv.name} is already dead or destroyed.`);
     const w = this.crewWeapon(pc, weapon);
     if (!spendShot(pc, w)) return this.addLog("note", `Attack not made: ${pc.name}'s ${w.name} is out of shots (0/${w.shots}). Reloading is an action.`);
-    const expr = weaponDamage(w, pc.stats.strength);
+    range = rangeOf(range);
+    const expr = weaponDamage(w, pc.stats.strength, range);
+    const farShot = expr !== weaponDamage(w, pc.stats.strength);
     const d = rollWithAdv(expr, cancelAdv(damageAdv));
     const was = st.wounds;
     const m = damageAdversary(st, d.total, { aa: w.aa });
     const who = shownName(adv).toUpperCase();
     const dice = /d/i.test(expr) ? `${expr}: ${d.rolls.join(" + ")}${d.all.length > 1 ? ` (${d.all.join(" / ")}, kept the ${damageAdv === "+" ? "higher" : "lower"})` : ""} = ` : "";
-    const lines = [`${pc.name.toUpperCase()} HITS ${who} WITH ${w.name.toUpperCase()}`, `${dice}${d.total} DAMAGE${m.dr ? ` · DR ${m.dr}` : ""}`];
+    const lines = [`${pc.name.toUpperCase()} HITS ${who} WITH ${w.name.toUpperCase()}${range ? ` AT ${RANGE_LABELS[range].toUpperCase()} RANGE` : ""}${farShot ? ` (${expr.toUpperCase()} AT LONG RANGE OR FURTHER)` : ""}`,`${dice}${d.total} DAMAGE${m.dr ? ` · DR ${m.dr}` : ""}`];
     if (m.armorIgnored) lines.push(`ITS ARMOR ABSORBS IT`);
     if (m.armorDestroyed) lines.push(`ITS ARMOR IS DESTROYED${w.aa ? " (ANTI-ARMOR)" : ""}`);
     lines.push(m.dead ? `${who} IS DEAD OR DESTROYED` : m.woundsLost ? `${who} LOSES ${m.woundsLost === 1 ? "A WOUND" : `${m.woundsLost} WOUNDS`}` : `${m.dealt} THROUGH`);
@@ -2578,8 +2613,15 @@ export class Session {
     return this.hazardsFor(pc).some((h) => h.type === "oxygen" && oxygenState(h.supply, live).low) && !protection(pc, "oxygen");
   }
   condWhy(pc, req) { return req.check === PANIC ? [] : penalties(pc, { thinAir: this.thinAir(pc) }); }
-  advOpts(pc, req, plus = false) { return { close: this.closeTo(pc), plus, more: [...(this.condWhy(pc, req).length ? ["disadvantage"] : []), ...(pc.cond?.boost > 0 ? ["advantage"] : [])] }; }
-  advWhy(pc, req) { return [...(req.check === "fear" && this.closeTo(pc).some((c) => c.className === "Android") ? ["an Android is close"] : []), ...this.condWhy(pc, req), ...(pc.cond?.boost > 0 ? ["a stimpak ([+])"] : [])]; }
+  // A weapon's range effect on the Combat check (Smart Rifle [-] at Close), when the Warden named the weapon and range on the roll.
+  weaponCheckAdv(pc, req) {
+    if (req.check !== "combat" || !req.range || !req.weapon) return "";
+    const w = weaponsOf(pc.items).find((x) => keyOf(x.name) === keyOf(req.weapon)) || weaponByName(req.weapon);
+    const a = checkAdvantage(w, req.range);
+    return a ? { adv: a === "-" ? "disadvantage" : "advantage", why: `${w.name} at ${RANGE_LABELS[req.range]} Range ([${a}])` } : "";
+  }
+  advOpts(pc, req, plus = false) { return { close: this.closeTo(pc), plus, more: [...(this.condWhy(pc, req).length ? ["disadvantage"] : []), ...(pc.cond?.boost > 0 ? ["advantage"] : []), ...[this.weaponCheckAdv(pc, req).adv].filter(Boolean)] }; }
+  advWhy(pc, req) { return [...(req.check === "fear" && this.closeTo(pc).some((c) => c.className === "Android") ? ["an Android is close"] : []), ...this.condWhy(pc, req), ...(pc.cond?.boost > 0 ? ["a stimpak ([+])"] : []), ...[this.weaponCheckAdv(pc, req).why].filter(Boolean)]; }
   condMap() { return Object.fromEntries(this.state.config.crew.map((pc) => [pc.id, conditionText(pc)])); }
   hazardWork() { return this.hazardUnits.length + this.hazardNeeds.length; }
 
@@ -2601,7 +2643,7 @@ export class Session {
       hz[room] = next;
       const info = HAZARDS[type];
       if (same && was.level === next.level && was.supply === next.supply) return false;
-      this.addLog("note", `Hazard in ${room}: ${info.name}${next.level ? ` level ${next.level}` : ""} (${info.kind === "psg" ? "Mothership rule" : "story hazard"}). ${info.rule}`);
+      this.addLog("note", `Hazard in ${room}: ${info.name}${next.level ? ` level ${next.level}` : ""} (${hazardTag(info)}). ${info.rule}`);
       if (!same && ["event", "exposure"].includes(info.per)) this.hazardUnits.push({ u: "event", room, type });
     }
     this.sendHeader();
@@ -2612,9 +2654,9 @@ export class Session {
     for (const h of list || []) this.setHazard(h.room, h.type, h.level);
   }
 
-  hazardDamage(pc, n, type, why = "") {
+  hazardDamage(pc, n, type, why = "", opts = {}) {
     const before = pc.health.current;
-    const res = hazardDamage(pc, n, type);
+    const res = hazardDamage(pc, n, type, opts);
     if (!res.n) return;
     this.logHit(pc, res.result, before, `${pc.name.toUpperCase()} TAKES ${res.n} DAMAGE${why ? ` (${why.toUpperCase()})` : ""}`);
   }
@@ -2659,7 +2701,7 @@ export class Session {
       const res = hour ? hourTick(pc, this.hazardsFor(pc), undefined, { food: !this.state.campaign || this.state.rationing }) : roundTick(pc, this.hazardsFor(pc));
       for (const e of res.events) note(pc, e);
       for (const t of res.skipped || []) note(pc, `${HAZARDS[t].name} is a per-round hazard and wasn't run for the hour: use Next round, or rule it`);
-      for (const d of res.damage) this.hazardDamage(pc, d.n, d.type, d.why);
+      for (const d of res.damage) this.hazardDamage(pc, d.n, d.type, d.why, d.armor ? { direct: false } : {});
       if (!hour && deathSaveCountdown(pc)) this.callDeathSave(pc, "a Lethal Injury was not dealt with");
       this.hazardNeeds.push(...res.needs);
     }
@@ -2730,7 +2772,7 @@ export class Session {
       case "puncture": say(`suit punctured: decompresses in ${puncture(c)} round${c.puncture > 1 ? "s" : ""}`); break;
       case "patch": patch(c); say("suit patched (Patch Kit; a patched vaccsuit is AP 1)"); break;
       case "air": airRestored(c); say("breathing again"); break;
-      case "putout": c.fire = false; say("fire put out"); break;
+      case "putout": c.fire = false; c.burn = 0; say("fire put out"); break;
       case "bleed": c.bleeding = Math.min(99, c.bleeding + (Number(value) || 1)); say(`Bleeding ${c.bleeding}`); break;
       case "stopbleed": c.bleeding = 0; say("bleeding stopped (First Aid Kit)"); break;
       case "ate": {
@@ -2787,7 +2829,7 @@ export class Session {
       const w = this.crewWeapon(pc, a.weapon);
       if (w.shots && loaded(pc, w) <= 0) { this.addLog("note", `${pc.name}'s attack was not applied: the ${w.name} is out of shots (0/${w.shots}); reloading is an action.`); continue; }
       got.attacked = true;
-      this.crewAttack({ pc, weapon: a.weapon, target: a.target });
+      this.crewAttack({ pc, weapon: a.weapon, target: a.target, range: a.range || s.roll.range });
     }
     for (const r of reply?.reloads || []) this.reloadWeapon(crew.find((c) => c.id === crewTargets(r.by, crew)[0]), r.weapon);
     for (const a of reply?.attacks || []) this.creatureAttack(a);
@@ -2798,8 +2840,14 @@ export class Session {
     if (reply?.round) this.advanceRound();
   }
 
-  stressOver(pc, over) {
-    if (over) this.addLog("note", `${pc.name}: Stress over 20: reduce the most relevant Stat or Save by ${over} (PSG 20.1).`);
+  // Stress gained above 20 reduces the most relevant Stat or Save by that much (PSG 20.1). After a failed check that is the Stat or Save just rolled; otherwise the Warden picks.
+  stressOver(pc, over, check = "") {
+    if (!over) return;
+    const group = pc.stats[check] !== undefined ? pc.stats : pc.saves[check] !== undefined ? pc.saves : null;
+    if (!group) return this.addLog("note", `${pc.name}: Stress over 20: reduce the most relevant Stat or Save by ${over} (PSG 20.1). Edit it on the Crew tab.`);
+    const was = group[check];
+    group[check] = Math.max(1, was - over);
+    this.addLog("note", `${pc.name}: Stress over 20 by ${over}, so ${CHECKS[check].label}${CHECKS[check].kind === "Save" ? " Save" : ""} ${was} → ${group[check]} (PSG 20.1 says "the most relevant Stat or Save"; taking the one just rolled is the app's reading).`);
   }
 
   applyCrewChanges(changes) {

@@ -8,9 +8,9 @@ const clampAttitude = (n) => Math.max(-3, Math.min(3, Math.round(Number(n) || 0)
 const clampStress = (n, def = 2) => (Number.isFinite(Number(n)) && n !== null && n !== "" ? Math.max(0, Math.min(20, Math.round(Number(n)))) : def);
 
 export const PANIC_TABLE = [null,
-  { name: "Adrenaline rush", effect: "[+] on every roll for the next 2d10 minutes, and Stress drops by 1d5." },
-  { name: "Nervous", effect: "+1 Stress." },
-  { name: "Jumpy", effect: "+1 Stress, and every crewmember close by gains 2 Stress." },
+  { name: "Adrenaline rush", effect: "[+] on every roll for the next 2d10 minutes, and Stress drops by 1d5.", fx: { drop: ["1d5"] } },
+  { name: "Nervous", effect: "+1 Stress.", fx: { stress: 1 } },
+  { name: "Jumpy", effect: "+1 Stress, and every crewmember close by gains 2 Stress.", fx: { stress: 1, close: 2 } },
   { name: "Overwhelmed", effect: "[-] on everything for 1d10 minutes, and Minimum Stress goes up by 1 for good.", minStress: 1 },
   { name: "Coward", effect: "new Condition: they must pass a Fear Save before they can fight, or run away." },
   { name: "Frightened", effect: "new Condition: facing what frightened them calls for a Fear Save at [-], or they gain 1d5 Stress." },
@@ -22,23 +22,34 @@ export const PANIC_TABLE = [null,
   { name: "Haunted", effect: "new Condition: something has started visiting them. Soon it will make demands." },
   { name: "Death wish", effect: "for the next 24 hours, meeting a stranger or a known enemy means a Sanity Save, or they attack at once." },
   { name: "Prophetic vision", effect: "an intense vision of an impending terror, and Minimum Stress goes up by 2 for good.", minStress: 2 },
-  { name: "Catatonic", effect: "unresponsive for 2d10 minutes; Stress drops by 1d10." },
-  { name: "Rage", effect: "[+] on every Damage roll for 1d10 hours, and every crewmember gains 1 Stress." },
+  { name: "Catatonic", effect: "unresponsive for 2d10 minutes; Stress drops by 1d10.", fx: { drop: ["1d10"] } },
+  { name: "Rage", effect: "[+] on every Damage roll for 1d10 hours, and every crewmember gains 1 Stress.", fx: { all: 1 } },
   { name: "Spiraling", effect: "new Condition: their Panic Checks are rolled with Disadvantage." },
   { name: "Compounding problems", effect: "roll twice on this table, and Minimum Stress goes up by 1 for good.", minStress: 1 },
-  { name: "Heart attack / short circuit (androids)", effect: "Maximum Wounds drops by 1, [-] on every roll for 1d10 hours, and Minimum Stress goes up by 1 for good.", minStress: 1 },
-  { name: "Retire", effect: "the character leaves the story: their player rolls up a new character." },
+  { name: "Heart attack / short circuit (androids)", effect: "Maximum Wounds drops by 1, [-] on every roll for 1d10 hours, and Minimum Stress goes up by 1 for good.", minStress: 1, fx: { maxWounds: -1 } },
+  { name: "Retire", effect: "the character leaves the story: their player rolls up a new character.", fx: { retire: true } },
 ];
 
+// What the app applies for a result (the rest is a Condition or a timed [+]/[-] the Warden plays): Stress to the character (stress), to every Close crewmember (close) and to every crewmember (all), Stress dropped (dice), Maximum Wounds, retiring.
+const mergeFx = (list) => {
+  const out = {};
+  for (const f of list) {
+    for (const k of ["stress", "close", "all", "maxWounds"]) if (f?.[k]) out[k] = (out[k] || 0) + f[k];
+    if (f?.drop) out.drop = [...(out.drop || []), ...f.drop];
+    if (f?.retire) out.retire = true;
+  }
+  return out;
+};
 export function panicEntry(n) {
   const e = PANIC_TABLE[n];
   if (!e) return null;
-  if (n !== 18) return { ...e };
+  if (n !== 18) return { ...e, fx: mergeFx([e.fx]) };
   const more = [0, 0].map(() => { let d; do d = 1 + Math.floor(Math.random() * 20); while (d === 18); return d; });
   return {
     name: `${e.name} (${more.map((d) => `${d}: ${PANIC_TABLE[d].name}`).join(" + ")})`,
     effect: `Minimum Stress goes up by 1 for good, and two panics: ${more.map((d) => `${d}, ${PANIC_TABLE[d].name}: ${PANIC_TABLE[d].effect}`).join(" Then ")}`,
     minStress: e.minStress + more.reduce((sum, d) => sum + (PANIC_TABLE[d].minStress || 0), 0),
+    fx: mergeFx(more.map((d) => PANIC_TABLE[d].fx)),
   };
 }
 export const PORTRAIT_FILE = /^([a-f0-9]{12}\.(png|jpg|webp|gif)|kit\/[a-z0-9_-]{1,60}\.(png|jpg))$/;

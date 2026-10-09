@@ -17,7 +17,7 @@ export const WEAPONS = [
   w("Revolver", "1d10+1", "gunshot", { shots: 6 }),
   w("Rigging Gun", "1d10", "bleeding", { woundAdv: "+", shots: 1, special: "Another 2d10 Damage when the bolt is removed." }),
   w("Scalpel", "1d5", "bleeding", { woundAdv: "+" }),
-  w("Smart Rifle", "4d10", "gunshot", { woundAdv: "+", shots: 3, aa: true, special: "Anti-Armor. [-] at Close range." }),
+  w("Smart Rifle", "4d10", "gunshot", { woundAdv: "+", shots: 3, aa: true, closeCheck: "-", special: "Anti-Armor. [-] at Close range." }),
   w("SMG", "2d10", "gunshot", { shots: 5 }),
   w("Stun Baton", "1d5", "blunt", { special: "Body Save or stunned for 1 round." }),
   w("Tranq Pistol", "1d5", "blunt", { shots: 6, special: "Body Save or unconscious for 1d10 rounds." }),
@@ -50,7 +50,13 @@ export function weaponsOf(items) {
   return [...out, UNARMED];
 }
 
-export const weaponDamage = (weapon, strength, range = "") => (weapon === UNARMED ? String(Math.floor(Math.max(0, Number(strength) || 0) / 10)) : range === "long" && weapon.longDamage ? weapon.longDamage : weapon.damage);
+// PSG 30-31 range bands. "Long Range or further" is Long and Extreme.
+export const RANGES = ["adjacent", "close", "long", "extreme"];
+export const RANGE_LABELS = { adjacent: "Adjacent", close: "Close", long: "Long", extreme: "Extreme" };
+export const rangeOf = (v) => (RANGES.includes(String(v ?? "").toLowerCase()) ? String(v).toLowerCase() : "");
+export const weaponDamage = (weapon, strength, range = "") => (weapon === UNARMED ? String(Math.floor(Math.max(0, Number(strength) || 0) / 10)) : weapon.longDamage && (range === "long" || range === "extreme") ? weapon.longDamage : weapon.damage);
+// A weapon's range effect on the Combat check: Smart Rifle [-] at Close.
+export const checkAdvantage = (weapon, range = "") => (weapon?.closeCheck && range === "close" ? weapon.closeCheck : "");
 
 // Armor by item name: the best (highest AP) armor in the list, else Standard Crew Attire.
 export function armorFrom(items) {

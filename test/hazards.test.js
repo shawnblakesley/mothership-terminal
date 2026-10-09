@@ -193,7 +193,7 @@ test("hazard Damage: Health, then a Wound with the carryover", () => {
 
 test("story hazards are labelled and use the generic rule", () => {
   for (const [k, h] of Object.entries(HAZARDS)) {
-    assert.ok(h.name && h.rule && h.source && ["psg", "story"].includes(h.kind), k);
+    assert.ok(h.name && h.rule && h.source && ["psg", "house", "story"].includes(h.kind), k);
     if (h.kind === "story") assert.equal(h.source, "story hazard", k);
   }
   const p = pc("Teamster", []);

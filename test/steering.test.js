@@ -308,16 +308,17 @@ test("Review mode drafts are trimmed to the length setting; the Warden's own edi
   assert.equal(s.state.log.at(-1).text, "Noted, and it stays private.");
 });
 
-test("a player's panic: its Stress is the Warden's when there is one; with no Warden the SOLO rules apply", () => {
+test("a player's panic: the app applies its Stress, Maximum Wounds and Retire, so neither the agent nor the Warden repeats them", () => {
   const state = kestrelState();
   state.log.push({ id: "p1", kind: "roll", text: "PANIC CHECK\nSTRESS 6 · ROLLED 2 (D20)\nPANIC", by: "Rook", panicEffect: "Nervous: +1 Stress." });
   const r = buildRequest(state, "");
-  assert.match(r.messages.at(-1).content, /Nervous: \+1 Stress\. Show it in the fiction now\. Its Stress and anything lasting are the Warden's: no crew_changes/);
-  assert.match(r.context, /no crew_changes for that character/);
+  assert.match(r.messages.at(-1).content, /Nervous: \+1 Stress\. Show it in the fiction now\. The app has already applied its Stress, Maximum Wounds and Retire: no crew_changes for them; Conditions and timed \[\+\]\/\[-\] are the Warden's/);
+  assert.match(r.context, /the app applies its Stress, Maximum Wounds and Retire, so no crew_changes for that character/);
   state.solo = { phase: "play" };
   const solo = buildRequest(state, "");
-  assert.doesNotMatch(solo.messages.at(-1).content + solo.context, /no crew_changes for/);
-  assert.match(solo.system + solo.context, /apply any Stress it gives through crew_changes/);
+  assert.match(solo.messages.at(-1).content, /yours to keep in mind/);
+  assert.doesNotMatch(solo.system + solo.context, /apply any Stress it gives through crew_changes/);
+  assert.match(solo.system + solo.context, /don't repeat them in crew_changes/);
 });
 
 test("the narrator's third person is in the protocol, so saved personas get it too; check-first knows what the station state allows", () => {

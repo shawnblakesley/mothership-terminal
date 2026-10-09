@@ -79,6 +79,7 @@ export function sanitizeStats(raw) {
       damage: text(a.damage, 12),
       woundType: WOUND_TYPES.includes(a.woundType) ? a.woundType : "blunt",
       woundAdv: a.woundAdv === "+" || a.woundAdv === "-" ? a.woundAdv : "",
+      aa: a.aa === true,
       special: text(a.special, 200),
     })),
     special: text(raw.special, 600),

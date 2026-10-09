@@ -402,6 +402,12 @@
                 <option value="disadvantage">[−] Disadvantage</option>
               </select>
             </label>
+            <label id="rollWeaponWrap" hidden>Weapon
+              <select id="rollWeapon" title="Only for a Combat check by one character"></select>
+            </label>
+            <label id="rollRangeWrap" hidden>Range
+              <select id="rollRange" title="A Smart Rifle has [-] on the Combat check at Close Range"><option value="">Not stated</option><option value="adjacent">Adjacent</option><option value="close">Close</option><option value="long">Long</option><option value="extreme">Extreme</option></select>
+            </label>
             <label>What for
               <input id="rollReason" placeholder="bypass a lock">
             </label>
@@ -422,6 +428,9 @@
             <label>Attacker <select id="atkBy"></select></label>
             <label><span id="atkWithLabel">Attack</span> <select id="atkWith"></select></label>
             <label>Target <select id="atkTarget"></select></label>
+            <label id="atkRangeWrap" hidden>Range
+              <select id="atkRange" title="A Combat Shotgun does 1d10 at Long Range or further"><option value="">Not stated</option><option value="adjacent">Adjacent</option><option value="close">Close</option><option value="long">Long</option><option value="extreme">Extreme</option></select>
+            </label>
             <label id="atkAdvWrap" hidden>Damage [+] / [−]
               <select id="atkAdv"><option value="">Normal</option><option value="+">[+] Advantage</option><option value="-">[−] Disadvantage</option></select>
             </label>
