@@ -1,0 +1,98 @@
+/* Panic on the player's own screen (panic.js). Everything is temporary; the reduced-motion versions are slow fades only. */
+#panicfx { position: fixed; inset: 0; z-index: 150; pointer-events: none; overflow: hidden; }
+#panicfx .pf { position: absolute; pointer-events: none; }
+
+/* filters and movements on the whole terminal */
+#crt { transition: filter 0.5s; }
+#crt.pf-sharp { filter: contrast(1.35) brightness(1.3) saturate(1.25); }
+#crt.pf-pulse { transform: scale(1.012); }
+#crt.pf-gray { filter: grayscale(1) brightness(0.8) contrast(0.92); transition: filter 1.2s; }
+#crt.pf-nocaret #in { caret-color: transparent; }
+#crt.pf-jolt { animation: pfJolt 0.9s linear both; }
+#crt.pf-jolt-big { animation: pfJoltBig 1.4s linear both; }
+#crt.pf-soft-flash { animation: pfSoftFlash 1.4s ease-out both; }
+#crt.pf-spiral { animation: pfSpiral 7s ease-in-out both; }
+@keyframes pfJolt { 0%, 100% { transform: none; } 8% { transform: translate(-9px, 5px); } 16% { transform: translate(8px, -6px); } 26% { transform: translate(-6px, 3px); } 38% { transform: translate(4px, -2px); } 55% { transform: translate(-2px, 1px); } 75% { transform: translate(1px, 0); } }
+@keyframes pfJoltBig { 0%, 100% { transform: none; } 6% { transform: translate(-18px, 10px) rotate(-0.4deg); } 12% { transform: translate(16px, -12px) rotate(0.4deg); } 20% { transform: translate(-13px, 8px); } 30% { transform: translate(10px, -6px); } 44% { transform: translate(-6px, 4px); } 60% { transform: translate(3px, -2px); } 80% { transform: translate(-1px, 1px); } }
+@keyframes pfSoftFlash { 0% { filter: brightness(1.25); } 100% { filter: none; } }
+@keyframes pfSpiral { 0% { transform: none; } 38% { transform: rotate(4deg) scale(1.06); } 70% { transform: rotate(-1.5deg) scale(1.03); } 100% { transform: none; } }
+
+.pf-glow { inset: 0; background: radial-gradient(ellipse at center, transparent 55%, color-mix(in srgb, var(--fg) 18%, transparent)); animation: pfFade 4.2s ease-in-out both; }
+.pf-flash { inset: 0; background: #fff; opacity: 0; animation: pfFlash 0.45s ease-out both; }
+.pf-flash.gentle { background: var(--fg); animation: pfFlashGentle 1.4s ease-in-out both; }
+@keyframes pfFlash { 0% { opacity: 0.8; } 100% { opacity: 0; } }
+@keyframes pfFlashGentle { 0%, 100% { opacity: 0; } 30% { opacity: 0.18; } }
+@keyframes pfFade { 0%, 100% { opacity: 0; } 15%, 80% { opacity: 1; } }
+
+.pf-flood { inset: 0; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; background: rgba(0, 0, 0, 0.35); color: var(--fg); text-shadow: 0 0 6px var(--glow); }
+.pf-flood > div { white-space: nowrap; line-height: 1.05; }
+.pf-flood > .soft { animation: pfRise 0.6s ease-out both; opacity: 0.8; }
+@keyframes pfRise { from { opacity: 0; } to { opacity: 0.8; } }
+
+.pf-cursor { left: 0; top: 0; font-size: 1.5em; color: var(--fg); text-shadow: 0 0 8px var(--glow); transition: none; animation: pfBlink 1s steps(2) infinite; }
+.pf-cursor.flee { transition: transform 1.3s cubic-bezier(0.6, 0, 0.9, 0.4); animation: none; }
+.pf-cursor.shiver { animation: pfShiver 0.12s linear infinite; }
+@keyframes pfBlink { 50% { opacity: 0; } }
+@keyframes pfShiver { 0% { margin: 0 0 0 0; } 25% { margin: 2px 0 0 -2px; } 50% { margin: -2px 0 0 2px; } 100% { margin: 0; } }
+
+.pf-big { inset: 0; display: grid; place-content: center; font-size: min(46vw, 62vh); line-height: 1; color: var(--fg); text-shadow: 0 0 40px var(--glow); background: rgba(0, 0, 0, 0.55); animation: pfBig 4.2s ease-in-out both; letter-spacing: 0.05em; }
+.pf-big.soft { animation: pfFade 4.2s ease-in-out both; }
+@keyframes pfBig { 0% { opacity: 0; transform: scale(0.8); } 15% { opacity: 1; transform: scale(1); } 40% { transform: scale(1.04); } 60% { transform: scale(1); opacity: 0.9; } 100% { opacity: 0; transform: scale(1.12); } }
+
+.pf-dark { inset: 0; background: #000; opacity: 0; transition: opacity 1.2s ease-in; }
+.pf-dark.on { opacity: 0.97; }
+.pf-dark.slow { transition: opacity 2.2s ease-in; }
+.pf-dark.soft.on { opacity: 0.55; }
+.pf-eyes { inset: 0; }
+.pf-eyes .pair { position: absolute; display: flex; gap: calc(14px * var(--s)); transform: translate(-50%, -50%); }
+.pf-eyes i { display: block; width: calc(22px * var(--s)); height: calc(6px * var(--s)); border-radius: 50%; background: #e8f0e0; box-shadow: 0 0 calc(10px * var(--s)) rgba(232, 240, 224, 0.8); animation: pfEyes 0.4s ease-out both; }
+@keyframes pfEyes { from { opacity: 0; } to { opacity: 0.9; } }
+
+#side .cs-list.pf-dip, #crewfile-body .cs-list.pf-dip { opacity: 0.25; }
+.pf-lost { color: var(--dim) !important; opacity: 0.4; text-decoration: line-through; transition: opacity 0.6s; }
+.pf-caption { left: 0; right: 0; bottom: 18vh; text-align: center; color: var(--fg); text-shadow: 0 0 8px var(--glow); font-size: 1.3em; animation: pfFade 4s ease-in-out both; }
+
+.pf-line { inset: 0; display: grid; place-content: center; text-align: center; font-size: clamp(1.4em, 5vw, 3em); color: var(--fg); text-shadow: 0 0 14px var(--glow); letter-spacing: 0.08em; transition: opacity 0.9s; }
+.pf-line.gone { opacity: 0; }
+
+.pf-static { inset: 0; width: 100%; height: 100%; image-rendering: pixelated; mix-blend-mode: screen; opacity: 0; animation: pfStatic 5.2s ease-in-out both; filter: contrast(1.2); }
+.pf-static.soft { animation-name: pfStaticSoft; }
+.pf-static.over { animation: none; opacity: 0.35; z-index: 2; }
+@keyframes pfStatic { 0%, 100% { opacity: 0; } 20%, 70% { opacity: 0.5; } 45% { opacity: 0.7; } }
+@keyframes pfStaticSoft { 0%, 100% { opacity: 0; } 30%, 70% { opacity: 0.3; } }
+
+.pf-edges { inset: 0; box-shadow: inset 0 0 12vmin 3vmin rgba(225, 20, 20, 0.8), inset 0 0 40vmin 8vmin rgba(150, 0, 0, 0.35); animation: pfEdges 5.6s ease-in-out both; }
+.pf-edges.soft { animation: pfFade 5.6s ease-in-out both; }
+@keyframes pfEdges { 0% { opacity: 0; } 12% { opacity: 1; } 24% { opacity: 0.6; } 36% { opacity: 1; } 48% { opacity: 0.6; } 60% { opacity: 1; } 72% { opacity: 0.6; } 100% { opacity: 0; } }
+
+.pf-vision { inset: 0; background: #000; display: grid; place-items: center; animation: pfVision 2.1s ease-out both; }
+.pf-vision canvas:not(.pf-static) { width: min(86vw, 150vh); aspect-ratio: 16 / 9; image-rendering: pixelated; filter: grayscale(1) contrast(1.9) brightness(1.2); }
+.pf-vision.soft canvas:not(.pf-static) { filter: grayscale(1) blur(2px) brightness(0.7); }
+@keyframes pfVision { 0% { opacity: 0; } 10%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.pf-vision + .pf-static.over { z-index: 2; }
+
+.pf-dim { inset: 0; background: rgba(0, 0, 0, 0.45); animation: pfFade 6s ease-in-out both; }
+.pf-flat { left: 0; right: 0; top: 50%; height: 2px; background: var(--fg); box-shadow: 0 0 10px var(--glow); animation: pfFade 6s ease-in-out both; }
+
+.pf-rage { inset: 0; background: radial-gradient(ellipse at center, rgba(190, 0, 0, 0.25) 30%, rgba(190, 0, 0, 0.7)); mix-blend-mode: multiply; animation: pfRage 5.6s ease-in-out both; }
+.pf-rage.soft { animation: pfFade 5.6s ease-in-out both; }
+@keyframes pfRage { 0% { opacity: 0; } 10% { opacity: 1; } 22% { opacity: 0.7; } 34% { opacity: 1; } 46% { opacity: 0.7; } 58% { opacity: 1; } 70% { opacity: 0.7; } 82% { opacity: 1; } 100% { opacity: 0; } }
+
+.pf-half { left: 0; right: 0; height: 50%; background: #000; z-index: 3; }
+.pf-half.top { top: 0; animation: pfTop 0.7s ease-in both; }
+.pf-half.bot { bottom: 0; animation: pfBot 0.7s ease-in both; }
+@keyframes pfTop { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+@keyframes pfBot { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.pf-seam { left: 0; right: 0; top: 50%; height: 2px; background: #fff; z-index: 4; opacity: 0; animation: pfSeam 1.4s ease-out 0.6s both; }
+@keyframes pfSeam { 0% { opacity: 1; left: 0; right: 0; } 100% { opacity: 0; left: 49%; right: 49%; } }
+.pf-boot { left: 8vw; top: 12vh; z-index: 5; color: var(--fg); text-shadow: 0 0 6px var(--glow); white-space: pre; font-size: 1.2em; }
+
+.pf-card { inset: 0; display: grid; place-content: center; text-align: center; gap: 0.6em; opacity: 0; transition: opacity 1.4s; color: var(--fg); text-shadow: 0 0 10px var(--glow); }
+.pf-card.on { opacity: 1; }
+.pf-card b { font-weight: normal; font-size: clamp(1.4em, 5vw, 3em); letter-spacing: 0.12em; border: 2px solid var(--fg); padding: 0.4em 0.9em; }
+.pf-card span { color: var(--dim); letter-spacing: 0.1em; }
+
+@media (prefers-reduced-motion: reduce) {
+  #crt.pf-jolt, #crt.pf-jolt-big, #crt.pf-spiral { animation: none; }
+  #crt.pf-pulse { transform: none; }
+}

@@ -333,6 +333,7 @@
     renderMap();
     renderCrew();
     renderNewChars();
+    renderMemorial();
     renderCast();
     renderAdversaries();
     renderTerminals();
@@ -592,7 +593,7 @@
       const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id);
       return `<details class="pc" data-i="${i}">
         <summary>${pickButton(c, `class="pick small" data-pcpic="${i}"`)}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
-          <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max} · AP ${c.armor?.destroyed ? 0 : c.armor?.ap ?? 0}${c.cond?.dead ? " · DECEASED" : ""}${c.retired ? " · RETIRED" : ""}</span>
+          <span class="muted small">${esc(c.className)} · High Score ${c.highScore || 0} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max} · AP ${c.armor?.destroyed ? 0 : c.armor?.ap ?? 0}${c.cond?.dead ? " · DECEASED" : ""}${c.retired ? " · RETIRED" : ""}</span>
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(none yet)</option>') + S.config.terminals.map((t) =>
             `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></span>` : ""}</summary>
@@ -607,6 +608,8 @@
           ${num("health.current", c.health.current, "Health")}${num("health.max", c.health.max, "Max health")}
           ${num("wounds.current", c.wounds.current, "Wounds")}${num("wounds.max", c.wounds.max, "Max wounds")}
 ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress")}${num("startStress", c.startStress, "Starting stress")}
+          <label title="Sessions survived (PSG 18.3). Changes no roll.">High Score<input type="number" data-c="highScore" value="${c.highScore || 0}" min="0" max="9999"></label>
+
           ${txt("armor.name", c.armor.name, "Armor")}${num("armor.ap", c.armor.ap, "Armor AP")}${num("armor.dr", c.armor.dr, "Armor DR")}
           <label>Armor destroyed<input type="checkbox" data-c="armor.destroyed" ${c.armor.destroyed ? "checked" : ""}></label>
           ${txt("skills", c.skills.map(skillStr).join(", "), "Skills")}
@@ -625,6 +628,30 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     for (const i of openCrew) panel.querySelector(`.pc[data-i="${i}"]`)?.setAttribute("open", "");
     $("addCrew").disabled = crewDraft.filter((c) => !c.cond?.dead && !c.retired).length >= 4;
   }
+  // The memorial wall: a CRT crew manifest of the dead and retired, names struck through. High Score is sessions survived (PSG 18.3).
+  function memorialHtml(crew) {
+    const list = crew.filter((c) => c.cond?.dead || c.retired);
+    if (!list.length) return '<p class="muted small">Nobody yet.</p>';
+    return `<div class="memorial">${list.map((c) => `<div class="memo">
+      ${c.portrait ? `<img class="memo-pic" src="${esc(portraitUrl(c.portrait))}" alt="">` : ""}
+      <div class="memo-body"><div><s class="memo-name">${esc(c.name)}</s> <span class="muted small">${esc(c.className)}</span></div>
+        <div class="small"><span class="k">HIGH SCORE</span> <b>${c.highScore || 0}</b></div>
+        <div class="small">${esc(c.cond?.dead ? (c.cond.dead === "Warden" ? "Marked deceased by the Warden" : `Died: ${c.cond.dead}`) : "Retired from play")}${c.endedIn ? ` · ${esc(c.endedIn)}` : ""}</div>
+        ${c.finalWords ? `<div class="small memo-final">Final transmission: "${esc(c.finalWords)}"</div>` : ""}
+        <input data-epitaph="${esc(c.id)}" value="${esc(c.epitaph || "")}" placeholder="Epitaph, one line" maxlength="140" aria-label="Epitaph for ${esc(c.name)}"></div></div>`).join("")}</div>`;
+  }
+  let memorialKey = "";
+  function renderMemorial() {
+    const el = $("memorial"), crew = S.config.crew, key = JSON.stringify(crew.map((c) => [c.id, c.name, c.cond?.dead, c.retired, c.highScore, c.endedIn, c.finalWords, c.epitaph, c.portrait]));
+    if (key === memorialKey || el.contains(document.activeElement)) return;
+    memorialKey = key;
+    el.innerHTML = memorialHtml(crew);
+  }
+  document.addEventListener("change", (e) => {
+    const id = e.target.closest?.("[data-epitaph]")?.dataset.epitaph;
+    if (id) send({ t: "epitaph", pc: id, text: e.target.value });
+  });
+  $("endNight").onclick = () => send({ t: "endNight" });
   let newCharsKey = "";
   function renderNewChars() {
     const list = S.newChars || [], key = JSON.stringify(list);
@@ -1232,12 +1259,22 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       <p class="muted"><i>${esc(c.tagline)}</i></p><p>${esc(c.pitch)}</p>
       <p class="small muted">Offer jobs to put them on the players' job board, then Show players; their votes appear on the map. Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
       ${cmpRig(c, p)}
+      ${cmpRecords(p)}
       <details open><summary>Played (${played.length} of ${c.stories.length})</summary>${played.length ? played.map(({ d, s }) => `<div class="bcard"><button class="cmplink" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b></button><div class="small">${esc(d.outcome || "No notes.")}</div></div>`).join("") : '<p class="muted small">Nothing yet. A good first job: 1. FIRST SHIFT at Port Gallow, where the rig starts.</p>'}</details>
       <details open><summary>Factions <span class="muted small">(house rule: standing with the crew)</span></summary>
         <p class="small muted">Mothership 1e has no faction rules; this is a campaign house rule. At +2 or more their people give the crew [+] on social rolls, a one-off favour per story and better prices at their ports; at -2 or less, [-], trouble and worse prices; at -3 they won't trade. Their recurring characters start a step friendlier or cooler.</p>
         ${c.factions.map((f) => { const n = p.factions?.[f.id] || 0; return `<div class="bcard"><div class="row"><b class="grow" style="color:${f.color}">${esc(f.name)}</b><span class="stand-pill s${Math.sign(n)}">${STANDING[n]} ${signed(n)}</span><button class="small" data-faction="${f.id}" data-delta="-1" ${n <= -3 ? "disabled" : ""} aria-label="Lower ${esc(f.short)}">-</button><button class="small" data-faction="${f.id}" data-delta="1" ${n >= 3 ? "disabled" : ""} aria-label="Raise ${esc(f.short)}">+</button></div><div class="small">${esc(f.about)}</div>${p.current && n >= 2 ? `<div class="row"><span class="small muted grow">One favour this story (a forged permit, a docking slot, a tip-off, a hiding place).</span><button class="small" data-favour="${f.id}">${p.favours?.[f.id] ? "Favour used" : "Mark favour used"}</button></div>` : ""}</div>`; }).join("")}</details>
       <details><summary>Recurring characters</summary>${c.cast.map((m) => `<div class="bcard"><b>${esc(m.name)}</b> <span class="muted small">${esc(cmpFaction(c, m.faction)?.short || "")}${p.cast[m.id] ? ` · ${esc(attLabel(p.cast[m.id].attitude))}` : ""}</span><div class="small">${esc(m.notes)}</div>${p.cast[m.id]?.history ? `<div class="small muted">${esc(p.cast[m.id].history)}</div>` : ""}</div>`).join("")}</details>
       <details><summary>The crew</summary>${p.crew.map((pc) => `<div class="bcard"><b>${esc(pc.name)}</b> <span class="muted small">${esc([pc.className, pc.role].filter(Boolean).join(" · "))}</span><div class="small mono">HP ${pc.health.current}/${pc.health.max} · Wounds ${pc.wounds.current}/${pc.wounds.max} · Stress ${pc.stress}</div></div>`).join("")}<p class="small muted">They carry their condition, items and stress from story to story. Edit them on the Crew tab while a story is playing.</p></details>`;
+  }
+  // Campaign records and the memorial wall. High Score is sessions survived (PSG 18.3) and changes no roll.
+  function cmpRecords(p) {
+    const crew = S.config.crew.length ? S.config.crew : p.crew;
+    const best = crew.reduce((b, c) => ((c.highScore || 0) > (b?.highScore || 0) ? c : b), null);
+    const gone = crew.filter((c) => c.cond?.dead || c.retired).length;
+    return `<div class="bcard"><div class="small"><span class="k">SESSIONS PLAYED</span> <b>${p.sessions || 0}</b> · <span class="k">LONGEST SURVIVOR</span> <b>${best ? `${esc(best.name)}, High Score ${best.highScore}` : "nobody yet"}</b></div>
+      <div class="small muted">High Score is the number of sessions a character has survived (PSG 18.3). It affects no roll.</div></div>
+      <details open><summary>Memorial wall (${gone})</summary>${memorialHtml(crew)}</details>`;
   }
   const attLabel = (n) => ({ "-3": "Hostile", "-2": "Resentful", "-1": "Wary", 0: "Neutral", 1: "Friendly", 2: "Trusting", 3: "Loyal" })[n] || "Neutral";
 
@@ -1286,8 +1323,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   function renderCampaign() {
     if (!$("campaignDialog").open || !campaignData) return;
     const p = S.campaign, c = p && campaignData.campaigns.find((x) => x.id === p.id);
-    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes, S.rig]);
-    if (key === campaignKey) return;
+    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes, S.rig, S.config.crew.map((x) => [x.id, x.cond?.dead, x.retired, x.highScore, x.endedIn, x.finalWords, x.epitaph])]);
+    if (key === campaignKey || document.activeElement?.matches?.("#cmpBody [data-epitaph]")) return;
     campaignKey = key;
     $("cmpLeave").hidden = !c;
     if (!c) {
@@ -2069,7 +2106,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   $("soundPlaying").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList.contains("volpct")) e.target.blur(); });
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
-  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "playerTerminals"];
+  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "panicScreens", "playerTerminals"];
 
   const voicesOn = () => (S.config.discordTalk ? "discord" : S.config.tts !== false ? "screens" : "off");
   function renderVoicesOn() {
@@ -2118,6 +2155,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     el.addEventListener("blur", () => dirty.has(id) && save());
   }
   for (const id of ["theme", "talk", "provider", "model", "effort"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.value } }));
+  $("panicTryGo").onclick = () => send({ t: "panicShow", n: Number($("panicTry").value) });
   for (const id of [...SETTING_SWITCHES, "playerCreate", "createRerolls"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.checked } }));
   $("settingsBtn").onclick = () => $("settingsDialog").showModal();
 
