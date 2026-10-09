@@ -105,7 +105,7 @@ window.Chargen = (() => {
     if (again) again.focus();
     else if (first && name === "name" && moved && !typing) first.focus();
     if (typing) $("cg-dice")?.focus();
-    if (!$("chargen").contains(document.activeElement)) $("chargen").focus({ preventScroll: true });
+    if (!$("chargen").contains(document.activeElement) || document.activeElement.disabled) $("chargen").focus({ preventScroll: true });
     body.querySelector(".cg-cur")?.scrollIntoView({ block: "nearest" });
     if (name === "review") api.fit(body);
   }
