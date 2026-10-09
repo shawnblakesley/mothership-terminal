@@ -594,7 +594,7 @@
     $("cb-crew").innerHTML = pcs.map(({ c, by }) => {
       const wounds = Array.from({ length: c.wounds.max }, (_, i) => `<i class="${i < c.wounds.current ? "on" : ""}"></i>`).join("");
       return `<div class="cb-pc" data-id="${escH(c.id)}">
-        <div class="cb-face">${portraitHtml(c.portrait, "cb-portrait") || '<span class="cb-noface">NO PHOTO</span>'}<span class="cb-waves" aria-hidden="true">${"<i></i>".repeat(9)}</span></div>
+        <div class="cb-face">${portraitHtml(c.portrait, "cb-portrait") || '<span class="cb-noface">NO PHOTO</span>'}<span class="cb-waves" aria-hidden="true">${WAVE_BARS}</span></div>
         <div class="cb-name"><span>${escH(shortName(c))}</span><span class="cb-wounds" title="Wounds">${wounds}</span></div>
         <div class="cb-vit"><span>HP ${c.health.current}/${c.health.max}</span><span>STRESS ${c.stress}</span></div>
         ${by ? `<div class="cb-by">${escH(by.toUpperCase())}</div>` : ""}
@@ -603,6 +603,10 @@
     showTalking();
   }
   let talking = new Set();
+  const WAVE_BARS = Array.from({ length: 36 }, (_, i) => {
+    const h = 0.25 + 0.75 * Math.sin((Math.PI * (i + 0.5)) / 36), t = 0.55 + ((i * 7) % 11) * 0.05;
+    return `<i style="--h: ${h.toFixed(2)}; --t: ${t.toFixed(2)}s"></i>`;
+  }).join("");
   function showTalking() {
     for (const el of $("cb-crew").querySelectorAll(".cb-pc")) el.classList.toggle("talking", talking.has(el.dataset.id));
   }
