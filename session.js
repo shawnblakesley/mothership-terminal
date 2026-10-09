@@ -180,7 +180,7 @@ export function defaultGame(keys = {}) {
       rooms: structuredClone(DEFAULT_ROOMS),
       startDocs: [WORK_ORDER],
       roomDocs: structuredClone(DEFAULT_ROOM_DOCS),
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "portraits-2", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -304,10 +304,11 @@ function migrateGame(saved) {
     }
     config.upgrades.push("ship-cyan", "ship-cyan-2");
   }
-  if (!config.upgrades.includes("portraits")) {
+  for (const upgrade of ["portraits", "portraits-2"]) {
+    if (config.upgrades.includes(upgrade)) continue;
     for (const m of config.cast) m.portrait ||= findCast(DEFAULT_CAST, m.name)?.portrait || "";
     for (const pc of config.crew) pc.portrait ||= DEFAULT_CREW.find((d) => d.id === pc.id && d.name === pc.name)?.portrait || "";
-    config.upgrades.push("portraits");
+    config.upgrades.push(upgrade);
   }
   if (!config.upgrades.includes("intercom-colour")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
