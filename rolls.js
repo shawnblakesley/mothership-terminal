@@ -24,9 +24,10 @@ export function sanitizeRequest(raw, crew = []) {
   const check = CHECKS[raw?.check] || raw?.check === PANIC ? raw.check : "intellect";
   const panic = check === PANIC;
   const skill = panic ? "" : String(raw?.skill || "").trim().slice(0, 40);
-  const who = raw?.pc === "all" ? crew : crew.filter((c) => c.id === raw?.pc);
+  const some = Array.isArray(raw?.pc);
+  const who = raw?.pc === "all" ? crew : crew.filter((c) => (some ? raw.pc.includes(c.id) : c.id === raw?.pc));
   if (!who.length) throw new Error("Choose who rolls.");
-  const bonus = raw?.pc === "all" ? 0 : findSkill(who[0], skill)?.bonus ?? 0;
+  const bonus = raw?.pc === "all" || some ? 0 : findSkill(who[0], skill)?.bonus ?? 0;
   return {
     id: crypto.randomBytes(6).toString("hex"),
     check,
@@ -36,6 +37,7 @@ export function sanitizeRequest(raw, crew = []) {
     advantage: ADVANTAGE.includes(raw?.advantage) ? raw.advantage : "none",
     reason: String(raw?.reason || "").trim().slice(0, 140),
     all: raw?.pc === "all",
+    plus: panic && !!raw?.plus,
     pcs: who.map((c) => ({ id: c.id, name: c.name })),
     results: {},
     status: "waiting",
@@ -48,10 +50,22 @@ export function rollTarget(req, pc) {
   return { stat: pc.stats[req.check] ?? pc.saves[req.check], bonus: findSkill(pc, req.skill)?.bonus ?? 0 };
 }
 
-function judge(d, target) {
-  const success = d < target;
+export function judge(d, target) {
+  const success = d < target && d < 90;
   const critical = d % 11 === 0;
   return { d, success, critical, rank: success ? (critical ? 3 : 2) : critical ? 0 : 1 };
+}
+
+export function combineAdvantage(list) {
+  const plus = list.includes("advantage"), minus = list.includes("disadvantage");
+  return plus === minus ? "none" : plus ? "advantage" : "disadvantage";
+}
+
+export function effectiveAdvantage(req, pc, { close = [], plus = false, more = [] } = {}) {
+  const list = [req.advantage, ...more];
+  if (req.check === "fear" && close.some((c) => c.className === "Android")) list.push("disadvantage");
+  if (req.check === PANIC && plus && pc.className === "Teamster") list.push("advantage");
+  return combineAdvantage(list);
 }
 
 export const rollD100 = () => crypto.randomInt(0, 100);
@@ -74,7 +88,7 @@ export function resolve(request, statValue, dice, bonus = request.bonus) {
     if (request.advantage === "advantage" ? better : !better) pick = j;
   }
   const outcome = pick.success ? (pick.critical ? "critical success" : "success") : pick.critical ? "critical failure" : "failure";
-  return { stat, bonus, target, dice, used: pick.d, success: pick.success, critical: pick.critical, outcome, stress: pick.success ? 0 : 1 };
+  return { stat, bonus, target, dice, used: pick.d, success: pick.success, critical: pick.critical, outcome, stress: pick.success ? 0 : 1, panicCheck: pick.rank === 0 };
 }
 
 function resolvePanic(request, stressValue, dice) {
@@ -109,5 +123,5 @@ export function resultText(req, res) {
     return `${head}\nSTRESS ${res.stat} · ROLLED ${rolled} (D20)\n${res.success ? "KEPT THEIR COOL" : `PANIC · PANIC TABLE RESULT ${res.used}`}`;
   }
   const tail = res.success ? "" : " · +1 STRESS";
-  return `${head}\nTARGET ${res.target}${res.bonus ? ` (${res.stat}+${res.bonus})` : ""} · ROLLED ${rolled}\n${res.outcome.toUpperCase()}${tail}`;
+  return `${head}\nTARGET ${res.target}${res.bonus ? ` (${res.stat}+${res.bonus})` : ""} · ROLLED ${rolled}\n${res.outcome.toUpperCase()}${res.panicCheck ? ": PANIC CHECK" : ""}${tail}`;
 }

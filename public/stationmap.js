@@ -58,7 +58,7 @@
     const deckIds = new Set(decks.map((d) => d.id));
     const byRoom = new Map(), byDeck = new Map(), loose = [];
     const add = (map, key, item) => (map.get(key) || map.set(key, []).get(key)).push(item);
-    for (const leaf of leaves(station)) {
+    for (const leaf of leaves(station).filter((l) => l.path[0] !== "hazards")) {
       const segs = leaf.path.map(slug);
       const room = segs.find((s) => roomIds.has(s));
       const deck = !room && segs.find((s) => deckIds.has(s));
@@ -206,11 +206,13 @@
       }
       const count = who.length + pcs.length;
       const roster = [...pcs.map((n) => `${n} (player)`), ...who, ...(what.length ? ["—", ...what] : [])].join("\n");
-      out.fg.push(`<g class="sv-room${bad ? " alarm" : ""}${/airlock/.test(id) ? " airlock" : ""}${r.side === "docked" ? " docked" : ""}">
+      const hz = station?.hazards?.[id];
+      const hzText = hz ? `${String(hz.type).toUpperCase()}${hz.level ? ` ${hz.level}` : ""}` : "";
+      out.fg.push(`<g class="sv-room${bad ? " alarm" : ""}${hz ? " hazard" : ""}${/airlock/.test(id) ? " airlock" : ""}${r.side === "docked" ? " docked" : ""}">
         <rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" rx="6" ${editable ? `data-room="${esc(id)}" data-label="${esc(r.label)}" data-deck="${esc(r.deck)}"` : ""}/>${title(`${r.label}${editable ? " (click for the room view)" : ""}${roster ? `\n${roster}` : ""}`)}
         <text class="sv-roomname" x="${r.x + 10}" y="${r.y + 19}">${esc(r.label.toUpperCase())}</text>
-        ${rest.slice(0, 2).map((x, i) => `<g class="sv-click ${tone(x.leaf.path, x.leaf.value)}" ${path(x.leaf)}><text class="sv-val" x="${r.x + 10}" y="${r.y + 37 + i * 14}">${esc(x.label)} ${esc(x.leaf.value)}</text>${title(x.leaf.path.join("."))}</g>`).join("")}
-        ${rest.length > 2 ? `<text class="sv-val sv-more" x="${r.x + 10}" y="${r.y + r.h - 7}">+${rest.length - 2}</text>` : ""}
+        ${rest.slice(0, hz ? 1 : 2).map((x, i) => `<g class="sv-click ${tone(x.leaf.path, x.leaf.value)}" ${path(x.leaf)}><text class="sv-val" x="${r.x + 10}" y="${r.y + 37 + i * 14}">${esc(x.label)} ${esc(x.leaf.value)}</text>${title(x.leaf.path.join("."))}</g>`).join("")}
+        ${hz ? `<text class="sv-hazard" x="${r.x + 10}" y="${r.y + 51}">${esc(hzText)}${rest.length > 1 ? ` +${rest.length - 1}` : ""}</text>` : rest.length > 2 ? `<text class="sv-val sv-more" x="${r.x + 10}" y="${r.y + r.h - 7}">+${rest.length - 2}</text>` : ""}
         ${count || what.length ? `<text class="sv-val sv-people" x="${r.x + r.w - 8}" y="${r.y + r.h - 7}" text-anchor="end">${pcs.length ? `<tspan class="sv-pc">${pcs.length}◆</tspan> ` : ""}${who.length ? `${who.length}●` : ""}${what.length ? ` ${what.length}▪` : ""}</text>` : ""}
         ${cam ? `<g class="sv-click sv-cam ${tone(cam.path, cam.value)}" ${path(cam)} transform="translate(${r.x + r.w - 26} ${r.y + 8})"><rect width="13" height="9" rx="2"/><path d="M13 2.5 L18 0 L18 9 L13 6.5 Z"/>${title(`${cam.path.join(".")}: ${cam.value}`)}</g>` : ""}
         ${/airlock/.test(id) ? `<text class="sv-tag sv-space" x="${r.x + r.w + 6}" y="${r.cy + 4}">▸ SPACE</text>` : ""}

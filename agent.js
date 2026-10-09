@@ -5,9 +5,11 @@ import { CHECKS, PANIC, ADVANTAGE } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
 import { statsLine } from "./combat.js";
 import { WOUND_LABELS } from "./wounds.js";
+import { HAZARDS, hazardBrief } from "./hazards.js";
 import { terminalsBrief, netOf, systemsOf, systemName, screensBrief } from "./terminals.js";
 import { TILES } from "./rooms.js";
 import { roomId } from "./clean.js";
+import { campaignById, factionBrief } from "./campaign.js";
 
 export const ALL_EFFECTS = [
   "blood", "goo", "crack", "ice", "alarm", "redalert", "glitch",
@@ -109,7 +111,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "item_changes", "attacks", "crew_attacks", "round", "reveal_death_save", "moves", "cast_changes", "clocks", "handouts", "found_docs", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "item_changes", "attacks", "crew_attacks", "round", "reveal_death_save", "hazards", "time_passes", "moves", "cast_changes", "clocks", "handouts", "found_docs", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -188,7 +190,7 @@ function buildSchema(voices) {
           },
         },
       },
-      round: { type: "boolean", description: "True once, in a fight, when a round of about 10 seconds passes in this reply: anyone Bleeding takes damage. False otherwise." },
+      round: { type: "boolean", description: "True once when a round of about 10 seconds passes in this reply (a fight): the app runs the per-round rules, such as Bleeding and hazards. False otherwise." },
       reveal_death_save: { type: "array", items: { type: "string" }, description: "Names of characters whose Death Save is revealed because someone in the fiction spends a turn checking their vitals (see COMBAT). Usually empty." },
       item_changes: {
         type: "array",
@@ -204,6 +206,27 @@ function buildSchema(voices) {
             why: { type: "string", description: "A few words for the Warden's log." },
           },
         },
+      },
+      hazards: {
+        type: "array",
+        description: "Environmental hazards starting, changing or ending in a room because of this reply (see HAZARDS IN PLAY). The app runs their rules. Usually empty.",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["room", "type", "level"],
+          properties: {
+            room: { type: "string", description: "A room id from the map." },
+            type: { type: "string", enum: [...Object.keys(HAZARDS), "none"], description: "The hazard, or none to end the one in that room." },
+            level: { type: "integer", description: "Radiation 1-3; corrosive or acid 1-10; crush, collapse or machinery severity 1-3. 0 for the others." },
+          },
+        },
+      },
+      time_passes: {
+        type: "object",
+        additionalProperties: false,
+        required: ["hours"],
+        description: "Hours that pass in the fiction when the story skips ahead (travel, waiting, a long job). The app runs the hourly and daily rules (extreme cold or heat, exhaustion, hunger, life support). 0 when no time skips.",
+        properties: { hours: { type: "integer" } },
       },
       moves: {
         type: "array",
@@ -348,6 +371,8 @@ const REPLY_EXAMPLE = {
   crew_attacks: [],
   round: false,
   reveal_death_save: [],
+  hazards: [],
+  time_passes: { hours: 0 },
   moves: [],
   cast_changes: [{ name: "Dr. Imre Salk", room: "", notes: "", attitude_change: 1, why: "they promised medicine for Webb", stress_change: 0, panic_check: false }],
   clocks: [],
@@ -471,6 +496,7 @@ CREW CONDITION (the players' characters: Health, Wounds, Stress)
 - Only for consequences that actually happened in this reply and that the Warden left to you. Failed rolls already add 1 stress automatically: don't add it again. When unsure, leave it to the Warden.
 - Each character at most once per event: if you name someone, don't also include them through a class or "Humans" for the same thing.
 - Their current condition is under CREW CONDITION in the per-turn context.
+- Environmental hazards: the app runs the rules for hazards in a room (vacuum, toxic or corrosive atmosphere, radiation, extreme cold or heat, fire, explosions and hull breaches, life support offline, and the story hazards), and for exhaustion, hunger, thirst, bleeding and cryosickness. When the fiction starts, changes or ends one, record it in hazards (room, type, level; type "none" ends it), and don't also apply its damage, Stress or penalties through crew_changes: the Warden's Next round and Pass time controls and the players' rolls handle those. When the story skips ahead (a long trip, a night's wait, a long job), set time_passes.hours. HAZARDS IN PLAY in the per-turn context lists what is running now and each rule; narrate by it, and never invent rules for them. Hazards marked story hazard are not Mothership rules.
 - outcome_check: see RULE OF COOL. needed=false whenever nothing uncertain is left for the Warden.
 
 COMBAT (Mothership 1e violent encounters)
@@ -478,7 +504,7 @@ COMBAT (Mothership 1e violent encounters)
 - There is no initiative. Describe the threat and what happens if nobody responds, let the players declare what they do, then resolve everything together (checks and saves first, then Damage and Wounds) and describe the new situation. A round is about 10 seconds; a turn is an action and a move within Close range, or just running within Long range.
 - A player's attack is a Combat Check; a failed one makes the situation worse. Only when a character's Combat check has just succeeded against an adversary, set crew_attacks with a weapon they carry (CREW CONDITION lists their items; with none, "Unarmed"). The app rolls the damage.
 - When a creature or person attacks a character, use attacks (by and attack from ADVERSARIES' CONDITION, target a crew member). The app rolls their Combat and, on a hit, the damage, and applies armor (damage under its AP is ignored; damage at or over AP destroys the armor and the rest goes through), Health, Wounds, Wounds Table results and Bleeding. Narrate the outcome from the [ROLL RESULT] entries. Never invent damage numbers or Wounds.
-- Set round to true in the reply where a round passes in a fight: anyone Bleeding then takes damage that ignores armor. A First Aid Kit stops Bleeding: when someone uses one, record it in item_changes (remove).
+- Set round to true in the reply where a round (about 10 seconds) passes in a fight: the app then runs every per-round rule, so anyone Bleeding takes damage that ignores armor, and hazards in the room do their damage. A First Aid Kit stops Bleeding: when someone uses one, record it in item_changes (remove).
 - A Death Save is rolled secretly by the app and nobody knows the result, you included. CREW CONDITION says when one is due. Don't say whether that character lives, dies or wakes. Only when someone in the fiction spends a turn checking their vitals, put the character's name in reveal_death_save and narrate what the [ROLL RESULT] says.
 - ADVERSARIES' CONDITION (per-turn context) has each adversary's numbers and its current Health and Wounds. At 0 Wounds it is dead or destroyed: narrate that.
 
@@ -591,7 +617,7 @@ function buildMessages(state) {
   for (const e of state.log.filter((x) => x.kind !== "note" && !x.cut).slice(-HISTORY_ENTRIES)) {
     const role = USER_KINDS.has(e.kind) ? "user" : "assistant";
     let last = turns.at(-1);
-    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], moves: [], cast: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
+    if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], hazards: [], hours: 0, moves: [], cast: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
     if (e.kind === "player") last.inputs.push(`${playerTag(e)} ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
@@ -608,6 +634,8 @@ function buildMessages(state) {
       last.changes.push(...(e.changes || []));
       last.crew.push(...(e.crewChanges || []));
       last.items.push(...(e.itemChanges || []));
+      last.hazards.push(...(e.hazardChanges || []));
+      last.hours += e.timePasses || 0;
       last.moves.push(...(e.moves || []));
       last.cast.push(...(e.castChanges || []));
       last.clocks.push(...(e.clockChanges || []));
@@ -622,7 +650,7 @@ function buildMessages(state) {
   return turns.map((t) =>
     t.role === "user"
       ? { role: "user", content: t.inputs.join("\n") }
-      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, moves: t.moves, cast_changes: t.cast, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
+      : { role: "assistant", content: JSON.stringify({ lines: t.lines, station_changes: t.changes, crew_changes: t.crew, item_changes: t.items, hazards: t.hazards, time_passes: { hours: t.hours }, moves: t.moves, cast_changes: t.cast, clocks: t.clocks, handouts: t.handouts, layout: t.layout, room_plans: t.plans, effects: t.effects, dm_note: t.notes.join(" ") }) },
   );
 }
 
@@ -705,9 +733,17 @@ const SOLO = `NO WARDEN: nobody is running this game but you. The players chose 
 - The story can end: escape, everyone dead, a terrible truth with nothing left to do. When it does, write the final scene, and set story_end.ended=true with a one-line how. Don't end it early: only when it's truly over.
 - Nobody reads dm_note.`;
 
+// The faction standings in force for the story being played (campaign house rule), or "".
+function factionsNow(state) {
+  const p = state.campaign, c = p && campaignById(p.id), story = c?.stories.find((x) => x.id === p.current);
+  return story ? factionBrief(c, story, p) : "";
+}
+
 function buildContext(state, steer, aside = false) {
   const ctx = [`LIVE STATION STATE (JSON):\n${JSON.stringify(state.station, null, 2)}`];
   if (state.config.standingOrders.trim()) ctx.push(`WARDEN STANDING ORDERS (always in force):\n${state.config.standingOrders.trim()}`);
+  const factions = factionsNow(state);
+  if (factions) ctx.push(factions);
   if (aside) {
     ctx.push("LATEST INPUT: a private [WARDEN NOTE]. The players don't see it and nothing happens on their screen: return lines: [] and effects: []. " +
       "It is true as of NOW: put every change it implies in station_changes in THIS reply (doors, lights, systems; add new keys when needed, e.g. crew.voss = DEAD), never promise to change something later. " +
@@ -732,6 +768,8 @@ function buildContext(state, steer, aside = false) {
     const s = v.adversary.stats;
     return `- ${v.name} (${v.adversary.revealed ? "revealed" : "unrevealed"}): ${statsLine(s)}. Attacks: ${s.attacks.map((a) => `${a.name} ${a.damage} ${WOUND_LABELS[a.woundType]}${a.woundAdv ? ` [${a.woundAdv}]` : ""}${a.special ? ` (${a.special})` : ""}`).join("; ") || "none"}.${s.special ? ` Special: ${s.special}` : ""}${s.note ? ` ${s.note}` : ""}`;
   }).join("\n")}`);
+  const hz = hazardBrief(state.station, state.config.crew || []);
+  ctx.push(`HAZARDS IN PLAY (now):\n${hz.lines.join("\n") || "- none"}${hz.sick.length ? `\n\nCHARACTERS' HAZARD CONDITIONS (tracked by the app):\n${hz.sick.join("\n")}` : ""}\n\nHazard types you can start with the hazards field: ${Object.entries(HAZARDS).map(([k, h]) => `${k}${h.kind === "story" ? " (story hazard)" : ""}`).join(", ")}.`);
   const found = new Set(state.found || []);
   const lying = (state.config.roomDocs || []).filter((d) => !found.has(d.id));
   if (lying.length) ctx.push(`FILES IN ROOMS (not found yet; you may hand the players one that's in the room they're in, when they search it or pull it up on a terminal there):\n${lying.map((d) => `- ${d.id} [${d.room}] ${d.title} (${d.voice ? "audio recording" : "document"}): ${d.text.replace(/\s+/g, " ").slice(0, 140)}`).join("\n")}`);
@@ -821,6 +859,11 @@ export function parseReply(text, voices) {
       .map((a) => ({ by: String(a.by).trim().slice(0, 60), weapon: String(a.weapon ?? "").trim().slice(0, 60), target: String(a.target).trim().slice(0, 60) })),
     round: r?.round === true,
     reveal_death_save: (Array.isArray(r?.reveal_death_save) ? r.reveal_death_save : []).map((x) => String(x ?? "").trim().slice(0, 60)).filter(Boolean).slice(0, 4),
+    hazards: (Array.isArray(r?.hazards) ? r.hazards : [])
+      .filter((h) => h && roomId(h.room) && (h.type === "none" || HAZARDS[String(h.type).toLowerCase()]))
+      .slice(0, 8)
+      .map((h) => ({ room: roomId(h.room), type: String(h.type).toLowerCase(), level: Number.isFinite(Number(h.level)) && Number(h.level) > 0 ? Math.round(Number(h.level)) : null })),
+    time_passes: { hours: Math.max(0, Math.min(72, Math.round(Number(r?.time_passes?.hours) || 0))) },
     moves: (Array.isArray(r?.moves) ? r.moves : [])
       .filter((m) => m && String(m.for ?? "").trim() && String(m.terminal ?? "").trim())
       .slice(0, 8)

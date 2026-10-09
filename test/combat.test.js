@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyDamage, applyDeathSave, roundTick, sanitizeCrew, DEFAULT_CREW } from "../crew.js";
+import { applyDamage, applyDeathSave, gainWound, deathSaveCountdown, sanitizeCrew, newCond, DEFAULT_CREW } from "../crew.js";
+import { roundTick, hazardDamage, hazardWound } from "../hazards.js";
 import { mitigate, damageAdversary, sanitizeStats, deathSaveOutcome } from "../combat.js";
 import { rollWound, WOUNDS } from "../wounds.js";
 import { weaponsOf, weaponDamage, UNARMED, armorFrom } from "../weapons.js";
@@ -11,7 +12,7 @@ const seq = (...vals) => { let i = 0; return () => vals[Math.min(i++, vals.lengt
 const pc = (over = {}) => ({
   id: "t", name: "Test", health: { current: 15, max: 15 }, wounds: { current: 0, max: 2 }, stress: 2,
   stats: { strength: 40, speed: 30, intellect: 30, combat: 30 }, saves: { sanity: 30, fear: 30, body: 30 },
-  armor: { name: "Vaccsuit", ap: 3, dr: 0, destroyed: false }, bleeding: 0, ...over,
+  armor: { name: "Vaccsuit", ap: 3, dr: 0, destroyed: false }, cond: newCond(), ...over,
 });
 
 test("armor: damage under AP is ignored and the armor stays", () => {
@@ -97,10 +98,10 @@ test("Wounds Table effects are applied: bleeding, and a dead result skips the De
   const base = { armor: { name: "Crew Attire", ap: 0, dr: 0, destroyed: false }, health: { current: 3, max: 15 }, wounds: { current: 0, max: 3 } };
   const a = pc(structuredClone(base));
   applyDamage(a, 4, { type: "bleeding", rng: seq(4) });
-  assert.equal(a.bleeding, 2);
+  assert.equal(a.cond.bleeding, 2);
   const b = pc(structuredClone(base));
   const r = applyDamage(b, 4, { type: "gore", rng: seq(9) });
-  assert.equal(b.deceased, true);
+  assert.ok(b.cond.dead);
   assert.equal(r.dead, true);
   assert.equal(r.deathSave, false);
 });
@@ -115,12 +116,12 @@ test("Lethal Injuries set a Death Save countdown, Strength loss is rolled", () =
 });
 
 test("bleeding ticks each round and ignores armor and DR", () => {
-  const p = pc({ bleeding: 2, armor: { name: "Advanced Battle Dress", ap: 10, dr: 3, destroyed: false } });
-  const ev = roundTick([p]);
-  assert.equal(ev.length, 1);
+  const p = pc({ armor: { name: "Advanced Battle Dress", ap: 10, dr: 3, destroyed: false } });
+  p.cond.bleeding = 2;
+  for (const d of roundTick(p, []).damage) hazardDamage(p, d.n, d.type);
   assert.equal(p.health.current, 13);
   assert.equal(p.armor.destroyed, false);
-  roundTick([p]);
+  for (const d of roundTick(p, []).damage) hazardDamage(p, d.n, d.type);
   assert.equal(p.health.current, 11);
 });
 
@@ -165,7 +166,7 @@ test("Death Save outcomes (PSG 29.2)", () => {
   for (const n of [5, 7, 9]) assert.equal(deathSaveOutcome(n).kind, "dead");
   const p = pc();
   applyDeathSave(p, 6);
-  assert.equal(p.deceased, true);
+  assert.ok(p.cond.dead);
   const q = pc();
   applyDeathSave(q, 0, seq(5, 2));
   assert.equal(q.status, "unconscious");
@@ -210,3 +211,26 @@ for (const c of CAMPAIGNS) {
     }
   });
 }
+
+test("one pipeline: hazard damage ignores armor, rolls the Wounds Table and carries over", () => {
+  const p = pc({ health: { current: 5, max: 15 }, wounds: { current: 0, max: 3 } });
+  const r = hazardDamage(p, 8, "fire", { rng: seq(4) });
+  assert.equal(r.result.dealt, 8);
+  assert.equal(p.armor.destroyed, false);
+  assert.equal(r.result.wounds[0].roll, 4);
+  assert.equal(p.health.current, 12);
+  const toxic = hazardDamage(pc({ health: { current: 2, max: 15 } }), 5, "toxic");
+  assert.equal(toxic.result.wounds[0].roll, null);
+  const w = hazardWound(p, "fire", { rng: seq(3) });
+  assert.equal(w.wound.roll, 3);
+  assert.equal(p.wounds.current, 2);
+});
+
+test("a Lethal Injury countdown falls due after its rounds, dying is a cond counter", () => {
+  const p = pc({ deathSaveIn: 2 });
+  assert.equal(deathSaveCountdown(p), false);
+  assert.equal(deathSaveCountdown(p), true);
+  const q = pc();
+  applyDeathSave(q, 1, seq(3));
+  assert.equal(q.cond.dying, 3);
+});

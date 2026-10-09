@@ -43,4 +43,4 @@ export function rollWound(type, adv = "", rng = randInt) {
 }
 
 const pad = (n) => String(n).padStart(2, "0");
-export const woundText = (w) => `${WOUND_LABELS[w.type].toUpperCase()}${w.adv ? ` [${w.adv}]` : ""} WOUND TABLE: ROLLED ${w.adv ? `${w.all.join(" / ")}, KEPT THE ${w.adv === "+" ? "HIGHER" : "LOWER"} ROW: ` : ""}${pad(w.roll)}, ${w.severity.toUpperCase()}. ${w.text}`;
+export const woundText = (w) => !w.type ? `WOUND: ${w.text}` : `${WOUND_LABELS[w.type].toUpperCase()}${w.adv ? ` [${w.adv}]` : ""} WOUND TABLE: ROLLED ${w.adv ? `${w.all.join(" / ")}, KEPT THE ${w.adv === "+" ? "HIGHER" : "LOWER"} ROW: ` : ""}${pad(w.roll)}, ${w.severity.toUpperCase()}. ${w.text}`;

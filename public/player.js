@@ -546,7 +546,7 @@
   volBtn.addEventListener("click", () => { muted = !muted; applyVolume(); input.focus(); });
   applyVolume();
 
-  let crew = [], claims = {}, myId = null;
+  let crew = [], claims = {}, myId = null, conds = {};
   let played = [];
   const crewKey = () => `crew:${code}`;
   const mine = () => crew.find((c) => c.id === myId) || null;
@@ -686,15 +686,16 @@
     const a = c.armor;
     const bits = [];
     if (a) bits.push(`<span class="${a.destroyed ? "cs-bad" : ""}">ARMOR: ${escH(a.name.toUpperCase())} · AP ${a.destroyed ? 0 : a.ap}${a.dr ? ` · DR ${a.dr}` : ""}${a.destroyed ? " · DESTROYED" : ""}</span>`);
-    if (c.bleeding) bits.push(`<span class="cs-bad">BLEEDING ${c.bleeding} A ROUND</span>`);
+    if (c.cond?.bleeding) bits.push(`<span class="cs-bad">BLEEDING ${c.cond.bleeding} A ROUND</span>`);
+    if (c.cond?.dying) bits.push(`<span class="cs-bad">DYING: DEAD IN ${c.cond.dying} ROUNDS WITHOUT INTERVENTION</span>`);
     if (c.status) bits.push(`<span class="cs-bad">${escH(c.status.toUpperCase())}${c.statusNote ? ` · ${escH(c.statusNote.toUpperCase())}` : ""}</span>`);
     if (c.deathSaveIn) bits.push(`<span class="cs-bad">DEATH SAVE IN ${c.deathSaveIn} ROUNDS UNLESS TREATED</span>`);
-    return `${c.deceased ? '<div class="cs-deceased">DECEASED</div>' : ""}<div class="cs-combat">${bits.join("")}</div>`;
+    return `${c.cond?.dead ? '<div class="cs-deceased">DECEASED</div>' : ""}<div class="cs-combat">${bits.join("")}</div>`;
   };
   const statusCard = (c) => `<div class="cs-card cs-status"><div class="cs-title">STATUS REPORT</div><div class="cs-vitals">
       ${pill("health", "HEALTH", c.health.current, c.health.max, ["CURRENT", "MAX"])}
       ${pill("wounds", "WOUNDS", c.wounds.current, c.wounds.max, ["CURRENT", "MAX"])}
-      ${pill("stress", "STRESS", c.stress, undefined, ["CURRENT"])}
+      ${pill("stress", "STRESS", c.stress, undefined, ["CURRENT", `MIN ${c.minStress ?? 2}`])}
     </div>${combatRow(c)}</div>`;
   const numbersCard = (title, obj, hint = "") => `<div class="cs-card cs-${title.toLowerCase()}"><div class="cs-title">${title}</div>
       <div class="cs-nums">${Object.entries(obj).map(([k, v]) => circle(k, v)).join("")}</div>${hint}</div>`;
@@ -726,6 +727,7 @@
   const sheetCards = (c) => `
       ${sheetHead(c)}
       ${statusCard(c)}
+      ${conds[c.id]?.length ? `<div class="cs-card cs-conds-card"><div class="cs-title">CONDITIONS</div><div class="cs-conds">${conds[c.id].map((x) => `<span>${escH(x.toUpperCase())}</span>`).join("")}</div></div>` : ""}
       ${numbersCard("STATS", c.stats, rollHint())}
       ${numbersCard("SAVES", c.saves)}
       <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((s) => `<div><span>${escH(s.name)}</span><span class="cs-bonus">+${s.bonus}</span></div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
@@ -736,6 +738,7 @@
         ${c.backstory ? `<div class="p-text">${escH(c.backstory)}</div>` : ""}
         ${c.trinket ? `<div><span class="cs-k">TRINKET</span> ${escH(c.trinket)}</div>` : ""}
         ${c.patch ? `<div><span class="cs-k">PATCH</span> ${escH(c.patch)}</div>` : ""}
+        ${header.trauma?.[c.className] ? `<div><span class="cs-k">TRAUMA RESPONSE</span> ${escH(header.trauma[c.className])}</div>` : ""}
       </div>`;
 
   let sideOpen = ls.get("side-open") !== "0";
@@ -1351,11 +1354,29 @@
   const rollbox = $("rollbox"), rbDice = $("rb-dice"), rbErr = $("rb-err");
   let curRoll = null, alerted = "";
 
+  const ADV_MARK = { none: "NORMAL", advantage: "[+]", disadvantage: "[-]" };
+  const plusBox = $("rb-plus-box");
+  const myEntry = (own = mine()) => curRoll?.pcs.find((p) => p.id === own?.id);
+  function diceNeeded() {
+    const e = myEntry();
+    let adv = e?.advantage ?? curRoll.advantage;
+    if (e?.plus && (e.autoPlus || plusBox.checked)) adv = adv === "disadvantage" ? "none" : "advantage";
+    return adv === "none" ? 1 : 2;
+  }
+  function setPlaceholder() {
+    rbDice.placeholder = curRoll.panic ? (diceNeeded() === 1 ? "14" : "14 6") : (diceNeeded() === 1 ? "47" : "47 82");
+  }
+  plusBox.addEventListener("change", () => curRoll && setPlaceholder());
+
   function rollTargetText(roll, pc) {
-    if (roll.panic) return `YOUR STRESS: ${pc.stress} · ROLL ABOVE IT ON A D20 TO KEEP YOUR COOL`;
-    const stat = pc.stats[roll.check] ?? pc.saves[roll.check];
+    const own = myEntry(pc);
+    const why = own?.why?.length ? ` (${own.why.join(", ").toUpperCase()})` : "";
+    const mark = own && own.advantage !== roll.advantage ? ` · YOURS IS ${ADV_MARK[own.advantage]}${why}` : why ? ` ·${why}` : "";
+    const rad = pc.cond?.rad || 0;
+    if (roll.panic) return `YOUR STRESS: ${pc.stress} · ROLL ABOVE IT ON A D20 TO KEEP YOUR COOL${mark}`;
+    const stat = Math.max(1, (pc.stats[roll.check] ?? pc.saves[roll.check]) - rad);
     const bonus = skillBonus(pc, roll.skillName);
-    return `YOUR ${roll.check.toUpperCase()}: ${stat}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}`;
+    return `YOUR ${roll.check.toUpperCase()}: ${stat}${rad ? ` (-${rad} RADIATION)` : ""}${bonus ? ` + ${roll.skillName.toUpperCase()} ${bonus}` : ""} · ROLL UNDER ${stat + bonus}${mark}`;
   }
 
   function showRoll(roll) {
@@ -1375,7 +1396,11 @@
     if (!mustRoll) return;
     $("rb-target").textContent = rollTargetText(roll, own);
     $("rb-roll").textContent = roll.panic ? "[ ROLL D20 ]" : "[ ROLL D100 ]";
-    rbDice.placeholder = roll.panic ? (roll.advantage === "none" ? "14" : "14 6") : (roll.advantage === "none" ? "47" : "47 82");
+    const entry = myEntry(own);
+    $("rb-plus").hidden = !entry?.plus;
+    plusBox.checked = !!entry?.autoPlus;
+    plusBox.disabled = !!entry?.autoPlus;
+    setPlaceholder();
     if (alerted === `${roll.id}:${own.id}`) return;
     alerted = `${roll.id}:${own.id}`;
     rbDice.value = "";
@@ -1392,7 +1417,7 @@
     const msg = { t: "roll", id: curRoll.id };
     if (manual) {
       const dice = readDice(rbDice.value);
-      const need = curRoll.advantage === "none" ? 1 : 2;
+      const need = diceNeeded();
       const [lo, hi, die, eg] = curRoll.panic ? [1, 20, "D20", "14 6"] : [0, 99, "D100", "47 82"];
       if (dice.length !== need || dice.some((d) => d < lo || d > hi)) {
         rbErr.textContent = need === 1 ? `ENTER ONE ${die} ROLL (${curRoll.panic ? "1-20" : "00-99"}).` : `ENTER BOTH ${die} ROLLS, E.G. ${eg}.`;
@@ -1400,6 +1425,7 @@
       }
       Object.assign(msg, { manual: true, dice });
     }
+    if (myEntry()?.plus && plusBox.checked) msg.plus = true;
     rbErr.textContent = "ROLLING...";
     send(msg);
   }
@@ -1433,7 +1459,7 @@
       diceEl.textContent = result.dice.length > 1 ? `${result.dice.map(show).join(" / ")} → ${show(result.used)}` : show(result.used);
       outEl.textContent = name + (result.panic
         ? (result.success ? `KEPT THEIR COOL (ABOVE STRESS ${result.target})` : `PANIC! (STRESS ${result.target}) · ${effect ? effect.toUpperCase() : `PANIC TABLE ${result.used}`}`)
-        : `${result.outcome.toUpperCase()} (UNDER ${result.target})${result.success ? "" : " · +1 STRESS"}`);
+        : `${result.outcome.toUpperCase()}${result.panicCheck ? ": PANIC CHECK" : ""} (UNDER ${result.target})${result.success ? "" : " · +1 STRESS"}`);
       fx.classList.add(result.success ? "pass" : "fail");
       if (result.critical) fx.classList.add("crit");
       if (result.success) { FX.Sound.beep(880, 0.12, 0.08); setTimeout(() => FX.Sound.beep(1320, 0.2, 0.08), 120); }
@@ -1454,6 +1480,36 @@
     fx.querySelector(".pf-plan").innerHTML = RoomPlan.svg(rows, { cell: 24, title: name });
     chirp();
   }
+  let sector = null;
+  function showSector(msg) {
+    const fx = $("sectorfx");
+    if (msg.hide) { sector = null; fx.hidden = true; return; }
+    const fresh = !sector;
+    sector = msg;
+    const port = (id) => msg.ports.find((p) => p.id === id);
+    const mine = msg.offered.findIndex((o) => o.id === msg.mine);
+    const lanes = msg.lanes.map((l) => `<line class="${l.dark ? "dark" : ""}" x1="${port(l.a).x}" y1="${port(l.a).y}" x2="${port(l.b).x}" y2="${port(l.b).y}"><title>${escH(l.name)} · ${l.days} days</title></line>`).join("");
+    const ports = msg.ports.map((p) => `<g transform="translate(${p.x} ${p.y})"><circle r="9"/><circle r="3" class="core"/><text y="-16">${escH(p.name)}</text></g>`).join("");
+    const jobs = msg.offered.map((o, i) => `<g class="job${i === mine ? " mine" : ""}" data-job="${escH(o.id)}" transform="translate(${o.x} ${o.y})"><rect x="-12" y="-12" width="24" height="24" transform="rotate(45)"/><text y="4">${i + 1}</text></g>`).join("");
+    fx.querySelector(".pf-title").textContent = `SECTOR: ${String(msg.title).toUpperCase()}`;
+    fx.querySelector(".sf-map").innerHTML = `<svg viewBox="0 0 1100 560" role="img" aria-label="Sector map"><g class="lanes">${lanes}</g>${ports}<g class="rig" transform="translate(${msg.rig.x - 40} ${msg.rig.y + 26})"><path d="M-8 6 L0 -9 L8 6 Z"/><text y="20">${escH(msg.rig.name)}</text></g>${jobs}</svg>`;
+    const board = msg.offered.length
+      ? msg.offered.map((o, i) => `<button type="button" class="p-btn sf-job${i === mine ? " mine" : ""}" data-job="${escH(o.id)}"><b>${i + 1}. ${escH(o.title)}</b>${msg.votes[o.id] ? ` <span class="sf-votes">[${"*".repeat(msg.votes[o.id])}]</span>` : ""}<span class="sf-hook">${escH(o.hook)}</span><span class="sf-hook">THE JOB: ${escH(o.job)}</span></button>`).join("")
+      : `<div class="sf-none">NO JOBS ON THE BOARD YET.</div>`;
+    fx.querySelector(".sf-side").innerHTML = `<div class="sf-head">JOB BOARD</div>${board}${msg.played.length ? `<div class="sf-head">DONE</div><div class="sf-played">${msg.played.map((p) => escH(p.title)).join("<br>")}</div>` : ""}`;
+    if (fresh) { fx.hidden = false; chirp(); }
+  }
+  const voteJob = (id) => id && send({ t: "sectorVote", story: id });
+  $("sectorfx").addEventListener("click", (e) => {
+    const job = e.target.closest("[data-job]");
+    if (job) return voteJob(job.dataset.job);
+    if (!e.target.closest(".sf-side, .sf-map")) $("sectorfx").hidden = true;
+  });
+  addEventListener("keydown", (e) => {
+    if ($("sectorfx").hidden || !sector) return;
+    if (e.key === "Escape") $("sectorfx").hidden = true;
+    else if (/^[1-9]$/.test(e.key) && sector.offered[e.key - 1]) { e.preventDefault(); voteJob(sector.offered[e.key - 1].id); }
+  });
   function chirp() { FX.Sound.beep(520, 0.08, 0.05); setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90); }
   function showImage({ title, name, src, credit = "" }) {
     if (!src) return FX.Sound.sting();
@@ -1569,6 +1625,7 @@
           heldCues.clear();
           if (msg.map) stationMap = msg.map;
           setTimeout(() => setIso(msg.iso || null));
+          conds = msg.conds || {};
           setCrew(msg.crew, msg.claims, msg.played);
           if (mine()) ws.send(JSON.stringify({ t: "claim", id: myId }));
           for (const e of msg.log) {
@@ -1607,13 +1664,14 @@
         case "busy": busy = msg.busy; updateBusy(); break;
         case "effect": onEffect(msg.effect); break;
         case "roll": showRoll(msg.roll); break;
-        case "crew": setCrew(msg.crew, msg.claims, msg.played); break;
+        case "crew": conds = msg.conds || {}; setCrew(msg.crew, msg.claims, msg.played); break;
         case "wardenLog": onWardenLog(msg); break;
         case "streamMap": stationMap = msg.map; renderCastbar(); break;
         case "talking": talking = new Set(msg.ids); wardenTalking = !!msg.warden; showTalking(); break;
         case "isoMap": setIso(msg.map); break;
         case "rollResult": showRollResult(msg); break;
         case "roomPlan": showPlan(msg); break;
+        case "sector": showSector(msg); break;
         case "showImage": showImage(msg); break;
         case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); $("sr-err").textContent = rbErr.textContent; break;
         case "endEffect": dropCue(msg.id); FX.end(msg.id); break;

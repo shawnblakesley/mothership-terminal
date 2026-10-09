@@ -8,6 +8,7 @@ const SHIP = {
   system: "LONG HAUL MARY",
   os: "HAULCOM 4.1",
   computer: "MARY",
+  crew: 4,
   description: "A Kessler-Pike K-12 \"Longliner\" bulk hauler, 31 years old, owned 51% by Wanda Okafor and 100% by her debt to Gallow-Mercer Finance. A blunt-nosed cab on a long cargo spine that clamps one standard 40-unit container. Three decks: the cab (cockpit, sleeper bunk, galley), engineering (engine room, airlock, crawlway) and the cargo spine.",
   persona: `You are MARY, the HAULCOM 4.1 rig computer of the Longliner bulk hauler LONG HAUL MARY. Thirty-one years on the Rim have given you opinions.
 - You talk like an old long-haul dispatcher: warm, dry, a little drawl, short sentences, plain uppercase on the cab screen. You call the crew "hon", "kid" or by their CB handles. You hate customs, love the union and tolerate Gallow-Mercer because they hold the note on you.
@@ -148,13 +149,13 @@ const LANES = [
 const FACTIONS = [
   { id: "union", name: "Teamsters Local 1312", short: "The Union", color: "#7bd88f",
     about: "The Rim Haulers' Brotherhood and Sisterhood. Dues are 4% of every load, and they buy you a lawyer, a bunk at Halfway House, a dispatcher who'll lie for you, and the knowledge that if Gallow-Mercer leans on you, nine hundred rigs stop rolling. Dispatcher Maggie Szabo is its voice on the CB." },
-  { id: "gallow_mercer", name: "Gallow-Mercer Logistics", short: "Gallow-Mercer", color: "#ffb347",
+  { id: "gallow_mercer", name: "Gallow-Mercer Logistics", short: "Gallow-Mercer", color: "#ffb347", trouble: "a hit team",
     about: "The megacorp that owns Port Gallow, Terminus Relay, half the contracts and most drivers' debt. Union-busting, efficient, deniable. Its \"Special Consignments\" office (Silas Crane) moves sealed cargo through independents so nothing traces back: the Black Manifest." },
-  { id: "rcea", name: "Rim Customs & Excise Authority", short: "Customs", color: "#d7e3ff",
+  { id: "rcea", name: "Rim Customs & Excise Authority", short: "Customs", color: "#d7e3ff", trouble: "a customs boarding",
     about: "The law on the lanes: inspections at Tollgate, cutters on patrol, impound lots, fines that bankrupt owner-operators. Underpaid, over-armed and, at the top, bought. Inspector Cornelius Vey is honest; Captain Ilse Marrak of the cutter WRIT OF SEIZURE is something worse." },
-  { id: "lantern", name: "The Lantern Syndicate", short: "Auntie's People", color: "#ff6b6b",
+  { id: "lantern", name: "The Lantern Syndicate", short: "Auntie's People", color: "#ff6b6b", trouble: "a debt collector",
     about: "Smugglers, fences and blockade runners who answer to Auntie Lu Bao at Lantern. They pay triple for runs past customs and they always pay, and they always collect." },
-  { id: "choir", name: "The Choir of the Open Door", short: "The Choir", color: "#c792ea",
+  { id: "choir", name: "The Choir of the Open Door", short: "The Choir", color: "#c792ea", trouble: "a curse",
     about: "A quiet, growing faith among lonely drivers and dock workers: there is a Door at the edge of the Rim, and beyond it nobody is ever alone again. Brother Tobiah preaches it. Its devout sew their eyes open so they won't miss the Door when it comes." },
   { id: "ardent", name: "Ardent Mining Consortium", short: "Ardent", color: "#ff8c42",
     about: "Owns Cinder's Reach. Pays well, digs deep, ignores surveys. Sells its radiant ore to Gallow-Mercer at a price that suggests somebody needs it badly." },
@@ -528,7 +529,7 @@ const STORIES = [
     affinity: [{ faction: "gallow_mercer", change: -1, when: "they shut down the dish" }],
   },
   {
-    id: "end_of_the_line", n: 12, title: "END OF THE LINE", at: "terminus", tier: 3,
+    id: "end_of_the_line", n: 12, title: "END OF THE LINE", at: "terminus", tier: 3, finale: true,
     event: "Final delivery", horror: "Cosmic and corporate horror: the customer at the end of the Black Manifest",
     hook: "Silas Crane has one last sealed consignment for the crew, at a price that would pay off MARY's note. Destination: Terminus Relay's vault. Every Black Manifest container they ever carried went there.",
     job: "Deliver the final Black Manifest consignment to Terminus Relay. Payment: the deed to LONG HAUL MARY, free and clear.",

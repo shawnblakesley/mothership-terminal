@@ -251,6 +251,20 @@
         <label class="field"><span>Who else</span><textarea id="roomOccupants" rows="2" placeholder="Names, comma separated"></textarea></label>
         <label class="field"><span>What's here</span><textarea id="roomContents" rows="2" placeholder="Items, comma separated"></textarea></label>
         <div class="row"><span class="grow"></span><button id="roomSaveWho">Save</button></div>
+        <h2>Hazard <span class="hint" title="Mothership rules (PSG) run exactly as written. Story hazards are not Mothership rules: a Save or Check, and on a failure +1 Stress and the consequence the story names.">?</span></h2>
+        <div id="roomHazard" class="stack">
+          <div class="row wrap">
+            <select id="hazType" aria-label="Hazard"></select>
+            <label class="small muted" id="hazLevelBox">Level <input id="hazLevel" type="number" min="1" max="10" value="1" aria-label="Level"></label>
+            <label class="small muted" id="hazSupplyBox">Oxygen supply <input id="hazSupply" type="number" min="0" aria-label="Oxygen supply"></label>
+          </div>
+          <div class="row wrap">
+            <button id="hazSet" class="primary">Set hazard</button>
+            <button id="hazClear" class="ghost">Clear</button>
+            <button id="hazTrigger" class="ghost" title="Roll the Save or Check again for everyone exposed (explosions, hull breaches, story hazards)">Trigger again</button>
+          </div>
+          <div id="hazRule" class="small muted"></div>
+        </div>
         <h2>Room state</h2>
         <div id="roomValues" class="chips"></div>
         <h2>Terminals</h2>
@@ -302,6 +316,7 @@
         <div id="outcome" class="card outcome" hidden></div>
         <div id="pending" class="card empty" hidden></div>
         <div id="rollStatus" class="card rollstatus" hidden></div>
+        <div id="rollOffers" class="card rollstatus" hidden></div>
       </div>
       <div class="compose">
         <textarea id="compose" rows="3"></textarea>
@@ -334,6 +349,20 @@
       <div class="tabpanel" data-tabs="side" data-panel="actions">
         <p id="noKeyNote" class="muted small" hidden>No AI key. Use Speak, or add a key in Settings.</p>
 
+        <h2>Rounds and hazards <span class="hint" title="A round is about 10 seconds. Next round runs the per-round rules (bleeding, fire, vacuum, toxic and corrosive atmospheres, radiation) for everyone exposed; Pass time runs the hourly and daily ones (extreme cold and heat, exhaustion, hunger, life support). Hazards are set per room in the room view (click a room on the map). Players at terminals in a hazardous room are exposed.">?</span></h2>
+        <div class="card stack" id="hazardCard">
+          <div class="row wrap">
+            <button id="nextRound" class="primary" title="Advance one round (about 10 seconds)">Next round</button>
+            <span class="grow"></span>
+            <span class="small muted">Pass time</span>
+            <button data-pass="1" title="Advance 1 hour">1 hour</button>
+            <button data-pass="6" title="Advance 6 hours">6 hours</button>
+            <button data-pass="24" title="Advance 24 hours">24 hours</button>
+          </div>
+          <div class="row wrap"><span id="hazardQueue" class="muted small grow"></span><button id="hazardRollAll" class="ghost" hidden title="Roll every waiting hazard save with server dice and carry on">Roll for them</button></div>
+          <ul id="hazardList" class="fxlist"></ul>
+        </div>
+
         <h2>Roll <span class="hint" title="Each character rolls on their own screen.">?</span></h2>
         <div class="stack">
         <div class="card stack" id="rollCard">
@@ -361,6 +390,7 @@
             </label>
           </div>
           <div id="rollTarget" class="muted small"></div>
+          <label id="rollPlusRow" class="check" hidden><input type="checkbox" id="rollPlus"> <span>Teamster trauma response: [+] on this Panic check <em>once per session</em></span></label>
           <div class="row"><button id="rollCall" class="primary" title="Checks: d100 under target. Panic: d20 over Stress.">Call for roll</button></div>
           </div>
         </div>
@@ -368,10 +398,6 @@
 
         <h2>Combat <span class="hint" title="Violent encounters (Player's Survival Guide). No initiative: players declare, you resolve everything at once. Armor, Wounds and Bleeding are tracked on the Crew tab.">?</span></h2>
         <div class="card stack" id="combatCard">
-          <div class="row wrap">
-            <button id="nextRound" title="A new round (about 10 seconds): everyone Bleeding takes that much Damage, ignoring armor and DR, and Death Save countdowns tick.">Next round</button>
-            <span class="muted small" id="combatBleed"></span>
-          </div>
           <div class="rollgrid">
             <label>Who attacks
               <select id="atkSide"><option value="creature">An adversary</option><option value="crew">A crew member (Combat check already made)</option></select>
@@ -509,9 +535,9 @@
 
         <h2>Checks</h2>
         <ul>
-          <li>Roll <b>d100</b> (00–99). <b>Under</b> the target succeeds; equal or over fails.</li>
+          <li>Roll <b>d100</b> (00–99). <b>Under</b> the target succeeds; equal or over fails. A roll of <b>90–99 always fails</b>, whatever the target.</li>
           <li>Target = a <b>Stat</b> or <b>Save</b> + a <b>Skill</b> that fits: Trained <b>+10</b>, Expert <b>+15</b>, Master <b>+20</b>.</li>
-          <li><b>Doubles</b> (00, 11 … 99) are criticals: a critical success or a critical failure.</li>
+          <li><b>Doubles</b> (00, 11 … 99) are criticals: doubles that succeed are a critical success, doubles that fail a critical failure. <b>00</b> is always a critical success and <b>99</b> always a critical failure. A critical failure also needs a <b>Panic check</b>.</li>
           <li><b>[+] Advantage / [-] Disadvantage:</b> roll twice, keep the better / worse.</li>
           <li><b>Any failed check or save: +1 Stress.</b></li>
           <li>Only roll when failing would be interesting and the outcome is uncertain. Otherwise it just happens (or just doesn't).</li>
@@ -528,13 +554,22 @@
 
         <h2>Stress &amp; Panic</h2>
         <ul>
-          <li>Stress starts at <b>2</b> and climbs with every failure and every horror.</li>
+          <li>Stress and <b>Minimum Stress</b> both start at <b>2</b>. Stress climbs with every failure and every horror, and never goes below Minimum Stress.</li>
+          <li>Stress tops out at <b>20</b>: any gained above that lowers the most relevant Stat or Save instead.</li>
           <li><b>Panic check:</b> roll <b>d20</b>. <b>Above</b> current Stress, they hold it together. <b>Equal or under</b>, they Panic: the roll is looked up on the panic table below.</li>
           <li>Call one when something truly awful happens: a crewmate dies, the thing is in the room, the lights go out for good.</li>
           <li>Rest somewhere safe (as you allow) to shed Stress.</li>
         </ul>
+        <h2>Trauma responses</h2>
+        <ul>
+          <li><b>Marine:</b> whenever they Panic, every Close friendly player makes a Fear Save.</li>
+          <li><b>Android:</b> Fear Saves made by Close friendly players are at [-].</li>
+          <li><b>Scientist:</b> whenever they fail a Sanity Save, all Close friendly players gain 1 Stress.</li>
+          <li><b>Teamster:</b> once per session, they may take [+] on a Panic Check.</li>
+          <li>In this app, <b>Close</b> means in the same room (their terminals are in the same room).</li>
+        </ul>
 
-        <h2>Panic table <span class="hint" title="Used for every panic. Apply crew mechanics yourself.">?</span></h2>
+        <h2>Panic table <span class="hint" title="Used for every panic. The app raises Minimum Stress for you; apply the rest yourself.">?</span></h2>
         <p class="muted small">Mothership 1e's Panic Table (Tuesday Knight Games), in brief. d20 at or under Stress:</p>
         <ol id="panicTable" class="panictable"></ol>
 
@@ -561,8 +596,8 @@
 
         <h2>In this app</h2>
         <ul>
-          <li><b>Actions → Roll</b> calls a check, save or Panic check. Each player rolls on their own screen; failures add Stress automatically.</li>
-          <li><b>Actions → Combat</b>: <b>Next round</b> makes everyone Bleeding take that much Damage (armor and DR don't help). <b>Roll attack</b> has an adversary roll its Combat and attack, or applies a crew member's weapon damage to an adversary. Armor: damage under its AP is ignored; damage at or over AP destroys it and the rest goes through; Anti-Armor ignores and destroys it; DR always applies first. At 0 Health a character takes a Wound (a Wounds Table roll) and Health resets to Maximum minus the carryover; at Maximum Wounds a Death Save is rolled in secret and stays hidden until you press <b>Reveal</b>.</li>
+          <li><b>Actions → Roll</b> calls a check, save or Panic check. Each player rolls on their own screen; failures add Stress automatically, and a critical failure offers a one-click Panic check.</li>
+          <li><b>Actions → Combat</b>: <b>Next round</b> (under Rounds and hazards) makes everyone Bleeding take that much Damage (armor and DR don't help). <b>Roll attack</b> has an adversary roll its Combat and attack, or applies a crew member's weapon damage to an adversary. Armor: damage under its AP is ignored; damage at or over AP destroys it and the rest goes through; Anti-Armor ignores and destroys it; DR always applies first. At 0 Health a character takes a Wound (a Wounds Table roll) and Health resets to Maximum minus the carryover; at Maximum Wounds a Death Save is rolled in secret and stays hidden until you press <b>Reveal</b>.</li>
           <li><b>⚖ Your call</b>: the agent is waiting on an uncertain attempt. It shows the stakes; you say it works, fails, or roll.</li>
           <li>The agent can change Health, Wounds and Stress if Settings allow. Fix them on the Crew tab.</li>
         </ul>

@@ -327,6 +327,7 @@
     renderCombat();
     renderSounds();
     renderClocks();
+    renderHazards();
     renderHandouts();
     renderCastLists();
     renderMap();
@@ -589,7 +590,7 @@
       const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id);
       return `<details class="pc" data-i="${i}">
         <summary>${pickButton(c, `class="pick small" data-pcpic="${i}"`)}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
-          <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max} · AP ${c.armor?.destroyed ? 0 : c.armor?.ap ?? 0}${c.deceased ? " · DECEASED" : ""}</span>
+          <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max} · AP ${c.armor?.destroyed ? 0 : c.armor?.ap ?? 0}${c.cond?.dead ? " · DECEASED" : ""}</span>
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(none yet)</option>') + S.config.terminals.map((t) =>
             `<option value="${esc(t.id)}" ${S.screens?.find((s) => s.characterId === c.id)?.terminal === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></span>` : ""}</summary>
@@ -603,10 +604,9 @@
           ${Object.entries(c.saves).map(([k, v]) => num(`saves.${k}`, v, `${k[0].toUpperCase() + k.slice(1)} save`)).join("")}
           ${num("health.current", c.health.current, "Health")}${num("health.max", c.health.max, "Max health")}
           ${num("wounds.current", c.wounds.current, "Wounds")}${num("wounds.max", c.wounds.max, "Max wounds")}
-          ${num("stress", c.stress, "Stress")}${num("startStress", c.startStress, "Starting stress")}
+${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress")}${num("startStress", c.startStress, "Starting stress")}
           ${txt("armor.name", c.armor.name, "Armor")}${num("armor.ap", c.armor.ap, "Armor AP")}${num("armor.dr", c.armor.dr, "Armor DR")}
           <label>Armor destroyed<input type="checkbox" data-c="armor.destroyed" ${c.armor.destroyed ? "checked" : ""}></label>
-          ${num("bleeding", c.bleeding || 0, "Bleeding per round")}
           ${txt("skills", c.skills.map(skillStr).join(", "), "Skills")}
           ${txt("crime", c.crime, "Conviction", 2)}
           ${txt("backstory", c.backstory, "Backstory", 4)}
@@ -801,22 +801,21 @@
     const advs = S.config.voices.filter((v) => v.adversary?.stats);
     const crew = S.config.crew;
     const side = $("atkSide").value;
-    const key = JSON.stringify([advs.map((v) => [v.id, v.name, v.adversary.stats.attacks, v.adversary.stats.dead]), crew.map((c) => [c.id, c.name, c.bleeding, c.deceased]), S.weaponsOf, S.deathSaves, side]);
-    $("combatBleed").textContent = crew.some((c) => c.bleeding) ? `Bleeding: ${crew.filter((c) => c.bleeding).map((c) => `${c.name.split(" ")[0]} ${c.bleeding}`).join(", ")}` : "";
+    const key = JSON.stringify([advs.map((v) => [v.id, v.name, v.adversary.stats.attacks, v.adversary.stats.dead]), crew.map((c) => [c.id, c.name, c.cond?.bleeding, c.cond?.dead]), S.weaponsOf, S.deathSaves, side]);
     if (key === combatKey) return;
     combatKey = key;
     const [by, with_, target] = [$("atkBy"), $("atkWith"), $("atkTarget")];
     const was = [by.value, with_.value, target.value];
     $("atkAdvWrap").hidden = side !== "crew";
     $("atkWithLabel").textContent = side === "crew" ? "Weapon" : "Attack";
-    const crewOpts = crew.filter((c) => !c.deceased).map((c) => [c.id, c.name]);
+    const crewOpts = crew.filter((c) => !c.cond?.dead).map((c) => [c.id, c.name]);
     const advOpts = advs.filter((v) => !v.adversary.stats.dead).map((v) => [v.id, v.name]);
     fillSelect(by, side === "crew" ? crewOpts : advOpts, was[0]);
     fillSelect(target, side === "crew" ? advOpts : crewOpts, was[2]);
     for (const sel of [by, target]) if (sel.selectedIndex < 0 && sel.options.length) sel.selectedIndex = 0;
     attackChoices();
     $("atkGo").disabled = !by.options.length || !target.options.length;
-    $("atkNote").textContent = !advs.length ? "No adversary has combat numbers yet: add them on the Crew tab, under Adversaries." : side === "crew" ? "Use it after the character's Combat check has succeeded. Its damage is rolled and taken off the adversary." : "";
+    $("atkNote").textContent = !advs.length ? "No adversary has combat numbers yet: add them on the Crew tab, under Adversaries." : side === "crew" ? "Use it after the character's Combat check has succeeded. Its damage is rolled and taken off the adversary. A character in a Rage (Panic Table 16) has [+] on Damage rolls for 1d10 hours: pick [+] below." : "";
     const saves = crew.filter((c) => S.deathSaves?.[c.id]);
     $("deathSaveList").innerHTML = saves.map((c) => `<li>Death Save rolled (hidden): ${esc(c.name)} <button data-cmb="reveal" data-pc="${esc(c.id)}" class="ghost" title="Someone spent a turn checking their vitals">Reveal</button></li>`).join("");
   }
@@ -835,7 +834,6 @@
       ? { side, pc: $("atkBy").value, weapon: $("atkWith").value, target: $("atkTarget").value, damageAdv: $("atkAdv").value }
       : { side, by: $("atkBy").value, attack: $("atkWith").value, target: $("atkTarget").value } });
   };
-  $("nextRound").onclick = () => send({ t: "nextRound" });
   $("deathSaveList").addEventListener("click", (e) => {
     const b = e.target.closest("[data-cmb]");
     if (b) send({ t: "revealDeathSave", pc: b.dataset.pc });
@@ -926,10 +924,10 @@
       <div class="vitals">
         <label>Health <input type="number" data-c="health.current" value="${c.health.current}" min="0" max="99"> / ${c.health.max}</label>
         <label>Wounds <input type="number" data-c="wounds.current" value="${c.wounds.current}" min="0" max="99"> / ${c.wounds.max}</label>
-        <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"></label>
+        <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"> Min <input type="number" data-c="minStress" value="${c.minStress}" min="0" max="20" title="Minimum Stress: Stress never goes below it" aria-label="Minimum Stress"></label>
       </div>
       ${combatLine(c)}
-      ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
+      ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${condLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}${line("Trauma response", S.traumaResponses?.[c.className])}
     </div>`;
   }
   const combatLine = (c) => {
@@ -937,19 +935,24 @@
     const btn = (cmd, text, title) => `<button type="button" class="small" data-cmb="${cmd}" data-pc="${esc(c.id)}" title="${esc(title)}">${text}</button>`;
     const bits = [`<span><span class="k">Armor:</span> ${esc(a.name)} AP ${a.ap}${a.dr ? ` DR ${a.dr}` : ""}${a.destroyed ? ' <b class="bad">destroyed</b>' : ""}</span>`];
     if (a.destroyed) bits.push(btn("repair", "Mark repaired", "Armor repair costs half the armor's original cost"));
-    if (c.bleeding) bits.push(`<b class="bad">Bleeding ${c.bleeding} a round</b>`, btn("stop", "Stop bleeding", "A First Aid Kit stops it"));
-    if (c.deceased) bits.push('<b class="bad">DECEASED</b>');
+    if (c.cond?.dead) bits.push(`<b class="bad">DECEASED</b> <span class="muted">${esc(c.cond.dead)}</span>`);
     if (c.status) bits.push(`<b class="bad">${esc(cap(c.status))}</b>${c.statusNote ? ` <span class="muted">${esc(c.statusNote)}</span>` : ""}`);
     if (c.deathSaveIn) bits.push(`<b class="bad">Death Save due in ${c.deathSaveIn} rounds</b>`);
     if (S.deathSaves?.[c.id]) bits.push("<b>Death Save rolled (hidden)</b>", btn("reveal", "Reveal", "Someone spent a turn checking their vitals: reveal and apply the result"));
-    if (c.deathSaveIn || c.status === "dying" || c.status === "unconscious" || c.status === "comatose") bits.push(btn("dealt", "Dealt with", "Clear the countdown and the status"));
+    if (c.deathSaveIn || c.cond?.dying || c.status) bits.push(btn("dealt", "Dealt with", "Clear the countdown and the status"));
     return `<div class="combatline">${bits.join(" ")}</div>`;
   };
+  const COND_ACTIONS = [["puncture", "Puncture suit"], ["patch", "Patch suit"], ["air", "Breathing again"], ["putout", "Put out fire"], ["bleed", "+1 Bleeding"], ["stopbleed", "Stop bleeding (First Aid Kit)"], ["ate", "Has eaten"], ["thirst", "Water at the minimum (toggle)"], ["strenuouscheck", "Strenuous activity on minimum water"], ["strenuous", "Strenuous activity (toggle)"], ["rest", "Rested 8 hours"], ["cryosleep", "Into cryosleep"], ["wake", "Wake from cryosleep"], ["stimpak", "Stimpak (cures cryosickness)"], ["pills", "Radiation Pills"], ["clearrad", "Clear radiation penalty"], ["cleartags", "Clear story conditions"]];
+  const condLine = (c) => `<div class="conds"><span class="k">Conditions:</span> ${(S.conds?.[c.id] || []).map((x) => `<span class="chip">${esc(x)}</span>`).join("") || '<span class="muted">none</span>'}
+    <select data-cond-pick aria-label="Condition for ${esc(c.name)}">${COND_ACTIONS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select><button data-cond-go="${esc(c.id)}">Apply</button></div>`;
   $("crew").addEventListener("click", (e) => {
     const b = e.target.closest("[data-cmb]");
-    if (!b) return;
-    const t = { repair: "repairArmor", stop: "stopBleeding", reveal: "revealDeathSave", dealt: "dealtWith" }[b.dataset.cmb];
-    if (t) send({ t, pc: b.dataset.pc });
+    if (b) {
+      const t = { repair: "repairArmor", stop: "stopBleeding", reveal: "revealDeathSave", dealt: "dealtWith" }[b.dataset.cmb];
+      if (t) send({ t, pc: b.dataset.pc });
+    }
+    const go = e.target.closest("[data-cond-go]");
+    if (go) send({ t: "condition", pc: go.dataset.condGo, action: go.parentElement.querySelector("[data-cond-pick]").value });
   });
   const itemsLine = (c) => `<div class="items"><span class="k">Items:</span> ${c.items.map((x, j) => `<span class="chip">${esc(x)}<button data-item-del="${j}" title="Drop it" aria-label="Drop ${esc(x)}">✕</button></span>`).join("")}<input data-item-add placeholder="+ add" aria-label="Add an item" size="10"></div>`;
   const openCrew = new Set();
@@ -1114,13 +1117,17 @@
   const cmpPlace = (c, s) => (s.at ? `at ${cmpLoc(c, s.at).name}` : `in transit, ${cmpLoc(c, s.from).name} to ${cmpLoc(c, s.to).name}`);
   const cmpFaction = (c, id) => c.factions.find((f) => f.id === id);
   const TIERS = { 1: "early", 2: "mid campaign", 3: "late" };
+  const STANDING = { "-3": "Enemy", "-2": "Hostile", "-1": "Wary", 0: "Neutral", 1: "Friendly", 2: "Trusted", 3: "Ally" };
+  const signed = (n) => (n > 0 ? `+${n}` : String(n));
+  let cmpTicks = new Set();
 
   function sectorSvg(c, p) {
     const done = new Set(p.done.map((d) => d.id));
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const stars = Array.from({ length: 140 }, () => `<circle cx="${(rnd() * 1100).toFixed(0)}" cy="${(rnd() * 560).toFixed(0)}" r="${(rnd() * 1.3 + 0.3).toFixed(1)}" opacity="${(rnd() * 0.5 + 0.15).toFixed(2)}"/>`).join("");
-    const cls = (s) => ["story", done.has(s.id) && "done", p.current === s.id && "current", cmpSel.kind === "story" && cmpSel.id === s.id && "sel", S.campaignBusy === s.id && "busy"].filter(Boolean).join(" ");
+    const offered = p.offered || [], votes = S.sectorVotes || {};
+    const cls = (s) => ["story", offered.includes(s.id) && "offered", done.has(s.id) && "done", p.current === s.id && "current", cmpSel.kind === "story" && cmpSel.id === s.id && "sel", S.campaignBusy === s.id && "busy"].filter(Boolean).join(" ");
     const lanes = c.lanes.map((l) => {
       const a = cmpLoc(c, l.a), b = cmpLoc(c, l.b);
       return `<line class="lane${l.dark ? " dark" : ""}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${esc(l.name)} · ${l.days} days</title></line>`;
@@ -1130,17 +1137,17 @@
       const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
       return `<g class="${cls(s)}" data-story="${s.id}" transform="translate(${x} ${y})" tabindex="0" role="button" aria-label="${esc(s.title)}">
         <title>${s.n}. ${esc(s.title)} (${esc(cmpPlace(c, s))})</title>
-        <rect x="-11" y="-11" width="22" height="22" rx="3" transform="rotate(45)"/><text y="4">${s.n}</text></g>`;
+        <rect x="-11" y="-11" width="22" height="22" rx="3" transform="rotate(45)"/><text y="4">${s.n}</text>${votes[s.id] ? `<text class="vote" y="-18">${votes[s.id].length}</text>` : ""}</g>`;
     }).join("");
     const nodes = c.locations.map((l) => {
       const here = c.stories.filter((s) => s.at === l.id);
       const f = cmpFaction(c, l.faction);
       const pills = here.map((s, i) => `<g class="${cls(s)}" data-story="${s.id}" transform="translate(${(i - (here.length - 1) / 2) * 30} 52)" tabindex="0" role="button" aria-label="${esc(s.title)}">
-          <title>${s.n}. ${esc(s.title)}</title><rect x="-13" y="-10" width="26" height="20" rx="10"/><text y="4">${s.n}</text></g>`).join("");
+          <title>${s.n}. ${esc(s.title)}</title><rect x="-13" y="-10" width="26" height="20" rx="10"/><text y="4">${s.n}</text>${votes[s.id] ? `<text class="vote" y="-14">${votes[s.id].length}</text>` : ""}</g>`).join("");
       return `<g class="loc${cmpSel.kind === "loc" && cmpSel.id === l.id ? " sel" : ""}" transform="translate(${l.x} ${l.y})">
         <g data-loc="${l.id}" tabindex="0" role="button" aria-label="${esc(l.name)}"><title>${esc(l.name)}: ${esc(l.kind)}</title>
           <circle class="halo" r="24" style="stroke:${f?.color || "#888"}"/><circle class="core" r="9" style="fill:${f?.color || "#888"}"/>
-          <text class="name" y="-32">${esc(l.name)}</text></g>${pills}</g>`;
+          <text class="name" y="-32">${esc(l.name)}</text>${f ? `<text class="stand s${Math.sign(p.factions?.[f.id] || 0)}" x="32" y="4"><title>${esc(f.short)}: ${STANDING[p.factions?.[f.id] || 0]} (house rule)</title>${signed(p.factions?.[f.id] || 0)}</text>` : ""}</g>${pills}</g>`;
     }).join("");
     const at = cmpLoc(c, p.at);
     const ship = at ? `<g class="ship" transform="translate(${at.x - 44} ${at.y - 16})"><title>${esc(c.ship.name)} is here</title><path d="M-9 6 L0 -10 L9 6 Z"/><text y="20">${esc(c.ship.computer)}</text></g>` : "";
@@ -1156,9 +1163,11 @@
     const played = p.done.map((d) => ({ d, s: c.stories.find((x) => x.id === d.id) })).filter((x) => x.s);
     return `<div class="btitle">${esc(c.title)}</div>
       <p class="muted"><i>${esc(c.tagline)}</i></p><p>${esc(c.pitch)}</p>
-      <p class="small muted">Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
+      <p class="small muted">Offer jobs to put them on the players' job board, then Show players; their votes appear on the map. Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
       <details open><summary>Played (${played.length} of ${c.stories.length})</summary>${played.length ? played.map(({ d, s }) => `<div class="bcard"><button class="cmplink" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b></button><div class="small">${esc(d.outcome || "No notes.")}</div></div>`).join("") : '<p class="muted small">Nothing yet. A good first job: 1. FIRST SHIFT at Port Gallow, where the rig starts.</p>'}</details>
-      <details><summary>Factions</summary>${c.factions.map((f) => `<div class="bcard"><b style="color:${f.color}">${esc(f.name)}</b><div class="small">${esc(f.about)}</div></div>`).join("")}</details>
+      <details open><summary>Factions <span class="muted small">(house rule: standing with the crew)</span></summary>
+        <p class="small muted">Mothership 1e has no faction rules; this is a campaign house rule. At +2 or more their people give the crew [+] on social rolls, a one-off favour per story and better prices at their ports; at -2 or less, [-], trouble and worse prices; at -3 they won't trade. Their recurring characters start a step friendlier or cooler.</p>
+        ${c.factions.map((f) => { const n = p.factions?.[f.id] || 0; return `<div class="bcard"><div class="row"><b class="grow" style="color:${f.color}">${esc(f.name)}</b><span class="stand-pill s${Math.sign(n)}">${STANDING[n]} ${signed(n)}</span><button class="small" data-faction="${f.id}" data-delta="-1" ${n <= -3 ? "disabled" : ""} aria-label="Lower ${esc(f.short)}">-</button><button class="small" data-faction="${f.id}" data-delta="1" ${n >= 3 ? "disabled" : ""} aria-label="Raise ${esc(f.short)}">+</button></div><div class="small">${esc(f.about)}</div>${p.current && n >= 2 ? `<div class="row"><span class="small muted grow">One favour this story (a forged permit, a docking slot, a tip-off, a hiding place).</span><button class="small" data-favour="${f.id}">${p.favours?.[f.id] ? "Favour used" : "Mark favour used"}</button></div>` : ""}</div>`; }).join("")}</details>
       <details><summary>Recurring characters</summary>${c.cast.map((m) => `<div class="bcard"><b>${esc(m.name)}</b> <span class="muted small">${esc(cmpFaction(c, m.faction)?.short || "")}${p.cast[m.id] ? ` · ${esc(attLabel(p.cast[m.id].attitude))}` : ""}</span><div class="small">${esc(m.notes)}</div>${p.cast[m.id]?.history ? `<div class="small muted">${esc(p.cast[m.id].history)}</div>` : ""}</div>`).join("")}</details>
       <details><summary>The crew</summary>${p.crew.map((pc) => `<div class="bcard"><b>${esc(pc.name)}</b> <span class="muted small">${esc([pc.className, pc.role].filter(Boolean).join(" · "))}</span><div class="small mono">HP ${pc.health.current}/${pc.health.max} · Wounds ${pc.wounds.current}/${pc.wounds.max} · Stress ${pc.stress}</div></div>`).join("")}<p class="small muted">They carry their condition, items and stress from story to story. Edit them on the Crew tab while a story is playing.</p></details>`;
   }
@@ -1187,9 +1196,11 @@
       ? `<span class="small"><span class="spinner"></span>Building ${esc(s.title)} around its arc… (a minute or two)</span>`
       : p.current === s.id ? `<span class="pill ok">Now playing</span><button data-replay="${s.id}" ${busy ? "disabled" : ""} title="Build it again from scratch">Rebuild</button>`
         : `<button class="primary" data-play="${s.id}" ${busy ? "disabled" : ""}>${d ? "Play it again" : "Play this story"}</button>`;
+    const on = (p.offered || []).includes(s.id), votes = S.sectorVotes?.[s.id] || [];
+    const offer = `<button data-offer="${s.id}" aria-pressed="${on}" title="Put this job on the players' job board (title, hook and job only)">${on ? "Offered" : "Offer"}</button>${votes.length ? `<span class="small">${votes.length} vote${votes.length > 1 ? "s" : ""}: ${esc(votes.join(", "))}</span>` : ""}`;
     return `<div class="row"><div class="grow"><div class="btitle">${s.n}. ${esc(s.title)}</div>
         <div class="muted">${esc(cmpPlace(c, s))} · ${esc(TIERS[s.tier] || "")}</div></div></div>
-      <div class="row wrap">${action}</div>
+      <div class="row wrap">${action}${offer}</div>
       ${d ? `<div class="bcard"><b>Played</b><div class="small">${esc(d.outcome || "No notes.")}</div></div>` : ""}
       <p>${esc(s.hook)}</p>
       <div class="bcard"><b>The job</b><div class="small">${esc(s.job)}</div></div>
@@ -1207,7 +1218,7 @@
   function renderCampaign() {
     if (!$("campaignDialog").open || !campaignData) return;
     const p = S.campaign, c = p && campaignData.campaigns.find((x) => x.id === p.id);
-    const key = JSON.stringify([p, S.campaignBusy, cmpSel]);
+    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes]);
     if (key === campaignKey) return;
     campaignKey = key;
     $("cmpLeave").hidden = !c;
@@ -1226,12 +1237,13 @@
     const banner = now
       ? `<div class="bcard cmpnow"><div><b>Now playing:</b> ${now.n}. ${esc(now.title)} <span class="muted">(${esc(cmpPlace(c, now))})</span></div>
           <textarea id="cmpOutcome" rows="2" placeholder="How did it end? Who lived, what they did, what they owe. Later stories are built on it."></textarea>
+          ${now.affinity?.length ? `<div class="small"><b>Faction standing</b> <span class="muted">(house rule; tick what happened)</span>${now.affinity.map((a, i) => `<label class="cmpfx"><input type="checkbox" data-aff="${i}" ${cmpTicks.has(i) ? "checked" : ""}> <span style="color:${cmpFaction(c, a.faction)?.color}">${esc(cmpFaction(c, a.faction)?.short)}</span> ${signed(a.change)}: ${esc(a.when)}</label>`).join("")}</div>` : ""}
           <div class="row"><span class="small muted grow">Finishing keeps the crew's sheets and the recurring characters' attitudes, and moves the rig.</span><button id="cmpFinish" class="primary">Finish story</button></div></div>`
       : `<div class="small muted">${S.campaignBusy ? `<span class="spinner"></span>Building a story…` : "No campaign story is being played. Pick a job on the map."}</div>`;
     const side = cmpSel.kind === "story" ? cmpStory(c, c.stories.find((s) => s.id === cmpSel.id), p)
       : cmpSel.kind === "loc" ? cmpLocation(c, cmpLoc(c, cmpSel.id), p) : cmpOverview(c, p);
     $("cmpBody").innerHTML = `<div class="cmpgrid"><section class="cmpmapcol">${banner}${sectorSvg(c, p)}
-        <div class="cmplegend small muted"><span><i class="lg loc"></i>port (colour: who runs it)</span><span><i class="lg pill"></i>job at a port</span><span><i class="lg dia"></i>job in transit</span><span><i class="lg done"></i>played</span><span><i class="lg cur"></i>now playing</span><span><i class="lg ship"></i>${esc(c.ship.name)}</span><button class="ghost small" data-overview>Overview</button></div>
+        <div class="cmplegend small muted"><span><i class="lg loc"></i>port (colour: who runs it)</span><span><i class="lg pill"></i>job at a port</span><span><i class="lg dia"></i>job in transit</span><span><i class="lg done"></i>played</span><span><i class="lg cur"></i>now playing</span><span><i class="lg ship"></i>${esc(c.ship.name)}</span><button class="ghost small" data-overview>Overview</button><button class="small" data-sector="show" title="Put the sector map and the offered jobs on every player screen">Show players</button>${S.sectorShown ? '<button class="ghost small" data-sector="hide">Hide</button>' : ""}</div>
       </section><section class="cmpside">${side}</section></div>`;
     if ($("cmpOutcome")) {
       $("cmpOutcome").value = cmpOutcome;
@@ -1266,6 +1278,23 @@
       cmpSel = { kind: "overview", id: "" };
       return send({ t: "campaignStart", id: start });
     }
+    const sec = e.target.closest("[data-sector]")?.dataset.sector;
+    if (sec) {
+      send({ t: "campaignShow", hide: sec === "hide" });
+      if (sec === "show") toast("Showing the players the sector map and job board.");
+      return;
+    }
+    const offer = e.target.closest("[data-offer]")?.dataset.offer;
+    if (offer) return send({ t: "campaignOffer", story: offer, on: !S.campaign.offered?.includes(offer) });
+    const fx = e.target.closest("[data-faction]");
+    if (fx) return send({ t: "campaignFaction", faction: fx.dataset.faction, delta: Number(fx.dataset.delta) });
+    const fav = e.target.closest("[data-favour]");
+    if (fav) return send({ t: "campaignFavour", faction: fav.dataset.favour });
+    const aff = e.target.closest("[data-aff]");
+    if (aff) {
+      cmpTicks[aff.checked ? "add" : "delete"](Number(aff.dataset.aff));
+      return;
+    }
     const play = e.target.closest("[data-play], [data-replay]");
     if (play) {
       const c = campaignData.campaigns.find((x) => x.id === S.campaign?.id);
@@ -1277,8 +1306,9 @@
       return;
     }
     if (e.target.id === "cmpFinish") {
-      send({ t: "campaignFinish", outcome: $("cmpOutcome").value });
+      send({ t: "campaignFinish", outcome: $("cmpOutcome").value, affinity: [...cmpTicks] });
       cmpOutcome = "";
+      cmpTicks = new Set();
       toast("Story finished. Pick the next job on the map.");
       return;
     }
@@ -1716,9 +1746,47 @@
     }
     const vals = stationLeaves().filter(([q]) => q.includes(room.id) && !["occupants", "contents"].includes(q[0]));
     $("roomValues").innerHTML = vals.length ? vals.map(([p, v]) => `<button class="ghost small" data-path="${esc(JSON.stringify(p))}" title="${esc(p.join("."))}">${esc(p.filter((x) => x !== room.id).join(" ").replace(/_/g, " "))}: <b>${esc(v)}</b></button>`).join("") : `<span class="muted small">Nothing tracked here.</span>`;
+    renderRoomHazard();
     const terms = S.config.terminals.filter((t) => t.room === room.id);
     $("roomTerminals").innerHTML = terms.length ? terms.map((t) => `<div><b>${esc(t.name)}</b>: ${esc(t.notes)}</div>`).join("") : "None.";
   }
+
+  function renderRoomHazard() {
+    const sel = $("hazType"), now = S.station?.hazards?.[room.id];
+    if (!sel.options.length) {
+      const group = (label, kind) => `<optgroup label="${label}">${Object.entries(S.hazardTypes).filter(([, v]) => v.kind === kind).map(([k, v]) => `<option value="${k}">${esc(v.name)}</option>`).join("")}</optgroup>`;
+      sel.innerHTML = `<option value="">None</option>${group("Mothership rules (PSG)", "psg")}${group("Story hazards (not Mothership rules)", "story")}`;
+    }
+    if (!room.hazDirty) {
+      sel.value = now?.type || "";
+      $("hazLevel").value = now?.level || "";
+      $("hazSupply").value = now?.type === "oxygen" ? now.supply : "";
+    }
+    hazForm();
+    $("hazClear").disabled = !now;
+  }
+  function hazForm() {
+    const i = S.hazardTypes[$("hazType").value];
+    $("hazLevelBox").hidden = !i?.levels;
+    $("hazSupplyBox").hidden = $("hazType").value !== "oxygen";
+    $("hazTrigger").hidden = !i || !["event", "exposure"].includes(i.per);
+    $("hazTrigger").disabled = S.station?.hazards?.[room.id]?.type !== $("hazType").value;
+    if (i?.levels) {
+      $("hazLevel").min = i.levels[0];
+      $("hazLevel").max = i.levels[1];
+      if (!$("hazLevel").value) $("hazLevel").value = i.levels[0];
+      $("hazLevelBox").title = i.levelLabel;
+    }
+    $("hazRule").innerHTML = i ? `<b>${esc(i.name)}</b> (${esc(hazardTag(i))}; ${esc(i.source)}${i.levelLabel ? `; level ${esc(i.levelLabel)}` : ""}). ${esc(i.rule)}${i.protect ? ` Protects: ${esc(i.protect)}.` : ""}${i.kind === "story" ? " A story hazard is not a Mothership rule." : ""}` : "";
+  }
+  $("hazType").addEventListener("change", () => { room.hazDirty = true; $("hazLevel").value = ""; hazForm(); });
+  for (const id of ["hazLevel", "hazSupply"]) $(id).addEventListener("input", () => { room.hazDirty = true; });
+  $("hazSet").onclick = () => {
+    room.hazDirty = false;
+    send({ t: "hazard", room: room.id, type: $("hazType").value || "none", level: Number($("hazLevel").value) || null, supply: $("hazSupply").value === "" ? undefined : Number($("hazSupply").value) });
+  };
+  $("hazClear").onclick = () => { room.hazDirty = false; send({ t: "hazard", room: room.id, type: "none" }); };
+  $("hazTrigger").onclick = () => send({ t: "hazardTrigger", room: room.id });
 
   function paintAt(el) {
     const g = el?.closest("[data-x]");
@@ -2483,6 +2551,7 @@
     }
     rollFormChanged();
     renderRollStatus();
+    renderOffers();
   }
 
   function rollFormChanged() {
@@ -2514,6 +2583,9 @@
     };
     $("rollTarget").innerHTML = pcs.length ? pcs.map((c) => esc(line(c))).join("<br>") : "Add crew to call for rolls.";
     $("rollCall").disabled = !pcs.length || S.roll?.status === "waiting";
+    const plusAble = panic && pcs.some((c) => c.className === "Teamster" && !S.panicPlus?.[c.id]);
+    $("rollPlusRow").hidden = !plusAble;
+    if (!plusAble) $("rollPlus").checked = false;
   }
   for (const id of ["rollWho", "rollCheck", "rollSkill"]) $(id).addEventListener("change", rollFormChanged);
 
@@ -2535,7 +2607,7 @@
       const dice = `${res.dice.map(show).join(" / ")}${res.dice.length > 1 ? ` → ${show(res.used)}` : ""}`;
       const verdict = res.panic
         ? (res.success ? "kept their cool" : `PANIC · Panic Table ${res.used}`)
-        : `${res.outcome.toUpperCase()}${res.success ? "" : " · +1 STRESS"}`;
+        : `${res.outcome.toUpperCase()}${res.panicCheck ? ": PANIC CHECK" : ""}${res.success ? "" : " · +1 STRESS"}`;
       const how = got.by === "warden" ? " (you rolled)" : got.manual ? " (table dice)" : "";
       return `<li class="res ${res.success ? "ok" : "bad"}">${esc(p.name)}: ${dice} ${res.panic ? "vs Stress" : "vs"} ${res.target}${how}: ${esc(verdict)}</li>`;
     }).join("");
@@ -2558,10 +2630,22 @@
         advantage: $("rollAdv").value,
         skill: rollSkillName($("rollSkill").value),
         reason: $("rollReason").value,
+        plus: $("rollPlus").checked,
       },
     });
+    $("rollPlus").checked = false;
     rollFromOutcome = false;
   };
+  $("rollOffers").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-offer]");
+    if (b) send({ t: b.dataset.act === "dismiss" ? "offerDismiss" : "offerRoll", id: b.dataset.offer });
+  });
+  function renderOffers() {
+    const box = $("rollOffers"), offers = S.offers || [];
+    const busy = S.roll?.status === "waiting";
+    box.hidden = !offers.length;
+    box.innerHTML = offers.map((o) => `<div class="row wrap"><span class="grow">${esc(o.label)}</span><button data-offer="${esc(o.id)}" data-act="call" ${busy ? 'disabled title="Finish the roll in progress first"' : ""}>${o.roll.check === "panic" ? "Panic check" : "Fear Save"}</button><button data-offer="${esc(o.id)}" data-act="dismiss" class="ghost">Dismiss</button></div>`).join("");
+  }
   $("rollStatus").addEventListener("click", (e) => {
     const b = e.target.closest("[data-roll]");
     const act = b?.dataset.roll;
@@ -2631,6 +2715,27 @@
     }).join("") : '<li class="muted small">None running.</li>';
   }
   setInterval(() => S?.clocks?.some((c) => !c.paused) && renderClocks(), 1000);
+  const hazardTag = (i) => (i.kind === "psg" ? "Mothership rule" : "story hazard");
+  function renderHazards() {
+    const rooms = roomLabels();
+    const hz = Object.entries(S.station?.hazards || {});
+    $("hazardList").innerHTML = hz.length ? hz.map(([id, h]) => {
+      const i = S.hazardTypes[h.type];
+      return `<li><span class="grow"><b>${esc(String(rooms.get(id) || id).split(",")[0])}</b>: ${esc(i.name)}${h.level ? ` ${h.level}` : ""}${h.type === "oxygen" ? `, supply ${h.supply}` : ""} <span class="muted">· ${hazardTag(i)} · ${h.rounds} rounds, ${h.hours} h</span></span>
+        <button data-haz-room="${esc(id)}" class="ghost" title="Open the room view">Room</button><button data-haz-end="${esc(id)}" class="ghost danger" title="End this hazard">End</button></li>`;
+    }).join("") : '<li class="muted small">No hazards in play. Click a room on the Map to set one.</li>';
+    const waiting = S.roll?.status === "waiting" && S.roll.hazard;
+    $("hazardQueue").textContent = [waiting && `Waiting for a hazard roll: ${S.roll.reason}`, S.hazardWork && `${S.hazardWork} step${S.hazardWork > 1 ? "s" : ""} queued`].filter(Boolean).join(" · ");
+    $("hazardRollAll").hidden = !waiting;
+  }
+  $("nextRound").onclick = () => send({ t: "nextRound" });
+  for (const b of document.querySelectorAll("[data-pass]")) b.onclick = () => send({ t: "passTime", hours: Number(b.dataset.pass) });
+  $("hazardRollAll").onclick = () => send({ t: "hazardRollAll" });
+  $("hazardList").addEventListener("click", (e) => {
+    const end = e.target.closest("[data-haz-end]")?.dataset.hazEnd, open = e.target.closest("[data-haz-room]")?.dataset.hazRoom;
+    if (end) send({ t: "hazard", room: end, type: "none" });
+    if (open) openRoom(open, roomLabels().get(open) || open, "");
+  });
   $("clockStart").onclick = () => {
     const label = $("clockLabel").value.trim();
     const mins = Number($("clockMins").value);
