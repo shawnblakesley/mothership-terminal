@@ -1469,7 +1469,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
           <textarea id="cmpOutcome" rows="2" placeholder="How did it end? Who lived, what they did, what they owe. Later stories are built on it."></textarea>
           ${now.affinity?.length ? `<div class="small"><b>Faction standing</b> <span class="muted">(house rule; tick what happened)</span>${now.affinity.map((a, i) => `<label class="cmpfx"><input type="checkbox" data-aff="${i}" ${cmpTicks.has(i) ? "checked" : ""}> <span style="color:${cmpFaction(c, a.faction)?.color}">${esc(cmpFaction(c, a.faction)?.short)}</span> ${signed(a.change)}: ${esc(a.when)}</label>`).join("")}</div>` : ""}
           ${cmpFinishBox(c, now, p)}
-          <div class="row"><span class="small muted grow">Finishing keeps the crew's sheets and the recurring characters' attitudes, and moves the rig.</span><button id="cmpFinish" class="primary">Finish story</button></div></div>`
+          <div class="row"><span class="small muted grow">Finishing keeps the crew's sheets and the recurring characters' attitudes, and moves the rig.</span><button id="cmpRecap" ${p.recap?.for === now.id ? "" : "disabled"} title="Play the 'Previously on' cold open on every player screen">Previously on</button><button id="cmpFinish" class="primary">Finish story</button></div></div>`
       : `<div class="small muted">${S.campaignBusy ? `<span class="spinner"></span>Building a story…` : "No campaign story is being played. Pick a job on the map."}</div>`;
     const side = cmpSel.kind === "story" ? cmpStory(c, c.stories.find((s) => s.id === cmpSel.id), p)
       : cmpSel.kind === "loc" ? cmpLocation(c, cmpLoc(c, cmpSel.id), p) : cmpOverview(c, p);
@@ -1608,6 +1608,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       if (await sure(`Play ${s.title}?`, text, "Play story", "primary")) send({ t: "campaignPlay", story: s.id });
       return;
     }
+    if (e.target.id === "cmpRecap") return send({ t: "campaignRecap" });
     if (e.target.id === "cmpFinish") {
       send({ t: "campaignFinish", outcome: $("cmpOutcome").value, affinity: [...cmpTicks], delivery: cmpFin.delivery, late: cmpFin.late, skipDues: cmpFin.skipDues, ...(cmpFin.fee === "" ? {} : { fee: Number(cmpFin.fee) || 0 }) });
       cmpOutcome = "";
@@ -2286,7 +2287,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   $("soundPlaying").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.classList.contains("volpct")) e.target.blur(); });
   $("soundStopAll").onclick = () => send({ t: "soundStop", all: true });
 
-  const SETTING_SWITCHES = ["narrator", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "panicScreens", "playerTerminals"];
+  const SETTING_SWITCHES = ["narrator", "coldOpen", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "playerVitals", "playerRolls", "panicScreens", "playerTerminals"];
 
   const voicesOn = () => (S.config.discordTalk ? "discord" : S.config.tts !== false ? "screens" : "off");
   function renderVoicesOn() {
