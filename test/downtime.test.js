@@ -72,11 +72,11 @@ test("C-class shore leave costs 2d10 x 100cr: 200 to 2,000", () => {
   assert.ok(lo < 600 && hi > 1600);
 });
 
-test("the cost table by class: B 2d10 x 1kcr, A 2d10 x 10kcr, S 2d10 x 100kcr, X 1d100 x 10kcr (d100 reads 00-99)", () => {
+test("the cost table by class: B 2d10 x 1kcr, A 2d10 x 10kcr, S 2d10 x 100kcr, X 1d100 x 10kcr (a multiplied d100 reads 00 as 100)", () => {
   assert.deepEqual([shoreCost("B", () => 1).total, shoreCost("B", () => 10).total], [2000, 20000]);
   assert.deepEqual([shoreCost("A", () => 1).total, shoreCost("A", () => 10).total], [20000, 200000]);
   assert.deepEqual([shoreCost("S", () => 1).total, shoreCost("S", () => 10).total], [200000, 2000000]);
-  assert.equal(shoreCost("X", () => 0).total, 0);
+  assert.equal(shoreCost("X", () => 0).total, 1000000);
   assert.equal(shoreCost("X", () => 99).total, 990000);
   assert.equal(shoreDays(() => 10).total, 20);
   assert.equal(shoreDays(() => 1).total, 2);
@@ -339,4 +339,10 @@ test("side effects end by themselves as days pass", () => {
   assert.deepEqual(a.cond.tags, ["Doomed"]);
   assert.match(lines[0], /worn off/);
   assert.equal(p.downtime.day, 1);
+});
+
+test("an X-class shore leave cost of 00 on the d100 is 100 x 10kcr, never free", async () => {
+  const { shoreCost } = await import("../downtime.js");
+  const cost = shoreCost("X", (lo) => lo);
+  assert.equal(cost.total, 100 * 10000);
 });

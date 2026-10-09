@@ -78,6 +78,9 @@ HOME=/root node deploy/secrets.mjs /etc/mothership/secrets.env || echo "Couldn't
 # mothership-sounds-773206830395 bucket, read with the server's role. Only missing files are fetched.
 HOME=/root node deploy/sounds.mjs || echo "Couldn't fetch the sound pack; stories go without it for now." >&2
 chown -R mothership:mothership public/sounds 2>/dev/null || true
+# The character creation roll tables (loadouts, trinkets, patches) come from the same bucket, into the data directory.
+HOME=/root DATA_DIR=/var/lib/mothership node deploy/tables.mjs || echo "Couldn't fetch the roll tables; character creation asks players to look them up." >&2
+chown -R mothership:mothership /var/lib/mothership/tables 2>/dev/null || true
 
 systemctl restart mothership
 

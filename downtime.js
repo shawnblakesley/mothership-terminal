@@ -61,7 +61,9 @@ export function shoreCost(cls, rng = randInt) {
   const s = SHORE[cls];
   if (!s) return null;
   const r = rollDice(s.cost.dice, rng);
-  return { dice: r.rolls, total: r.total * s.cost.unit };
+  // A d100 that's multiplied reads 00 as 100, not nothing (as the dice note reads summed d10s 1-10).
+  const total = /d100$/.test(s.cost.dice) && r.total === 0 ? 100 : r.total;
+  return { dice: r.rolls, total: total * s.cost.unit };
 }
 export const shoreDays = (rng = randInt) => rollDice("2d10", rng);
 // The amount a success may convert, rolled per the table (X: 2d10 with [+]). `all` for class S.
