@@ -596,7 +596,7 @@
           ${Object.entries(c.saves).map(([k, v]) => num(`saves.${k}`, v, `${k[0].toUpperCase() + k.slice(1)} save`)).join("")}
           ${num("health.current", c.health.current, "Health")}${num("health.max", c.health.max, "Max health")}
           ${num("wounds.current", c.wounds.current, "Wounds")}${num("wounds.max", c.wounds.max, "Max wounds")}
-          ${num("stress", c.stress, "Stress")}${num("startStress", c.startStress, "Starting stress")}
+          ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress")}${num("startStress", c.startStress, "Starting stress")}
           ${txt("skills", c.skills.map(skillStr).join(", "), "Skills")}
           ${txt("crime", c.crime, "Conviction", 2)}
           ${txt("backstory", c.backstory, "Backstory", 4)}
@@ -831,9 +831,9 @@
       <div class="vitals">
         <label>Health <input type="number" data-c="health.current" value="${c.health.current}" min="0" max="99"> / ${c.health.max}</label>
         <label>Wounds <input type="number" data-c="wounds.current" value="${c.wounds.current}" min="0" max="99"> / ${c.wounds.max}</label>
-        <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"></label>
+        <label>Stress <input type="number" data-c="stress" value="${c.stress}" min="0" max="99"> Min <input type="number" data-c="minStress" value="${c.minStress}" min="0" max="20" title="Minimum Stress: Stress never goes below it" aria-label="Minimum Stress"></label>
       </div>
-      ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}
+      ${line("Skills", c.skills.map(skillStr).join(", "))}${itemsLine(c)}${line("Trinket", c.trinket)}${line("Patch", c.patch)}${line("Notes", c.notes)}${line("Trauma response", S.traumaResponses?.[c.className])}
     </div>`;
   }
   const itemsLine = (c) => `<div class="items"><span class="k">Items:</span> ${c.items.map((x, j) => `<span class="chip">${esc(x)}<button data-item-del="${j}" title="Drop it" aria-label="Drop ${esc(x)}">✕</button></span>`).join("")}<input data-item-add placeholder="+ add" aria-label="Add an item" size="10"></div>`;
@@ -2368,6 +2368,7 @@
     }
     rollFormChanged();
     renderRollStatus();
+    renderOffers();
   }
 
   function rollFormChanged() {
@@ -2399,6 +2400,9 @@
     };
     $("rollTarget").innerHTML = pcs.length ? pcs.map((c) => esc(line(c))).join("<br>") : "Add crew to call for rolls.";
     $("rollCall").disabled = !pcs.length || S.roll?.status === "waiting";
+    const plusAble = panic && pcs.some((c) => c.className === "Teamster" && !S.panicPlus?.[c.id]);
+    $("rollPlusRow").hidden = !plusAble;
+    if (!plusAble) $("rollPlus").checked = false;
   }
   for (const id of ["rollWho", "rollCheck", "rollSkill"]) $(id).addEventListener("change", rollFormChanged);
 
@@ -2420,7 +2424,7 @@
       const dice = `${res.dice.map(show).join(" / ")}${res.dice.length > 1 ? ` → ${show(res.used)}` : ""}`;
       const verdict = res.panic
         ? (res.success ? "kept their cool" : `PANIC · Panic Table ${res.used}`)
-        : `${res.outcome.toUpperCase()}${res.success ? "" : " · +1 STRESS"}`;
+        : `${res.outcome.toUpperCase()}${res.panicCheck ? ": PANIC CHECK" : ""}${res.success ? "" : " · +1 STRESS"}`;
       const how = got.by === "warden" ? " (you rolled)" : got.manual ? " (table dice)" : "";
       return `<li class="res ${res.success ? "ok" : "bad"}">${esc(p.name)}: ${dice} ${res.panic ? "vs Stress" : "vs"} ${res.target}${how}: ${esc(verdict)}</li>`;
     }).join("");
@@ -2443,10 +2447,22 @@
         advantage: $("rollAdv").value,
         skill: rollSkillName($("rollSkill").value),
         reason: $("rollReason").value,
+        plus: $("rollPlus").checked,
       },
     });
+    $("rollPlus").checked = false;
     rollFromOutcome = false;
   };
+  $("rollOffers").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-offer]");
+    if (b) send({ t: b.dataset.act === "dismiss" ? "offerDismiss" : "offerRoll", id: b.dataset.offer });
+  });
+  function renderOffers() {
+    const box = $("rollOffers"), offers = S.offers || [];
+    const busy = S.roll?.status === "waiting";
+    box.hidden = !offers.length;
+    box.innerHTML = offers.map((o) => `<div class="row wrap"><span class="grow">${esc(o.label)}</span><button data-offer="${esc(o.id)}" data-act="call" ${busy ? 'disabled title="Finish the roll in progress first"' : ""}>${o.roll.check === "panic" ? "Panic check" : "Fear Save"}</button><button data-offer="${esc(o.id)}" data-act="dismiss" class="ghost">Dismiss</button></div>`).join("");
+  }
   $("rollStatus").addEventListener("click", (e) => {
     const b = e.target.closest("[data-roll]");
     const act = b?.dataset.roll;

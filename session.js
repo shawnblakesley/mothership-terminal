@@ -7,7 +7,7 @@ import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, 
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
-import { DEFAULT_CREW, sanitizeCrew, resolveVariants, crewTargets, setVital, changeItem, freshen } from "./crew.js";
+import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen } from "./crew.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf } from "./campaign.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
@@ -19,7 +19,7 @@ import { rememberSecret } from "./redact.js";
 import { discordStatus, stopListening, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
-import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC, checkInfo } from "./rolls.js";
+import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, effectiveAdvantage, PANIC, checkInfo } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, effectType, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
 const FREE_CALLS_PER_DAY = Number(process.env.FREE_CALLS_PER_DAY || 150);
@@ -181,7 +181,7 @@ export function defaultGame(keys = {}) {
       rooms: structuredClone(DEFAULT_ROOMS),
       startDocs: [WORK_ORDER],
       roomDocs: structuredClone(DEFAULT_ROOM_DOCS),
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "portraits-2", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "portraits-2", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", "trauma-notes", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -192,6 +192,8 @@ export function defaultGame(keys = {}) {
     whisper: "",
     sounds: kitSounds(),
     synopses: {},
+    offers: [],
+    panicPlus: {},
   };
 }
 
@@ -294,6 +296,15 @@ function migrateGame(saved) {
   if (!config.upgrades.includes("stress-2")) {
     for (const pc of config.crew) if ((pc.id === "varga" && pc.startStress === 4) || (pc.id === "moll" && pc.startStress === 1)) pc.startStress = 2;
     config.upgrades.push("stress-2");
+  }
+  if (!config.upgrades.includes("trauma-notes")) {
+    const OLD = "Android: Fear saves as above; other crew's Fear saves are made at [−] when MOLL-7 panics.";
+    const NEW = "Android: Fear saves as above; while MOLL-7 is close, other crew's Fear saves are made at [−].";
+    for (const c of [config, saved.storyStart?.config].filter(Boolean)) {
+      if (c.stationName !== "KESTREL-9") continue;
+      for (const pc of c.crew || []) if (pc.id === "moll" && pc.notes === OLD) pc.notes = NEW;
+    }
+    config.upgrades.push("trauma-notes");
   }
   if (!config.upgrades.includes("cyan")) config.upgrades.push("cyan");
   if (!config.upgrades.includes("ship-cyan-2")) {
@@ -409,6 +420,8 @@ function migrateGame(saved) {
     whisper: String(saved.whisper ?? ""),
     roll: Array.isArray(saved.roll?.pcs) ? saved.roll : null,
     outcomeCheck: saved.outcomeCheck ?? null,
+    offers: Array.isArray(saved.offers) ? saved.offers : [],
+    panicPlus: saved.panicPlus && typeof saved.panicPlus === "object" ? saved.panicPlus : {},
     sounds,
     builder: { messages: Array.isArray(saved.builder?.messages) ? saved.builder.messages.slice(-60) : [], draft: saved.builder?.draft ?? null },
     synopses: savedSynopses(saved),
@@ -430,7 +443,7 @@ const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew do
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
 const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
-const STORY_ACTIONS = new Set(["command", "inject", "note", "heard", "rollRequest", "rollFor", "generate", "approve", "outcome", "handout", "clockStart"]);
+const STORY_ACTIONS = new Set(["command", "inject", "note", "heard", "rollRequest", "rollFor", "offerRoll", "generate", "approve", "outcome", "handout", "clockStart"]);
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
   return n ? crew.find((c) => c.name.toLowerCase() === n || c.name.toLowerCase().includes(n))?.id || "" : "";
@@ -579,6 +592,12 @@ export class Session {
     return ok.find((n) => n === here) ?? ok.find((n) => occupied.has(n)) ?? ok[0];
   }
   roomOfSocket(ws) { return this.state.config.terminals.find((t) => t.id === ws.terminal)?.room || ""; }
+  roomOfPc(id) {
+    const ws = [...this.sockets].find((c) => c.role === "player" && c.character === id && c.terminal);
+    return ws ? this.roomOfSocket(ws) : "";
+  }
+  closeTo(pc) { return closeCrew(pc, this.state.config.crew, (id) => this.roomOfPc(id)); }
+  plusAvailable(pc) { return pc.className === "Teamster" && !this.state.panicPlus[pc.id]; }
   sees(ws, e) { return ws.stream || (shownOn(e.net, this.netOfSocket(ws)) && (!e.room || this.roomOfSocket(ws) === e.room)); }
   speaksOnScreens() {
     const c = this.state.config;
@@ -698,6 +717,7 @@ export class Session {
       terminals: c.terminals.map((t) => ({ id: t.id, name: t.name, look: t.look, theme: t.theme, system: t.system, os: t.os, open: reachable(t, this.state.station) })),
       moveTerminals: c.playerTerminals,
       selfRolls: c.playerRolls,
+      trauma: TRAUMA_RESPONSES,
       voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: shownName(v), style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
       portraits: Object.fromEntries((c.cast || []).filter((m) => m.portrait).map((m) => [m.name.toLowerCase(), m.portrait])),
       portraitCredit: [...(c.cast || []), ...c.crew].some((m) => m.portrait?.startsWith("kit/")),
@@ -726,6 +746,7 @@ export class Session {
       rollOptions: { checks: CHECKS, skillLevels: SKILL_LEVELS },
       voiceOptions: { presets: PRESETS, fxParams: FX_PARAMS, variants: VARIANTS, styles: STYLES, engines: ENGINES, speakers: SPEAKERS },
       panicTable: PANIC_TABLE.slice(1),
+      traumaResponses: TRAUMA_RESPONSES,
     };
   }
 
@@ -1131,16 +1152,30 @@ export class Session {
           s.outcomeCheck = null;
           this.setBusy(false);
         }
-        const who = s.roll.all ? "everyone" : s.roll.pcs[0].name;
+        const who = s.roll.all ? "everyone" : s.roll.pcs.map((p) => p.name).join(", ");
         this.addLog("note", `Roll called for ${who}: ${[checkLabel(s.roll), skillLabel(s.roll), s.roll.reason].filter(Boolean).join(" · ")}`);
         this.toPlayers({ t: "roll", roll: this.publicRoll() });
         break;
       }
       case "rollFor": {
         const pc = this.crewById(msg.pc);
-        if (pc && s.roll?.status === "waiting") this.rollFor(pc, diceFor(s.roll), { by: "warden" });
+        if (pc && s.roll?.status === "waiting" && s.roll.pcs.some((p) => p.id === pc.id) && !s.roll.results[pc.id]) this.rollFor(pc, null, { by: "warden" });
         return;
       }
+      case "offerRoll": {
+        const o = s.offers.find((x) => x.id === msg.id);
+        if (!o) break;
+        if (s.roll?.status === "waiting") {
+          this.send("dm", { t: "toast", level: "error", text: "Finish the roll in progress first." });
+          break;
+        }
+        s.offers = s.offers.filter((x) => x !== o);
+        this.handleDm({ t: "rollRequest", roll: o.roll });
+        break;
+      }
+      case "offerDismiss":
+        s.offers = s.offers.filter((x) => x.id !== msg.id);
+        break;
       case "rollCancel":
         if (s.roll?.status === "waiting" && Object.keys(s.roll.results).length) {
           const missing = s.roll.pcs.filter((p) => !s.roll.results[p.id]).map((p) => p.name);
@@ -1640,7 +1675,7 @@ export class Session {
     Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] });
     patch?.(s.config);
     s.config.roomDocs = sanitizeRoomDocs(config.roomDocs);
-    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopses: {} });
+    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, synopses: {} });
     this.endAllEffects();
     this.stopSounds();
     for (const ws of this.sockets) if (ws.role === "player") ws.character = null;
@@ -1686,7 +1721,11 @@ export class Session {
     return {
       id: r.id, check: r.check, label: checkLabel(r), skill: skillLabel(r), skillName: r.skill, bonus: r.bonus, reason: r.reason, advantage: r.advantage,
       panic: r.check === PANIC, all: r.all, stakes: r.stakes || null,
-      pcs: r.pcs.map((p) => ({ ...p, done: !!r.results[p.id] })),
+      pcs: r.pcs.map((p) => {
+        const pc = this.crewById(p.id);
+        const plus = !!pc && r.check === PANIC && this.plusAvailable(pc);
+        return { ...p, done: !!r.results[p.id], advantage: pc ? effectiveAdvantage(r, pc, { close: this.closeTo(pc) }) : r.advantage, plus, autoPlus: plus && r.plus };
+      }),
     };
   }
 
@@ -1695,24 +1734,30 @@ export class Session {
     const pc = this.characterOf(ws);
     if (!r || r.status !== "waiting" || msg.id !== r.id || !pc || !r.pcs.some((p) => p.id === pc.id) || r.results[pc.id]) return;
     this.lastNet = this.netOfSocket(ws);
-    const dice = msg.manual ? manualDice(msg.dice) : diceFor(r);
     try {
-      this.rollFor(pc, dice, { manual: !!msg.manual, by: "player" });
+      this.rollFor(pc, msg.manual ? manualDice(msg.dice) : null, { manual: !!msg.manual, by: "player", plus: !!msg.plus });
     } catch (err) {
       ws.send(JSON.stringify({ t: "rollError", text: err.message }));
     }
   }
 
-  rollFor(pc, dice, { manual = false, by = "player" } = {}) {
-    const r = this.state.roll;
+  rollFor(pc, dice, { manual = false, by = "player", plus = false } = {}) {
+    const s = this.state;
+    const r = s.roll;
+    const usePlus = r.check === PANIC && (plus || r.plus) && this.plusAvailable(pc);
+    const req = { ...r, advantage: effectiveAdvantage(r, pc, { close: this.closeTo(pc), plus: usePlus }) };
     const { stat, bonus } = rollTarget(r, pc);
-    const result = resolve(r, stat, dice, bonus);
+    const result = resolve(req, stat, dice ?? diceFor(req), bonus);
     track("Roll", { Kind: r.check === PANIC ? "panic" : CHECKS[r.check].kind === "Save" ? "save" : "stat", Who: r.all ? "all" : "one" });
     r.results[pc.id] = { result, manual, by };
+    if (usePlus) {
+      s.panicPlus[pc.id] = true;
+      this.addLog("note", `Teamster trauma response: ${pc.name} takes [+] on this Panic Check (once per session, now used).`);
+    }
     const fx = result.panic && !result.success ? panicEntry(result.used) : null;
-    this.toPlayers({ t: "rollResult", result, label: checkLabel(r), who: pc.name, effect: fx?.name || "" });
-    this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(r, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
-    if (result.stress) this.stressFromRoll(pc, result.stress);
+    this.toPlayers({ t: "rollResult", result, label: checkLabel(req), who: pc.name, effect: fx?.name || "" });
+    this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(req, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
+    this.afterRoll(pc, req, result, fx);
     if (r.pcs.every((p) => r.results[p.id])) this.finishRoll();
     else {
       this.toPlayers({ t: "roll", roll: this.publicRoll() });
@@ -1720,11 +1765,45 @@ export class Session {
     }
   }
 
+  afterRoll(pc, req, result, fx) {
+    if (result.stress) this.stressFromRoll(pc, result.stress);
+    if (fx?.minStress) {
+      const [was, now] = raiseMinStress(pc, fx.minStress);
+      this.addLog("note", `${pc.name}: Minimum Stress ${was} → ${now} (${fx.name}).`);
+      this.crewChanged();
+    }
+    if (result.panicCheck) this.offerRoll(`Panic check for ${pc.name} (critical failure)`, { pc: pc.id, check: PANIC, reason: "Critical failure" });
+    const near = this.closeTo(pc);
+    if (req.check === "sanity" && !result.success && pc.className === "Scientist") {
+      for (const c of near) {
+        this.addLog("note", `Scientist trauma response: ${pc.name} failed a Sanity Save, so ${c.name} gains 1 Stress.`);
+        this.stressFromRoll(c, 1, "Scientist trauma response");
+      }
+    }
+    if (result.panic && !result.success && pc.className === "Marine") {
+      this.addLog("note", `Marine trauma response: every Close friendly player makes a Fear Save (${pc.name} panicked).`);
+      if (near.length) this.offerRoll(`Fear Save for ${near.map((c) => c.name).join(", ")} (Marine trauma response)`, { pc: near.map((c) => c.id), check: "fear", reason: "Marine trauma response" });
+    }
+  }
+
+  offerRoll(label, roll) {
+    const offers = this.state.offers;
+    if (!offers.some((o) => o.label === label)) offers.push({ id: newId("of", 3), label, roll });
+  }
+
+  runOffer() {
+    const s = this.state;
+    if (s.roll?.status === "waiting" || !s.offers.length) return false;
+    this.soloCall(s.offers.shift().roll);
+    return true;
+  }
+
   finishRoll() {
     const r = this.state.roll;
     Object.assign(r, { status: "done", finishedAt: Date.now() });
     this.toPlayers({ t: "roll", roll: null });
     this.syncDm();
+    if (this.state.solo && this.runOffer()) return;
     if (this.state.solo) this.soloNoCheck = true;
     if (this.hasKey()) this.generate();
   }
@@ -1778,24 +1857,31 @@ export class Session {
     if (now - (ws.lastRoll || 0) < 1500) return;
     ws.lastRoll = now;
     const r = sanitizeRequest({ pc: pc.id, check: msg.check, skill: msg.skill, advantage: msg.advantage }, [pc]);
-    const dice = msg.manual ? manualDice(msg.dice) : diceFor(r);
+    const req = { ...r, advantage: effectiveAdvantage(r, pc, { close: this.closeTo(pc) }) };
+    const dice = msg.manual ? manualDice(msg.dice) : diceFor(req);
     let result;
     try {
-      result = resolve(r, pc.stats[msg.check] ?? pc.saves[msg.check], dice, r.bonus);
+      result = resolve(req, pc.stats[msg.check] ?? pc.saves[msg.check], dice, r.bonus);
     } catch (err) {
-      ws.send(JSON.stringify({ t: "rollError", text: err.message }));
+      ws.send(JSON.stringify({ t: "rollError", text: req.advantage !== r.advantage ? `${err.message} An Android is close, so this Fear Save is at [-].` : err.message }));
       return;
     }
     track("Roll", { Kind: CHECKS[r.check].kind === "Save" ? "save" : "stat", Who: "self" });
-    ws.send(JSON.stringify({ t: "rollResult", result, label: checkLabel(r) }));
-    this.addLog("roll", `${pc.name} rolled: ${resultText(r, result)}`, { outcome: result.outcome, by: pc.name, self: true });
-    if (!result.success) this.stressFromRoll(pc, 1);
+    ws.send(JSON.stringify({ t: "rollResult", result, label: checkLabel(req) }));
+    this.addLog("roll", `${pc.name} rolled: ${resultText(req, result)}`, { outcome: result.outcome, by: pc.name, self: true });
+    this.afterRoll(pc, req, result, null);
+    if (this.state.solo) this.runOffer();
     this.syncDm();
   }
-  stressFromRoll(pc, n) {
-    const ch = setVital(pc, "stress", pc.stress + n);
-    this.addLog("note", `${pc.name}: Stress ${ch[0]} → ${ch[1]} (failed roll).`);
+  stressFromRoll(pc, n, why = "failed roll") {
+    const { from, to, over } = gainStress(pc, n);
+    this.addLog("note", `${pc.name}: Stress ${from} → ${to} (${why}).`);
+    this.stressOver(pc, over);
     this.crewChanged();
+  }
+
+  stressOver(pc, over) {
+    if (over) this.addLog("note", `${pc.name}: Stress over 20: reduce the most relevant Stat or Save by ${over} (PSG 20.1).`);
   }
 
   applyCrewChanges(changes) {
@@ -1805,9 +1891,11 @@ export class Session {
       for (const id of crewTargets(c.for, this.state.config.crew)) {
         const pc = this.state.config.crew.find((x) => x.id === id);
         const cur = c.stat === "stress" ? pc.stress : pc[c.stat]?.current;
-        const ch = cur === undefined ? null : setVital(pc, c.stat, cur + c.change);
-        if (!ch || ch[0] === ch[1]) continue;
+        const gain = c.stat === "stress" && c.change > 0 ? gainStress(pc, c.change) : null;
+        const ch = gain ? [gain.from, gain.to] : cur === undefined ? null : setVital(pc, c.stat, cur + c.change);
+        if (!ch || ch[0] === ch[1]) { if (gain) this.stressOver(pc, gain.over); continue; }
         this.addLog("note", `${pc.name}: ${label(c.stat)} ${ch[0]} → ${ch[1]}${c.why ? ` (${c.why})` : ""}.`);
+        if (gain) this.stressOver(pc, gain.over);
         any = true;
       }
     }
@@ -1874,7 +1962,7 @@ export class Session {
     if (undo.map !== undefined) Object.assign(s.config, { map: undo.map, rooms: undo.rooms });
     for (const pc of s.config.crew) {
       const was = undo.crew.find((x) => x.id === pc.id);
-      if (was) Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, items: was.items });
+      if (was) Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, minStress: was.minStress, items: was.items });
     }
     s.outcomeCheck = undo.outcome;
     this.playhead = 0;
@@ -2160,6 +2248,18 @@ export class Session {
     this.generate("OPENING: there is no Warden, so you start the game. Set the opening scene for the players at their terminal in a few short lines: where they are, what they see and hear, and something that gives them a reason to act. End on a moment that invites them to type.");
   }
 
+  soloCall(roll, fromOutcome = false) {
+    const s = this.state;
+    this.handleDm({ t: "rollRequest", fromOutcome, roll });
+    const r = s.roll;
+    if (r?.status !== "waiting") return;
+    const claimed = this.claims();
+    for (const p of [...r.pcs]) {
+      const who = this.crewById(p.id);
+      if (who && !claimed[who.id] && s.roll === r && r.status === "waiting" && !r.results[who.id]) this.rollFor(who, null, { by: "warden" });
+    }
+  }
+
   soloRule(oc) {
     const s = this.state;
     if (!oc) return;
@@ -2167,12 +2267,7 @@ export class Session {
     const by = s.log.findLast((e) => e.kind === "player")?.by;
     const pc = crew.find((c) => c.name === by);
     if (oc.suggested_check !== "none" && crew.length) {
-      this.handleDm({ t: "rollRequest", fromOutcome: true, roll: { pc: pc?.id ?? "all", check: oc.suggested_check, advantage: oc.advantage, reason: oc.attempt } });
-      const claimed = this.claims();
-      for (const p of s.roll?.status === "waiting" ? [...s.roll.pcs] : []) {
-        const who = crew.find((c) => c.id === p.id);
-        if (who && !claimed[who.id] && s.roll?.status === "waiting") this.rollFor(who, diceFor(s.roll), { by: "warden" });
-      }
+      this.soloCall({ pc: pc?.id ?? "all", check: oc.suggested_check, advantage: oc.advantage, reason: oc.attempt }, true);
       return;
     }
     s.outcomeCheck = null;
@@ -2298,7 +2393,7 @@ export class Session {
     }
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
     s.station.access_level = DEFAULT_STATION.access_level;
-    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null });
+    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, storyStart: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);
     this.toPlayers({ t: "roomPlan", rows: null });
