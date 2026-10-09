@@ -64,6 +64,7 @@
       <div class="row"><button data-ship-act="movement" class="primary" ${!cm || !em || f.waiting || movedNow ? "disabled" : ""}>${movedNow ? "Movement resolved" : "Resolve movement"}</button></div>
       <h3 class="cmph">2. Attack and morale</h3>
       <div class="small muted">Every ship within Firing range makes a Battle check (at Detection only a railgun). Critical Failure: +2 MDMG to itself; failure +1; success deals 1d5 ${HOUSE}; Critical Success double. Then Hull is subtracted, and Hull drops 1 if the damage was at or above it. An unarmed ship automatically fails. Then 1d10 for any enemy that took MDMG: under its MDMG, it hails.</div>
+      <div class="row wrap"><span class="small">Fire or hold fire ${HOUSE}:</span>${[[rig, "crew"], [foe, "enemy"]].map(([x, side]) => `<button data-ship-fire="${side}" aria-pressed="${x.fires}" title="Only a ship that fires makes a Battle check and suffers its results. Armed ships fire by default; an unarmed ship holds (firing anyway is an automatic failure).">${esc(x.name)}: ${x.fires ? "Fire" : "Hold fire"}</button>`).join("")}</div>
       <div class="row"><button data-ship-act="attack" class="primary" ${f.waiting || attackedNow ? "disabled" : ""}>Resolve attack and morale</button></div>
       <div class="row wrap"><button data-ship-act="systems" ${f.waiting ? "disabled" : ""} title="The Engineer rolls a Systems check (damage control)">Systems check (Engineer)</button><button data-ship-act="board" ${f.range === "contact" && !f.boarding ? "" : "disabled"} title="Boarding needs Contact range; it hands over to crew combat">Board (Contact)</button></div>`}
       ${wait}
@@ -122,6 +123,8 @@
       else if (t.matches("[data-ship-range]")) send({ t: "shipRange", range: t.value });
     });
     root.addEventListener("click", (e) => {
+      const fb = e.target.closest("[data-ship-fire]");
+      if (fb) return send({ t: "shipFire", side: fb.dataset.shipFire, on: fb.getAttribute("aria-pressed") !== "true" });
       const act = e.target.closest("[data-ship-act]")?.dataset.shipAct;
       if (!act) return;
       const fuel = (id) => Number(sel(root, id)?.value) || 0;
@@ -192,10 +195,13 @@
       ${ship.boarding ? '<div class="shipline shipbad">BOARDERS ON THE RIG</div>' : ""}
       ${me && !ship.ended ? `<div class="shipline">STATION: ${["pilot", "gunner", "engineer", ""].map((s) => `<button type="button" data-ship-st="${s}" aria-pressed="${mineStation === s}">${s ? s.toUpperCase() : "NONE"}</button>`).join("")}</div>` : ""}
       ${canSteer ? `<div class="shipline">COURSE: ${["maintain", "evade", "pursue"].map((m) => `<button type="button" data-ship-mv="${m}" aria-pressed="${(ui.pMove || mv?.move) === m}">${m === "maintain" ? "MAINTAIN COURSE" : m.toUpperCase()}</button>`).join("")} FUEL <input type="number" min="0" max="20" id="ship-fuel" value="${ui.pFuel}" aria-label="Fuel to spend"> <button type="button" data-ship-set>SET COURSE</button> <span class="shipdim">EVADE NEEDS ${ship.evadeMin}+</span></div>` : ""}
+      ${me && !ship.ended ? `<div class="shipline">GUNS: <button type="button" data-ship-fire="1" aria-pressed="${ship.fire}">${ship.fire ? "FIRE" : "HOLD FIRE"}</button> <span class="shipdim">${ship.armed ? "" : "UNARMED: FIRING IS AN AUTOMATIC FAILURE"}</span></div>` : ""}
       ${mv ? `<div class="shipline">COURSE SET: ${mv.move.toUpperCase()}${mv.spend ? ` · ${mv.spend} FUEL` : ""}</div>` : ""}`;
     if (!root.__wired) {
       root.__wired = true;
       root.addEventListener("click", (ev) => {
+        const fb = ev.target.closest("[data-ship-fire]");
+        if (fb) return send({ t: "shipFire", on: fb.getAttribute("aria-pressed") !== "true" });
         const st = ev.target.closest("[data-ship-st]");
         if (st) return send({ t: "shipStation", station: st.dataset.shipSt });
         const m = ev.target.closest("[data-ship-mv]");

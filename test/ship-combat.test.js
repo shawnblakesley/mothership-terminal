@@ -9,7 +9,7 @@ import {
   classAdvantage, unwinnable, shipConsequences, attackStatus, sanitizeShip, sanitizeRig, rollIssues, majorCost, distressResponse, resupplyEffect, identified, MAINTENANCE, shipBrief,
 } from "../ships.js";
 import { Session } from "../session.js";
-import { startFight, setCrewMove, setEnemyMove, resolveMovement, resolveAttack, endFight, rigAction, shipClockRan, runEffect, hooks } from "../shipfight.js";
+import { startFight, setCrewMove, setEnemyMove, resolveMovement, resolveAttack, endFight, rigAction, shipClockRan, runEffect, setFire, hooks } from "../shipfight.js";
 
 const ok = { success: true, critical: false }, crit = { success: true, critical: true }, fail = { success: false, critical: false }, cfail = { success: false, critical: true };
 const mary = () => sanitizeRig(null, c.ship.combat);
@@ -328,6 +328,7 @@ test("HOT LOAD: unarmed MARY auto-fails her Battle check; MDMG 5 is a hull breac
   const f = s.state.shipFight;
   f.ships[0].mdmg = 4;
   const stress = s.state.config.crew.map((pc) => pc.stress);
+  setFire(s, "crew", true);
   resolveAttack(s);
   const rig = f.ships[0];
   assert.equal(rig.mdmg, 5);
@@ -338,6 +339,41 @@ test("HOT LOAD: unarmed MARY auto-fails her Battle check; MDMG 5 is a hull breac
   assert.deepEqual(s.state.config.crew.map((pc) => pc.stress), stress.map((n) => n + 1), "an automatic failure is a failed ship check");
   assert.equal(f.round, 2);
   assert.match(s.state.log.find((e) => /ATTACK/.test(e.text)).text, /AUTOMATIC FAILURE \(UNARMED\)/);
+});
+
+test("firing is a choice: an unarmed MARY holds fire by default (no MDMG, no Stress); choosing Fire is an automatic failure with its consequences", () => {
+  const s = session();
+  startFight(s, { ship: "red_tide", range: "contact" });
+  const f = s.state.shipFight;
+  const stress = s.state.config.crew.map((pc) => pc.stress);
+  resolveAttack(s);
+  assert.equal(f.ships[0].mdmg, 0, "she held fire");
+  assert.deepEqual(s.state.config.crew.map((pc) => pc.stress), stress);
+  assert.match(s.state.log.find((e) => /ATTACK/.test(e.text)).text, /LONG HAUL MARY: NO ATTACK \(HOLDS FIRE\)/);
+  assert.equal(f.ships[1].mdmg >= 1 || f.ships[0].hull <= 3, true);
+  assert.deepEqual(f.fire, { crew: null, enemy: null }, "the choice resets each round");
+  setFire(s, "crew", true);
+  resolveAttack(s);
+  assert.equal(f.ships[0].mdmg, 1);
+  assert.deepEqual(s.state.config.crew.map((pc) => pc.stress), stress.map((n) => n + 1));
+});
+
+test("an armed enemy holds fire when told to: no Battle check and no MDMG to itself", () => {
+  const s = session();
+  startFight(s, { ship: "red_tide", range: "contact" });
+  const f = s.state.shipFight;
+  setFire(s, "enemy", false);
+  resolveAttack(s);
+  assert.equal(f.ships[1].mdmg, 0);
+  assert.match(s.state.log.find((e) => /ATTACK/.test(e.text)).text, /THE RED TIDE: NO ATTACK \(HOLDS FIRE\)/);
+});
+
+test("the agent's enemy_fire field is read and applied", () => {
+  assert.deepEqual(parseReply(JSON.stringify({ lines: [], ship_fight: { enemy_fire: false } }), []).ship_fight, { enemy_fire: false });
+  const s = session();
+  startFight(s, { ship: "red_tide", range: "contact" });
+  s.deliver({ lines: [], ship_fight: { enemy_fire: false } }, "agent");
+  assert.equal(s.state.shipFight.fire.enemy, false);
 });
 
 test("the MDMG effects reach the people aboard through the hazards", () => {
@@ -383,6 +419,7 @@ test("the rig's Hull and MDMG carry between stories, and a patch job is a house 
   const f = s.state.shipFight;
   f.ships[0].mdmg = 3;
   f.ships[0].hull = 1;
+  setFire(s, "crew", true);
   resolveAttack(s);
   assert.ok(s.state.campaign.ship.mdmg >= 4);
   assert.equal(s.state.campaign.ship.hull <= 1, true);
@@ -421,6 +458,7 @@ test("the Systems check after the battle stays due while another roll is waiting
   startFight(s, { ship: "red_tide", range: "contact" });
   const f = s.state.shipFight;
   f.ships[0].mdmg = 4;
+  setFire(s, "crew", true);
   resolveAttack(s);
   assert.equal(s.state.roll.check, "body", "the hull breach saves are waiting");
   endFight(s, "ceasefire");
@@ -441,6 +479,7 @@ test("Retcon undoes the last round and starting a fight from the agent's reply",
   startFight(s, { ship: "red_tide", range: "contact" });
   const mdmg = s.state.shipFight.ships[0].mdmg;
   const stress = s.state.config.crew.map((pc) => pc.stress);
+  setFire(s, "crew", true);
   resolveAttack(s);
   assert.ok(s.state.shipFight.ships[0].mdmg > mdmg);
   s.retcon();

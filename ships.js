@@ -254,6 +254,7 @@ export const newFight = (ships, range = "firing") => ({
   range: RANGES.includes(range) ? range : "firing",
   round: 1,
   moves: { crew: null, enemy: null },
+  fire: { crew: null, enemy: null },
   stations: {},
   skills: {},
   waiting: null,
@@ -270,6 +271,7 @@ export function normalizeShipFight(raw) {
   const out = {};
   if (raw.start && typeof raw.start === "object" && text(raw.start.ship, 40)) out.start = { ship: text(raw.start.ship, 40), range: RANGES.includes(raw.start.range) ? raw.start.range : "firing" };
   if (raw.end === true) out.end = true;
+  if (typeof raw.enemy_fire === "boolean") out.enemy_fire = raw.enemy_fire;
   if (MOVES.includes(raw.enemy_move)) { out.enemy_move = raw.enemy_move; out.fuel = clampInt(raw.fuel, 0, 99, 0); }
   return Object.keys(out).length ? out : null;
 }
@@ -293,6 +295,7 @@ export function shipBrief(state) {
   if (!f.ended) {
     const m = f.moves?.enemy;
     lines.push(m ? `The enemy's move this round is set: ${m.move}${m.spend ? `, ${m.spend} fuel` : ""}. The crew's course is secret until the Warden resolves movement.` : "The enemy's move for this round is NOT set yet: choose it with ship_fight.enemy_move (maintain, evade or pursue) and ship_fight.fuel (Evade needs at least 3 fuel at Contact, 2 at Firing, 1 at Detection; Maintain Course spends none) when the Warden asks or the fiction needs it.");
+    lines.push("Each round every ship chooses to fire or hold fire (house rule): an armed enemy fires by default; set ship_fight.enemy_fire = false to hold fire, or true to make an unarmed one try (an automatic failure). Only a ship that fires makes a Battle check and suffers its results.");
     lines.push("Narrate each [ROLL RESULT] from the app (movement, attack, morale) in the fiction. End the fight with ship_fight.end = true when it is over (a ceasefire, a surrender, one side gone, a boarding that settles it).");
   }
   if (f.boarding) lines.push("BOARDING: the enemy has boarded; run it as crew combat (attacks, crew_attacks).");

@@ -19,6 +19,7 @@ import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
 import { restAndRecover, downtimeLines } from "./downtime-lite.js";
 import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory } from "./campaign.js";
 import { transfer, ledgerLine, exact, DEBT_PAYMENT, DEBT_EVERY } from "./money.js";
+import { downtimeReady, planRoll, settleRoll, mirror, passDays, treat, treatmentList, shoreText, applyConversion } from "./downtime.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
@@ -790,6 +791,94 @@ export class Session {
     };
   }
 
+  // Downtime between stories (ticket 06): the rolls are Saves on the players' screens; downtime.js decides what they do.
+  downtimeOf() {
+    const p = this.state.campaign, c = campaignById(p?.id);
+    if (!c) return null;
+    const loc = c.locations.find((l) => l.id === p.at);
+    return { ready: downtimeReady(p, this.state.config), port: loc?.name || "", portClass: loc?.portClass || "", shore: shoreText(loc?.portClass), treatments: treatmentList() };
+  }
+
+  dtFail(text) { this.send("dm", { t: "toast", level: "error", text }); }
+
+  downtimeGo(msg) {
+    const s = this.state, p = s.campaign;
+    if (!p || !campaignById(p.id)) return;
+    if (!downtimeReady(p, s.config)) return this.dtFail("Downtime comes between stories: finish a story first, and let the crew carry over.");
+    if (s.roll?.status === "waiting") return this.dtFail("Finish the roll in progress first.");
+    const kind = String(msg.kind || ""), o = msg.opts && typeof msg.opts === "object" ? msg.opts : {};
+    const opts = { leisure: !!o.leisure, helped: !!o.helped, unsafe: !!o.unsafe, safe: !!o.safe };
+    const ids = msg.pc === "all" ? s.config.crew.filter(playable).map((x) => x.id) : [String(msg.pc || "")];
+    this.dtQueue = ids.map((id) => ({ id, kind, opts }));
+    this.nextDowntime();
+  }
+
+  // Starts the next queued downtime Save (skipping any the rules refuse). True if a roll is now waiting.
+  nextDowntime() {
+    const s = this.state, p = s.campaign, c = campaignById(p?.id), q = (this.dtQueue ||= []);
+    while (c && q.length) {
+      const e = q.shift(), pc = this.crewById(e.id);
+      if (!pc) continue;
+      const plan = planRoll(p, c, pc, e.kind, e.opts);
+      if (!plan.ok) { this.dtFail(plan.error); this.addLog("note", `Downtime: ${plan.error}`); continue; }
+      for (const l of plan.lines) this.addLog("note", l);
+      for (const en of plan.entries) this.addLog("note", ledgerLine(p, en));
+      if (plan.days) this.addLog("note", passDays(p, [s.config.crew, p.crew], plan.days).concat(`${plan.days} days pass (day ${p.downtime.day}).`).join(" "));
+      if (plan.entries.length) this.moneySync();
+      mirror(p, pc);
+      s.roll = sanitizeRequest(plan.request, s.config.crew);
+      s.roll.downtime = { [pc.id]: plan.dt };
+      this.addLog("note", `Roll called for ${pc.name}: ${[checkLabel(s.roll), s.roll.reason].filter(Boolean).join(" · ")}`);
+      this.toPlayers({ t: "roll", roll: this.publicRoll() });
+      this.syncDm();
+      return true;
+    }
+    this.syncDm();
+    return false;
+  }
+
+  settleDowntime(pc, dt, result) {
+    const p = this.state.campaign, out = settleRoll(p, pc, dt, result);
+    for (const l of out.lines) this.addLog("note", l);
+    if (out.over) this.stressOver(pc, out.over);
+    mirror(p, pc);
+    this.crewChanged();
+    return out;
+  }
+
+  downtimeSpread(msg) {
+    const s = this.state, p = s.campaign, pc = this.crewById(String(msg.pc || "")), pend = p?.downtime.pending[pc?.id];
+    if (!pend) return;
+    const r = applyConversion(pc, pend.points, msg.alloc);
+    if (!r.ok) return this.dtFail(r.error);
+    delete p.downtime.pending[pc.id];
+    this.addLog("note", `${pc.name}: Shore Leave converts ${pend.points} Stress into Save improvements: ${r.done.join(", ")}.`);
+    mirror(p, pc);
+    this.crewChanged();
+  }
+
+  downtimeTreat(msg) {
+    const s = this.state, p = s.campaign, pc = this.crewById(String(msg.pc || ""));
+    if (!p || !pc) return;
+    if (!downtimeReady(p, s.config)) return this.dtFail("Treatments come between stories.");
+    const r = treat(p, pc, String(msg.treatment || ""), { choice: String(msg.choice || ""), pay: String(msg.pay || "") });
+    if (!r.ok) return this.dtFail(r.error);
+    this.addLog("note", `${r.name} for ${pc.name} (${exact(r.cost)}), PSG 35.`);
+    for (const l of r.lines) this.addLog("note", l);
+    for (const en of r.entries) this.addLog("note", ledgerLine(p, en));
+    if (r.days) this.addLog("note", passDays(p, [s.config.crew, p.crew], r.days).concat(`${r.days} days pass (day ${p.downtime.day}).`).join(" "));
+    mirror(p, pc);
+    this.moneySync();
+  }
+
+  downtimeDays(msg) {
+    const s = this.state, p = s.campaign, n = Math.max(0, Math.min(365, Math.round(Number(msg.days) || 0)));
+    if (!p || !n) return;
+    const gone = passDays(p, [s.config.crew, p.crew], n);
+    this.addLog("note", [`${n} day${n > 1 ? "s" : ""} pass (day ${p.downtime.day}).`, ...gone].join(" "));
+    this.crewChanged();
+  }
+
   resupplyOf() {
     const p = this.state.campaign, c = campaignById(p?.id);
     return c ? resupplyView(c, p) : null;
@@ -827,6 +916,7 @@ export class Session {
       builderBusy: this.builderBusy,
       campaignBusy: this.campaignBusy,
       resupply: this.resupplyOf(),
+      downtime: this.downtimeOf(),
       rig: this.rigView(),
       ships: shipDmView(this),
       sectorShown: this.sectorShown,
@@ -1060,7 +1150,7 @@ export class Session {
     if (msg.t === "finalWords") return this.finalWords(ws, msg.text);
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
-    if (msg.t === "shipStation" || msg.t === "shipMove") return shipPlayer(this, ws, msg);
+    if (msg.t === "shipStation" || msg.t === "shipMove" || msg.t === "shipFire") return shipPlayer(this, ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
     if (String(msg.t).startsWith("cg")) return handleChargen(this, ws, msg);
     if (msg.t === "claim") {
@@ -1332,6 +1422,7 @@ export class Session {
         s.offers = s.offers.filter((x) => x.id !== msg.id);
         break;
       case "rollCancel":
+        this.dtQueue = [];
         if (s.roll?.status === "waiting" && Object.keys(s.roll.results).length) {
           const missing = s.roll.pcs.filter((p) => !s.roll.results[p.id]).map((p) => p.name);
           this.addLog("note", `Roll closed without ${missing.join(", ")}.`);
@@ -1590,6 +1681,10 @@ export class Session {
         }
         break;
       }
+      case "campaignDowntime": this.downtimeGo(msg); break;
+      case "campaignShoreSpread": this.downtimeSpread(msg); break;
+      case "campaignTreat": this.downtimeTreat(msg); break;
+      case "campaignDays": this.downtimeDays(msg); break;
       case "campaignMoney": {
         const p = s.campaign, r = p && transfer(p, { from: String(msg.from || ""), to: String(msg.to || ""), amount: msg.amount, what: String(msg.what || "") });
         if (!r) break;
@@ -2100,7 +2195,8 @@ export class Session {
     this.toPlayers({ t: "rollResult", result, label: checkLabel(req), who: pc.name, effect: fx?.name || "" });
     if (fx) this.panicScreens(pc, result.used, fx.name);
     this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(req, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
-    this.afterRoll(pc, req, result, fx);
+    const dt = r.downtime?.[pc.id], dtOut = dt && this.settleDowntime(pc, dt, result);
+    this.afterRoll(pc, req, result, fx, !!dtOut?.ownStress);
     if (r.hazard?.[pc.id]) this.settleHazard(pc, r.hazard[pc.id], result);
     if (r.pcs.every((p) => r.results[p.id])) this.finishRoll();
     else {
@@ -2124,9 +2220,9 @@ export class Session {
     }
   }
 
-  afterRoll(pc, req, result, fx) {
+  afterRoll(pc, req, result, fx, ownStress = false) {
     if (req.check === "ship") return; // a ship check's consequences go to the whole crew when its step resolves (shipfight.js)
-    if (result.stress) this.stressFromRoll(pc, result.stress);
+    if (result.stress && !ownStress) this.stressFromRoll(pc, result.stress);
     if (fx?.minStress) {
       const [was, now] = raiseMinStress(pc, fx.minStress);
       this.addLog("note", `${pc.name}: Minimum Stress ${was} → ${now} (${fx.name}).`);
@@ -2166,6 +2262,10 @@ export class Session {
     if (r.ship) {
       shipRollDone(this, r);
       if (this.state.roll !== r && this.state.roll?.status === "waiting") return;
+    }
+    if (r.downtime) {
+      this.nextDowntime();
+      return;
     }
     if (this.state.solo && this.runOffer()) return;
     if (this.state.solo) this.soloNoCheck = true;

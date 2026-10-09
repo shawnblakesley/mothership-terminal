@@ -79,6 +79,10 @@ On the existing distribution:
   aws s3 cp public/sounds/ s3://mothership-sounds-773206830395/sounds/ --recursive --exclude "*" --include "*.mp3"
   ```
   For local development, `node deploy/sounds.mjs` fetches them with your own AWS credentials.
+- **Roll tables:** character creation's loadout, trinket and patch tables (`data/tables/psg-tables.json`, made from your own Player's Survival Guide PDF by `scripts/extract-psg-tables.mjs`) aren't in git either. They're in the same private bucket under `rules/`, which MothershipStack lets the server's role read (`rules/*`). Each deploy, `update.sh` runs `deploy/tables.mjs`, which fetches them into `/var/lib/mothership/tables/`; until it can, character creation asks players to look the results up. To upload or replace them:
+  ```bash
+  aws s3 cp data/tables/psg-tables.json s3://mothership-sounds-773206830395/rules/psg-tables.json
+  ```
   then redeploy (any push to main). Delete the parameter and redeploy to turn free models off. If the fetch fails, the deploy keeps the last key.
   Free models cost nothing, so a public server is fine. OpenRouter allows far more free requests a day on an account that has bought at least $10 of credit at some point. Each session is also capped at `FREE_CALLS_PER_DAY` (default 150).
 - **Limits:** set in the systemd unit. `MAX_SESSIONS` defaults to 300, and idle sessions expire after `SESSION_TTL_DAYS` (default 14).

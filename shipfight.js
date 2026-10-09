@@ -26,6 +26,8 @@ const campaignOf = (s) => {
   const p = s.state.campaign, c = campaignById(p?.id);
   return c ? { p, c } : null;
 };
+// Attacking is a choice each round: an armed ship fires unless told to hold, an unarmed one holds unless told to fire (house rule).
+export const fires = (f, sh) => f.fire?.[sh.side] ?? sh.weapons.length > 0;
 const alive = (s) => s.state.config.crew.filter(playable);
 
 // ---- Fuel (house rule: 1 rules fuel = 1 rig fuel unit), kept where the rig keeps it.
@@ -275,7 +277,7 @@ export function resolveAttack(s) {
   const rig = rigOf(f), foe = foesOf(f)[0];
   const st = attackStatus(rig, foe, f.range);
   step(s, () => {
-    if (st.checks && !st.autoFail) {
+    if (st.checks && !st.autoFail && fires(f, rig)) {
       if (!callCheck(s, f, "gunner", "battle", { kind: "attack", reason: `BATTLE CHECK${st.adv ? ` [${st.adv}]` : ""}${st.why ? ` (${st.why})` : ""}`, advantage: advWord(st.adv) })) return;
     } else finishAttack(s, f, null);
   });
@@ -289,7 +291,7 @@ function finishAttack(s, f, crewCheck) {
     for (const sh of f.ships) {
       const target = f.ships.find((x) => x.side !== sh.side);
       const st = attackStatus(sh, target, f.range);
-      if (!st.checks) { rows.push({ sh, st, skip: true }); continue; }
+      if (!st.checks || !fires(f, sh)) { rows.push({ sh, st: st.checks ? { why: "holds fire" } : st, skip: true }); continue; }
       let check = null, shown = "";
       if (st.autoFail) shown = `AUTOMATIC FAILURE (${st.why.toUpperCase()})`;
       else if (sh.side === "crew") { check = crewCheck; shown = crewCheck ? `ROLLED, ${crewCheck.success ? (crewCheck.critical ? "CRITICAL SUCCESS" : "SUCCESS") : crewCheck.critical ? "CRITICAL FAILURE" : "FAILURE"}` : "NO CHECK"; }
@@ -339,6 +341,7 @@ function finishAttack(s, f, crewCheck) {
     f.attackedRound = f.round;
     f.round += 1;
     f.moves = { crew: null, enemy: null };
+    f.fire = { crew: null, enemy: null };
     f.phase = "choose";
     syncRig(s);
   });
@@ -456,6 +459,14 @@ export function board(s) {
   if (s.hasKey()) s.requestReply();
 }
 
+export function setFire(s, side, on) {
+  const f = live(s);
+  if (!f || !["crew", "enemy"].includes(side) || f.waiting) return;
+  f.fire = { ...f.fire, [side]: !!on };
+  changed(s);
+  return true;
+}
+
 export function setRange(s, range) {
   const f = live(s);
   if (!f || !RANGES.includes(range) || range === f.range) return;
@@ -560,6 +571,7 @@ export function shipDm(s, msg) {
     case "shipStart": return startFight(s, msg);
     case "shipEnd": return endFight(s, String(msg.how || "").slice(0, 100));
     case "shipClear": s.state.shipFight = null; return changed(s);
+    case "shipFire": return setFire(s, msg.side, msg.on);
     case "shipRange": return setRange(s, msg.range);
     case "shipEnemyMove": return setEnemyMove(s, msg.move, msg.fuel, msg.ship);
     case "shipCrewMove": return setCrewMove(s, msg.move, msg.fuel);
@@ -604,6 +616,7 @@ export function shipPlayer(s, ws, msg) {
     f.stations[pc.id] = STATIONS.includes(msg.station) ? msg.station : "";
     return changed(s);
   }
+  if (msg.t === "shipFire") return setFire(s, "crew", msg.on);
   if (msg.t === "shipMove") {
     const pilot = pcAt(s, f, "pilot");
     if (pilot && pilot.id !== pc.id) return ws.send(JSON.stringify({ t: "notice", text: `${pilot.name} is the Pilot.` }));
@@ -627,6 +640,7 @@ export function applyShipFight(s, sf) {
       if (setEnemyMove(s, sf.enemy_move, fuel)) s.addLog("note", `The agent chose the enemy's move for round ${f.round}: ${sf.enemy_move}${fuel ? `, ${fuel} fuel` : ""}.`);
     }
   }
+  if (typeof sf.enemy_fire === "boolean" && live(s)) setFire(s, "enemy", sf.enemy_fire);
   if (sf.end === true && live(s)) endFight(s, "the agent ended it");
 }
 
@@ -653,7 +667,7 @@ export function shipDmView(s) {
   if (f) {
     out.fight = {
       ...f,
-      ships: f.ships.map((x) => ({ ...x, effect: mdmgEffect(x.mdmg), status: statusFor(s, f, x), identified: identified(x, f.range), line: describeShip(x) })),
+      ships: f.ships.map((x) => ({ ...x, fires: fires(f, x), effect: mdmgEffect(x.mdmg), status: statusFor(s, f, x), identified: identified(x, f.range), line: describeShip(x) })),
       pilot: rollerFor(s, f, "pilot")?.name || "", gunner: rollerFor(s, f, "gunner")?.name || "", engineer: rollerFor(s, f, "engineer")?.name || "",
       crewSkills: Object.fromEntries(s.state.config.crew.map((pc) => [pc.id, (pc.skills || []).map((k) => k.name)])),
       unwinnable: foesOf(f).some((x) => unwinnable(rig, x)),
@@ -673,6 +687,7 @@ export function shipPlayerView(s) {
     stations: f.stations, move: f.moves.crew, evadeMin: evadeMinimum(f.range),
     pilot: rollerFor(s, f, "pilot")?.id || "",
     unwinnable: foe ? unwinnable(rig, foe) : false,
+    fire: fires(f, rig), armed: rig.weapons.length > 0,
     hailed: f.hails.length > 0,
   };
 }
