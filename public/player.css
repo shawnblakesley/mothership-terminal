@@ -729,6 +729,11 @@ body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #
 .cb-wounds i { width: 0.45em; height: 0.45em; border: 1px solid var(--fg); }
 .cb-wounds i.on { background: var(--fg); }
 .cb-rec { color: #ff4a3d; text-shadow: 0 0 6px rgba(255, 74, 61, 0.6); animation: blink 1.2s infinite steps(1); }
+.line.msg { padding-left: 0.6em; border-left: 3px solid var(--fg); text-transform: uppercase; }
+.line.msg.out { color: var(--dim); border-left-style: dotted; }
+.line.msg.in::before, .line.msg.fail::before { font-weight: bold; opacity: 1; }
+.line.msg.fail { color: #ff4a3d; border-left-color: #ff4a3d; text-shadow: 0 0 6px rgba(255, 74, 61, 0.5); }
+#msgpick-list { list-style: none; padding: 0; margin: 0.6em 0; }
 .line.meta { color: var(--dim); text-transform: uppercase; }
 .line.meta.table, .line.meta.heard, .line.meta.warden { color: var(--fg); }
 .line .var { color: var(--dim); margin-top: 0.15em; }

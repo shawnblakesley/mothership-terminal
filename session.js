@@ -23,6 +23,7 @@ import { transfer, ledgerLine, exact, DEBT_PAYMENT, DEBT_EVERY } from "./money.j
 import { downtimeReady, planRoll, settleRoll, mirror, passDays, treat, treatmentList, shoreText, applyConversion } from "./downtime.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
+import { sendCrewMessage, releaseMessage, discardMessage, holdNext, alterMessage, forgeMessage, applyCrewMessage, restoreAltered, resumeMessages, rememberTerminal, msgView } from "./crewmsg.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
 import { shipDm, shipPlayer, shipRollDone, shipClockRan, shipSnapshot, restoreShip, shipDmView, shipPlayerView, applyShipFight } from "./shipfight.js";
 import { track } from "./telemetry.js";
@@ -542,6 +543,7 @@ export class Session {
     this.talkers = new Map();
     this.talkingSent = "|false";
     for (const c of this.state.clocks) this.scheduleClock(c);
+    resumeMessages(this);
     this.genCounter = 0;
     this.playhead = 0;
     this.lineChain = Promise.resolve();
@@ -761,8 +763,8 @@ export class Session {
   playerView(ws) {
     const net = ws ? this.netOfSocket(ws) : "";
     const log = ws?.stream
-      ? this.state.log.filter((e) => !e.queued && !e.cut)
-      : this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net))).map(playerEntry);
+      ? this.state.log.filter((e) => !e.queued && !e.cut && e.kind !== "msg")
+      : this.state.log.flatMap((e) => e.kind === "msg" ? msgView(e, ws) || [] : !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net)) ? [playerEntry(e)] : []);
     if (ws?.stream) {
       ws.sent = new Map(log.filter((e) => PRIVATE_KINDS.has(e.kind)).map((e) => [e.id, e.text]));
       ws.mapSent = JSON.stringify(this.streamMap());
@@ -968,7 +970,7 @@ export class Session {
     if (SPOKEN_KINDS.has(kind)) this.pregenerate([entry]);
     if (kind === "player") this.toNet(entry.net || "", { t: "line", entry });
     else if (PRIVATE_KINDS.has(kind)) this.queueStreamSync();
-    else {
+    else if (kind !== "msg") {
       entry.queued = true;
       this.lineChain = this.lineChain.then(() => this.scheduleLine(entry)).catch((err) => console.error(`[${this.code}] line schedule failed:`, err));
     }
@@ -1010,7 +1012,7 @@ export class Session {
     const cut = [], trimmed = [];
     let elsewhere = now;
     for (const e of this.state.log) {
-      if (PRIVATE_KINDS.has(e.kind) || e.kind === "player" || e.cut || e.interrupted) continue;
+      if (PRIVATE_KINDS.has(e.kind) || e.kind === "player" || e.kind === "msg" || e.cut || e.interrupted) continue;
       if (!shownOn(e.net, net)) { if (e.timing?.end > elsewhere) elsewhere = e.timing.end; continue; }
       const t = e.timing;
       if (e.queued || (t && t.speakAt > now)) { e.cut = true; cut.push(e.id); continue; }
@@ -1178,7 +1180,7 @@ export class Session {
     if (msg.t === "pilot") return this.pilotAuth(ws, msg.token);
     if (String(msg.t).startsWith("pilot")) return ws.pilot && this.handlePilot(ws, msg);
     if (msg.t === "input" && this.state.solo && this.state.solo.phase !== "play") return;
-    if (["input", "roll", "selfRoll", "vitals"].includes(msg.t)) {
+    if (["input", "roll", "selfRoll", "vitals", "msg"].includes(msg.t)) {
       const gone = this.characterOf(ws);
       if (gone && !playable(gone)) return ws.send(JSON.stringify({ t: "rollError", text: `${gone.name} is ${gone.cond?.dead ? "dead" : "retired"}: no more actions. Only final words are allowed.` }));
       this.storyBegins();
@@ -1188,13 +1190,21 @@ export class Session {
     if (msg.t === "sectorVote") return this.sectorVote(ws, String(msg.story || ""));
     if (msg.t === "finalWords") return this.finalWords(ws, msg.text);
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
+    if (msg.t === "msg") {
+      const now = Date.now();
+      if (now - (ws.lastMsg || 0) < PLAYER_INPUT_GAP_MS) return;
+      ws.lastMsg = now;
+      return sendCrewMessage(this, ws, msg.to, msg.text);
+    }
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
     if (msg.t === "shipStation" || msg.t === "shipMove" || msg.t === "shipFire") return shipPlayer(this, ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
     if (String(msg.t).startsWith("cg")) return handleChargen(this, ws, msg);
     if (msg.t === "claim") {
+      const was = ws.character;
       ws.character = this.state.config.crew.some((c) => c.id === msg.id) ? msg.id : null;
-      ws.send(JSON.stringify({ t: "handouts", handouts: this.handoutsFor(ws) }));
+      if (ws.character !== was && this.state.log.some((e) => e.kind === "msg" && msgView(e, ws))) this.sendInit(ws);
+      else ws.send(JSON.stringify({ t: "handouts", handouts: this.handoutsFor(ws) }));
       return this.crewChanged();
     }
     if (msg.t !== "input") return;
@@ -1582,6 +1592,17 @@ export class Session {
         s.handouts = s.handouts.filter((x) => x.id !== msg.id);
         this.toPlayers({ t: "handoutGone", id: msg.id });
         break;
+      case "msgHold":
+        holdNext(this, String(msg.pc || ""), msg.off ? null : msg.seconds, msg.never);
+        return;
+      case "msgRelease": releaseMessage(this, msg.id); return;
+      case "msgDiscard": discardMessage(this, msg.id); return;
+      case "msgAlter": alterMessage(this, msg.id, msg.text, "warden"); return;
+      case "msgForge": {
+        const bad = forgeMessage(this, msg, "warden");
+        if (bad) this.send("dm", { t: "toast", level: "error", text: bad });
+        return;
+      }
       case "clockStart":
         this.startClock(msg.label, msg.seconds, "dm");
         break;
@@ -2412,6 +2433,7 @@ export class Session {
     }
     if (netOf(t) !== wasNet) ws.send(JSON.stringify({ t: "init", ...this.playerView(ws) }));
     if (had) this.lastNet = netOf(t);
+    rememberTerminal(this, ws);
     const pc = this.characterOf(ws);
     if (had && pc) this.addLog("note", `${pc.name} ${by === "player" ? "moved" : "was moved"} to the ${t.name}.`);
     this.syncDm();
@@ -2916,7 +2938,7 @@ export class Session {
   }
 
   undoSnapshot() {
-    return { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll), clocks: structuredClone(this.state.clocks || []), handouts: [], found: [], moved: [], ship: shipSnapshot(this) };
+    return { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll), clocks: structuredClone(this.state.clocks || []), handouts: [], found: [], moved: [], altered: [], ship: shipSnapshot(this) };
   }
 
   deliver(reply, source) {
@@ -2926,7 +2948,7 @@ export class Session {
     } finally {
       const undo = this.delivering;
       this.delivering = null;
-      if (source === "agent" && undo.entries.length) this.undoStack = [...this.undoStack, undo].slice(-5);
+      if (source === "agent" && (undo.entries.length || undo.altered.length)) this.undoStack = [...this.undoStack, undo].slice(-5);
     }
   }
 
@@ -2983,6 +3005,7 @@ export class Session {
       for (const id of gone) this.toPlayers({ t: "handoutGone", id });
     }
     s.found = (s.found || []).filter((id) => !undo.found.includes(id));
+    restoreAltered(this, undo.altered || []);
     for (const [ws, terminal] of undo.moved) if (this.sockets.has(ws) && ws.terminal !== terminal) this.playerTerminal(ws, terminal, "agent");
   }
 
@@ -3076,6 +3099,7 @@ export class Session {
       const to = findCharacterId(this.state.config.crew, f.for);
       this.findRoomDoc(f.id, to, to ? this.crewById(to)?.name : "The crew");
     }
+    if (source === "agent") applyCrewMessage(this, reply?.crew_message);
     for (const h of reply?.handouts || []) {
       const member = h.voice && findCast(this.state.config.cast, h.voice), vid = h.voice && !member && resolveVoice(h.voice, this.state.config.voices);
       this.giveHandout({ title: h.title, text: h.text, to: findCharacterId(this.state.config.crew, h.for), voice: member ? `cast:${member.id}` : vid || "" });

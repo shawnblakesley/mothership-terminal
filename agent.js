@@ -13,6 +13,7 @@ import { terminalsBrief, netOf, systemsOf, systemName, screensBrief } from "./te
 import { TILES } from "./rooms.js";
 import { roomId } from "./clean.js";
 import { campaignById, factionBrief } from "./campaign.js";
+import { normalizeCrewMessage } from "./crewmsg.js";
 
 export const ALL_EFFECTS = [
   "blood", "goo", "crack", "ice", "alarm", "redalert", "glitch",
@@ -115,7 +116,7 @@ const CREW_REF = "A crew member's name, a class (Android, Marine, Scientist, Tea
 
 // The reply schema. Fields for features that are switched off, or that don't apply to this game, are left out entirely.
 function buildSchema(voices, config = {}, { solo = false, files = false, ships = false } = {}) {
-  const crew = !!config.agentCrew, fx = !!config.agentEffects, variants = !!config.agentVariants;
+  const crew = !!config.agentCrew, fx = !!config.agentEffects, variants = !!config.agentVariants, chat = (config.crew?.length || 0) > 1;
   const properties = {
     lines: {
       type: "array",
@@ -343,6 +344,20 @@ function buildSchema(voices, config = {}, { solo = false, files = false, ships =
         },
       },
     } : {}),
+    ...(chat ? {
+      crew_message: {
+        type: "object",
+        description: "Rarely, and only when an adversary or compromised system plausibly could: forge a message between two crew members' terminals (as, to, text), or rewrite one already sent (alter). Blank fields otherwise.",
+        additionalProperties: false,
+        required: ["as", "to", "text", "alter"],
+        properties: {
+          as: { type: "string", description: "Forge: the crew member it appears to come from. Else \"\"." },
+          to: { type: "string", description: "Forge: the crew member who receives it. Else \"\"." },
+          text: { type: "string", description: "The forged message, or the rewritten one, in the voice of the one it appears to come from." },
+          alter: { type: "integer", description: "To rewrite instead: the # of a CREW MESSAGE; its recipient sees text instead. Else 0." },
+        },
+      },
+    } : {}),
     layout: { type: "string", description: "Only when the map's shape changes (THE MAP): the WHOLE new MAP LAYOUT text. Otherwise \"\"." },
     room_plans: {
       type: "array",
@@ -410,6 +425,7 @@ const REPLY_EXAMPLE = {
   clocks: [],
   handouts: [],
   found_docs: [],
+  crew_message: { as: "", to: "", text: "", alter: 0 },
   layout: "",
   room_plans: [],
   effects: [],
@@ -511,11 +527,15 @@ const PROTOCOL_HAZARDS = `HAZARDS
 const PROTOCOL_STATION = `THE STATION
 - station_changes: EVERY change in this reply (doors, lights, access_level, systems) as dot paths into LIVE STATION STATE. If a line says something changed, list it or it did not happen. The players' map shows every value except occupants: put a secret (a trap, a hidden trigger, a plan) under a path starting "secret." (e.g. secret.vault.lockdown), which only the Warden sees.`;
 
+const PROTOCOL_MESSAGES = `CREW MESSAGES
+- [CREW MESSAGE #n] lines are private notes the crew send each other terminal to terminal: the characters know what they sent and got, nobody else does. A forged or rewritten one reads to its recipient as the real thing, so crew_message is for a hostile intelligence or hijacked system, rare, and never just to move the plot.`;
+
 const wardenProtocol = (c) => [
   PROTOCOL_BASE,
   c.agentEffects && PROTOCOL_EFFECTS,
   c.agentVariants && PROTOCOL_VARIANTS,
   c.agentCrew && PROTOCOL_CREW,
+  c.crew?.length > 1 && PROTOCOL_MESSAGES,
   PROTOCOL_HAZARDS,
   PROTOCOL_STATION,
 ].filter(Boolean).join("\n\n");
@@ -581,7 +601,13 @@ function buildSystem(state) {
   ].join("\n\n");
 }
 
-const USER_KINDS = new Set(["player", "warden", "roll", "aside", "heard", "table"]);
+const USER_KINDS = new Set(["player", "warden", "roll", "aside", "heard", "table", "msg"]);
+
+const msgLine = (e) => {
+  const shown = JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"));
+  const how = e.by === "player" ? (e.edited ? `${e.from.toUpperCase()} sent ${JSON.stringify(e.sent)}; ${e.to.toUpperCase()} was shown ${shown}` : `${e.from.toUpperCase()} to ${e.to.toUpperCase()}: ${shown}`) : `${e.from.toUpperCase()} to ${e.to.toUpperCase()}: ${shown} (forged by ${e.by === "agent" ? "you" : "the Warden"}, never sent by ${e.from})`;
+  return `[CREW MESSAGE #${e.id}, private] ${how}${e.state === "held" ? " (held back, not delivered yet)" : e.state === "dropped" ? " (never delivered)" : ""}`;
+};
 
 function rollMargin(text) {
   const m = /TARGET (\d+)[\s\S]*?ROLLED (?:[\d /]+→ )?(\d+)/.exec(text);
@@ -607,6 +633,7 @@ function buildMessages(state) {
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
     if (e.kind === "player") last.inputs.push(`${playerTag(e)} ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
+    else if (e.kind === "msg") last.inputs.push(msgLine(e));
     else if (e.kind === "roll") last.inputs.push(`[ROLL RESULT] ${e.text.replace(/\n/g, " · ")}${e.cast ? (e.panicEffect ? ` (their panic: ${e.panicEffect} Play it out now, fully, in the fiction.)` : " (they hold it together, barely: show it.)") : e.panicEffect ? ` (their panic, from the panic table: ${e.panicEffect} Show it in the fiction now. The app has already applied its Stress, Maximum Wounds and Retire: no crew_changes for them; Conditions and timed [+]/[-] are ${state.solo ? "yours to keep in mind" : "the Warden's"}.)` : rollMargin(e.text)}`);
     else if (e.kind === "warden") last.inputs.push(`${WARDEN_TAG} ${e.text}`);
     else if (e.kind === "aside") last.inputs.push(`${WARDEN_NOTE_TAG} ${e.text}`);
@@ -654,7 +681,7 @@ If needed, fill in the fields as described (suggested_check none if it should si
 
 export function buildPrecheck(state) {
   const c = state.config;
-  const recent = state.log.filter((e) => !["note", "aside", "aside_reply"].includes(e.kind) && !e.cut).slice(-12)
+  const recent = state.log.filter((e) => !["note", "aside", "aside_reply", "msg"].includes(e.kind) && !e.cut).slice(-12)
     .map((e) => (e.kind === "player" ? `${playerTag(e)} ${JSON.stringify(e.text)}` : e.kind === "warden" ? `[WARDEN] ${e.text}` : e.kind === "heard" ? `[WARDEN, ALOUD AT THE TABLE] ${e.text}` : e.kind === "table" ? `[TABLE TALK · ${tableWho(e)}] ${JSON.stringify(e.text)}` : `[${(e.entity || e.kind).toUpperCase()}] ${e.text}`))
     .join("\n");
   const last = state.log.findLast((e) => e.kind === "player");
@@ -886,6 +913,7 @@ export function parseReply(text, voices, talk) {
     outcome_check: normalizeCheck(r?.outcome_check),
     story_end: { ended: r?.story_end?.ended === true, how: String(r?.story_end?.how ?? "").trim().slice(0, 300) },
     ship_fight: normalizeShipFight(r?.ship_fight),
+    crew_message: normalizeCrewMessage(r?.crew_message),
     layout: String(r?.layout ?? "").trim().slice(0, 4000),
     room_plans: (Array.isArray(r?.room_plans) ? r.room_plans : []).filter((p) => p && p.room && Array.isArray(p.rows)).slice(0, 8)
       .map((p) => ({ room: roomId(p.room), rows: p.rows.map(String) })),

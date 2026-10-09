@@ -65,6 +65,7 @@ const SAMPLE = {
   clocks: [{ action: "start", label: "reactor breach", seconds: 120 }],
   handouts: [{ title: "MEMO", text: "Read this.", for: "", voice: "" }],
   found_docs: [{ id: "doc-1", for: "" }],
+  crew_message: { as: "Rook", to: "Webb", text: "Meet me at the airlock.", alter: 0 },
   layout: "Deck 1 · Bay: bay=Bay",
   room_plans: [{ room: "bay", rows: ["###", "#.#", "###"] }],
   effects: [{ type: "alarm", text: "ALARM", seconds: 3 }],

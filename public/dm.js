@@ -327,6 +327,7 @@
     renderCombat();
     renderSounds();
     renderClocks();
+    renderMessages();
     renderHazards();
     renderShip();
     renderHandouts();
@@ -429,6 +430,10 @@
     const who = (name) => (e.inPerson && e.character ? `${e.character} (in person)` : e.character ? `${name} · ${e.character}` : name);
     switch (e.kind) {
       case "player": return { name: e.by ? `Player · ${e.by}` : "Players", c: "var(--player)" };
+      case "msg": {
+        const who = (b) => (b === "agent" ? "the agent" : "you");
+        return { name: `Crew message · ${e.from} → ${e.to}`, by: [`private between the two${e.at ? `, from ${esc(e.at)}` : ""}`, e.by !== "player" ? `forged by ${who(e.by)}` : "", e.edited ? `changed by ${who(e.edited)}` : "", e.state === "held" ? "held back" : e.state === "dropped" ? "never arrives" : ""].filter(Boolean).join(" · "), c: "var(--player)" };
+      }
       case "warden": return { name: "Warden → agent", c: "var(--warden)" };
       case "aside": return { name: "Note → agent", by: "private", c: "var(--aside)" };
       case "aside_reply": return { name: "Agent → you", by: "private", c: "var(--aside)" };
@@ -467,7 +472,7 @@
       return `
       <div class="entry ${e.kind} ${e.hidden ? "hidden-on-player" : ""} ${e.cut ? "cut" : ""}" style="--c: ${sp.c}" ${e.cut ? `title="${e.retcon ? "Retconned: removed from screens and agent memory" : "Cut off by a player: never shown or remembered"}"` : ""}>
         <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.net ? `<span class="by" title="${e.net === "*" ? "Sent to every system" : "Shown only on this system"}">${e.net === "*" ? "to All" : `on ${esc(systemName(e.net))}`}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? `<span class="by">${e.retcon ? "retconned" : "cut off"}</span>` : ""}${when}</div>
-        <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
+        <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "msg" && e.edited && e.sent ? `<div class="chg">Sender typed: ${esc(e.sent)}</div>` : ""}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
       </div>`;
     }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew.</div>`;
     if (atBottom || S.log.length !== lastLogLen) log.scrollTop = log.scrollHeight;
@@ -546,6 +551,7 @@
       ...(r.cast_changes || []).map((c) => `${n(c)}: ${[c.room && (c.room === "none" ? "leaves the map" : `to ${esc(c.room)}`), c.notes && esc(c.notes), c.attitude_change && `attitude ${c.attitude_change > 0 ? "+" : ""}${c.attitude_change}`, c.stress_change && `Stress ${c.stress_change > 0 ? "+" : ""}${c.stress_change}`, c.panic_check && "Panic Check"].filter(Boolean).join(", ") || "no change"}`),
       ...(r.clocks || []).map((c) => (c.action === "stop" ? `Clock stops: ${esc(c.label)}` : `Clock starts: ${esc(c.label)} (${c.seconds}s)`)),
       ...(r.handouts || []).map((h) => `Handout${h.for ? ` for ${esc(h.for)}` : ""}: ${esc(h.title)}`),
+      ...(r.crew_message?.text ? [r.crew_message.alter ? `Crew message #${r.crew_message.alter} changed to: ${esc(r.crew_message.text)}` : `Crew message forged as ${esc(r.crew_message.as)} to ${esc(r.crew_message.to)}: ${esc(r.crew_message.text)}`] : []),
       ...(r.found_docs || []).map((f) => `File found: ${esc(f.id)}`),
       ...(r.layout ? ["The map layout changes"] : []),
       ...(r.room_plans || []).map((p) => `Floor plan redrawn: ${esc(p.room)}`),
@@ -3035,6 +3041,34 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     }).join("") : '<li class="muted small">None running.</li>';
   }
   setInterval(() => S?.clocks?.some((c) => !c.paused) && renderClocks(), 1000);
+  function renderMessages() {
+    if ($("msgList").contains(document.activeElement) && document.activeElement.matches("input")) return;
+    const names = (S.config.crew || []).map((c) => [c.name, c.name]);
+    fillSelect($("msgHoldPc"), (S.config.crew || []).map((c) => [c.id, c.name]), $("msgHoldPc").value || S.config.crew?.[0]?.id || "");
+    fillSelect($("msgAs"), names, $("msgAs").value || names[0]?.[0] || "");
+    fillSelect($("msgTo"), names, $("msgTo").value || names[1]?.[0] || "");
+    $("msgHolds").innerHTML = Object.entries(S.msgHolds || {}).map(([id, h]) =>
+      `<li><span class="grow">Next from <b>${esc(crewName(id))}</b>: ${h.never ? "never arrives" : h.seconds ? `arrives ${h.seconds}s late` : "held until you release it"}</span><button class="ghost danger" data-msg-unhold="${esc(id)}" title="Let it through normally">Cancel</button></li>`).join("");
+    const msgs = S.log.filter((e) => e.kind === "msg" && !e.cut).slice(-8).reverse();
+    $("msgList").innerHTML = msgs.length ? msgs.map((e) => `<li class="stack"><div class="row wrap"><span class="grow"><b>${esc(e.from)}</b> → <b>${esc(e.to)}</b> <span class="muted small">${e.by !== "player" ? `forged by ${e.by === "agent" ? "the agent" : "you"}` : ""}${e.state === "held" ? ` · held${e.releaseAt ? " (arrives on its own)" : ""}` : e.state === "dropped" ? " · never arrives" : ""}</span></span>
+        ${e.state === "held" ? `<button data-msg-release="${e.id}" class="ghost">Release</button><button data-msg-discard="${e.id}" class="ghost danger">Discard</button>` : ""}</div>
+        ${e.state === "dropped" ? `<div>${esc(e.text)}</div>` : `<div class="row"><input class="grow" data-msg-text="${e.id}" value="${esc(e.text)}" maxlength="500" aria-label="What ${esc(e.to)} sees"><button data-msg-save="${e.id}" class="ghost" title="Change what ${esc(e.to)} sees. The sender never knows.">Change</button></div>`}</li>`).join("") : '<li class="muted small">None yet.</li>';
+  }
+  $("msgHold").onclick = () => send({ t: "msgHold", pc: $("msgHoldPc").value, seconds: Number($("msgHoldSecs").value) || 0, never: $("msgHoldNever").checked });
+  $("msgForge").onclick = () => {
+    const text = $("msgText").value.trim();
+    if (!text) return toast("Write the message first.", "error");
+    send({ t: "msgForge", as: $("msgAs").value, to: $("msgTo").value, text });
+    $("msgText").value = "";
+  };
+  $("msgHolds").addEventListener("click", (e) => { const id = e.target.closest("[data-msg-unhold]")?.dataset.msgUnhold; if (id) send({ t: "msgHold", pc: id, off: true }); });
+  $("msgList").addEventListener("click", (e) => {
+    const d = e.target.closest("button")?.dataset;
+    if (!d) return;
+    if (d.msgRelease) send({ t: "msgRelease", id: Number(d.msgRelease) });
+    else if (d.msgDiscard) send({ t: "msgDiscard", id: Number(d.msgDiscard) });
+    else if (d.msgSave) send({ t: "msgAlter", id: Number(d.msgSave), text: $("msgList").querySelector(`[data-msg-text="${d.msgSave}"]`).value });
+  });
   function renderShip() {
     $("shipHead").hidden = !S.ships;
     window.ShipUI?.warden($("shipCard"), S, send);

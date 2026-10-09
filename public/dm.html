@@ -462,6 +462,20 @@
           <ul id="clockList" class="fxlist"></ul>
         </div>
 
+        <h2>Crew messages <span class="hint" title="Players message each other's terminals (same system only). You see every one here. Hold a player's next message, change what its reader sees (the sender never knows), or forge one from any crew member. A forged or changed message looks exactly like a real one to the players.">?</span></h2>
+        <div class="card stack" id="msgCard">
+          <div class="row wrap small muted">Hold the next message from <select id="msgHoldPc" aria-label="Player"></select>
+            <label>delay <input id="msgHoldSecs" type="number" min="0" max="3600" value="30" aria-label="Seconds"> s</label>
+            <label title="0 seconds holds it until you release it"><input id="msgHoldNever" type="checkbox"> never arrives</label>
+            <button id="msgHold">Hold</button></div>
+          <ul id="msgHolds" class="fxlist"></ul>
+          <div class="row wrap small muted">Forge one: from <select id="msgAs" aria-label="Appears to come from"></select> to <select id="msgTo" aria-label="Goes to"></select></div>
+          <textarea id="msgText" rows="2" maxlength="500" placeholder="What it says" aria-label="Forged message"></textarea>
+          <div class="row"><button id="msgForge">Forge it</button></div>
+          <div class="small muted">Recent messages</div>
+          <ul id="msgList" class="fxlist"></ul>
+        </div>
+
         <h2>Effects <span class="hint" title="Screen effects on every player's screen.">?</span></h2>
         <div class="stack">
         <div class="fxopts">
