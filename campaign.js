@@ -6,6 +6,7 @@ import { sanitizeCast, findCast, PORTRAIT_FILE } from "./cast.js";
 import { SPEAKERS, fromPreset } from "./voices.js";
 import { sanitizeResources, rigStation, resourcesFrom, fuelCost, portMult, PRICES, MRE_PACK, TANK, firearms, addMagazines } from "./resources.js";
 import { weaponByName } from "./weapons.js";
+import { sanitizeRig, sanitizeShip } from "./ships.js";
 
 export const CAMPAIGNS = [RIM_HAULERS];
 export const campaignById = (id) => CAMPAIGNS.find((c) => c.id === id) || null;
@@ -33,7 +34,7 @@ export const placeOf = (c, story) => (story.at ? loc(c, story.at).name : `${loc(
 export const endsAt = (story) => story.at || story.to;
 
 export function newProgress(c) {
-  return { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew: sanitizeCrew(structuredClone(c.crew)), cast: {}, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {}, resources: sanitizeResources(c.ship.resources, c.ship.resources) };
+  return { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew: sanitizeCrew(structuredClone(c.crew)), cast: {}, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {}, resources: sanitizeResources(c.ship.resources, c.ship.resources), ship: sanitizeRig(null, c.ship.combat) };
 }
 
 export function sanitizeProgress(p) {
@@ -64,6 +65,7 @@ export function sanitizeProgress(p) {
     favours: Object.fromEntries(c.factions.filter((f) => p.favours?.[f.id]).map((f) => [f.id, true])),
     nudges: Object.fromEntries(c.cast.map((m) => [m.id, Math.max(-1, Math.min(1, Math.round(Number(p.nudges?.[m.id]) || 0)))]).filter(([, n]) => n)),
     resources: sanitizeResources(p.resources, c.ship.resources),
+    ship: sanitizeRig(p.ship, c.ship.combat),
   };
 }
 
@@ -271,6 +273,8 @@ export function carryInto(config, c, story, p, station) {
   config.crew = sanitizeCrew(structuredClone(p.crew));
   for (const pc of config.crew) pc.cond = { ...newCond(), cryo: pc.cond.cryo, lethal: pc.cond.lethal, dead: pc.cond.dead, tags: pc.cond.tags };
   config.shipCrew = c.ship.crew;
+  config.ships = (story.ships || []).map((x) => sanitizeShip(x));
+  p.ship = sanitizeRig(p.ship, c.ship.combat);
   p.favours = {};
   p.nudges = {};
   for (const m of presentIn(c, config)) {

@@ -11,6 +11,8 @@ const SHIP = {
   crew: 4,
   // House rule: the rig carries fuel in units (tank 10) and counted stores; the app saves them between stories.
   resources: { fuel: 10, stores: { parts: 3, explosives: 0, flares: 4, rations: 14 } },
+  // House rule: ship stats on the same 1-99 scale as character stats (SBT only gives the structure). Class II freighter, unarmed unless the crew fit a weapon.
+  combat: { id: "mary", name: "LONG HAUL MARY", kind: "freighter", class: 2, thrusters: 35, battle: 0, systems: 40, hull: 3, weapons: [] },
   rooms: ["mary", "cab", "sleeper", "galley", "engine_room", "airlock", "crawlway", "cargo_spine", "container"],
   description: "A Kessler-Pike K-12 \"Longliner\" bulk hauler, 31 years old, owned 51% by Wanda Okafor and 100% by her debt to Gallow-Mercer Finance. A blunt-nosed cab on a long cargo spine that clamps one standard 40-unit container. Three decks: the cab (cockpit, sleeper bunk, galley), engineering (engine room, airlock, crawlway) and the cargo spine.",
   persona: `You are MARY, the HAULCOM 4.1 rig computer of the Longliner bulk hauler LONG HAUL MARY. Thirty-one years on the Rim have given you opinions.
@@ -674,6 +676,8 @@ const STORIES = [
       "The beacon in the cargo cradle is Gallow-Mercer's: destroy it and the Red Tide has to find them by sight.",
       "Drift Kin salvagers in the Debris Belt will help anyone fleeing a gunship, for a share of salvage.",
     ],
+    // House rule: the gunship's numbers. It has no transponder.
+    ships: [{ id: "red_tide", name: "THE RED TIDE", kind: "raider (gunship)", class: 1, thrusters: 50, battle: 45, systems: 35, hull: 2, weapons: [{ name: "Autocannon", range: "firing" }], adversary: "THE RED TIDE" }],
     hazards: ["vacuum", "radiation"], resources: ["ammunition", "fuel", "air"],
     affinity: [{ faction: "drift_kin", change: 1, when: "they share salvage with the Kin" }, { faction: "gallow_mercer", change: -2, when: "they broadcast the confession" }],
   },
@@ -722,6 +726,8 @@ const STORIES = [
       "The compliance implants listen on the customs band; a loud enough jamming signal on it stuns the boarders for a minute.",
       "Auntie's false floor holds Choir relics bound for Saint Brigid's.",
     ],
+    // House rule: the cutter's numbers. It broadcasts a transponder.
+    ships: [{ id: "writ", name: "WRIT OF SEIZURE", kind: "customs cutter (patrol class)", class: 2, thrusters: 45, battle: 50, systems: 50, hull: 4, weapons: [{ name: "Railgun", range: "detection" }, { name: "Point-defence", range: "firing" }], transponder: { callsign: "WRIT OF SEIZURE", captain: "Capt. Ilse Marrak", homePort: "Tollgate", destination: "" }, adversary: "THE WRIT OF SEIZURE" }],
     hazards: ["vacuum", "ice"], resources: ["fuel", "ammunition"],
     affinity: [{ faction: "lantern", change: 2, when: "the run succeeds" }, { faction: "rcea", change: -1, when: "they fire on the WRIT" }, { faction: "rcea", change: 1, when: "they expose Marrak to Vey" }],
   },

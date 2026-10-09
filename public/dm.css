@@ -635,3 +635,10 @@ details.sec > summary:hover h2 { color: var(--fg); }
 
 .sector .story.offered rect { stroke: var(--accent); stroke-width: 2.5; }
 .sector .story .vote { fill: var(--warn); font-size: 12px; }
+
+.shipui .bad, .shiprig .bad { color: var(--danger); }
+.shipui .house, .shiprig .house { font-size: 10.5px; padding: 0 6px; border: 1px solid var(--warn); border-radius: 99px; color: var(--warn); white-space: nowrap; }
+.shipui select.inl, .shipui input.inl { width: auto; display: inline-block; padding: 2px 6px; }
+.shipui .shipcrew { border-color: color-mix(in srgb, var(--player) 55%, var(--line)); }
+.shipui .shipfoe { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.shipui .shiplog { margin: 4px 0 0; padding-left: 16px; }

@@ -282,6 +282,14 @@ body {
 .docbody code { font: inherit; border: 1px solid var(--dim); padding: 0 0.2em; }
 #docs-list li .p-dim { margin-left: 0.6em; }
 
+.shipbar { padding: 0.15em 0 0.4em; letter-spacing: 0.06em; }
+.shipbar[hidden] { display: none; }
+.shipline { display: flex; flex-wrap: wrap; gap: 0.3em 0.7em; align-items: center; }
+.shipline.shipbad { color: #ff4a3d; }
+.shipdim { color: var(--dim); }
+.shipbar button { background: none; border: 1px solid var(--fg); color: var(--fg); font: inherit; padding: 0 0.5em; cursor: pointer; letter-spacing: inherit; }
+.shipbar button[aria-pressed="true"], .shipbar button:hover, .shipbar button:focus-visible { background: var(--fg); color: var(--bg); text-shadow: none; outline: none; }
+.shipbar input { width: 3.2em; background: none; border: 1px solid var(--fg); color: var(--fg); font: inherit; padding: 0 0.3em; }
 .clocks { display: flex; flex-wrap: wrap; gap: 0.4em 1.6em; padding: 0.15em 0 0.35em; letter-spacing: 0.08em; }
 .clocks[hidden] { display: none; }
 .clock b { font-weight: normal; background: var(--fg); color: var(--bg); padding: 0 0.3em; text-shadow: none; }
