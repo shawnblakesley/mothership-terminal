@@ -1100,6 +1100,7 @@ export class Session {
       this.addLog("note", `${pc.name} ${pc.cond?.dead ? `died: ${pc.cond.dead}` : "retired"}. Their file goes on the memorial (High Score ${pc.highScore}).`);
       if (pc.cond?.dead) this.toPlayersIf((w) => w.character === pc.id, { t: "flatline", id: pc.id });
     }
+    this.syncCampaignCrew();
   }
 
   // The dead character's last line, spoken on every screen in a voice of their own.
@@ -1114,7 +1115,9 @@ export class Session {
 
   // End session: High Score (PSG 18.3, sessions survived; no effect on play) goes up by 1 for each living character.
   endNight() {
-    const s = this.state, up = endSession(s.config.crew);
+    const s = this.state;
+    this.syncCampaignCrew();
+    const up = endSession(s.config.crew);
     if (s.campaign) { endSession(s.campaign.crew); s.campaign.sessions = (s.campaign.sessions || 0) + 1; }
     this.addLog("note", `Game night ended. High Score +1: ${up.map((c) => `${c.name} (${c.highScore})`).join(", ") || "nobody is alive"}. (PSG 18.3: it counts sessions survived and changes no roll.)`);
     this.crewChanged();
@@ -1126,6 +1129,18 @@ export class Session {
     this.syncDm();
     const x = this.state.solo;
     if (x?.phase === "play" && !x.opened && Object.keys(this.claims()).length) this.soloOpen();
+  }
+
+  // During a story, who is dead or retired (and their last words) is mirrored into the campaign's crew copy, so it never holds a dead character as alive.
+  syncCampaignCrew() {
+    const p = this.state.campaign;
+    if (!p?.current) return;
+    for (const pc of this.state.config.crew) {
+      const q = p.crew.find((x) => x.id === pc.id);
+      if (!q) continue;
+      q.cond = { ...(q.cond || newCond()), dead: pc.cond?.dead || "" };
+      Object.assign(q, { retired: !!pc.retired, endedIn: pc.endedIn || "", finalWords: pc.finalWords || "" });
+    }
   }
 
   // The campaign's money lives on its own sheets; the story's copies follow it.
@@ -1147,7 +1162,11 @@ export class Session {
     if (msg.t === "pilot") return this.pilotAuth(ws, msg.token);
     if (String(msg.t).startsWith("pilot")) return ws.pilot && this.handlePilot(ws, msg);
     if (msg.t === "input" && this.state.solo && this.state.solo.phase !== "play") return;
-    if (["input", "roll", "selfRoll", "vitals"].includes(msg.t)) this.storyBegins();
+    if (["input", "roll", "selfRoll", "vitals"].includes(msg.t)) {
+      const gone = this.characterOf(ws);
+      if (gone && !playable(gone)) return ws.send(JSON.stringify({ t: "rollError", text: `${gone.name} is ${gone.cond?.dead ? "dead" : "retired"}: no more actions. Only final words are allowed.` }));
+      this.storyBegins();
+    }
     if (msg.t === "roll") return this.resolveRoll(ws, msg);
     if (msg.t === "ping") return ws.send(JSON.stringify({ t: "pong", c: msg.c, s: Date.now() }));
     if (msg.t === "sectorVote") return this.sectorVote(ws, String(msg.story || ""));
@@ -2328,7 +2347,12 @@ export class Session {
     const now = Date.now();
     if (now - (ws.lastRoll || 0) < 1500) return;
     ws.lastRoll = now;
-    const r = sanitizeRequest({ pc: pc.id, check: msg.check, skill: msg.skill, advantage: msg.advantage }, [pc]);
+    let r;
+    try {
+      r = sanitizeRequest({ pc: pc.id, check: msg.check, skill: msg.skill, advantage: msg.advantage }, [pc]);
+    } catch (err) {
+      return ws.send(JSON.stringify({ t: "rollError", text: err.message }));
+    }
     const req = { ...r, advantage: effectiveAdvantage(r, pc, this.advOpts(pc, r)) };
     const dice = msg.manual ? manualDice(msg.dice) : diceFor(req);
     let result;
@@ -2390,7 +2414,8 @@ export class Session {
 
   // The one Death Save: rolled in secret (1d10, 0-9), kept out of every view, revealed with the Reveal button or the agent's reveal_death_save.
   callDeathSave(pc, why = "") {
-    (this.state.deathSaves ||= {})[pc.id] = rollDeathSave();
+    if ((this.state.deathSaves ||= {})[pc.id] !== undefined) return;
+    this.state.deathSaves[pc.id] = rollDeathSave();
     this.addLog("note", `Death Save rolled (hidden) for ${pc.name}${why ? ` (${why})` : ""}. Reveal it when someone spends a turn checking their vitals.`, { secret: true });
   }
 
@@ -2425,6 +2450,7 @@ export class Session {
     const st = adv?.adversary.stats;
     if (!pc || !adv) return this.addLog("note", `Attack not made: ${!pc ? "no such crew member" : `no adversary named "${target}" with combat numbers`}.`);
     if (isDead(pc)) return this.addLog("note", `Attack not made: ${pc.name} is dead.`);
+    if (st.dead) return this.addLog("note", `Attack not made: ${adv.name} is already dead or destroyed.`);
     const w = this.crewWeapon(pc, weapon);
     if (!spendShot(pc, w)) return this.addLog("note", `Attack not made: ${pc.name}'s ${w.name} is out of shots (0/${w.shots}). Reloading is an action.`);
     const expr = weaponDamage(w, pc.stats.strength);
@@ -3387,17 +3413,26 @@ export class Session {
     this.stopSounds();
     if (snap) {
       const pics = new Map([...s.config.cast, ...s.config.crew].map((m) => [m.id, m.portrait]));
+      const now = s.config.crew;
       Object.assign(s.config, structuredClone(snap.config));
       s.config.voices = sanitizeVoices(s.config.voices);
       s.station = structuredClone(snap.station);
       s.config.cast = sanitizeCast(s.config.cast);
+      // The sheets come back as they were when play began (dead, retired, items, ammo, conditions). A replacement accepted since stays, and so does the character it replaced.
+      const joined = now.filter((c) => c.replacedBy || !s.config.crew.some((x) => x.id === c.id));
+      for (const c of joined) {
+        const was = s.config.crew.findIndex((x) => x.id === c.id);
+        const sheet = was < 0 && s.campaign?.crew.find((x) => x.id === c.id) || c;
+        if (was < 0) s.config.crew.push(structuredClone(sheet));
+        else s.config.crew[was] = structuredClone(sheet);
+      }
       s.config.crew = sanitizeCrew(s.config.crew);
       for (const m of [...s.config.cast, ...s.config.crew]) if (pics.has(m.id)) m.portrait = pics.get(m.id);
       s.synopses = structuredClone(savedSynopses(snap));
       delete s.synopses.sofar;
       delete s.synopses.wrapup;
     } else {
-      for (const pc of s.config.crew) freshen(pc);
+      if (!s.campaign) for (const pc of s.config.crew) if (playable(pc)) freshen(pc);
       if (s.config.stationName === "KESTREL-9") {
         s.station = structuredClone(DEFAULT_STATION);
         for (const m of s.config.cast) m.room = findCast(DEFAULT_CAST, m.name)?.room ?? m.room;
@@ -3407,7 +3442,6 @@ export class Session {
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
     s.station.access_level = DEFAULT_STATION.access_level;
     delete s.station.hazards;
-    for (const pc of s.config.crew) pc.cond = newCond();
     Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, storyStart: null, deathSaves: {}, shipFight: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);

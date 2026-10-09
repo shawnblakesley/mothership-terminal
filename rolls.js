@@ -28,7 +28,10 @@ export function sanitizeRequest(raw, crew = []) {
   const skill = panic ? "" : String(raw?.skill || "").trim().slice(0, 40);
   const some = Array.isArray(raw?.pc);
   const who = crew.filter((c) => playable(c) && (raw?.pc === "all" || (some ? raw.pc.includes(c.id) : c.id === raw?.pc)));
-  if (!who.length) throw new Error("Choose who rolls.");
+  if (!who.length) {
+    const gone = crew.find((c) => !playable(c) && (raw?.pc === c.id || (some && raw.pc.includes(c.id))));
+    throw new Error(gone ? `${gone.name} is ${gone.cond?.dead ? "dead" : "retired"} and cannot roll.` : "Choose who rolls.");
+  }
   const bonus = raw?.pc === "all" || some ? 0 : findSkill(who[0], skill)?.bonus ?? 0;
   return {
     id: crypto.randomBytes(6).toString("hex"),
