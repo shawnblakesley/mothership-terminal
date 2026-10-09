@@ -7,13 +7,14 @@ import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, 
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
-import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, stabilise, deathSaveCountdown, isDead, armorText } from "./crew.js";
+import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText } from "./crew.js";
 import { combatCheck, damageAdversary, rollDeathSave, deathSaveText, sanitizeStats, statsLine } from "./combat.js";
 import { rollDice, rollWithAdv, cancelAdv } from "./dice.js";
 import { woundText } from "./wounds.js";
 import { weaponsOf, weaponByName, weaponDamage } from "./weapons.js";
 import { HAZARDS, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, oxygenNeed, settle, hazardDamage, hazardWound, normalizeHazards, oxygenStart, oxygenDay, oxygenState, breathing, protection, penalties, conditionText, puncture, patch, airRestored, takePills, wake, stimpak, rest } from "./hazards.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
+import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
 import { campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel } from "./campaign.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
@@ -172,6 +173,8 @@ export function defaultGame(keys = {}) {
       talk: "brief",
       playerVitals: true,
       playerRolls: true,
+      playerCreate: false,
+      createRerolls: false,
       tts: true,
       discordTalk: false,
       voices: defaultVoices().map((v) => ({ ...v, systems: ["*"] })),
@@ -199,6 +202,7 @@ export function defaultGame(keys = {}) {
     synopses: {},
     offers: [],
     panicPlus: {},
+    newChars: [],
   };
 }
 
@@ -433,6 +437,7 @@ function migrateGame(saved) {
     roll: Array.isArray(saved.roll?.pcs) ? saved.roll : null,
     outcomeCheck: saved.outcomeCheck ?? null,
     offers: Array.isArray(saved.offers) ? saved.offers : [],
+    newChars: Array.isArray(saved.newChars) ? saved.newChars : [],
     panicPlus: saved.panicPlus && typeof saved.panicPlus === "object" ? saved.panicPlus : {},
     sounds,
     builder: { messages: Array.isArray(saved.builder?.messages) ? saved.builder.messages.slice(-60) : [], draft: saved.builder?.draft ?? null },
@@ -454,7 +459,7 @@ const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
-const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
+const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
 const STORY_ACTIONS = new Set(["nextRound", "attack", "passTime", "hazard", "command", "inject", "note", "heard", "rollRequest", "rollFor", "offerRoll", "generate", "approve", "outcome", "handout", "clockStart"]);
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
@@ -765,6 +770,7 @@ export class Session {
       terminals: c.terminals.map((t) => ({ id: t.id, name: t.name, look: t.look, theme: t.theme, system: t.system, os: t.os, open: reachable(t, this.state.station) })),
       moveTerminals: c.playerTerminals,
       selfRolls: c.playerRolls,
+      create: !!c.playerCreate,
       trauma: TRAUMA_RESPONSES,
       voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: shownName(v), style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
       portraits: Object.fromEntries((c.cast || []).filter((m) => m.portrait).map((m) => [m.name.toLowerCase(), m.portrait])),
@@ -977,6 +983,7 @@ export class Session {
     if (msg.t === "terminal") return this.playerTerminal(ws, msg.id, "player");
     if (msg.t === "vitals") return this.playerVitals(ws, msg);
     if (msg.t === "selfRoll") return this.selfRoll(ws, msg);
+    if (String(msg.t).startsWith("cg")) return handleChargen(this, ws, msg);
     if (msg.t === "claim") {
       ws.character = this.state.config.crew.some((c) => c.id === msg.id) ? msg.id : null;
       ws.send(JSON.stringify({ t: "handouts", handouts: this.handoutsFor(ws) }));
@@ -1017,7 +1024,7 @@ export class Session {
     if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
@@ -1483,6 +1490,15 @@ export class Session {
       case "moveScreens":
         for (const ws of this.sockets) if (ws.role === "player" && ws.character && ws.character === msg.character) this.playerTerminal(ws, msg.terminal, "warden");
         break;
+      case "crewState":
+        setCrewState(this, String(msg.pc), String(msg.state));
+        break;
+      case "cgAccept":
+      case "cgReject": {
+        const bad = decideCharacter(this, msg.t === "cgAccept", String(msg.id), msg.note);
+        if (bad) this.send("dm", { t: "toast", level: "error", text: bad });
+        break;
+      }
       case "crew": {
         const conds = new Map(s.config.crew.map((c) => [c.id, c.cond]));
         s.config.crew = sanitizeCrew(msg.crew);
@@ -2263,7 +2279,7 @@ export class Session {
     const first = this.hazardNeeds[0];
     const group = this.hazardNeeds.filter((n) => key(n) === key(first));
     this.hazardNeeds = this.hazardNeeds.filter((n) => key(n) !== key(first));
-    const who = group.map((n) => this.crewById(n.pc)).filter((pc) => pc && !pc.cond.dead);
+    const who = group.map((n) => this.crewById(n.pc)).filter((pc) => pc && playable(pc));
     if (!who.length) return;
     const req = sanitizeRequest({ pc: "all", check: first.check, advantage: first.advantage, reason: first.reason }, who);
     req.hazard = Object.fromEntries(group.map((n) => [n.pc, n]));
@@ -2762,7 +2778,7 @@ export class Session {
   }
   sendPilot(ws) {
     const c = this.state.config;
-    ws.send(JSON.stringify({ t: "pilotInfo", providers: catalog(this.keys), config: { provider: c.provider, model: c.model, effort: c.effort } }));
+    ws.send(JSON.stringify({ t: "pilotInfo", providers: catalog(this.keys), config: { provider: c.provider, model: c.model, effort: c.effort }, chargen: this.state.newChars }));
   }
   handlePilot(ws, msg) {
     const x = this.state.solo;
@@ -2791,6 +2807,12 @@ export class Session {
         this.soloChanged();
         if (x.pitches.length < 2) this.soloPitches();
         break;
+      case "pilotCgAccept":
+      case "pilotCgReject": {
+        const bad = decideCharacter(this, msg.t === "pilotCgAccept", String(msg.id), msg.note);
+        if (bad) ws.send(JSON.stringify({ t: "notice", text: bad }));
+        break;
+      }
       case "pilotEnd":
         console.log(`  - session ${this.code} ended by its pilot`);
         this.onEnd?.(this);
