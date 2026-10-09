@@ -121,6 +121,14 @@ for (const c of DEFAULT_CREW) c.portrait = `kit/sfcp-${DEFAULT_FACES[c.id]}.png`
 
 const str = (v, n) => String(v ?? "").slice(0, n);
 
+// Credits are their own field. Older sheets kept them in the notes as "Credits: Ncr.": move that over.
+const NOTE_CREDITS = /\s*Credits:\s*([\d,]+)\s*cr\.?/i;
+function creditsOf(c) {
+  const note = str(c.notes, 1000), found = NOTE_CREDITS.exec(note);
+  const have = Number.isFinite(Number(c.credits)) && c.credits !== "" && c.credits !== null;
+  return { credits: have ? int(c.credits, 0, 999999999, 0) : found ? int(found[1].replace(/,/g, ""), 0, 999999999, 0) : 0, notes: (found ? note.replace(NOTE_CREDITS, "") : note).trim() };
+}
+
 export function sanitizeCrew(list) {
   const out = [];
   const seen = new Set();
@@ -156,7 +164,7 @@ export function sanitizeCrew(list) {
       ...(int(c.deathSaveIn, 0, 99, 0) ? { deathSaveIn: int(c.deathSaveIn, 0, 99, 0) } : {}),
       trinket: str(c.trinket, 160),
       patch: str(c.patch, 80),
-      notes: str(c.notes, 1000),
+      ...creditsOf(c),
       cond: legacy(sanitizeCond(c.cond), c.status),
       portrait: PORTRAIT_FILE.test(c.portrait || "") ? c.portrait : "",
       retired: !!c.retired || c.status === "retired",

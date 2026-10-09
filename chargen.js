@@ -173,7 +173,7 @@ export function validateCharacter(pc, { pregenerated = false } = {}) {
   if (!inRange(pc.health?.max, ...HEALTH_RANGE)) errors.push(`Maximum Health ${pc.health?.max} must be ${HEALTH_RANGE.join("-")}.`);
   if (pc.wounds?.max !== maxWoundsFor(pc.className)) errors.push(`${pc.className} Max Wounds must be ${maxWoundsFor(pc.className)}.`);
   errors.push(...skillErrors(pc.className, pc.skills || []));
-  if (pc.credits !== undefined && !(inRange(pc.credits, ...CREDITS_RANGE) && pc.credits % 10 === 0)) errors.push(`Credits must be 2d10x10 (${CREDITS_RANGE.join("-")}).`);
+  if (pc.credits > 0 && !(inRange(pc.credits, ...CREDITS_RANGE) && pc.credits % 10 === 0)) errors.push(`Credits must be 2d10x10 (${CREDITS_RANGE.join("-")}).`);
   if (!pregenerated) {
     if (pc.health?.current !== pc.health?.max) errors.push("A new character starts at Maximum Health.");
     if (pc.wounds?.current !== 0) errors.push("A new character starts with 0 Wounds.");
@@ -277,7 +277,7 @@ export function buildSheet(draft) {
     stress: START_STRESS, minStress: START_STRESS, startStress: START_STRESS,
     skills: [...CLASS_SKILLS[draft.className], ...draft.skills].map((n) => ({ name: n, bonus: TIER_BONUS[TREE.get(n).tier] })),
     loadout: draft.loadout, trinket: draft.trinket, patch: draft.patch, credits,
-    notes: `Credits: ${credits}cr. High Score: 0.`, portrait: draft.portrait,
+    notes: "High Score: 0.", portrait: draft.portrait,
   };
   errors.push(...validateCharacter(sheet));
   if (errors.length) return { errors };
