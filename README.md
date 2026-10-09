@@ -142,7 +142,14 @@ Keep talking to change things, then **Redraft**. **Apply to this session** repla
 - **Finish story** (under the map while one is being played): write how it ended. That's kept and given to the agent when it builds later stories; the crew keep their condition, items and stress; the recurring characters keep how they feel about the crew (and their pictures, once you've picked them); and the ship moves to where the story ended.
 - **Show players** (under the map) puts the sector map on every player screen in their terminal's colour: the ports, the lanes, where the rig is and the jobs on the board. Esc or a click closes it for that player; **Hide** takes it off every screen. Players who join later get it too.
 - **Offer** (on a job's brief) puts that job on the players' job board, up to nine. Players see only its title, hook and job, never its arc, adversary, secrets or people. They vote for one with the number keys or a click (click it again to take the vote back); the votes show on the map and in the log. You still decide which job to play. Playing a job takes it off the board.
-- **Leave campaign** forgets the campaign's progress; the story being played stays.
+- **Faction standing (a campaign house rule: Mothership 1e has no faction rules).** The campaign keeps the crew's standing with each faction, from -3 to +3: Enemy, Hostile, Wary, Neutral, Friendly, Trusted, Ally. The overview's **Factions** panel shows them (with - and + for your own calls), and the sector map shows a small marker beside each port for the faction that runs it. When you **Finish story**, its faction stakes appear as checkboxes, all unticked: tick what happened and only those apply. Every change is logged. It's built only from Mothership's own pieces, and adds no numeric bonuses:
+  - at **+2 or more**, that faction's people give the crew [+] on social rolls (persuading, bluffing, bargaining, getting help); at **-2 or less**, [-]. The agent is told, and suggests it in a check's advantage, naming the faction;
+  - recurring characters of a faction at +2 or more start a story one step friendlier; at -2 or less, one step cooler;
+  - at +2 or more, once per story, the faction does the crew one favour the agent may offer (a forged permit, a docking slot, a tip-off, a hiding place); **Mark favour used** tracks it;
+  - at -2 or less, the faction is actively against the crew in that story and the agent may add trouble from them within the arc (customs boarding, a hit team, a debt collector, a curse);
+  - prices at that faction's ports: Ally -20%, Trusted -10%, Wary +10%, Hostile +25%, Enemy won't trade;
+  - END OF THE LINE is built knowing every standing, and factions at +2 or more send help in the final hour.
+- **Leave campaign** forgets the campaign's progress, including faction standing; the story being played stays.
 
 ### Rim Haulers
 

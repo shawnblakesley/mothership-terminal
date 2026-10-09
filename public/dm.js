@@ -999,6 +999,9 @@
   const cmpPlace = (c, s) => (s.at ? `at ${cmpLoc(c, s.at).name}` : `in transit, ${cmpLoc(c, s.from).name} to ${cmpLoc(c, s.to).name}`);
   const cmpFaction = (c, id) => c.factions.find((f) => f.id === id);
   const TIERS = { 1: "early", 2: "mid campaign", 3: "late" };
+  const STANDING = { "-3": "Enemy", "-2": "Hostile", "-1": "Wary", 0: "Neutral", 1: "Friendly", 2: "Trusted", 3: "Ally" };
+  const signed = (n) => (n > 0 ? `+${n}` : String(n));
+  let cmpTicks = new Set();
 
   function sectorSvg(c, p) {
     const done = new Set(p.done.map((d) => d.id));
@@ -1026,7 +1029,7 @@
       return `<g class="loc${cmpSel.kind === "loc" && cmpSel.id === l.id ? " sel" : ""}" transform="translate(${l.x} ${l.y})">
         <g data-loc="${l.id}" tabindex="0" role="button" aria-label="${esc(l.name)}"><title>${esc(l.name)}: ${esc(l.kind)}</title>
           <circle class="halo" r="24" style="stroke:${f?.color || "#888"}"/><circle class="core" r="9" style="fill:${f?.color || "#888"}"/>
-          <text class="name" y="-32">${esc(l.name)}</text></g>${pills}</g>`;
+          <text class="name" y="-32">${esc(l.name)}</text>${f ? `<text class="stand s${Math.sign(p.factions?.[f.id] || 0)}" x="32" y="4"><title>${esc(f.short)}: ${STANDING[p.factions?.[f.id] || 0]} (house rule)</title>${signed(p.factions?.[f.id] || 0)}</text>` : ""}</g>${pills}</g>`;
     }).join("");
     const at = cmpLoc(c, p.at);
     const ship = at ? `<g class="ship" transform="translate(${at.x - 44} ${at.y - 16})"><title>${esc(c.ship.name)} is here</title><path d="M-9 6 L0 -10 L9 6 Z"/><text y="20">${esc(c.ship.computer)}</text></g>` : "";
@@ -1044,7 +1047,9 @@
       <p class="muted"><i>${esc(c.tagline)}</i></p><p>${esc(c.pitch)}</p>
       <p class="small muted">Offer jobs to put them on the players' job board, then Show players; their votes appear on the map. Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
       <details open><summary>Played (${played.length} of ${c.stories.length})</summary>${played.length ? played.map(({ d, s }) => `<div class="bcard"><button class="cmplink" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b></button><div class="small">${esc(d.outcome || "No notes.")}</div></div>`).join("") : '<p class="muted small">Nothing yet. A good first job: 1. FIRST SHIFT at Port Gallow, where the rig starts.</p>'}</details>
-      <details><summary>Factions</summary>${c.factions.map((f) => `<div class="bcard"><b style="color:${f.color}">${esc(f.name)}</b><div class="small">${esc(f.about)}</div></div>`).join("")}</details>
+      <details open><summary>Factions <span class="muted small">(house rule: standing with the crew)</span></summary>
+        <p class="small muted">Mothership 1e has no faction rules; this is a campaign house rule. At +2 or more their people give the crew [+] on social rolls, a one-off favour per story and better prices at their ports; at -2 or less, [-], trouble and worse prices; at -3 they won't trade. Their recurring characters start a step friendlier or cooler.</p>
+        ${c.factions.map((f) => { const n = p.factions?.[f.id] || 0; return `<div class="bcard"><div class="row"><b class="grow" style="color:${f.color}">${esc(f.name)}</b><span class="stand-pill s${Math.sign(n)}">${STANDING[n]} ${signed(n)}</span><button class="small" data-faction="${f.id}" data-delta="-1" ${n <= -3 ? "disabled" : ""} aria-label="Lower ${esc(f.short)}">-</button><button class="small" data-faction="${f.id}" data-delta="1" ${n >= 3 ? "disabled" : ""} aria-label="Raise ${esc(f.short)}">+</button></div><div class="small">${esc(f.about)}</div>${p.current && n >= 2 ? `<div class="row"><span class="small muted grow">One favour this story (a forged permit, a docking slot, a tip-off, a hiding place).</span><button class="small" data-favour="${f.id}">${p.favours?.[f.id] ? "Favour used" : "Mark favour used"}</button></div>` : ""}</div>`; }).join("")}</details>
       <details><summary>Recurring characters</summary>${c.cast.map((m) => `<div class="bcard"><b>${esc(m.name)}</b> <span class="muted small">${esc(cmpFaction(c, m.faction)?.short || "")}${p.cast[m.id] ? ` · ${esc(attLabel(p.cast[m.id].attitude))}` : ""}</span><div class="small">${esc(m.notes)}</div>${p.cast[m.id]?.history ? `<div class="small muted">${esc(p.cast[m.id].history)}</div>` : ""}</div>`).join("")}</details>
       <details><summary>The crew</summary>${p.crew.map((pc) => `<div class="bcard"><b>${esc(pc.name)}</b> <span class="muted small">${esc([pc.className, pc.role].filter(Boolean).join(" · "))}</span><div class="small mono">HP ${pc.health.current}/${pc.health.max} · Wounds ${pc.wounds.current}/${pc.wounds.max} · Stress ${pc.stress}</div></div>`).join("")}<p class="small muted">They carry their condition, items and stress from story to story. Edit them on the Crew tab while a story is playing.</p></details>`;
   }
@@ -1114,6 +1119,7 @@
     const banner = now
       ? `<div class="bcard cmpnow"><div><b>Now playing:</b> ${now.n}. ${esc(now.title)} <span class="muted">(${esc(cmpPlace(c, now))})</span></div>
           <textarea id="cmpOutcome" rows="2" placeholder="How did it end? Who lived, what they did, what they owe. Later stories are built on it."></textarea>
+          ${now.affinity?.length ? `<div class="small"><b>Faction standing</b> <span class="muted">(house rule; tick what happened)</span>${now.affinity.map((a, i) => `<label class="cmpfx"><input type="checkbox" data-aff="${i}" ${cmpTicks.has(i) ? "checked" : ""}> <span style="color:${cmpFaction(c, a.faction)?.color}">${esc(cmpFaction(c, a.faction)?.short)}</span> ${signed(a.change)}: ${esc(a.when)}</label>`).join("")}</div>` : ""}
           <div class="row"><span class="small muted grow">Finishing keeps the crew's sheets and the recurring characters' attitudes, and moves the rig.</span><button id="cmpFinish" class="primary">Finish story</button></div></div>`
       : `<div class="small muted">${S.campaignBusy ? `<span class="spinner"></span>Building a story…` : "No campaign story is being played. Pick a job on the map."}</div>`;
     const side = cmpSel.kind === "story" ? cmpStory(c, c.stories.find((s) => s.id === cmpSel.id), p)
@@ -1162,6 +1168,15 @@
     }
     const offer = e.target.closest("[data-offer]")?.dataset.offer;
     if (offer) return send({ t: "campaignOffer", story: offer, on: !S.campaign.offered?.includes(offer) });
+    const fx = e.target.closest("[data-faction]");
+    if (fx) return send({ t: "campaignFaction", faction: fx.dataset.faction, delta: Number(fx.dataset.delta) });
+    const fav = e.target.closest("[data-favour]");
+    if (fav) return send({ t: "campaignFavour", faction: fav.dataset.favour });
+    const aff = e.target.closest("[data-aff]");
+    if (aff) {
+      cmpTicks[aff.checked ? "add" : "delete"](Number(aff.dataset.aff));
+      return;
+    }
     const play = e.target.closest("[data-play], [data-replay]");
     if (play) {
       const c = campaignData.campaigns.find((x) => x.id === S.campaign?.id);
@@ -1173,8 +1188,9 @@
       return;
     }
     if (e.target.id === "cmpFinish") {
-      send({ t: "campaignFinish", outcome: $("cmpOutcome").value });
+      send({ t: "campaignFinish", outcome: $("cmpOutcome").value, affinity: [...cmpTicks] });
       cmpOutcome = "";
+      cmpTicks = new Set();
       toast("Story finished. Pick the next job on the map.");
       return;
     }
