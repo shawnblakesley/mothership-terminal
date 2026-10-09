@@ -90,7 +90,7 @@
 .pf-card { inset: 0; display: grid; place-content: center; text-align: center; gap: 0.6em; opacity: 0; transition: opacity 1.4s; color: var(--fg); text-shadow: 0 0 10px var(--glow); }
 .pf-card.on { opacity: 1; }
 .pf-card b { font-weight: normal; font-size: clamp(1.4em, 5vw, 3em); letter-spacing: 0.12em; border: 2px solid var(--fg); padding: 0.4em 0.9em; }
-.pf-card span { color: var(--dim); letter-spacing: 0.1em; }
+.pf-card span { color: var(--fg); opacity: 0.85; letter-spacing: 0.1em; text-shadow: 0 0 4px var(--glow); }
 
 @media (prefers-reduced-motion: reduce) {
   #crt.pf-jolt, #crt.pf-jolt-big, #crt.pf-spiral { animation: none; }

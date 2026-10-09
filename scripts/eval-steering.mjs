@@ -121,7 +121,7 @@ async function runTurn(t) {
   let reply = null;
   if (!held) {
     const request = buildRequest(state, "");
-    reply = parseReply(await ask(request), state.config.voices);
+    reply = parseReply(await ask(request), state.config.voices, state.config.talk);
     if (reply.outcome_check.needed) held = true;
   }
   const verdict = !!t.pass({ held, reply, state, pre });

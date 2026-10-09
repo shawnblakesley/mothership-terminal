@@ -8,6 +8,7 @@ import { sanitizeResources, rigStation, resourcesFrom, fuelCost, portMult, PRICE
 import { weaponByName } from "./weapons.js";
 import { sanitizeRig, sanitizeShip } from "./ships.js";
 import { sanitizeDowntime } from "./downtime.js";
+import { sanitizeSnapshot, sanitizeColdOpen } from "./coldopen.js";
 import { sanitizeMoney, startingCredits, DEBT_PAYMENT, DEBT_EVERY, DELIVERY, finalFee, upfrontOf, duesOf, debtDue, book, spend, exact, debtLetter, DUES_PCT } from "./money.js";
 
 export const CAMPAIGNS = [RIM_HAULERS];
@@ -71,8 +72,9 @@ export function sanitizeProgress(p) {
     current: has(p.current) ? p.current : "",
     sessions: Math.max(0, Math.min(9999, Math.round(Number(p.sessions) || 0))),
     offered: [...new Set(Array.isArray(p.offered) ? p.offered : [])].filter(has).slice(0, 9),
-    done: (Array.isArray(p.done) ? p.done : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, outcome: String(d.outcome || "").slice(0, 1500), at: Number(d.at) || 0 })).slice(-100),
+    done: (Array.isArray(p.done) ? p.done : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, outcome: String(d.outcome || "").slice(0, 1500), at: Number(d.at) || 0, ...(sanitizeSnapshot(d.recap) ? { recap: sanitizeSnapshot(d.recap) } : {}) })).slice(-100),
     crew,
+    recap: sanitizeColdOpen(p.recap),
     cast,
     factions: Object.fromEntries(c.factions.map((f) => [f.id, clampStanding(p.factions?.[f.id])])),
     favours: Object.fromEntries(c.factions.filter((f) => p.favours?.[f.id]).map((f) => [f.id, true])),
@@ -133,6 +135,9 @@ export function factionBrief(c, story, p) {
   }
   return lines.length ? `FACTION STANDING (campaign house rule, not Mothership 1e; it is only [+]/[-], at +2 or more and -2 or less, and how people treat the crew; when it gives [+] or [-] on an outcome_check, set advantage and name the faction in why):\n${lines.join("\n")}` : "";
 }
+
+// Campaign stories built before the standings went live in the context had factionBrief frozen into their standing orders.
+export const stripFactionBrief = (orders) => String(orders ?? "").replace(/(^|\n)FACTION STANDING \(campaign house rule[^\n]*(\n(- |THE FINALE: )[^\n]*)*/, "");
 
 const castById = (c, id) => c.cast.find((m) => m.id === id);
 const recurringNamed = (c, name) => c.cast.find((m) => findCast([{ id: m.id, name: m.name }], name));
@@ -319,16 +324,32 @@ export function carryInto(config, c, story, p, station) {
   return { burned, lane };
 }
 
+// Between stories the live crew is the Warden's to edit; the campaign's copy follows it, credits excepted (the campaign owns those).
+export function crewIntoCampaign(p, crew) {
+  if (p.current || !p.done.length || !crew?.length) return false;
+  const old = new Map(p.crew.map((x) => [x.id, x]));
+  p.crew = sanitizeCrew(structuredClone(crew));
+  for (const pc of p.crew) if (old.has(pc.id)) pc.credits = old.get(pc.id).credits;
+  return true;
+}
+// The other way: the campaign changed a sheet on its own (resupply, a rest on finishing), so the live crew takes it.
+export function crewFromCampaign(p, crew) {
+  for (const pc of crew) {
+    const q = p.crew.find((x) => x.id === pc.id);
+    if (q) Object.assign(pc, structuredClone(q));
+  }
+}
+
 // When a story is finished: remember how it ended, where the rig is, the crew's sheets and how the recurring characters feel.
 // `ticked` are the indexes of the story's affinity entries that happened; only those change a standing. Returns the story and the changes.
-export function finishInto(p, c, config, outcome, ticked = [], station = null) {
+export function finishInto(p, c, config, outcome, ticked = [], station = null, snapshot = null) {
   const story = c.stories.find((s) => s.id === p.current);
   if (!story) return null;
   p.resources = resourcesFrom(station, p.resources);
   const changes = [...new Set(Array.isArray(ticked) ? ticked : [])].map((i) => Number.isInteger(i) && story.affinity?.[i]).filter(Boolean)
     .map((a) => shiftStanding(p, c, a.faction, a.change, a.when)).filter(Boolean);
   p.favours = {};
-  p.done = [...p.done.filter((d) => d.id !== story.id), { id: story.id, outcome: String(outcome || "").trim().slice(0, 1500), at: Date.now() }];
+  p.done = [...p.done.filter((d) => d.id !== story.id), { id: story.id, outcome: String(outcome || "").trim().slice(0, 1500), at: Date.now(), ...(snapshot ? { recap: snapshot } : {}) }];
   p.at = endsAt(story);
   p.current = "";
   if (config.crew?.length) p.crew = sanitizeCrew(structuredClone(config.crew));

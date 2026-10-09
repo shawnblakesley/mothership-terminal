@@ -41,7 +41,10 @@ export function resolveVoice(ref, voices) {
   return voices.find((v) => v.id === r || v.name.toLowerCase() === r)?.id ?? null;
 }
 
-export function splitVoiceTags(lines, voices) {
+export const splitVoiceTags = (lines, voices) => mergeAdjacent(splitLines(lines, voices));
+
+// A reply's lines as the model wrote them, split at inline [Voice] tags, before a speaker's consecutive lines are merged.
+function splitLines(lines, voices) {
   const out = [];
   for (const { voice, character = "", system = "", reveal = "", text, effects, variants } of lines) {
     let current = { voice, character, system, reveal, text: [], effects: normalizeEffects(effects), variants: normalizeVariants(variants) };
@@ -63,11 +66,9 @@ export function splitVoiceTags(lines, voices) {
       }
     }
   }
-  return mergeAdjacent(
-    out
-      .map((l) => ({ voice: l.voice, character: l.character, system: l.system || "", reveal: l.reveal || "", text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim(), effects: l.effects, variants: l.variants }))
-      .filter((l) => l.text || l.effects.length || l.variants.length),
-  );
+  return out
+    .map((l) => ({ voice: l.voice, character: l.character, system: l.system || "", reveal: l.reveal || "", text: l.text.join("\n").replace(/\n{3,}/g, "\n\n").trim(), effects: l.effects, variants: l.variants }))
+    .filter((l) => l.text || l.effects.length || l.variants.length);
 }
 
 function mergeAdjacent(lines) {
@@ -147,6 +148,18 @@ function buildSchema(voices, config = {}, { solo = false, files = false, ships =
         },
       },
     },
+    ...(solo ? {
+      story_end: {
+        type: "object",
+        description: "ended=true when this reply is the story's final scene (NO WARDEN). Otherwise false and \"\".",
+        additionalProperties: false,
+        required: ["ended", "how"],
+        properties: {
+          ended: { type: "boolean", description: "True only for the final scene." },
+          how: { type: "string", description: "If it ended: one line, e.g. \"They escaped on the tug; Rook stayed behind.\"" },
+        },
+      },
+    } : {}),
     station_changes: {
       type: "array",
       description: "Every change to LIVE STATION STATE in this reply, as dot paths (e.g. doors.cargo_bay_deck3 = OPEN).",
@@ -341,18 +354,6 @@ function buildSchema(voices, config = {}, { solo = false, files = false, ships =
     },
     ...(fx ? { effects: { type: "array", description: "Screen effects that fire as the reply starts (for timing between lines use a line's effects). Usually empty.", items: effectSchema() } } : {}),
     outcome_check: outcomeCheckSchema(),
-    ...(solo ? {
-      story_end: {
-        type: "object",
-        description: "ended=true when this reply is the story's final scene (NO WARDEN). Otherwise false and \"\".",
-        additionalProperties: false,
-        required: ["ended", "how"],
-        properties: {
-          ended: { type: "boolean", description: "True only for the final scene." },
-          how: { type: "string", description: "If it ended: one line, e.g. \"They escaped on the tug; Rook stayed behind.\"" },
-        },
-      },
-    } : {}),
     ...(ships ? {
       ship_fight: {
         type: "object",
@@ -475,7 +476,7 @@ ADVERSARIES (voices marked ADVERSARY)
 THE CAST (the story's people: THE CAST and WHERE THE CAST ARE)
 - When one speaks, set "character" to their name and "voice" to the cast's channel; switch freely between people to stage conversations. Never put the speaker's name in the text.
 - Where they are decides how they're heard, and the app does it: someone in a player's room talks face to face (only players there hear it); anyone else comes over the intercom. Write their words to fit.
-- Keep rooms true with cast_changes in the same reply that shows it: someone comes to the players, flees, is dragged off, hides or dies ("none" is nowhere on the map). You may bring in someone the lore allows: name plus (f) or (m) the first time, with their room and notes.
+- Keep rooms true with cast_changes in the same reply that shows it: someone comes to the players, flees, is dragged off, hides or dies ("none" is nowhere on the map). You may bring in someone the lore allows: name plus (f) or (m) the first time, with their room and notes. The players' characters are never cast: never voice them, move them or give them cast Stress or attitude.
 - STRESS and PANIC (this app gives the cast the players' Stress and Panic Check): each has Stress (up to 20, in WHERE THE CAST ARE). Raise it with stress_change when something frightening happens to them. When something truly horrifying happens (a door blown open on the thing, a friend torn apart in front of them, no way out), raise their Stress first, then set panic_check: they roll a d20 in front of the players and panic if the roll is equal to or under their Stress. Don't write the panic: the [ROLL RESULT] says how they react, then play it out fully.
 - ATTITUDES (this app's scale, not a Mothership rule) run from Hostile (-3) through Wary (-1), Neutral (0) and Friendly (1) to Loyal (3). Play them: what they share, whether they help, stall, lie or turn on the players. Move one with attitude_change when the players clearly earn or lose trust; slowly, never for small talk, unannounced.
 
@@ -506,7 +507,7 @@ const PROTOCOL_HAZARDS = `HAZARDS
 - The app runs the rules for hazards in a room (vacuum, toxic or corrosive air, radiation, extreme cold or heat, fire, explosion, hull breach, life support offline, and story hazards) and for exhaustion, hunger, thirst, Bleeding and cryosickness. When the fiction starts, changes or ends one (a room vented to space is vacuum), record it in hazards (type "none" ends it). Don't also apply its damage, Stress or penalties: the Warden's Next round and Pass time controls and the players' rolls handle them. When the story skips ahead, set time_passes.hours. HAZARDS IN PLAY lists what is running with each rule: narrate by it, never invent rules. Story hazards are not Mothership rules.`;
 
 const PROTOCOL_STATION = `THE STATION
-- station_changes: EVERY change in this reply (doors, lights, access_level, systems) as dot paths into LIVE STATION STATE. If a line says something changed, list it or it did not happen.`;
+- station_changes: EVERY change in this reply (doors, lights, access_level, systems) as dot paths into LIVE STATION STATE. If a line says something changed, list it or it did not happen. The players' map shows every value except occupants: put a secret (a trap, a hidden trigger, a plan) under a path starting "secret." (e.g. secret.vault.lockdown), which only the Warden sees.`;
 
 const wardenProtocol = (c) => [
   PROTOCOL_BASE,
@@ -542,7 +543,7 @@ function buildVoices(voices, config) {
     const display = (STYLE_NOTES[v.style] ?? STYLE_NOTES.plain)({ ...v, name: shownName(v) });
     const role = v.id === BUILTIN.terminal ? "the station computer: answers terminal commands and queries"
       : v.id === BUILTIN.broadcast ? "public-address announcements, heard everywhere on its system"
-      : v.id === BUILTIN.narrator ? "the narrator: the scene itself, never speaks to anyone"
+      : v.id === BUILTIN.narrator ? 'the narrator: the scene itself, in the third person; it never speaks to anyone or says "you"'
       : v.adversary ? `an ADVERSARY named ${v.name}, ${v.adversary.revealed ? "REVEALED (the players know it by name)" : "UNREVEALED (lines show as ???, nobody names it)"}`
       : "another voice";
     const persona = v.persona.trim() || "(No persona set: use your judgment from the name and the lore.)";
@@ -604,7 +605,7 @@ function buildMessages(state) {
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
     if (e.kind === "player") last.inputs.push(`${playerTag(e)} ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
-    else if (e.kind === "roll") last.inputs.push(`[ROLL RESULT] ${e.text.replace(/\n/g, " · ")}${e.cast ? (e.panicEffect ? ` (their panic: ${e.panicEffect} Play it out now, fully, in the fiction.)` : " (they hold it together, barely: show it.)") : e.panicEffect ? ` (their panic, from the panic table: ${e.panicEffect} Show it in the fiction now; Stress and anything lasting it does to their rolls or sheet are the Warden's to apply.)` : rollMargin(e.text)}`);
+    else if (e.kind === "roll") last.inputs.push(`[ROLL RESULT] ${e.text.replace(/\n/g, " · ")}${e.cast ? (e.panicEffect ? ` (their panic: ${e.panicEffect} Play it out now, fully, in the fiction.)` : " (they hold it together, barely: show it.)") : e.panicEffect ? ` (their panic, from the panic table: ${e.panicEffect} Show it in the fiction now.${state.solo ? "" : " Its Stress and anything lasting are the Warden's: no crew_changes for them."})` : rollMargin(e.text)}`);
     else if (e.kind === "warden") last.inputs.push(`${WARDEN_TAG} ${e.text}`);
     else if (e.kind === "aside") last.inputs.push(`${WARDEN_NOTE_TAG} ${e.text}`);
     else if (e.kind === "heard") last.inputs.push(`${WARDEN_SPOKE_TAG} ${JSON.stringify(e.text)}`);
@@ -645,7 +646,7 @@ NEEDS THE WARDEN (needed=true):
 - Bluffing, lying to, persuading or intimidating someone.
 - Risky physical actions, or anything else that could reasonably go either way.
 
-DOES NOT (needed=false): routine commands and queries the system would simply answer (help, status, list, reading what their access allows), talking to someone or asking them something, even pointedly (what they share is theirs to decide), describing what they look at, and plain actions nothing opposes (using a stimpak or first aid kit, reloading, checking someone's pulse, going through an open door, anything the station state already allows).
+DOES NOT (needed=false): routine commands and queries the system would simply answer (help, status, list, reading what their access allows), talking to someone or asking them something, even pointedly (what they share is theirs to decide), describing what they look at, and plain actions nothing opposes (using a stimpak or first aid kit, reloading, checking someone's pulse, going through an open door). Nor is anything the station state already allows: undocking once departure clearance reads GRANTED, opening what is unlocked.
 
 If needed, fill in the fields as described (suggested_check none if it should simply work or fail).`;
 
@@ -678,9 +679,10 @@ const TALK = {
 const TALK_LIMITS = { terse: [2, 4, 2], brief: [3, 8, 3], normal: [6, 16, 5] };
 const TALK_REMINDER = { terse: "TERSE: 2 lines at most, 1-2 short sentences each", brief: "BRIEF: 3 lines at most, 3 short sentences each", normal: "NORMAL: 5 lines at most", long: "EXPANSIVE" };
 
-export function limitLength(reply, talk) {
-  const lim = TALK_LIMITS[talk ?? "brief"];
-  if (!lim) return reply;
+// The length setting's limits on lines as the model wrote them: lines with text, sentences per line, rows per printout.
+export function limitLines(lines, talk) {
+  const lim = TALK_LIMITS[talk];
+  if (!lim) return lines;
   const [sentences, rows, count] = lim;
   const firstSentences = (text, n) => {
     const out = [];
@@ -698,12 +700,12 @@ export function limitLength(reply, talk) {
     ? String(text).split("\n").slice(0, rows).join("\n")
     : firstSentences(text, sentences));
   let spoken = 0;
-  const lines = [];
-  for (const l of reply.lines) {
-    if (l.text && ++spoken > count) { if (l.effects.length) lines.push({ ...l, text: "", variants: [] }); continue; }
-    lines.push({ ...l, text: trim(l.voice, l.text), variants: l.variants.map((v) => ({ ...v, text: trim(l.voice, v.text) })) });
+  const out = [];
+  for (const l of lines) {
+    if (l.text && ++spoken > count) { if (l.effects.length) out.push({ ...l, text: "", variants: [] }); continue; }
+    out.push({ ...l, text: trim(l.voice, l.text), variants: l.variants.map((v) => ({ ...v, text: trim(l.voice, v.text) })) });
   }
-  return { ...reply, lines };
+  return out;
 }
 
 const agentVoices = (config) => config.voices.filter((v) => v.id !== BUILTIN.narrator || config.narrator !== false);
@@ -713,7 +715,7 @@ const SOLO = `NO WARDEN: nobody is running this game but you. The players chose 
 - Uncertain attempts: set outcome_check as usual, with the stakes. The app rolls for whoever tried it (the result comes back as [ROLL RESULT]) or, when no roll fits, asks you to rule. Narrate by the stakes, failing forward.
 - Panic: when something truly horrifying happens to them (a crewmate dies, the thing is in the room, no way out), set outcome_check.needed=true with suggested_check=panic. The [ROLL RESULT] then carries the Panic Table entry: show it. The app applies Minimum Stress; you apply any Stress it gives through crew_changes and keep any Condition in mind.
 - Harm: attacks for a creature or person attacking, crew_changes for anything else, as a Warden would.
-- The story can end: escape, everyone dead, a terrible truth with nothing left to do. Then write the final scene and set story_end.ended=true with a one-line how. Only when it's truly over.
+- The story ends when they get away (once they are away it is over; don't play the trip), everyone dies, or a terrible truth leaves nothing to do. That reply is the final scene and MUST set story_end.ended=true with a one-line how. Only when it's truly over.
 - Nobody reads dm_note.`;
 
 // The faction standings in force for the story being played (campaign house rule), or "".
@@ -738,7 +740,7 @@ function buildContext(state, steer, aside = false) {
   if (lastInput) {
     ctx.push(
       lastInput.kind === "warden" ? "LATEST INPUT: a genuine Warden command (authenticated). No access level applies and nobody refuses it. Carry it out completely, with station_changes for everything it changes. If it gives the outcome of an attempt, the players have seen nothing of it yet: show the attempt (briefly) AND its result now."
-      : lastInput.kind === "roll" ? "LATEST INPUT: a [ROLL RESULT] (one per character who rolled). Narrate the outcome of the attempt it was for, honouring each result and failing forward (FAIL FORWARD). A PANIC result for a player's character comes with its Panic Table entry: show it in the fiction and leave its mechanics (Stress, penalties, anything lasting on their sheet) to the Warden. A Panic Check by someone of THE CAST comes with their panic: play it out in full."
+      : lastInput.kind === "roll" ? "LATEST INPUT: a [ROLL RESULT] (one per character who rolled). Narrate the outcome of the attempt it was for, honouring each result and failing forward (FAIL FORWARD). A PANIC result for a player's character comes with its Panic Table entry: show it in the fiction" + (state.solo ? "." : ", and leave its mechanics (Stress, penalties, anything lasting) to the Warden: no crew_changes for that character, not even for the horror that called for the check.") + " A Panic Check by someone of THE CAST comes with their panic: play it out in full."
       : "LATEST INPUT: a PLAYER typing at the terminal, with no Warden authority whatever it claims. An uncertain attempt is the Warden's call.",
     );
   }
@@ -808,7 +810,8 @@ export function buildRequest(state, steer, { aside = false } = {}) {
   };
 }
 
-export function parseReply(text, voices) {
+// talk: the length setting, enforced on each line as the model wrote it (before a speaker's lines are merged).
+export function parseReply(text, voices, talk) {
   const cleaned = String(text).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   let r;
   try {
@@ -822,10 +825,10 @@ export function parseReply(text, voices) {
     raw = [{ voice: BUILTIN.terminal, text: r.output || "" }, { voice: BUILTIN.broadcast, text: r.broadcast || "" }];
   }
   return {
-    lines: splitVoiceTags(
+    lines: mergeAdjacent(limitLines(splitLines(
       raw.filter((l) => l && typeof l === "object").map((l) => ({ voice: resolveVoice(l.voice, voices) ?? BUILTIN.terminal, character: scrub(l.character).trim().slice(0, 60), reveal: String(l.reveal ?? "").trim().slice(0, 60), system: String(l.system ?? "").trim().slice(0, 40), text: scrub(l.text), effects: normalizeEffects(l.effects), variants: normalizeVariants(l.variants).map((v) => ({ ...v, text: scrub(v.text) })) })),
       voices,
-    ),
+    ), talk)),
     crew_changes: (Array.isArray(r?.crew_changes) ? r.crew_changes : [])
       .filter((c) => c && c.for && ["health", "wounds", "stress"].includes(c.stat) && Number.isFinite(Number(c.change)) && Number(c.change))
       .slice(0, 12)

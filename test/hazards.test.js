@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HAZARDS, protection, roundTick, hourTick, vacuumTick, puncture, oxygenState, oxygenDay, settle, hazardDamage, normalizeHazards, penalties, withDisadvantage, eventNeeds } from "../hazards.js";
+import { HAZARDS, protection, roundTick, hourTick, vacuumTick, puncture, oxygenState, oxygenDay, settle, hazardDamage, normalizeHazards, penalties, withDisadvantage, eventNeeds, ageDays } from "../hazards.js";
 import { sanitizeCrew, newCond } from "../crew.js";
 import { armorFrom } from "../weapons.js";
 import { CAMPAIGNS } from "../campaign.js";
@@ -324,4 +324,46 @@ test("Android-close [-] and condition [-] combine once, per character, with ever
   assert.equal(s.publicRoll().pcs.find((p) => p.id === a.id).advantage, "disadvantage");
   s.rollFor(a, [10, 80]);
   assert.equal(s.state.roll.results[a.id].result.target, a.saves.fear - 2);
+});
+
+test("days pass: stimpak doses and [+] end, cryosickness wears off after a week, a lethal dose kills when its days are up", () => {
+  const a = pc("Teamster", []);
+  Object.assign(a.cond, { stims: [0, 3, 5], boost: 40, cryo: 168, active: 30 });
+  assert.deepEqual(ageDays(a, 3), ["the Stimpak doses are long past"]);
+  assert.deepEqual([a.cond.stims, a.cond.boost, a.cond.cryo, a.cond.active], [[], 0, 96, 0]);
+  assert.deepEqual(ageDays(a, 4), ["cryosickness has worn off"]);
+  assert.equal(a.cond.cryo, 0);
+  const b = pc("Teamster", []);
+  b.cond.lethal = 24 * 3;
+  ageDays(b, 2);
+  assert.equal(b.cond.lethal, 24);
+  assert.ok(!b.cond.dead);
+  assert.deepEqual(ageDays(b, 1), ["died of the lethal radiation dose"]);
+  assert.equal(b.cond.dead, "lethal radiation dose");
+});
+
+test("a cryosleeper is not rested by the days, and a dose from yesterday is forgotten", () => {
+  const a = pc("Teamster", []);
+  Object.assign(a.cond, { cryosleep: true, active: 5, stims: [0] });
+  ageDays(a, 1);
+  assert.equal(a.cond.active, 5);
+  assert.deepEqual(a.cond.stims, []);
+});
+
+test("Roll all on a hazard roll works with an automatic [-] on one character and [+] cancelling it on another", () => {
+  const s = session();
+  s.state.config.terminals = [{ id: "t1", name: "A", room: "hold" }];
+  const [a, b] = s.state.config.crew;
+  for (const x of [a, b]) { x.items = []; x.armor = armorFrom(x.items); screen(s, x.id, "t1"); }
+  a.cond.cryo = 100;
+  b.cond.cryo = 100;
+  s.setHazard("hold", "cold");
+  s.passTime(1);
+  b.cond.boost = 30;
+  const adv = Object.fromEntries(s.publicRoll().pcs.map((p) => [p.id, p.advantage]));
+  assert.equal(adv[a.id], "disadvantage");
+  assert.equal(adv[b.id], "none");
+  assert.doesNotThrow(() => s.rollAllHazard());
+  assert.equal(s.hazardWork(), 0);
+  assert.notEqual(s.state.roll?.status, "waiting");
 });

@@ -477,7 +477,7 @@
   document.addEventListener("fxchange", () => {
     if (FX.has("blackout")) Voice.interrupt();
     form.classList.toggle("disabled", lockedOut());
-    input.disabled = lockedOut() || watching();
+    input.disabled = lockedOut() || watching() || departed();
     const typingElsewhere = document.activeElement && document.activeElement !== input && document.activeElement.matches("input, textarea, select");
     if (!lockedOut() && !spectate && !typingElsewhere) input.focus();
   });
@@ -485,7 +485,7 @@
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = input.value.trim();
-    if (!text || lockedOut() || watching()) return;
+    if (!text || lockedOut() || watching() || departed()) return;
     history.unshift(text);
     histIdx = -1;
     input.value = "";
@@ -557,6 +557,7 @@
   const crewKey = () => `crew:${code}`;
   const mine = () => crew.find((c) => c.id === myId) || null;
   const watching = () => !spectate && crew.length > 0 && !mine();
+  const departed = () => { const c = mine(); return !!c && (!!c.cond?.dead || !!c.retired); };
   let docs = [];
   const SQ = '<span class="sq">■</span>', sq = (html) => `${SQ} ${html} ${SQ}`;
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -595,8 +596,8 @@
       if (!spectate && crew.length) setTimeout(() => { renderPicker(); openPanel("crewpick"); });
     }
     const pc = mine();
-    form.hidden = spectate || watching();
-    input.disabled = lockedOut() || watching();
+    form.hidden = spectate || watching() || departed();
+    input.disabled = lockedOut() || watching() || departed();
     $("watchpick").hidden = !watching();
     $("hdr-file").hidden = $("hdr-file-sep").hidden = spectate || !crew.length;
     $("hdr-file").textContent = pc ? `FILE: ${shortName(pc)}${gone(pc) ? ` (${gone(pc).toUpperCase()})` : ""}` : "FILE: NONE";
@@ -1242,6 +1243,8 @@
   }
 
   $("hdr-rules").onclick = () => $("rules").showModal();
+  $("hdr-menu").onclick = () => $("hdr-menu").setAttribute("aria-expanded", String($("hdr").classList.toggle("menu-open")));
+  $("hdr").addEventListener("click", (e) => { if (e.target.closest(".hdr-btn:not(#hdr-menu)") && $("hdr").classList.contains("menu-open")) { $("hdr").classList.remove("menu-open"); $("hdr-menu").setAttribute("aria-expanded", "false"); } });
   let calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const savedCalm = ls.get("calm");
   if (savedCalm !== null) calm = savedCalm === "1";
@@ -1375,7 +1378,7 @@
   let sr = null;
 
   function openSelfRoll(check) {
-    if (!mine() || !header.selfRolls) return;
+    if (!mine() || departed() || !header.selfRolls) return;
     sr = { check, skill: "", adv: "none" };
     $("sr-dice").value = "";
     $("sr-err").textContent = "";
@@ -1598,7 +1601,7 @@
   function renderMemorial() {
     const list = crew.filter(gone);
     $("memorialfx").querySelector(".mm-body").innerHTML = list.map((c) => `<div class="mm-row">${portraitHtml(c.portrait, "mm-face")}<div>
-      <div class="mm-name">${escH(c.name.toUpperCase())}</div>
+      <div class="mm-who">${escH(c.name.toUpperCase())}</div>
       <div>${escH(c.className.toUpperCase())} · HIGH SCORE ${c.highScore || 0}</div>
       <div>${escH((c.cond?.dead ? (c.cond.dead === "Warden" ? "MARKED DECEASED BY THE WARDEN" : `DIED: ${c.cond.dead}`) : "RETIRED FROM PLAY").toUpperCase())}${c.endedIn ? ` · ${escH(c.endedIn.toUpperCase())}` : ""}</div>
       ${c.finalWords ? `<div class="mm-final">FINAL TRANSMISSION: "${escH(c.finalWords.toUpperCase())}"</div>` : ""}
@@ -1607,6 +1610,80 @@
   $("hdr-memo").onclick = () => { renderMemorial(); $("memorialfx").hidden = !$("memorialfx").hidden; };
   $("memorialfx").addEventListener("click", (e) => { if (!e.target.closest(".mm-row")) $("memorialfx").hidden = true; });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("memorialfx").hidden) $("memorialfx").hidden = true; });
+
+  // The cold open ("Previously on..."): each beat typed over a still or static and narrated on the server's timeline, then the title card. Esc skips it on this screen only.
+  let coldGen = 0, coldTimers = [], coldNoise = 0;
+  function endColdOpen() {
+    coldGen++;
+    for (const t of coldTimers) clearTimeout(t);
+    coldTimers = [];
+    clearInterval(coldNoise);
+    if ($("coldopen").hidden) return;
+    Voice.interrupt();
+    $("coldopen").hidden = true;
+  }
+  function playColdOpen(m) {
+    endColdOpen();
+    const gen = coldGen, box = $("coldopen"), pic = box.querySelector(".co-pic"), who = box.querySelector(".co-who"), text = box.querySelector(".co-text"), title = box.querySelector(".co-title"), stage = box.querySelector(".co-stage");
+    const at = (t, fn) => coldTimers.push(setTimeout(() => gen === coldGen && fn(), untilServer(t)));
+    const hear = (c) => (c.wav && canHear() ? Voice.decode(c.wav) : null);
+    const say = (c, audio) => audio?.then((buf) => gen === coldGen && buf && (c.composed ? Voice.playNow(buf, null, c.dur / 1000) : Voice.playNow(buf, m.fx)));
+    const noise = () => {
+      pic.replaceChildren();
+      const cv = document.createElement("canvas");
+      cv.width = 120;
+      cv.height = 68;
+      pic.append(cv);
+      const g = cv.getContext("2d"), img = g.createImageData(120, 68);
+      const draw = () => { for (let i = 0; i < img.data.length; i += 4) { img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.random() * 255; img.data[i + 3] = 255; } g.putImageData(img, 0, 0); };
+      draw();
+      clearInterval(coldNoise);
+      coldNoise = setInterval(draw, 90);
+    };
+    box.querySelector(".co-head").textContent = m.cards.length ? `PREVIOUSLY ON ${m.campaign}` : "";
+    title.querySelector(".co-big").textContent = title.querySelector(".co-hook").textContent = "";
+    text.textContent = "";
+    who.textContent = "";
+    title.hidden = true;
+    stage.hidden = text.hidden = !m.cards.length;
+    noise();
+    box.hidden = false;
+    FX.Sound.unlock();
+    for (const c of m.cards) {
+      const audio = hear(c);
+      at(c.at, () => {
+        who.textContent = (c.who || "").toUpperCase();
+        if (c.src) {
+          clearInterval(coldNoise);
+          pic.replaceChildren();
+          const img = new Image();
+          img.alt = "";
+          img.referrerPolicy = "no-referrer";
+          img.onerror = noise;
+          img.src = c.src;
+          pic.append(img);
+        } else noise();
+        text.textContent = "";
+        typeInto(text, c.text, c.dur);
+        say(c, audio);
+      });
+    }
+    const audio = hear(m.title);
+    at(m.title.at, () => {
+      clearInterval(coldNoise);
+      stage.hidden = text.hidden = true;
+      title.hidden = false;
+      title.querySelector(".co-big").textContent = m.title.line;
+      const hook = title.querySelector(".co-hook");
+      hook.textContent = "";
+      FX.Sound.sting();
+      if (m.title.hook) typeInto(hook, m.title.hook, m.title.dur);
+      say(m.title, audio);
+    });
+    at(m.end, endColdOpen);
+  }
+  $("coldopen").querySelector(".co-skip").onclick = endColdOpen;
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("coldopen").hidden) { e.stopImmediatePropagation(); endColdOpen(); } }, true);
 
   // Death: the vitals line goes flat with a held tone, then the player may send one last line, spoken on every screen in their voice.
   let flatTimer = 0;
@@ -1783,6 +1860,7 @@
           applyHeader(msg.header);
           if (!$("crewpick").hidden) renderPicker();
           break;
+        case "coldopen": playColdOpen(msg); break;
         case "line": enqueue(msg.entry); break;
         case "part": onPart(msg); break;
         case "interrupt": onInterrupt(msg); break;
