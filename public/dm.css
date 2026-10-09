@@ -588,6 +588,13 @@ details.sec > summary:hover h2 { color: var(--fg); }
 .sector .loc .halo { fill: rgba(10, 14, 16, 0.85); stroke-width: 2.5; }
 .sector .loc .name { fill: var(--fg); font: 600 13px var(--mono); letter-spacing: 0.08em; text-anchor: middle; paint-order: stroke; stroke: #070a0c; stroke-width: 4px; }
 .sector .loc.sel .halo, .sector [data-loc]:focus-visible .halo { stroke-width: 4; filter: drop-shadow(0 0 6px currentColor); }
+.sector .loc .stand { font: 700 12px var(--mono); fill: var(--muted); paint-order: stroke; stroke: #070a0c; stroke-width: 3px; }
+.sector .loc .stand.s1 { fill: #7bd88f; }
+.sector .loc .stand.s-1 { fill: #ff6b6b; }
+.stand-pill { font: 600 11px var(--mono); padding: 1px 6px; border: 1px solid var(--line); border-radius: 8px; white-space: nowrap; }
+.stand-pill.s1 { color: #7bd88f; border-color: #7bd88f; }
+.stand-pill.s-1 { color: #ff6b6b; border-color: #ff6b6b; }
+.cmpfx { display: flex; gap: 6px; align-items: baseline; margin: 2px 0; }
 .sector .story rect { fill: #1b2329; stroke: #8fa3b0; stroke-width: 1.5; }
 .sector .story text { fill: var(--fg); font: 700 11px var(--mono); text-anchor: middle; pointer-events: none; }
 .sector .story:hover rect, .sector .story:focus-visible rect { stroke: var(--fg); fill: #26313a; }
@@ -613,3 +620,6 @@ details.sec > summary:hover h2 { color: var(--fg); }
 .pcsheet .conds .chip { background: color-mix(in srgb, var(--warn) 12%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: 99px; padding: 1px 9px; font-size: 12px; }
 .pcsheet .conds select { width: auto; max-width: 14em; padding: 1px 6px; font-size: 12px; }
 #hazardList li .grow { white-space: normal; }
+
+.sector .story.offered rect { stroke: var(--accent); stroke-width: 2.5; }
+.sector .story .vote { fill: var(--warn); font-size: 12px; }

@@ -183,9 +183,7 @@ export function hazardWound(pc, type) {
 }
 
 const need = (pc, kind, check, extra = {}) => {
-  const reasons = penalties(pc, { thinAir: !!extra.thinAir });
-  const { thinAir, ...rest } = extra;
-  return { kind, pc: pc.id, check, reason: "", ...rest, advantage: withDisadvantage(rest.advantage || "none", reasons) };
+  return { kind, pc: pc.id, check, reason: "", ...extra, advantage: extra.advantage || "none" };
 };
 const dmgLevel = (h) => clampInt(h.level, 1, 10, 1);
 
@@ -263,7 +261,7 @@ export function eventNeeds(pc, h, rng = d) {
 }
 
 export const strenuousNeed = (pc) => need(pc, "strenuous", "body", { reason: "STRENUOUS ACTIVITY ON MINIMUM WATER" });
-export const oxygenNeed = (pc) => need(pc, "oxygen", "body", { reason: "LIFE SUPPORT OFFLINE", thinAir: true });
+export const oxygenNeed = (pc) => need(pc, "oxygen", "body", { reason: "LIFE SUPPORT OFFLINE" });
 
 // What a result does. Returns damage / wounds to apply, whether a Death Save follows, extra Stress, and a line for the log.
 export function settle(pc, n, result, rng = d) {

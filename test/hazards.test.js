@@ -310,3 +310,21 @@ test("an agent reply starts a hazard, and Retcon undoes it with the crew conditi
   assert.equal(a.cond.rad, 0);
   assert.equal(s.state.station.hazards, undefined);
 });
+
+test("Android-close [-] and condition [-] combine once, per character, with every reason shown", () => {
+  const s = session();
+  s.state.config.terminals = [{ id: "t1", name: "A", room: "hold" }];
+  const [a, , android] = s.state.config.crew;
+  screen(s, a.id, "t1");
+  screen(s, android.id, "t1");
+  a.cond.cryo = 100;
+  a.cond.rad = 2;
+  s.handleDm({ t: "rollRequest", roll: { pc: "all", check: "fear", advantage: "advantage" } });
+  const mine = s.publicRoll().pcs.find((p) => p.id === a.id);
+  assert.equal(mine.advantage, "none");
+  assert.deepEqual(mine.why, ["an Android is close", "cryosickness"]);
+  s.state.roll.advantage = "none";
+  assert.equal(s.publicRoll().pcs.find((p) => p.id === a.id).advantage, "disadvantage");
+  s.rollFor(a, [10, 80]);
+  assert.equal(s.state.roll.results[a.id].result.target, a.saves.fear - 2);
+});

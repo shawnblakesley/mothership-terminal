@@ -316,6 +316,7 @@
         <div id="outcome" class="card outcome" hidden></div>
         <div id="pending" class="card empty" hidden></div>
         <div id="rollStatus" class="card rollstatus" hidden></div>
+        <div id="rollOffers" class="card rollstatus" hidden></div>
       </div>
       <div class="compose">
         <textarea id="compose" rows="3"></textarea>
@@ -389,6 +390,7 @@
             </label>
           </div>
           <div id="rollTarget" class="muted small"></div>
+          <label id="rollPlusRow" class="check" hidden><input type="checkbox" id="rollPlus"> <span>Teamster trauma response: [+] on this Panic check <em>once per session</em></span></label>
           <div class="row"><button id="rollCall" class="primary" title="Checks: d100 under target. Panic: d20 over Stress.">Call for roll</button></div>
           </div>
         </div>
@@ -515,9 +517,9 @@
 
         <h2>Checks</h2>
         <ul>
-          <li>Roll <b>d100</b> (00–99). <b>Under</b> the target succeeds; equal or over fails.</li>
+          <li>Roll <b>d100</b> (00–99). <b>Under</b> the target succeeds; equal or over fails. A roll of <b>90–99 always fails</b>, whatever the target.</li>
           <li>Target = a <b>Stat</b> or <b>Save</b> + a <b>Skill</b> that fits: Trained <b>+10</b>, Expert <b>+15</b>, Master <b>+20</b>.</li>
-          <li><b>Doubles</b> (00, 11 … 99) are criticals: a critical success or a critical failure.</li>
+          <li><b>Doubles</b> (00, 11 … 99) are criticals: doubles that succeed are a critical success, doubles that fail a critical failure. <b>00</b> is always a critical success and <b>99</b> always a critical failure. A critical failure also needs a <b>Panic check</b>.</li>
           <li><b>[+] Advantage / [-] Disadvantage:</b> roll twice, keep the better / worse.</li>
           <li><b>Any failed check or save: +1 Stress.</b></li>
           <li>Only roll when failing would be interesting and the outcome is uncertain. Otherwise it just happens (or just doesn't).</li>
@@ -534,13 +536,22 @@
 
         <h2>Stress &amp; Panic</h2>
         <ul>
-          <li>Stress starts at <b>2</b> and climbs with every failure and every horror.</li>
+          <li>Stress and <b>Minimum Stress</b> both start at <b>2</b>. Stress climbs with every failure and every horror, and never goes below Minimum Stress.</li>
+          <li>Stress tops out at <b>20</b>: any gained above that lowers the most relevant Stat or Save instead.</li>
           <li><b>Panic check:</b> roll <b>d20</b>. <b>Above</b> current Stress, they hold it together. <b>Equal or under</b>, they Panic: the roll is looked up on the panic table below.</li>
           <li>Call one when something truly awful happens: a crewmate dies, the thing is in the room, the lights go out for good.</li>
           <li>Rest somewhere safe (as you allow) to shed Stress.</li>
         </ul>
+        <h2>Trauma responses</h2>
+        <ul>
+          <li><b>Marine:</b> whenever they Panic, every Close friendly player makes a Fear Save.</li>
+          <li><b>Android:</b> Fear Saves made by Close friendly players are at [-].</li>
+          <li><b>Scientist:</b> whenever they fail a Sanity Save, all Close friendly players gain 1 Stress.</li>
+          <li><b>Teamster:</b> once per session, they may take [+] on a Panic Check.</li>
+          <li>In this app, <b>Close</b> means in the same room (their terminals are in the same room).</li>
+        </ul>
 
-        <h2>Panic table <span class="hint" title="Used for every panic. Apply crew mechanics yourself.">?</span></h2>
+        <h2>Panic table <span class="hint" title="Used for every panic. The app raises Minimum Stress for you; apply the rest yourself.">?</span></h2>
         <p class="muted small">Mothership 1e's Panic Table (Tuesday Knight Games), in brief. d20 at or under Stress:</p>
         <ol id="panicTable" class="panictable"></ol>
 
@@ -567,7 +578,7 @@
 
         <h2>In this app</h2>
         <ul>
-          <li><b>Actions → Roll</b> calls a check, save or Panic check. Each player rolls on their own screen; failures add Stress automatically.</li>
+          <li><b>Actions → Roll</b> calls a check, save or Panic check. Each player rolls on their own screen; failures add Stress automatically, and a critical failure offers a one-click Panic check.</li>
           <li><b>⚖ Your call</b>: the agent is waiting on an uncertain attempt. It shows the stakes; you say it works, fails, or roll.</li>
           <li>The agent can change Health, Wounds and Stress if Settings allow. Fix them on the Crew tab.</li>
         </ul>

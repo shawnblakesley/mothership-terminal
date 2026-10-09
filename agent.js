@@ -7,6 +7,7 @@ import { HAZARDS, hazardBrief } from "./hazards.js";
 import { terminalsBrief, netOf, systemsOf, systemName, screensBrief } from "./terminals.js";
 import { TILES } from "./rooms.js";
 import { roomId } from "./clean.js";
+import { campaignById, factionBrief } from "./campaign.js";
 
 export const ALL_EFFECTS = [
   "blood", "goo", "crack", "ice", "alarm", "redalert", "glitch",
@@ -687,9 +688,17 @@ const SOLO = `NO WARDEN: nobody is running this game but you. The players chose 
 - The story can end: escape, everyone dead, a terrible truth with nothing left to do. When it does, write the final scene, and set story_end.ended=true with a one-line how. Don't end it early: only when it's truly over.
 - Nobody reads dm_note.`;
 
+// The faction standings in force for the story being played (campaign house rule), or "".
+function factionsNow(state) {
+  const p = state.campaign, c = p && campaignById(p.id), story = c?.stories.find((x) => x.id === p.current);
+  return story ? factionBrief(c, story, p) : "";
+}
+
 function buildContext(state, steer, aside = false) {
   const ctx = [`LIVE STATION STATE (JSON):\n${JSON.stringify(state.station, null, 2)}`];
   if (state.config.standingOrders.trim()) ctx.push(`WARDEN STANDING ORDERS (always in force):\n${state.config.standingOrders.trim()}`);
+  const factions = factionsNow(state);
+  if (factions) ctx.push(factions);
   if (aside) {
     ctx.push("LATEST INPUT: a private [WARDEN NOTE]. The players don't see it and nothing happens on their screen: return lines: [] and effects: []. " +
       "It is true as of NOW: put every change it implies in station_changes in THIS reply (doors, lights, systems; add new keys when needed, e.g. crew.voss = DEAD), never promise to change something later. " +
