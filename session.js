@@ -25,6 +25,7 @@ import { rememberSecret } from "./redact.js";
 import { discordStatus, stopListening, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
+import { panicMessage, nearMessage } from "./panicscreen.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, effectiveAdvantage, PANIC, checkInfo } from "./rolls.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, effectType, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
@@ -173,6 +174,7 @@ export function defaultGame(keys = {}) {
       talk: "brief",
       playerVitals: true,
       playerRolls: true,
+      panicScreens: true,
       playerCreate: false,
       createRerolls: false,
       tts: true,
@@ -459,7 +461,7 @@ const WORK_ORDER = { id: "doc-work-order-4471", title: "MAINTENANCE CREW ORDER: 
 const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew docks at a rimward ice-mining station to fix its reactor. Nobody answers, the airlock is sealed, and their tug won't leave until the job is done.", tags: "station · the void · no way home", builtin: true };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
-const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
+const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "panicScreens", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
 const STORY_ACTIONS = new Set(["nextRound", "attack", "passTime", "hazard", "command", "inject", "note", "heard", "rollRequest", "rollFor", "offerRoll", "generate", "approve", "outcome", "handout", "clockStart"]);
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
@@ -1024,7 +1026,7 @@ export class Session {
     if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "panicScreens", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
@@ -1092,6 +1094,12 @@ export class Session {
         const pic = v.adversary.picture;
         this.toPlayers({ t: "showImage", title: v.name, src: this.pictureSrc(pic), credit: v.adversary.credit || "" });
         this.addLog("note", `Showed the players ${v.name}.`);
+        break;
+      }
+      case "panicShow": {
+        const n = Math.round(Number(msg.n));
+        const mine = s.config.crew.filter((x) => [...this.sockets].some((w) => w.role === "player" && w.character === x.id));
+        if (n >= 1 && n <= 20) for (const pc of mine) this.panicScreens(pc, n, n === 18 ? "Compounding problems (7: Nightmares + 9: Deflated)" : "", { force: true });
         break;
       }
       case "castPanic": {
@@ -1933,6 +1941,7 @@ export class Session {
     }
     const fx = result.panic && !result.success ? panicEntry(result.used) : null;
     this.toPlayers({ t: "rollResult", result, label: checkLabel(req), who: pc.name, effect: fx?.name || "" });
+    if (fx) this.panicScreens(pc, result.used, fx.name);
     this.addLog("roll", `${pc.name}${by === "warden" ? " (rolled by the Warden)" : ""}: ${resultText(req, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
     this.afterRoll(pc, req, result, fx);
     if (r.hazard?.[pc.id]) this.settleHazard(pc, r.hazard[pc.id], result);
@@ -1940,6 +1949,21 @@ export class Session {
     else {
       this.toPlayers({ t: "roll", roll: this.publicRoll() });
       this.syncDm();
+    }
+  }
+
+  // The panicking player's own screen panics with them (presentation only). Close crew see a flash if the result was Jumpy.
+  panicScreens(pc, used, name, { force = false } = {}) {
+    if (this.state.config.panicScreens === false && !force) return;
+    const pics = this.state.config.voices.filter((v) => v.adversary?.picture).map((v) => v.adversary.picture);
+    const picture = pics.length ? this.pictureSrc(pics[Math.floor(Math.random() * pics.length)]) : "";
+    const own = panicMessage({ used, name, android: pc.className === "Android", picture });
+    if (!own) return;
+    const near = nearMessage(own.seq), nearIds = near ? new Set(this.closeTo(pc).map((x) => x.id)) : null;
+    for (const ws of this.sockets) {
+      if (ws.role !== "player" || ws.readyState !== 1 || !ws.character) continue;
+      if (ws.character === pc.id) ws.send(JSON.stringify(own));
+      else if (near && nearIds.has(ws.character)) ws.send(JSON.stringify(near));
     }
   }
 
