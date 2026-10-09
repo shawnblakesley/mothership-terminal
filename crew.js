@@ -52,7 +52,7 @@ export function settleEndings(crew, where) {
   }
   return fresh;
 }
-export const memorialOf = (crew) => crew.filter(isGone).map((c) => ({ id: c.id, name: c.name, className: c.className, highScore: c.highScore || 0, retired: !c.cond?.dead, how: c.cond?.dead || "Retired from play", story: c.endedIn || "", epitaph: c.epitaph || "", finalWords: c.finalWords || "", portrait: c.portrait || "" }));
+export const memorialOf = (crew) => crew.filter(isGone).map((c) => ({ id: c.id, name: c.name, className: c.className, highScore: c.highScore || 0, retired: !c.cond?.dead, how: c.cond?.dead === "Warden" ? "Marked deceased by the Warden" : c.cond?.dead || "Retired from play", story: c.endedIn || "", epitaph: c.epitaph || "", finalWords: c.finalWords || "", portrait: c.portrait || "" }));
 // The crew member (living or not) with the highest High Score, or null if nobody has survived a session.
 export const longestSurvivor = (crew) => crew.reduce((best, c) => ((c.highScore || 0) > (best?.highScore || 0) ? c : best), null);
 export const goneWord = (c) => (c.cond?.dead ? "deceased" : c.retired ? "retired" : "");

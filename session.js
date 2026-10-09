@@ -1010,10 +1010,10 @@ export class Session {
   }
 
   // End session: High Score (PSG 18.3, sessions survived; no effect on play) goes up by 1 for each living character.
-  endSession() {
+  endNight() {
     const s = this.state, up = endSession(s.config.crew);
     if (s.campaign) { endSession(s.campaign.crew); s.campaign.sessions = (s.campaign.sessions || 0) + 1; }
-    this.addLog("note", `Session ended. High Score +1: ${up.map((c) => `${c.name} (${c.highScore})`).join(", ") || "nobody is alive"}. (PSG 18.3: it counts sessions survived and changes no roll.)`);
+    this.addLog("note", `Game night ended. High Score +1: ${up.map((c) => `${c.name} (${c.highScore})`).join(", ") || "nobody is alive"}. (PSG 18.3: it counts sessions survived and changes no roll.)`);
     this.crewChanged();
   }
 
@@ -1581,8 +1581,8 @@ export class Session {
       case "moveScreens":
         for (const ws of this.sockets) if (ws.role === "player" && ws.character && ws.character === msg.character) this.playerTerminal(ws, msg.terminal, "warden");
         break;
-      case "endSession":
-        this.endSession();
+      case "endNight":
+        this.endNight();
         break;
       case "epitaph": {
         const pc = this.crewById(String(msg.pc)), text = String(msg.text || "").replace(/\s+/g, " ").trim().slice(0, 140);

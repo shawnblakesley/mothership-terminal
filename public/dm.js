@@ -636,7 +636,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       ${c.portrait ? `<img class="memo-pic" src="${esc(portraitUrl(c.portrait))}" alt="">` : ""}
       <div class="memo-body"><div><s class="memo-name">${esc(c.name)}</s> <span class="muted small">${esc(c.className)}</span></div>
         <div class="small"><span class="k">HIGH SCORE</span> <b>${c.highScore || 0}</b></div>
-        <div class="small">${esc(c.cond?.dead ? `Died: ${c.cond.dead}` : "Retired from play")}${c.endedIn ? ` · ${esc(c.endedIn)}` : ""}</div>
+        <div class="small">${esc(c.cond?.dead ? (c.cond.dead === "Warden" ? "Marked deceased by the Warden" : `Died: ${c.cond.dead}`) : "Retired from play")}${c.endedIn ? ` · ${esc(c.endedIn)}` : ""}</div>
         ${c.finalWords ? `<div class="small memo-final">Final transmission: "${esc(c.finalWords)}"</div>` : ""}
         <input data-epitaph="${esc(c.id)}" value="${esc(c.epitaph || "")}" placeholder="Epitaph, one line" maxlength="140" aria-label="Epitaph for ${esc(c.name)}"></div></div>`).join("")}</div>`;
   }
@@ -651,7 +651,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const id = e.target.closest?.("[data-epitaph]")?.dataset.epitaph;
     if (id) send({ t: "epitaph", pc: id, text: e.target.value });
   });
-  $("endSession").onclick = () => send({ t: "endSession" });
+  $("endNight").onclick = () => send({ t: "endNight" });
   let newCharsKey = "";
   function renderNewChars() {
     const list = S.newChars || [], key = JSON.stringify(list);

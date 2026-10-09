@@ -1540,7 +1540,7 @@
     $("memorialfx").querySelector(".mm-body").innerHTML = list.map((c) => `<div class="mm-row">${portraitHtml(c.portrait, "mm-face")}<div>
       <div class="mm-name">${escH(c.name.toUpperCase())}</div>
       <div>${escH(c.className.toUpperCase())} · HIGH SCORE ${c.highScore || 0}</div>
-      <div>${escH((c.cond?.dead ? `DIED: ${c.cond.dead}` : "RETIRED FROM PLAY").toUpperCase())}${c.endedIn ? ` · ${escH(c.endedIn.toUpperCase())}` : ""}</div>
+      <div>${escH((c.cond?.dead ? (c.cond.dead === "Warden" ? "MARKED DECEASED BY THE WARDEN" : `DIED: ${c.cond.dead}`) : "RETIRED FROM PLAY").toUpperCase())}${c.endedIn ? ` · ${escH(c.endedIn.toUpperCase())}` : ""}</div>
       ${c.finalWords ? `<div class="mm-final">FINAL TRANSMISSION: "${escH(c.finalWords.toUpperCase())}"</div>` : ""}
       ${c.epitaph ? `<div class="mm-epitaph">${escH(c.epitaph.toUpperCase())}</div>` : ""}</div></div>`).join("") || '<div class="sf-none">NOBODY YET.</div>';
   }

@@ -148,7 +148,7 @@ body {
 .fl-trace polyline { fill: none; stroke: #ff5a4e; stroke-width: 1.5; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 4px #ff5a4e); }
 .fl-title { color: #ff5a4e; letter-spacing: 0.4em; font-weight: bold; }
 .fl-form { display: flex; flex-direction: column; align-items: center; gap: 0.6em; width: 100%; max-width: 640px; }
-.fl-form input { width: 100%; box-sizing: border-box; }
+.fl-form input { width: 100%; box-sizing: border-box; background: transparent; color: var(--fg); border: 1px solid var(--fg); font: inherit; padding: 0.3em 0.5em; }
 .fl-form[hidden], .fl-title[hidden] { display: none; }
 .isofx { cursor: default; padding: 3vh 3vw; }
 .isofx .if-map { flex: 1; min-height: 0; width: 100%; overflow: auto; text-shadow: none; scrollbar-width: none; }
