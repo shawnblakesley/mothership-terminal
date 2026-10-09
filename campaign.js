@@ -8,6 +8,7 @@ import { sanitizeResources, rigStation, resourcesFrom, fuelCost, portMult, PRICE
 import { weaponByName } from "./weapons.js";
 import { sanitizeRig, sanitizeShip } from "./ships.js";
 import { sanitizeDowntime } from "./downtime.js";
+import { sanitizeSnapshot, sanitizeColdOpen } from "./coldopen.js";
 import { sanitizeMoney, startingCredits, DEBT_PAYMENT, DEBT_EVERY, DELIVERY, finalFee, upfrontOf, duesOf, debtDue, book, spend, exact, debtLetter, DUES_PCT } from "./money.js";
 
 export const CAMPAIGNS = [RIM_HAULERS];
@@ -71,8 +72,9 @@ export function sanitizeProgress(p) {
     current: has(p.current) ? p.current : "",
     sessions: Math.max(0, Math.min(9999, Math.round(Number(p.sessions) || 0))),
     offered: [...new Set(Array.isArray(p.offered) ? p.offered : [])].filter(has).slice(0, 9),
-    done: (Array.isArray(p.done) ? p.done : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, outcome: String(d.outcome || "").slice(0, 1500), at: Number(d.at) || 0 })).slice(-100),
+    done: (Array.isArray(p.done) ? p.done : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, outcome: String(d.outcome || "").slice(0, 1500), at: Number(d.at) || 0, ...(sanitizeSnapshot(d.recap) ? { recap: sanitizeSnapshot(d.recap) } : {}) })).slice(-100),
     crew,
+    recap: sanitizeColdOpen(p.recap),
     cast,
     factions: Object.fromEntries(c.factions.map((f) => [f.id, clampStanding(p.factions?.[f.id])])),
     favours: Object.fromEntries(c.factions.filter((f) => p.favours?.[f.id]).map((f) => [f.id, true])),
@@ -337,14 +339,14 @@ export function crewFromCampaign(p, crew) {
 
 // When a story is finished: remember how it ended, where the rig is, the crew's sheets and how the recurring characters feel.
 // `ticked` are the indexes of the story's affinity entries that happened; only those change a standing. Returns the story and the changes.
-export function finishInto(p, c, config, outcome, ticked = [], station = null) {
+export function finishInto(p, c, config, outcome, ticked = [], station = null, snapshot = null) {
   const story = c.stories.find((s) => s.id === p.current);
   if (!story) return null;
   p.resources = resourcesFrom(station, p.resources);
   const changes = [...new Set(Array.isArray(ticked) ? ticked : [])].map((i) => Number.isInteger(i) && story.affinity?.[i]).filter(Boolean)
     .map((a) => shiftStanding(p, c, a.faction, a.change, a.when)).filter(Boolean);
   p.favours = {};
-  p.done = [...p.done.filter((d) => d.id !== story.id), { id: story.id, outcome: String(outcome || "").trim().slice(0, 1500), at: Date.now() }];
+  p.done = [...p.done.filter((d) => d.id !== story.id), { id: story.id, outcome: String(outcome || "").trim().slice(0, 1500), at: Date.now(), ...(snapshot ? { recap: snapshot } : {}) }];
   p.at = endsAt(story);
   p.current = "";
   if (config.crew?.length) p.crew = sanitizeCrew(structuredClone(config.crew));

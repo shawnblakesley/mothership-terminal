@@ -18,6 +18,7 @@ import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, 
 import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
 import { restAndRecover, downtimeLines } from "./downtime-lite.js";
 import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, crewIntoCampaign, crewFromCampaign, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory } from "./campaign.js";
+import { snapshotStory, coldOpenRequest, normalizeColdOpen, introRecap } from "./coldopen.js";
 import { transfer, ledgerLine, exact, DEBT_PAYMENT, DEBT_EVERY } from "./money.js";
 import { downtimeReady, planRoll, settleRoll, mirror, passDays, treat, treatmentList, shoreText, applyConversion } from "./downtime.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
@@ -48,7 +49,7 @@ const PLAYER_INPUT_GAP_MS = 1200;
 const WARDEN_ACTIONS = {
   command: "direction", inject: "speak", note: "note", heard: "speech", effect: "effect", soundPlay: "sound", rollRequest: "roll", retcon: "retcon",
   synopsis: "synopsis", roomShow: "room_show", roomDraft: "room_draft", builderSay: "builder_chat", builderDraft: "builder_draft",
-  builderApply: "builder_apply", resetSession: "story_restart", adversaryShow: "adversary_show", campaignPlay: "campaign_story", attack: "attack", nextRound: "next_round",
+  builderApply: "builder_apply", resetSession: "story_restart", adversaryShow: "adversary_show", campaignPlay: "campaign_story", campaignRecap: "campaign_recap", attack: "attack", nextRound: "next_round",
 };
 const newId = (prefix, n) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 2 + n)}`;
 
@@ -194,6 +195,7 @@ export function defaultGame(keys = {}) {
       terminals: structuredClone(DEFAULT_TERMINALS),
       playerTerminals: true,
       narrator: true,
+      coldOpen: true,
       rooms: structuredClone(DEFAULT_ROOMS),
       startDocs: [WORK_ORDER],
       roomDocs: structuredClone(DEFAULT_ROOM_DOCS),
@@ -482,7 +484,7 @@ const KESTREL_PITCH = { title: "KESTREL-9", hook: "A convict maintenance crew do
 const CAMPAIGN_PITCH = { title: "RIM HAULERS (campaign)", hook: "Four truckers, one old rig with a debt, and the long dark lanes of the Rim. Take jobs from port to port; the crew, the rig and every favour you owe carry from story to story.", tags: "campaign · freight · the Rim", builtin: true, campaign: "rim-haulers" };
 
 const label = (field) => field[0].toUpperCase() + field.slice(1);
-const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "panicScreens", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "upgrades"]);
+const SESSION_SETTINGS = new Set(["provider", "model", "effort", "mode", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "panicScreens", "playerCreate", "createRerolls", "playerTerminals", "narrator", "coldOpen", "tts", "discordTalk", "upgrades"]);
 const STORY_ACTIONS = new Set(["nextRound", "attack", "reload", "passTime", "hazard", "command", "inject", "note", "heard", "rollRequest", "rollFor", "offerRoll", "generate", "approve", "outcome", "handout", "clockStart"]);
 const findCharacterId = (crew, name) => {
   const n = String(name || "").trim().toLowerCase();
@@ -1227,7 +1229,7 @@ export class Session {
     if (action) track("WardenAction", { Action: action });
     switch (msg.t) {
       case "config": {
-        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "panicScreens", "playerCreate", "createRerolls", "playerTerminals", "narrator", "tts", "discordTalk", "theme", "map"];
+        const allowed = ["stationName", "lore", "secrets", "standingOrders", "mode", "provider", "model", "effort", "agentEffects", "agentVariants", "agentCrew", "checkFirst", "talk", "playerVitals", "playerRolls", "panicScreens", "playerCreate", "createRerolls", "playerTerminals", "narrator", "coldOpen", "tts", "discordTalk", "theme", "map"];
         for (const k of allowed) if (k in (msg.patch || {})) s.config[k] = msg.patch[k];
         s.config.mode = s.config.mode === "review" ? "review" : "auto";
         s.config.map = String(s.config.map ?? "").slice(0, 4000);
@@ -1672,9 +1674,13 @@ export class Session {
       case "campaignPlay":
         if (s.campaign && !this.campaignBusy) this.campaignPlay(String(msg.story || ""));
         return;
+      case "campaignRecap":
+        if (!s.campaign?.recap) this.send("dm", { t: "toast", level: "error", text: "There is no cold open to play yet: it's written when a campaign story is built." });
+        else this.playRecap(s.campaign.recap);
+        return;
       case "campaignFinish": {
         const c = campaignById(s.campaign?.id);
-        const done = c && finishInto(s.campaign, c, s.config, msg.outcome, msg.affinity, s.station);
+        const done = c && finishInto(s.campaign, c, s.config, msg.outcome, msg.affinity, s.station, snapshotStory(s));
         if (done) {
           const { story, changes } = done;
           const paid = settleStory(s.campaign, c, story, { delivery: msg.delivery, late: !!msg.late, skipDues: !!msg.skipDues, fee: msg.fee });
@@ -2107,7 +2113,44 @@ export class Session {
     this.syncDm();
   }
 
+  // The cold open: 4-6 beats of the last finished story, written while the new story builds. The first story gets the campaign's tagline.
+  async writeRecap(c, story, p) {
+    const last = p.done.filter((d) => d.id !== story.id).sort((a, b) => b.at - a.at)[0];
+    if (!last) return introRecap(c, story);
+    try {
+      return normalizeColdOpen(await this.ask(coldOpenRequest(c, last, story, p), "builder"), last.recap, story);
+    } catch (err) {
+      console.error(`[${this.code}] cold open failed:`, err?.message || err);
+      return null;
+    }
+  }
+
+  async playRecap(r) {
+    const s = this.state, c = s.config, camp = campaignById(s.campaign?.id), story = camp?.stories.find((x) => x.id === r?.for);
+    if (!story) return;
+    const nv = voiceFor(c.voices, { kind: "entity", entity: BUILTIN.narrator });
+    const talk = this.speaksOnScreens();
+    const texts = [...r.beats.map((b) => b.line), r.hook].filter(Boolean);
+    const clips = await Promise.all(texts.map((t) => (talk ? this.speech.speak(t, nv.voice, nv.fx).catch(() => null) : null)));
+    const GAP = 600;
+    let at = Date.now() + 1500;
+    const slot = (text, clip, min = 0) => {
+      const dur = Math.max(min, clip ? Math.round(clip.seconds * 1000) : Math.min(7000, 800 + text.length * 40));
+      const out = { at, dur, ...(clip ? { wav: clip.wav.toString("base64"), ...(clip.composed ? { composed: true } : {}) } : {}) };
+      at += dur + GAP;
+      return out;
+    };
+    const src = (b) => (!b.pic ? "" : b.kind === "adv" ? this.pictureSrc(b.pic) : b.pic.startsWith("kit/") ? `portraits/${b.pic.slice(4)}` : PICTURE_LINK.test(b.pic) ? b.pic : `api/sessions/${this.code}/portraits/${b.pic}`);
+    const cards = r.beats.map((b, i) => ({ text: b.line, who: b.who, src: src(b), credit: b.credit, ...slot(b.line, clips[i]) }));
+    const title = { line: `${camp.title} · STORY ${story.n} · ${story.title}`.toUpperCase(), hook: r.hook, ...(r.hook ? slot(r.hook, clips[cards.length], 3500) : { at, dur: 3500 }) };
+    const end = title.at + title.dur + 1500;
+    this.toPlayers({ t: "coldopen", id: newId("co", 4), campaign: camp.title.toUpperCase(), cards, title, end, fx: nv.fx || {} });
+    this.playhead = Math.max(this.playhead, end + 500);
+    this.addLog("note", `Cold open: "Previously on ${camp.title}" plays on every screen (${Math.round((end - Date.now()) / 1000)} seconds).`);
+  }
+
   async buildCampaignStory(c, story, p) {
+    const recapJob = this.writeRecap(c, story, p);
     let raw;
     for (let attempt = 1; ; attempt++) {
       try {
@@ -2135,6 +2178,8 @@ export class Session {
     if (up.entries.length) this.moneySync();
     this.syncHazards();
     this.sendHeader();
+    p.recap = await recapJob;
+    if (p.recap && this.state.campaign === p && this.state.config.coldOpen !== false) await this.playRecap(p.recap);
   }
 
   applyStory(draft, patch, keepClaims = false) {
@@ -3202,7 +3247,7 @@ export class Session {
     const story = c?.stories.find((t) => t.id === p.current);
     if (!story) return;
     const earned = (x.earned || []).filter((i) => Number.isInteger(i) && i >= 0 && i < (story.affinity || []).length);
-    const done = finishInto(p, c, s.config, x.recap?.verdict || x.ending, earned, s.station);
+    const done = finishInto(p, c, s.config, x.recap?.verdict || x.ending, earned, s.station, snapshotStory(s));
     if (!done) return;
     this.addLog("note", `Campaign story finished: ${story.title}.${p.done.at(-1).outcome ? ` ${p.done.at(-1).outcome}` : ""}`);
     const factions = done.changes.map((ch) => `${ch.name}: ${standingLabel(ch.from)} to ${standingLabel(ch.to)}${ch.why ? ` (${ch.why})` : ""}.`);
