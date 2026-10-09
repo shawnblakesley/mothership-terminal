@@ -605,14 +605,18 @@
   }
   let talking = new Set();
   const WAVE_COUNT = 36;
-  const waveHeight = (i, peak) => {
-    const x = (i + 0.5) / WAVE_COUNT;
-    return 0.25 + 0.75 * Math.sin((Math.PI / 2) * (x < peak ? x / peak : (1 - x) / (1 - peak)));
-  };
-  const WAVE_BARS = Array.from({ length: WAVE_COUNT }, (_, i) => `<i style="--h: ${waveHeight(i, 0.5).toFixed(2)}; --t: ${(1.1 + ((i * 7) % 11) * 0.1).toFixed(2)}s"></i>`).join("");
+  function waveShape() {
+    const humps = [0.3, 0.68].map((c) => ({ c: c + (Math.random() - 0.5) * 0.14, w: 0.1 + Math.random() * 0.08, a: 0.7 + Math.random() * 0.3 }));
+    return Array.from({ length: WAVE_COUNT }, (_, i) => {
+      const x = (i + 0.5) / WAVE_COUNT;
+      const hump = Math.max(...humps.map(({ c, w, a }) => a * Math.exp(-(((x - c) / w) ** 2))));
+      return Math.min(1, Math.max(0.15, 0.18 + 0.82 * hump + (Math.random() - 0.5) * 0.12));
+    });
+  }
+  const WAVE_BARS = waveShape().map((h, i) => `<i style="--h: ${h.toFixed(2)}; --t: ${(1.1 + ((i * 7) % 11) * 0.1).toFixed(2)}s"></i>`).join("");
   function skewWave(card) {
-    const peak = 0.5 + (Math.random() - 0.5) * 0.3;
-    card.querySelectorAll(".cb-waves i").forEach((bar, i) => bar.style.setProperty("--h", waveHeight(i, peak).toFixed(2)));
+    const heights = waveShape();
+    card.querySelectorAll(".cb-waves i").forEach((bar, i) => bar.style.setProperty("--h", heights[i].toFixed(2)));
   }
   function showTalking() {
     for (const el of $("cb-crew").querySelectorAll(".cb-pc")) {
