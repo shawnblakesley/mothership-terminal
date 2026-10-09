@@ -236,7 +236,7 @@ export const campaignList = () => CAMPAIGNS;
 // What the players' screens get of the sector: a whitelist, so nothing of a story's arc, adversary, secrets, cast or description can leak.
 export function sectorPayload(c, p) {
   const at = loc(c, p.at) || loc(c, c.start);
-  const spot = (s) => (s.at ? loc(c, s.at) : { x: (loc(c, s.from).x + loc(c, s.to).x) / 2, y: (loc(c, s.from).y + loc(c, s.to).y) / 2 });
+  const spot = (s) => (s.at ? { x: loc(c, s.at).x, y: loc(c, s.at).y + 30 } : { x: (loc(c, s.from).x + loc(c, s.to).x) / 2, y: (loc(c, s.from).y + loc(c, s.to).y) / 2 });
   const story = (id) => c.stories.find((s) => s.id === id);
   return {
     t: "sector",
