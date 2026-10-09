@@ -187,6 +187,11 @@
   };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
+  function newCanvas(w, h) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    return c;
+  }
   // (as big as the effects layer: the whole window, or on the stream page the part above the crew)
   function fullCanvas() {
     const c = document.createElement("canvas");
@@ -321,8 +326,7 @@
         D[o + 3] = Math.max(0, Math.min(255, (a + spec * 0.5) * 255 * cover));
       }
     }
-    const out = document.createElement("canvas");
-    out.width = w; out.height = h;
+    const out = newCanvas(w, h);
     out.getContext("2d").putImageData(img, 0, 0);
     return out;
   }
@@ -454,7 +458,6 @@
     // catches it, and bubbles caught inside. It sags from the top in heavy strands.
     goo(fx) {
       const { c, ctx, w, h } = fullCanvas();
-      c.className = "fx-canvas fx-goo";
       const fl = liquidField(w, h), noise = makeNoise(), veins = makeNoise(), glow = makeNoise(), lie = makeNoise();
       // The sheet along the top, its lower edge sagging into lobes.
       const band = h * (0.05 + fx.intensity * 0.04);
@@ -524,8 +527,7 @@
       }
       // It's alive: its inner light (and the motes in it) on a layer of its own that
       // throbs, while the whole mass breathes (player.css .fx-goo).
-      const glowSrc = document.createElement("canvas");
-      glowSrc.width = w; glowSrc.height = h;
+      const glowSrc = newCanvas(w, h);
       const gsctx = glowSrc.getContext("2d"), gimg = gsctx.createImageData(w, h), G = gimg.data;
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
@@ -546,8 +548,7 @@
         g.addColorStop(0, "rgba(200,255,140,0.85)"); g.addColorStop(1, "rgba(120,255,80,0)");
         gsctx.fillStyle = g; gsctx.fillRect(x - 6, y - 6, 12, 12);
       }
-      const glowC = document.createElement("canvas");
-      glowC.width = w; glowC.height = h;
+      const glowC = newCanvas(w, h);
       glowC.className = "fx-canvas goo-glow";
       const box = el("fx-goo");
       c.className = "fx-canvas";
@@ -714,8 +715,7 @@
       const k = fx.intensity || 2, reach = Math.min(w, h) * (0.07 + 0.05 * k), drift = makeNoise(), bend = makeNoise(), pace = makeNoise();
       const seconds = 110 - k * 13; // (to reach its full extent, at an average pace)
       // A faceted flake of frost (six-sided, not round), stamped along the branches as they grow.
-      const puff = document.createElement("canvas");
-      puff.width = puff.height = 32;
+      const puff = newCanvas(32, 32);
       const pctx = puff.getContext("2d");
       pctx.translate(16, 16);
       pctx.fillStyle = "rgba(210,232,255,0.1)"; pctx.strokeStyle = "rgba(230,245,255,0.16)"; pctx.lineWidth = 0.8;
@@ -894,7 +894,7 @@
       return { el: d };
     },
 
-    corrupt(fx) { return builders.glitch(fx); }, // (an old name: corrupted text is part of the glitch now)
+
   };
 
   // The screen's text decays (part of the glitch): characters turn to junk in sick

@@ -84,7 +84,6 @@ h3 { font-size: 12px; color: var(--muted); margin: 0; font-weight: 500; }
 .row.wrap { flex-wrap: wrap; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field > span { font-size: 12px; color: var(--muted); }
-.field em { font-style: normal; opacity: 0.7; }
 .check { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
 .check input { width: auto; accent-color: var(--accent-soft); }
 
@@ -132,7 +131,6 @@ h3 { font-size: 12px; color: var(--muted); margin: 0; font-weight: 500; }
 
 /* ---- effects ---- */
 .fxopts { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; }
-details .fxopts { grid-template-columns: 1fr 1fr; }
 .fxopts label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
 .fxgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
 .fxgrid button { padding: 9px 8px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12.5px; line-height: 1.2; background: var(--panel); border-radius: var(--radius); }
@@ -147,12 +145,9 @@ details .fxopts { grid-template-columns: 1fr 1fr; }
 .fxlist li.none { background: transparent; color: var(--muted); font-style: italic; padding-left: 2px; }
 
 /* ---- preview ---- */
-.preview { position: relative; width: 100%; aspect-ratio: 16 / 10; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #000; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45); }
-.preview iframe { position: absolute; top: 0; left: 0; width: 200%; height: 200%; transform: scale(0.5); transform-origin: 0 0; border: 0; }
 
 /* ---- session: start screen, code, key dialog, toasts ---- */
 body.starting > header.top, body.starting > .grid { display: none; }
-.start[hidden] { display: none; }
 .start { max-width: 640px; width: 100%; margin: 0 auto; padding: 40px 16px 48px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
 .start h1 { font: 600 18px var(--mono); letter-spacing: 0.2em; color: var(--accent); margin: 0; text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent); }
 .start .card { padding: 16px; }
@@ -172,7 +167,6 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(2px); }
 dialog h2 { margin: 0; font-size: 13px; color: var(--fg); }
 dialog h2::after { display: none; }
 #askDialog p { margin: 0; line-height: 1.5; color: color-mix(in srgb, var(--fg) 85%, var(--muted)); }
-#askDialog #askCopy { width: 100%; }
 #askButtons { flex-wrap: wrap; margin-top: 4px; }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 10; background: var(--panel3); border: 1px solid var(--line2); border-radius: 8px; padding: 8px 14px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); max-width: calc(100vw - 32px); }
 .toast.error { border-color: var(--danger); color: var(--danger); }
@@ -183,7 +177,6 @@ dialog h2::after { display: none; }
 .card.outcome .attempt { font-size: 15px; font-weight: 600; }
 .rollgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
 .rollgrid label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
-.rollgrid .wide { grid-column: 1 / -1; }
 #rollStatus { gap: 6px; }
 #rollStatus .res { font-family: var(--mono); white-space: pre-wrap; font-size: 13px; }
 #rollStatus .res.ok { color: var(--accent); }
@@ -251,7 +244,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .soundlist .sname:focus { background: var(--panel); }
 .soundlist button { padding: 4px 8px; font-size: 12.5px; }
 .soundlist input[type="range"], .fxlist input[type="range"] { padding: 0; border: 0; background: transparent; accent-color: var(--accent-soft); box-shadow: none; }
-.fxlist .pvol { width: 80px; }
 .volctl { display: inline-flex; align-items: center; gap: 4px; }
 .volctl input[type="range"] { width: 80px; }
 .volctl .volpct { width: 52px; padding: 3px 4px; text-align: right; font-size: 12.5px; }
@@ -272,10 +264,8 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .castbody .cname { flex: 1; min-width: 8em; font-weight: 600; }
 .castbody .where { display: inline-flex; align-items: baseline; gap: 4px; margin-left: auto; }
 .castbody .where select { width: auto; max-width: 200px; padding: 1px 4px; }
-.castbody .pill.ok { color: var(--accent); }
 .castm .pick.big { width: 64px; height: 64px; }
 .advm .check { display: inline-flex; align-items: center; gap: 4px; }
-.advm .check input { width: auto; }
 .advm input[type="color"] { width: 40px; height: 26px; padding: 1px; }
 .advm [data-aact="show"] { padding: 2px 8px; font-size: 12px; }
 /* Read-only: all of what it is, with the Warden's own line breaks, to look things up mid-game. */
@@ -292,8 +282,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .castchip { display: inline-block; border: 1px dashed var(--line); border-radius: 99px; padding: 2px 9px; font-size: 12px; margin: 0 4px 4px 0; }
 
 /* ---- station map ---- */
-#mapPanel summary { align-items: center; }
-#mapPanel summary .grow { flex: 1; }
 #mapExpand { padding: 2px 8px; font-weight: 400; font-size: 12px; }
 .smap { display: flex; flex-direction: column; gap: 10px; }
 /* The 3D view (isomap.js): a terminal-dark window onto the station. */
@@ -308,7 +296,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 /* ---- station schematic ---- */
 .mapview { margin-left: auto; }
 .mapview button { padding: 2px 10px; font-size: 12px; font-weight: 500; }
-#mapPanel summary .grow { display: none; }
 .mapdlg .row .mapview { margin-left: 8px; }
 
 /* ---- room view and floor plans (public/roomplan.js) ---- */
@@ -351,8 +338,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .pc { background: var(--panel2); padding: 7px 10px; }
 .pc summary { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-weight: 500; }
 .pc .pcname { font-weight: 600; }
-.pc .pill { margin-left: auto; color: var(--muted); }
-.pc .pill.ok { color: var(--accent); }
 .pcgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px 8px; }
 .pcgrid label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); min-width: 0; }
 .pcgrid label.wide { grid-column: 1 / -1; }
@@ -376,7 +361,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .btitle { font-size: 17px; font-weight: 700; }
 .bpre { white-space: pre-wrap; font-family: var(--mono); font-size: 12.5px; margin: 0; }
 .bcard { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
-.bcard ul { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; }
 .bcard + .bcard { margin-top: 6px; }
 .mono { font-family: var(--mono); }
 @media (max-width: 900px) { .bgrid { grid-template-columns: 1fr; overflow-y: auto; } .bmsgs { min-height: 300px; } }
@@ -412,13 +396,12 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .dvars .small { padding: 2px 6px; font-size: 12px; }
 
 /* ---- settings ---- */
-.settingsdlg { width: min(560px, calc(100vw - 32px)); }
+.settingsdlg { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; }
 /* Tabs (Session / Agent / Players / Discord): one panel at a time, the same height whichever it is. */
 .settingsdlg > .tabs { margin: 12px 0 2px; }
 .settingsdlg .tabpanel { gap: 6px; min-height: min(510px, 70vh); }
 .settingsdlg .tabpanel > .sethead:first-child, .settingsdlg #discordOn > .sethead:first-child { margin-top: 6px; }
 .settingsdlg .tabpanel > p.muted:first-child, .settingsdlg #discordOn > p.muted:first-child { margin: 10px 0 0; }
-.settingsdlg .fxopts { grid-template-columns: 1.4fr 1fr; margin-top: 10px; }
 .sethead { margin: 14px 0 0; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.12em; }
 .settingsdlg .check { align-items: flex-start; margin: 8px 0 0; }
 .settingsdlg .check input { margin-top: 5px; } /* (centred on the lowercase letters of the first line, not the line box: it looked high) */
@@ -459,7 +442,6 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .tabs { display: flex; width: 100%; }
 .tabs button { flex: 1; }
 .tabpanel { display: flex; flex-direction: column; gap: 10px; }
-.tabpanel[hidden] { display: none; }
 /* The side panel's tab bar stays at the top of its column while it scrolls
    (the shadow is the page colour, so nothing shows round it), with a
    highlight that slides to the chosen tab and panels that ease in. */
@@ -475,9 +457,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
    a draft reply, a roll in progress). Gone when nothing does. */
 .tray { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; flex-shrink: 0; }
 .tray:not(:has(> :not([hidden]))) { display: none; }
-.tray > .card { margin: 0; }
 .ocroll:not(:empty) { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
-.keyrow { align-items: center; }
 /* ---- the Warden's speech (speech-to-text, for the agent) ---- */
 :root { --heard: #e8b04a; }
 .entry.heard { background: color-mix(in srgb, var(--heard) 7%, var(--panel2)); border-color: color-mix(in srgb, var(--heard) 28%, transparent); }
@@ -554,14 +534,11 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .tplay .here { margin-left: auto; color: var(--accent); }
 .castv { margin: 4px 0 8px; }
 .castv b { font-size: 13px; }
-.castv ul { margin: 2px 0 0; padding-left: 18px; font-size: 13px; }
-.castv li { margin: 2px 0; }
 
 /* ---- phones: one view at a time (comms, or one side tab), picked from the
    bottom bar; the header on one line. ---- */
 .mnav { display: none; }
 @media (max-width: 760px) {
-  html, body { height: 100%; }
   body { height: 100dvh; }
   header.top { flex-wrap: nowrap; gap: 4px; padding: 6px 8px; overflow-x: auto; }
   header.top h1 { display: none; }
@@ -639,8 +616,4 @@ details.sec > summary::before { display: none; }
 details.sec > summary h2::before { content: "▸"; font-size: 10px; transition: transform 0.15s; display: inline-block; width: 8px; margin-right: -4px; }
 details.sec[open] > summary h2::before { transform: rotate(90deg); }
 details.sec > summary:hover h2 { color: var(--fg); }
-.settingsdlg { max-height: calc(100vh - 40px); overflow-y: auto; }
-.settingsdlg .agent select { width: auto; padding: 5px 7px; }
-.settingsdlg .agent select:disabled { display: none; }
-#mapPanel .seg button { padding: 2px 10px; font-size: 12px; }
 .top .ghost { color: var(--fg); }

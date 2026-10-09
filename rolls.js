@@ -16,6 +16,7 @@
 // rolls on their own screen against the numbers on their own sheet.
 import crypto from "crypto";
 import { findSkill } from "./crew.js";
+import { clampInt } from "./clean.js";
 
 export const CHECKS = {
   strength: { label: "Strength", kind: "Stat" },
@@ -34,10 +35,7 @@ export const checkInfo = (check) => (check === PANIC ? PANIC_CHECK : CHECKS[chec
 export const SKILL_LEVELS = { none: 0, trained: 10, expert: 15, master: 20 };
 export const ADVANTAGE = ["none", "advantage", "disadvantage"];
 
-const clampInt = (v, min, max) => {
-  const n = Math.round(Number(v));
-  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null;
-};
+
 
 // What the Warden asks for: who rolls (one character's id, or "all"), and what.
 // Their Stat/Save (or Stress, for panic) comes from their sheet when they roll, and so
@@ -88,7 +86,7 @@ export const diceFor = (req) => Array.from({ length: req.advantage === "none" ? 
 // bonus: the skill bonus this character gets (rollTarget).
 export function resolve(request, statValue, dice, bonus = request.bonus) {
   if (request.check === PANIC) return resolvePanic(request, statValue, dice);
-  const stat = clampInt(statValue, 1, 99);
+  const stat = clampInt(statValue, 1, 99, null);
   if (stat === null) throw new Error("Enter the Stat or Save value.");
   const need = request.advantage === "none" ? 1 : 2;
   if (dice.length !== need || dice.some((d) => !Number.isInteger(d) || d < 0 || d > 99)) {
@@ -107,7 +105,7 @@ export function resolve(request, statValue, dice, bonus = request.bonus) {
 
 // d20 against Stress: above it they keep their cool, otherwise they Panic.
 function resolvePanic(request, stressValue, dice) {
-  const stress = clampInt(stressValue, 0, 20) ?? 0;
+  const stress = clampInt(stressValue, 0, 20, 0);
   const need = request.advantage === "none" ? 1 : 2;
   if (dice.length !== need || dice.some((d) => !Number.isInteger(d) || d < 1 || d > 20)) {
     throw new Error(need === 1 ? "Enter one d20 roll (1-20)." : "Enter two d20 rolls (1-20).");

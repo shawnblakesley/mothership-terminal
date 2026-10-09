@@ -10,11 +10,18 @@
   let code = normCode(params.get("s"));
 
   const $ = (id) => document.getElementById(id);
+  // localStorage, where the browser allows it (else nothing is remembered).
+  const ls = {
+    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+    del: (k) => { try { localStorage.removeItem(k); } catch {} },
+  };
   const linesEl = $("lines"), screenEl = $("screen"), input = $("in"), form = $("inputrow");
   const caret = $("caret"), busyEl = $("busy"), promptEl = $("prompt");
 
   let header = { stationName: "----", accessLevel: "GUEST", theme: "green" };
   let ws, busy = false;
+  const send = (msg) => ws?.readyState === 1 && ws.send(JSON.stringify(msg));
   const history = [];
   let histIdx = -1;
 
@@ -144,7 +151,7 @@
   let bestRtt = Infinity;
   const serverNow = () => Date.now() + clockOffset;
   const untilServer = (t) => Math.max(0, t - serverNow());
-  function ping() { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: "ping", c: Date.now() })); }
+  function ping() { send({ t: "ping", c: Date.now() }); }
   function onPong({ c, s }) {
     const rtt = Date.now() - c;
     // Trust the quickest round trips (least skewed by network delay).
@@ -277,7 +284,7 @@
     for (const v of entry.variants || []) {
       const el = document.createElement("div");
       el.className = "var";
-      el.textContent = `\u21B3 ${v.to.map((id) => shortName(crew.find((c) => c.id === id) || { name: id })).join(", ")}: ${v.text}`;
+      el.textContent = `\u21B3 ${v.to.map(nameOf).join(", ")}: ${v.text}`;
       div.append(el);
     }
   }
@@ -551,7 +558,7 @@
     placeCaret();
     FX.Sound.beep(1400, 0.03, 0.04);
     if (/^(clear|cls)$/i.test(text)) { linesEl.innerHTML = ""; return; }
-    ws?.readyState === 1 && ws.send(JSON.stringify({ t: "input", text }));
+    send({ t: "input", text });
   });
 
   input.addEventListener("keydown", (e) => {
@@ -581,7 +588,7 @@
   const volBars = $("vol-bars"), volBtn = $("vol-mute");
   let volume = 0.8, muted = false;
   try {
-    const saved = JSON.parse(localStorage.getItem("terminal-volume") || "null");
+    const saved = JSON.parse(ls.get("terminal-volume") || "null");
     if (saved) ({ volume, muted } = saved);
   } catch {}
   volBars.innerHTML = Array.from({ length: 10 }, (_, i) => `<i data-v="${(i + 1) / 10}"></i>`).join("");
@@ -592,7 +599,7 @@
     volBtn.classList.toggle("muted", muted || volume === 0);
     volBtn.textContent = muted || volume === 0 ? "MUTE" : "VOL";
     volBars.setAttribute("aria-valuenow", String(muted ? 0 : volume * 10));
-    try { localStorage.setItem("terminal-volume", JSON.stringify({ volume, muted })); } catch {}
+    ls.set("terminal-volume", JSON.stringify({ volume, muted }));
   }
   const setFromPointer = (e) => {
     const b = e.target.closest("i");
@@ -624,13 +631,17 @@
   // The square (■): drawn by a stand-in font that sits it on the baseline; .sq lifts it to the letters' middle.
   const SQ = '<span class="sq">■</span>', sq = (html) => `${SQ} ${html} ${SQ}`;
   const escH = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  // A label's text; mid-glitch, the one it rots and puts back (data-orig: effects.js).
+  const setLabel = (el, t) => { if (el.dataset.orig !== undefined) el.dataset.orig = t; else el.textContent = t; };
+  // The crew picker's button to start on: their own file's, else the first.
+  const focusPick = () => ($("crewpick-list").querySelector("li.current button") || $("crewpick-list").querySelector("button"))?.focus();
 
   function openPanel(id) {
     if (id !== "docs") stopLog(); // (an audio log stops when its panel closes)
     for (const p of ["crewpick", "crewfile", "selfroll", "termpick", "solopick", "docs", "ending"]) $(p).hidden = p !== id;
     document.body.classList.toggle("panel-open", !!id);
     // (Not before power-on: the key that wakes the terminal would also press the button.)
-    if (id === "crewpick" && bootEl.classList.contains("gone")) ($("crewpick-list").querySelector("li.current button") || $("crewpick-list").querySelector("button"))?.focus();
+    if (id === "crewpick" && bootEl.classList.contains("gone")) focusPick();
     if (!id && !spectate) input.focus();
     renderSide(); // (out of the way while choosing a character)
   }
@@ -662,8 +673,7 @@
   function renderCastbar() {
     if (!stream) return;
     if (stationMap) {
-      const people = Object.fromEntries(Object.entries(stationMap.people).map(([room, ids]) => [room, ids.map((id) => shortName(crew.find((c) => c.id === id) || { name: id }))]));
-      StationMap.mini($("cb-map"), stationMap.layout, people);
+      StationMap.mini($("cb-map"), stationMap.layout, peopleNames(stationMap.people));
     }
     const pcs = played.map((p) => ({ ...p, c: crew.find((c) => c.id === p.id) })).filter((p) => p.c);
     $("cb-crew").innerHTML = pcs.map(({ c, by }) => {
@@ -679,6 +689,9 @@
 
   // A nickname in quotes ("Rook", 'Beck') if there is one, else the first name.
   const shortName = (c) => (c.name.match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || c.name.split(" ")[0]).toUpperCase();
+  const nameOf = (id) => shortName(crew.find((c) => c.id === id) || { name: id });
+  // Who is in which room, as the map shows them: { room: [short names] }.
+  const peopleNames = (people) => Object.fromEntries(Object.entries(people).map(([room, ids]) => [room, ids.map((id) => nameOf(id))]));
 
   function renderPicker() {
     $("crewpick-list").innerHTML = crew.map((c, i) => {
@@ -694,7 +707,7 @@
     const c = mine();
     if (!c) return;
     const cur = field === "stress" ? c.stress : c[field].current;
-    ws?.readyState === 1 && ws.send(JSON.stringify({ t: "vitals", field, value: cur + d }));
+    send({ t: "vitals", field, value: cur + d });
     FX.Sound.beep(d > 0 ? 760 : 520, 0.05, 0.05);
   }
   for (const el of ["side", "crewfile-body"]) {
@@ -784,8 +797,7 @@
   // ---- the sidebar: the player's sheet beside the terminal (when there's room).
   // Normally 30% of the row; widened (up to half) when the status report wouldn't fit in that.
   // If it wouldn't fit even in half, there's no sidebar: FILE opens the full sheet instead.
-  let sideOpen = true;
-  try { sideOpen = localStorage.getItem("side-open") !== "0"; } catch {}
+  let sideOpen = ls.get("side-open") !== "0";
   function sideNeed(c) {
     // (the status report at its narrowest, measured off-screen in the sidebar's type)
     const m = document.createElement("div");
@@ -830,16 +842,16 @@
   });
   function setSide(open) {
     sideOpen = open;
-    try { localStorage.setItem("side-open", open ? "1" : "0"); } catch {}
+    ls.set("side-open", open ? "1" : "0");
     renderSide();
     if (!spectate) input.focus();
   }
 
   function claim(id) {
     myId = id;
-    try { localStorage.setItem(crewKey(), id || "none"); } catch {}
-    ws?.readyState === 1 && ws.send(JSON.stringify({ t: "claim", id }));
-    setCrew(crew, claims);
+    ls.set(crewKey(), id || "none");
+    send({ t: "claim", id });
+    setCrew(crew, claims, played);
     if (curRoll) showRoll(curRoll); // (a roll may be waiting on this character)
     FX.Sound.beep(880, 0.06, 0.05);
   }
@@ -847,8 +859,7 @@
   // After (re)connecting: reclaim this device's file, or ask which one is theirs.
   function crewOnInit() {
     if (spectate || !crew.length) return;
-    let saved = null;
-    try { saved = localStorage.getItem(crewKey()); } catch {}
+    const saved = ls.get(crewKey());
     if (saved === "none") return claim(null);
     if (saved && crew.some((c) => c.id === saved)) return claim(saved);
     renderPicker();
@@ -865,10 +876,8 @@
   }
   function openCrewfile(picking) {
     confirming = picking;
-    // (Mid-glitch, the label it rots and puts back is in data-orig: effects.js.)
-    const label = (b, t) => { if (b.dataset.orig !== undefined) b.dataset.orig = t; else b.textContent = t; };
-    label($("crewfile-close"), picking ? "[ BACK ]" : "[ CLOSE ]");
-    label($("crewfile-change"), picking ? "[ SELECT ]" : "[ CHANGE ]");
+    setLabel($("crewfile-close"), picking ? "[ BACK ]" : "[ CLOSE ]");
+    setLabel($("crewfile-change"), picking ? "[ SELECT ]" : "[ CHANGE ]");
     openPanel("crewfile");
   }
   $("crewpick-list").addEventListener("click", (e) => {
@@ -957,7 +966,7 @@
 
   // ---- audio logs: a handout with a voice. PLAY speaks it a line at a time, with the voice's
   // effects, lighting up each line of the transcript as it's said; STOP (or closing it) stops it.
-  let log = null; // { id, gen, clip } while one plays
+  let log = null; // { clip } while one plays
   let logGen = 0;
   const logHtml = (d) => `<div class="alog" data-alog="${escH(d.id)}">
       <div class="alog-head"><span>VOICE: ${escH(d.audio.speaker.toUpperCase())}</span><span class="alog-state">READY</span></div>
@@ -973,7 +982,7 @@
     stopLog();
     FX.Sound.unlock();
     const gen = logGen, box = $("docs-body").querySelector(".alog"), lines = [...box.querySelectorAll(".alog-line")];
-    log = { id: d.id, clip: null };
+    log = { clip: null };
     const state = (t) => { box.querySelector(".alog-state").textContent = t; };
     const buttons = (playing) => { box.querySelector("[data-alog-play]").hidden = playing; box.querySelector("[data-alog-stop]").hidden = !playing; };
     buttons(true);
@@ -1045,11 +1054,6 @@
   // their key, and this screen keeps the session's token to prove it (PILOT:
   // the AI, the story, inviting others). Everyone sees the stories on offer;
   // the pilot picks one, the AI builds it and runs the whole game.
-  const ls = {
-    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
-    set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
-    del: (k) => { try { localStorage.removeItem(k); } catch {} },
-  };
   const pilotKey = () => `pilot:${code}`;
   for (const b of document.querySelectorAll(".dlg-close")) b.onclick = () => b.closest("dialog").close();
 
@@ -1188,15 +1192,15 @@
     $("pl-keystatus").textContent = p.configured ? "A key is set for this game." : "No key yet. Add one so the AI can answer.";
   }
   $("hdr-pilot").onclick = () => { renderPilot(); $("pilotDlg").showModal(); };
-  const pilotSend = (msg) => ws?.readyState === 1 && ws.send(JSON.stringify(msg));
-  $("pl-provider").onchange = (e) => pilotSend({ t: "pilotConfig", patch: { provider: e.target.value } });
-  $("pl-model").onchange = (e) => pilotSend({ t: "pilotConfig", patch: { model: e.target.value } });
-  $("pl-effort").onchange = (e) => pilotSend({ t: "pilotConfig", patch: { effort: e.target.value } });
+
+  $("pl-provider").onchange = (e) => send({ t: "pilotConfig", patch: { provider: e.target.value } });
+  $("pl-model").onchange = (e) => send({ t: "pilotConfig", patch: { model: e.target.value } });
+  $("pl-effort").onchange = (e) => send({ t: "pilotConfig", patch: { effort: e.target.value } });
   $("pl-keysave").onclick = () => {
     const key = $("pl-key").value.trim();
     if (!key) return;
-    pilotSend({ t: "pilotKey", provider: $("pl-provider").value, key });
-    pilotSend({ t: "pilotConfig", patch: { provider: $("pl-provider").value } });
+    send({ t: "pilotKey", provider: $("pl-provider").value, key });
+    send({ t: "pilotConfig", patch: { provider: $("pl-provider").value } });
     $("pl-key").value = "";
   };
   $("pl-copy").onclick = async () => {
@@ -1206,17 +1210,17 @@
   };
   $("pl-wrapup").onclick = () => {
     if (!confirm("Wrap up the story here? Everyone gets THE END and a recap.")) return;
-    pilotSend({ t: "pilotWrapUp" });
+    send({ t: "pilotWrapUp" });
     $("pilotDlg").close();
   };
   $("pl-newstory").onclick = () => {
     if (!confirm("Choose a new story? The current one ends for everyone.")) return;
-    pilotSend({ t: "pilotNewStory" });
+    send({ t: "pilotNewStory" });
     $("pilotDlg").close();
   };
   $("pl-end").onclick = () => {
     if (!confirm("End the game for everyone?")) return;
-    pilotSend({ t: "pilotEnd" });
+    send({ t: "pilotEnd" });
     ls.del(pilotKey());
   };
   // While a dialog is open the terminal's own shortcuts stand down (as for the rules).
@@ -1236,7 +1240,8 @@
   // FLICKER: less flicker, blinking and flashing on this screen (remembered on this device). Off
   // to start with for anyone whose system asks for reduced motion.
   let calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  try { const v = localStorage.getItem("calm"); if (v !== null) calm = v === "1"; } catch {}
+  const savedCalm = ls.get("calm");
+  if (savedCalm !== null) calm = savedCalm === "1";
   function applyCalm() {
     document.body.classList.toggle("calm", calm);
     $("hdr-calm").textContent = calm ? "FLICKER: OFF" : "FLICKER: ON";
@@ -1244,7 +1249,7 @@
   }
   $("hdr-calm").onclick = () => {
     calm = !calm;
-    try { localStorage.setItem("calm", calm ? "1" : "0"); } catch {}
+    ls.set("calm", calm ? "1" : "0");
     applyCalm();
     input.focus();
   };
@@ -1259,15 +1264,13 @@
     // No crew file yet (FILE: NONE): straight to the crew picker (or close it again).
     if (!mine()) {
       if (!$("crewpick").hidden) return openPanel(null);
-      renderPicker();
-      openPanel("crewpick");
-      return $("crewpick-list").querySelector("button")?.focus();
+      return toPicker();
     }
-    if (mine() && wide() && $("crewfile").hidden && $("crewpick").hidden) return setSide(!sideOpen);
+    if (wide() && $("crewfile").hidden && $("crewpick").hidden) return setSide(!sideOpen);
     renderFile();
     if ($("crewfile").hidden) openCrewfile(false); else openPanel(null);
   };
-  const toPicker = () => { renderPicker(); openPanel("crewpick"); ($("crewpick-list").querySelector("li.current button") || $("crewpick-list").querySelector("button"))?.focus(); };
+  const toPicker = () => { renderPicker(); openPanel("crewpick"); focusPick(); };
   $("crewfile-close").onclick = () => (confirming ? toPicker() : openPanel(null));
   $("crewfile-change").onclick = () => (confirming ? openPanel(null) : toPicker());
   addEventListener("keydown", (e) => {
@@ -1285,16 +1288,15 @@
   // After (re)connecting: go back to this device's terminal, or the first one open.
   function terminalOnInit() {
     if (spectate || !terminals().length) return applyTerminal();
-    let saved = null;
-    try { saved = localStorage.getItem(termKey()); } catch {}
+    const saved = ls.get(termKey());
     // (Only one they can reach now: a new story or a sealed door may have moved them.)
     const t = terminals().find((x) => x.id === (termId || saved) && x.open) || terminals().find((x) => x.open);
     if (t) setTerminal(t.id, true);
   }
   function setTerminal(id, tell) {
     termId = id;
-    try { localStorage.setItem(termKey(), id); } catch {}
-    if (tell) ws?.readyState === 1 && ws.send(JSON.stringify({ t: "terminal", id }));
+    ls.set(termKey(), id);
+    if (tell) send({ t: "terminal", id });
     applyTerminal();
   }
 
@@ -1412,11 +1414,13 @@
     renderSelfRoll();
     $("selfroll").querySelector(`[data-${b.dataset.skill !== undefined ? "skill" : "adv"}="${CSS.escape(b.dataset.skill ?? b.dataset.adv)}"]`)?.focus();
   });
+  // Dice typed in by hand: every number in it.
+  const readDice = (text) => text.split(/[^0-9]+/).filter(Boolean).map(Number);
   function sendSelfRoll(manual) {
     if (!sr) return;
     const msg = { t: "selfRoll", check: sr.check, skill: sr.skill, advantage: sr.adv };
     if (manual) {
-      const dice = $("sr-dice").value.split(/[^0-9]+/).filter(Boolean).map(Number);
+      const dice = readDice($("sr-dice").value);
       const need = sr.adv === "none" ? 1 : 2;
       if (dice.length !== need || dice.some((d) => d > 99)) {
         $("sr-err").textContent = need === 1 ? "ENTER ONE D100 ROLL (00-99)." : "ENTER BOTH D100 ROLLS, E.G. 47 82.";
@@ -1424,7 +1428,7 @@
       }
       Object.assign(msg, { manual: true, dice });
     }
-    ws?.readyState === 1 && ws.send(JSON.stringify(msg));
+    send(msg);
     sr = null;
     openPanel(null);
   }
@@ -1482,7 +1486,7 @@
     if (!curRoll) return;
     const msg = { t: "roll", id: curRoll.id };
     if (manual) {
-      const dice = rbDice.value.split(/[^0-9]+/).filter(Boolean).map(Number);
+      const dice = readDice(rbDice.value);
       const need = curRoll.advantage === "none" ? 1 : 2;
       const [lo, hi, die, eg] = curRoll.panic ? [1, 20, "D20", "14 6"] : [0, 99, "D100", "47 82"];
       if (dice.length !== need || dice.some((d) => d < lo || d > hi)) {
@@ -1492,7 +1496,7 @@
       Object.assign(msg, { manual: true, dice });
     }
     rbErr.textContent = "ROLLING...";
-    ws?.readyState === 1 && ws.send(JSON.stringify(msg));
+    send(msg);
   }
 
   $("rb-form").addEventListener("submit", (e) => { e.preventDefault(); sendRoll(rbDice.value.trim() !== ""); });
@@ -1548,9 +1552,10 @@
     if (!rows) return;
     fx.querySelector(".pf-title").textContent = `LAYOUT: ${String(name || "").toUpperCase()}`;
     fx.querySelector(".pf-plan").innerHTML = RoomPlan.svg(rows, { cell: 24, title: name });
-    FX.Sound.beep(520, 0.08, 0.05);
-    setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90);
+    chirp();
   }
+  // Two rising beeps: something's come up on the screen.
+  function chirp() { FX.Sound.beep(520, 0.08, 0.05); setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90); }
   // An adversary's picture (the agent's reveal, as its line begins; or the Warden's Show):
   // in the panel beside the terminal, tinted to the screen's colour, so the dialogue
   // stays in view. Closes with a click, Esc or [ CLOSE ].
@@ -1558,7 +1563,7 @@
     if (!src) return FX.Sound.sting(); // (revealed, but no picture: just the sting)
     const box = $("reveal");
     const rvTitle = box.querySelector(".rv-title"), t = String(title || name || "").toUpperCase();
-    if (rvTitle.dataset.orig !== undefined) rvTitle.dataset.orig = t; else rvTitle.textContent = t; // (mid-glitch: effects.js puts it back)
+    setLabel(rvTitle, t);
     // (a credit's link stays clickable: everything else in it is text)
     const link = (t) => escH(t).replace(/(https?:\/\/[^\s<]+|[\w-]+(?:\.[\w-]+)+\/[^\s<]*)/g, (u) => `<a href="${u.startsWith("http") ? u : `https://${u}`}" target="_blank" rel="noopener">${u}</a>`);
     box.querySelector(".rv-pic").innerHTML = `<img src="${escH(src)}" alt="" referrerpolicy="no-referrer">`;
@@ -1583,16 +1588,15 @@
   function setIso(map) {
     const box = $("isofx"), body = box.querySelector(".if-map");
     if (!map) { isoOn = false; return closeIso(); }
-    isoData = { ...map, editable: false, people: Object.fromEntries(Object.entries(map.people || {}).map(([room, ids]) => [room, ids.map((id) => shortName(crew.find((c) => c.id === id) || { name: id }))])) };
+    isoData = { ...map, editable: false, people: peopleNames(map.people || {}) };
     if (!isoOn) {
       isoOn = true;
       box.hidden = false;
-      FX.Sound.beep(520, 0.08, 0.05);
-      setTimeout(() => FX.Sound.beep(780, 0.1, 0.05), 90);
+      chirp();
     }
     if (box.hidden) return;
     body.classList.toggle("iso", map.view === "iso");
-    $("isofx").querySelector(".if-close").textContent = map.view === "iso" ? "[ DRAG TO TURN · ESC TO CLOSE ]" : "[ ESC TO CLOSE ]";
+    box.querySelector(".if-close").textContent = map.view === "iso" ? "[ DRAG TO TURN · ESC TO CLOSE ]" : "[ ESC TO CLOSE ]";
     if (map.view !== "iso") {
       if (isoView) { isoView.dispose(); isoView = null; }
       body.innerHTML = '<div class="smap"></div>';
@@ -1621,10 +1625,8 @@
     u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
     if (stream) { u.searchParams.set("stream", "1"); return u; } // (no terminal: it sees them all)
     // Where this screen was, so the server starts it on that system's log.
-    let term = termId;
-    try { term ||= localStorage.getItem(termKey()); } catch {}
+    const term = termId || ls.get(termKey());
     if (term) u.searchParams.set("term", term);
-    u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
     return u;
   }
 

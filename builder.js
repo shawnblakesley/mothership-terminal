@@ -58,12 +58,12 @@ const strDesc = (description) => ({ type: "string", description });
 const obj = (properties) => ({ type: "object", additionalProperties: false, required: Object.keys(properties), properties });
 const num = { type: "integer" };
 
-export const CHAT_SCHEMA = obj({
+const CHAT_SCHEMA = obj({
   reply: strDesc("Your message to the Warden."),
   ready: { type: "boolean", description: "True once there's enough to draft the whole scenario." },
 });
 
-export const DRAFT_SCHEMA = obj({
+const DRAFT_SCHEMA = obj({
   title: str,
   pitch: str,
   stationName: str,
@@ -179,12 +179,11 @@ export function applyDraft(d) {
   const terminal = { ...base.find((v) => v.id === BUILTIN.terminal), name: d.computer.name, persona: d.computer.persona || base[0].persona };
   const broadcast = { ...base.find((v) => v.id === BUILTIN.broadcast), persona: d.broadcastPersona || base[1].persona };
   const others = d.voices.map((v) => {
-    const voice = {
+    return {
       id: v.id || v.name, name: v.name, style: "label", color: v.color, persona: v.persona, ...fromPreset(v.preset),
       // System names to net keys ("" the station, "*" everywhere); none: the station.
       systems: (v.systems || []).map((n) => (/^all$/i.test(n) ? "*" : netKey(n) === netKey(d.stationName) ? "" : netKey(n))).filter((n, i, a) => a.indexOf(n) === i),
     };
-    return voice;
   });
   // Every story has an intercom for the cast to be heard over (the draft's, or the default one).
   const idOf = (v) => String(v.id || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40); // (as sanitizeVoices makes it)
@@ -227,7 +226,7 @@ export function applyDraft(d) {
       cast: sanitizeCast(cast),
       castChannel: idOf(channel),
       // The story's terminals (the players start at the first open one), plus a portable unit.
-      terminals: sanitizeTerminals([...d.terminals, DEFAULT_TERMINALS.find((t) => t.portable || t.id === "portable")]),
+      terminals: sanitizeTerminals([...d.terminals, DEFAULT_TERMINALS.find((t) => t.id === "portable")]),
       // Documents the players start with (in everyone's DOCS; a story restart hands them out again).
       startDocs: (d.documents || []).map((x, i) => ({ id: `doc-start-${i + 1}`, title: x.title, text: x.text, to: "", at: 0 })),
     },

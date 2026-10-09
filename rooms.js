@@ -4,6 +4,8 @@
 // (the layout only: who and what is in the room stays with the Warden).
 // public/roomplan.js draws them.
 
+import { roomId } from "./clean.js";
+
 // Keep in step with public/roomplan.js (TILES).
 export const TILES = {
   " ": "outside (no room here)",
@@ -37,7 +39,7 @@ export function sanitizeRows(rows) {
 export function sanitizeRooms(raw) {
   const out = {};
   for (const [id, r] of Object.entries(raw && typeof raw === "object" ? raw : {})) {
-    const key = String(id).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 60);
+    const key = roomId(id);
     const rows = sanitizeRows(r?.rows);
     if (key && rows) out[key] = { rows };
   }

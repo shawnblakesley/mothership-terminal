@@ -8,8 +8,9 @@
 //   wrapup: after the one-shot: the story of what happened (secrets and all), and
 //     an epilogue for each character: what became of them afterwards.
 import { crewBrief, crewStatus } from "./crew.js";
-import { terminalsBrief } from "./terminals.js";
-import { voiceIdOf } from "./agent.js";
+import { terminalsBrief, screensBrief } from "./terminals.js";
+import { voiceIdOf, playerTag } from "./agent.js";
+import { attitudeLabel } from "./cast.js";
 
 const LOG_ENTRIES = 200; // most recent log entries the synopsis reads
 const ENTRY_CHARS = 600;
@@ -37,7 +38,7 @@ WARDEN-ONLY SECTIONS (audience "warden"): for the Warden's eyes only.
 Plain text, no markdown headings or bold.`;
 
 const str = { type: "string" };
-export const SYNOPSIS_SCHEMA = {
+const SYNOPSIS_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: ["sections"],
@@ -60,7 +61,7 @@ const clip = (s) => { const t = String(s ?? ""); return t.length > ENTRY_CHARS ?
 export function logLine(e, voices) {
   const vars = (e.variants || []).map((v) => `\n    (only ${v.for} sees: ${clip(v.text)})`).join("");
   switch (e.kind) {
-    case "player": return `[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}] ${clip(e.text)}`;
+    case "player": return `${playerTag(e)} ${clip(e.text)}`;
     case "roll": return `[ROLL] ${clip(e.text).replace(/\n/g, " · ")}`;
     case "warden": return `[WARDEN COMMAND, private] ${clip(e.text)}`;
     case "aside": return `[WARDEN NOTE, private] ${clip(e.text)}`;
@@ -93,12 +94,12 @@ export function synopsisRequest(state, screens = [], kind = "sofar") {
     screens = [];
   }
   const c = state.config;
-  const log = kind === "prebrief" ? [] : state.log.filter((e) => !e.cut && (e.text || e.variants?.length));
+  const log = kind === "prebrief" ? [] : shownLog(state);
   // Started = something has been typed or said at the terminal (not just Warden notes).
   const started = log.some((e) => e.kind === "player" || ["terminal", "system", "entity"].includes(e.kind));
-  const feels = (m) => ({ "-3": "hostile", "-2": "resentful", "-1": "wary", 1: "friendly", 2: "trusting", 3: "loyal" })[m.attitude] || "neutral";
+  const feels = (m) => attitudeLabel(m.attitude).toLowerCase();
   const cast = (c.cast || []).map((m) => `- ${m.name} (${m.room ? `in ${m.room}` : "nowhere on the map"}; ${feels(m)} towards the players${m.why ? `, because ${m.why}` : ""})${m.notes ? `: ${m.notes}` : ""}`);
-  const where = screens.map((s) => `- ${s.character || "a screen with no crew file"}: ${c.terminals.find((t) => t.id === s.terminal)?.name || s.terminal}`);
+  const where = screensBrief(screens, c.terminals);
   const context = [
     `STATION NAME: ${c.stationName}`,
     `STATION LORE (public):\n${c.lore || "(none)"}`,
@@ -110,7 +111,7 @@ export function synopsisRequest(state, screens = [], kind = "sofar") {
     cast.length ? `CAST (people who can speak):\n${cast.join("\n")}` : "",
     c.terminals?.length ? `TERMINALS:\n${terminalsBrief(c.terminals)}${where.length ? `\n\nWHERE THE PLAYERS ARE NOW:\n${where.join("\n")}` : ""}` : "",
   ].filter(Boolean).join("\n\n");
-  const comms = `COMMS LOG (oldest first; private lines were never seen by the players):\n${log.slice(-LOG_ENTRIES).map((e) => logLine(e, c.voices)).join("\n")}`;
+  const comms = `COMMS LOG (oldest first; private lines were never seen by the players):\n${logText(log, c.voices)}`;
   if (kind === "wrapup") {
     return {
       started,
@@ -145,7 +146,7 @@ const RECAP = `A Mothership (sci-fi horror TTRPG) story the players were playing
   3. "The crew": one bullet per character: their fate (made it out, died, lost their mind, left behind...) and one moment that defined them.
 Plain text, no markdown.`;
 
-export const RECAP_SCHEMA = {
+const RECAP_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: ["verdict", "sections"],
@@ -157,7 +158,7 @@ export const RECAP_SCHEMA = {
 
 export function recapRequest(state, how) {
   const c = state.config;
-  const log = state.log.filter((e) => !e.cut && (e.text || e.variants?.length));
+  const log = shownLog(state);
   const context = [
     `STATION NAME: ${c.stationName}`,
     `STATION LORE:\n${c.lore || "(none)"}`,
@@ -167,26 +168,27 @@ export function recapRequest(state, how) {
   return {
     system: RECAP,
     context,
-    messages: [{ role: "user", content: `COMMS LOG (oldest first):\n${log.slice(-LOG_ENTRIES).map((e) => logLine(e, c.voices)).join("\n")}\n\nHOW IT ENDED: ${how || "(the players called it a night)"}\n\nWrite the recap.` }],
+    messages: [{ role: "user", content: `COMMS LOG (oldest first):\n${logText(log, c.voices)}\n\nHOW IT ENDED: ${how || "(the players called it a night)"}\n\nWrite the recap.` }],
     schema: RECAP_SCHEMA,
     example: { verdict: "...", sections: [{ heading: "What happened", text: "- ..." }, { heading: "The truth", text: "- ..." }, { heading: "The crew", text: "- ..." }] },
   };
 }
 
+// The sections the model wrote that have text: at most `max`, each cut to size.
+const sectionsOf = (raw, max) => (Array.isArray(raw?.sections) ? raw.sections : []).filter((x) => x && String(x.text ?? "").trim()).slice(0, max);
+
 export function normalizeRecap(raw) {
-  const sections = (Array.isArray(raw?.sections) ? raw.sections : [])
-    .filter((x) => x && String(x.text ?? "").trim())
-    .slice(0, 6)
-    .map((x) => ({ heading: String(x.heading ?? "").slice(0, 80), text: String(x.text).trim().slice(0, 4000) }));
+  const sections = sectionsOf(raw, 6).map((x) => ({ heading: String(x.heading ?? "").slice(0, 80), text: String(x.text).trim().slice(0, 4000) }));
   if (!sections.length) throw new Error("the recap came back empty");
   return { verdict: String(raw?.verdict ?? "").trim().slice(0, 200), sections };
 }
 
 export function normalizeSynopsis(raw) {
-  const sections = (Array.isArray(raw?.sections) ? raw.sections : [])
-    .filter((x) => x && String(x.text ?? "").trim())
-    .slice(0, 12)
-    .map((x) => ({ heading: String(x.heading ?? "").slice(0, 120), audience: x.audience === "warden" ? "warden" : "players", text: String(x.text).trim().slice(0, 6000) }));
+  const sections = sectionsOf(raw, 12).map((x) => ({ heading: String(x.heading ?? "").slice(0, 120), audience: x.audience === "warden" ? "warden" : "players", text: String(x.text).trim().slice(0, 6000) }));
   if (!sections.length) throw new Error("The model returned an empty synopsis. Try again.");
   return sections;
 }
+
+// The log as it played out (nothing cut, nothing empty), and its latest entries as text.
+function shownLog(state) { return state.log.filter((e) => !e.cut && (e.text || e.variants?.length)); }
+function logText(log, voices) { return log.slice(-LOG_ENTRIES).map((e) => logLine(e, voices)).join("\n"); }

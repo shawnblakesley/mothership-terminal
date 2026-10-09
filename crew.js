@@ -2,6 +2,7 @@
 // players pick from. Each player screen claims one; the Warden sees and edits
 // them all, and the agent knows who is who.
 import { PORTRAIT_FILE } from "./cast.js";
+import { slug, clampInt as int } from "./clean.js";
 
 export const MAX_CREW = 4;
 export const CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
@@ -93,11 +94,7 @@ const DEFAULT_FACES = { rusk: "94", varga: "20", moll: "45", oyelaran: "21" };
 for (const c of DEFAULT_CREW) c.portrait = `kit/sfcp-${DEFAULT_FACES[c.id]}.png`;
 
 const str = (v, n) => String(v ?? "").slice(0, n);
-const int = (v, min, max, def) => {
-  const x = Math.round(Number(v));
-  return Number.isFinite(x) ? Math.min(max, Math.max(min, x)) : def;
-};
-const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+
 
 // Validate crew from the console or the story builder.
 export function sanitizeCrew(list) {
@@ -158,7 +155,7 @@ export function resolveVariants(list, crew) {
 }
 
 // Health, wounds and stress: set one (clamped to the sheet). Returns [old, new].
-export const VITALS = ["health", "wounds", "stress"];
+const VITALS = ["health", "wounds", "stress"];
 export function setVital(pc, field, value) {
   const n = Math.round(Number(value));
   if (!Number.isFinite(n) || !VITALS.includes(field)) return null;

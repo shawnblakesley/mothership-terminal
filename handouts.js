@@ -4,6 +4,7 @@
 // Warden reads and edits it before handing it out (session.js "handouts").
 import { crewBrief } from "./crew.js";
 import { logLine } from "./synopsis.js";
+import { docTitle, docText } from "./roomdocs.js";
 
 const RECENT = 40; // log entries it reads, for what has happened so far
 
@@ -49,8 +50,8 @@ export function handoutRequest(state, brief, title = "", speaker = "") {
 }
 
 export function normalizeHandout(r) {
-  const title = String(r?.title ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
-  const text = String(r?.text ?? "").replace(/\r/g, "").trim().slice(0, 6000);
+  const title = docTitle(r?.title);
+  const text = docText(r?.text);
   if (!title || !text) throw new Error("the document came back empty");
   return { title, text };
 }

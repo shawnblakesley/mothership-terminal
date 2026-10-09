@@ -41,20 +41,8 @@
   }
 
   function enqueue(response, fx) {
-    const audio = response
-      .then((r) => (r.ok && r.status !== 204 ? r.arrayBuffer() : null))
-      .then((buf) => (buf ? ctx().decodeAudioData(buf) : null))
-      .catch(() => null);
-    const item = { audio, fx: fx || {} };
-    const handle = {
-      started: new Promise((r) => (item.onStart = r)),
-      ended: new Promise((r) => (item.onEnd = r)),
-    };
-    // Settle both promises (for clips that never play).
-    item.settle = () => { item.onStart(); item.onEnd(false); }; // ended -> false: never played
-    queue.push(item);
+    queue.push({ audio: decodeResponse(response), fx: fx || {} });
     if (!playing) next(gen);
-    return handle;
   }
 
   async function next(myGen) {
@@ -63,14 +51,14 @@
     if (!item) { playing = false; return; }
     playing = true;
     const buffer = await item.audio;
-    if (myGen !== gen) return item.settle();
+    if (myGen !== gen) return;
     // Blocked (e.g. a blackout): wait it out, then carry on speaking. (What was
     // playing when it started was cut off by interrupt().)
     while (blocked()) {
       await new Promise((r) => setTimeout(r, 150));
-      if (myGen !== gen) return item.settle();
+      if (myGen !== gen) return;
     }
-    if (!buffer || !ready()) { item.settle(); return next(myGen); }
+    if (!buffer || !ready()) return next(myGen);
     await play(buffer, item, myGen);
     setTimeout(() => next(myGen), 250);
   }
@@ -85,10 +73,8 @@
       const finish = () => {
         if (done) return;
         done = true;
-        item.onEnd(true);
         resolve();
-        // Let reverb/echo tails ring out before stopping modulators and noise.
-        setTimeout(() => sources.forEach((s) => { try { s.stop(); } catch {} }), 6000);
+        stopLater(sources);
       };
       src.onended = finish;
       // interrupt() cuts just this clip; the queue carries on.
@@ -100,11 +86,17 @@
       src.addEventListener("ended", () => clearInterval(watch));
       sources.forEach((s) => s.start());
       src.start();
-      item.onStart();
     });
   }
 
   // -------------------------------------------------------------- helpers
+  // A fetched clip, decoded (null if there's none, or it won't decode).
+  const decodeResponse = (response) => response
+    .then((r) => (r.ok && r.status !== 204 ? r.arrayBuffer() : null))
+    .then((buf) => (buf ? ctx().decodeAudioData(buf) : null))
+    .catch(() => null);
+  // A clip's effect sources, stopped once its reverb/echo tails have rung out.
+  const stopLater = (sources) => setTimeout(() => sources.forEach((s) => { try { s.stop(); } catch {} }), 6000);
   const gain = (c, v) => { const g = c.createGain(); g.gain.value = v; return g; };
   const filter = (c, type, freq, q = 0.7) => {
     const f = c.createBiquadFilter();
@@ -225,12 +217,7 @@
   // then play it at its moment. A screen that's late starts part-way in, so
   // every screen stays in step.
   const live = new Set();
-  function load(url) {
-    return fetch(url)
-      .then((r) => (r.ok && r.status !== 204 ? r.arrayBuffer() : null))
-      .then((buf) => (buf ? ctx().decodeAudioData(buf) : null))
-      .catch(() => null);
-  }
+  const load = (url) => decodeResponse(fetch(url));
   // A clip sent inline (base64 WAV) with the line.
   function decode(b64) {
     try {
@@ -258,7 +245,7 @@
     live.add(src);
     src.onended = () => {
       live.delete(src);
-      setTimeout(() => sources.forEach((x) => { try { x.stop(); } catch {} }), 6000); // let tails ring out
+      stopLater(sources);
     };
     sources.forEach((x) => x.start(when));
     src.start(when);
@@ -273,7 +260,7 @@
     const done = new Promise((resolve) => {
       src.onended = () => {
         resolve(!stopped);
-        setTimeout(() => sources.forEach((x) => { try { x.stop(); } catch {} }), 6000); // (let tails ring out)
+        stopLater(sources);
       };
     });
     sources.forEach((x) => x.start());
@@ -285,7 +272,6 @@
   function stop() {
     gen++;
     cutLive();
-    for (const item of queue) item.settle(); // let any text waiting on these appear
     queue.length = 0;
     playing = false;
     if (master) {

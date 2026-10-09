@@ -2,12 +2,13 @@
 // the conversation rebuilt from a session's log, the reply schema, and parsing.
 // Pure functions of a session's state; no I/O here.
 import crypto from "crypto";
-import { BUILTIN, SPEAKERS, shownName } from "./voices.js";
+import { BUILTIN, SPEAKERS, shownName, ABBREVIATION, SENTENCE, HIDDEN_DOT } from "./voices.js";
 import { channelOf, attitudeLabel } from "./cast.js";
-import { CHECKS } from "./rolls.js";
+import { CHECKS, PANIC, ADVANTAGE } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
-import { terminalsBrief, netOf, systemsOf, systemName } from "./terminals.js";
+import { terminalsBrief, netOf, systemsOf, systemName, screensBrief } from "./terminals.js";
 import { TILES } from "./rooms.js";
+import { roomId } from "./clean.js";
 
 // Every effect the player screen can render. The agent may only trigger the
 // "electronic" ones; blood/goo/crack/ice are physical and stay in the Warden's hands.
@@ -32,7 +33,9 @@ const WARDEN_NOTE_TAG = `[WARDEN NOTE · AUTH ${WARDEN_CODE} · private: the pla
 const WARDEN_SPOKE_TAG = `[WARDEN SPOKE ALOUD AT THE TABLE · AUTH ${WARDEN_CODE} · speech-to-text]`;
 const TABLE_TAG = "[TABLE TALK"; // + " · <who> · speech-to-text]": a player talking on the group's voice chat
 // Who said it: "<character>'s player, <their name>" once the Warden has said who plays whom.
-export const tableWho = (e) => (e.playing ? `${e.playing}'s player, ${e.speaker || "unnamed"}` : e.speaker || "a player");
+// A player's input as the agent reads it: [PLAYER · who · at where].
+export const playerTag = (e) => `[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}]`;
+const tableWho = (e) => (e.playing ? `${e.playing}'s player, ${e.speaker || "unnamed"}` : e.speaker || "a player");
 
 // Log kinds map to voices: "terminal" = the terminal voice, "system" = broadcasts,
 // "entity" = any other voice (entry.entity holds its id).
@@ -98,7 +101,7 @@ function mergeAdjacent(lines) {
 }
 
 // Per-player variants of a line: [{ for: "MOLL-7" | "Android", text }].
-export function normalizeVariants(list) {
+function normalizeVariants(list) {
   return (Array.isArray(list) ? list : [])
     .filter((v) => v && String(v.for ?? "").trim() && typeof v.text === "string")
     .slice(0, 8)
@@ -110,6 +113,23 @@ export function normalizeEffects(list) {
     .filter((e) => e && AGENT_EFFECTS.includes(effectType(e.type)))
     .map((e) => ({ type: effectType(e.type), text: String(e.text ?? "").slice(0, 200), seconds: Math.max(0, Math.min(3600, Number(e.seconds) || 0)) }));
 }
+
+// The outcome check: a reply's, and the whole answer to a precheck.
+const outcomeCheckSchema = () => ({
+  type: "object",
+  description: "Hand an uncertain player action to the Warden (see RULE OF COOL). needed=false when nothing is left undecided.",
+  additionalProperties: false,
+  required: ["needed", "attempt", "suggested_check", "advantage", "why", "on_success", "on_failure"],
+  properties: {
+    needed: { type: "boolean" },
+    attempt: { type: "string", description: "What the players are attempting, in a few words (empty if not needed)." },
+    suggested_check: { type: "string", enum: ["none", ...Object.keys(CHECKS), PANIC], description: "The Mothership Stat or Save that fits, if a roll seems right; panic for a Panic check (d20 against Stress) after something truly horrifying." },
+    advantage: { type: "string", enum: [...ADVANTAGE], description: "Suggest [+] if their approach is clever or well set up, [-] if it's rushed or hampered." },
+    why: { type: "string", description: "One line for the Warden: why it's uncertain." },
+    on_success: { type: "string", description: "The stakes, if it works: what happens, in one short sentence (empty if not needed)." },
+    on_failure: { type: "string", description: "The stakes, if it fails: what goes wrong or gets worse and where that leaves them (a complication or a new way forward, never just 'nothing happens'), in one short sentence (empty if not needed)." },
+  },
+});
 
 // Built per request: the voice list is the Warden's to change at any time.
 function buildSchema(voices) {
@@ -281,21 +301,7 @@ function buildSchema(voices) {
         description: "Screen effects that fire immediately, as the reply starts. For timing between lines, use a line's own effects instead. Usually empty.",
         items: effectSchema(),
       },
-      outcome_check: {
-        type: "object",
-        description: "Hand an uncertain player action to the Warden (see RULE OF COOL). needed=false when nothing is left undecided.",
-        additionalProperties: false,
-        required: ["needed", "attempt", "suggested_check", "advantage", "why", "on_success", "on_failure"],
-        properties: {
-          needed: { type: "boolean" },
-          attempt: { type: "string", description: "What the players are attempting, in a few words (empty if not needed)." },
-          suggested_check: { type: "string", enum: ["none", ...Object.keys(CHECKS), "panic"], description: "The Mothership Stat or Save that fits, if a roll seems right; panic for a Panic check (d20 against Stress) after something truly horrifying." },
-          advantage: { type: "string", enum: ["none", "advantage", "disadvantage"], description: "Suggest [+] if their approach is clever or well set up, [-] if it's rushed or hampered." },
-          why: { type: "string", description: "One line for the Warden: why it's uncertain." },
-          on_success: { type: "string", description: "The stakes, if it works: what happens, in one short sentence (empty if not needed)." },
-          on_failure: { type: "string", description: "The stakes, if it fails: what goes wrong or gets worse and where that leaves them (a complication or a new way forward, never just 'nothing happens'), in one short sentence (empty if not needed)." },
-        },
-      },
+      outcome_check: outcomeCheckSchema(),
       story_end: {
         type: "object",
         description: "Only in a game with NO WARDEN (see NO WARDEN): ended=true when this reply is the story's final scene. Otherwise ended=false and how=\"\".",
@@ -586,7 +592,7 @@ function buildMessages(state) {
     if (!last || last.role !== role) turns.push((last = { role, inputs: [], lines: [], changes: [], crew: [], items: [], moves: [], cast: [], clocks: [], handouts: [], effects: [], notes: [], layout: "", plans: [] }));
     if (e.layout) last.layout = e.layout;
     if (e.roomPlans) last.plans.push(...e.roomPlans);
-    if (e.kind === "player") last.inputs.push(`[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}] ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
+    if (e.kind === "player") last.inputs.push(`${playerTag(e)} ${JSON.stringify(e.text.replaceAll(WARDEN_CODE, "######"))}`);
     else if (e.kind === "roll") last.inputs.push(`[ROLL RESULT] ${e.text.replace(/\n/g, " · ")}${e.cast ? (e.panicEffect ? ` (their panic: ${e.panicEffect} Play it out now, fully, in the fiction.)` : " (they hold it together, barely: show it.)") : e.panicEffect ? ` (their panic, from the panic table: ${e.panicEffect} Show it in the fiction now; Stress and anything lasting it does to their rolls or sheet are the Warden's to apply.)` : rollMargin(e.text)}`);
     else if (e.kind === "warden") last.inputs.push(`${WARDEN_TAG} ${e.text}`);
     else if (e.kind === "aside") last.inputs.push(`${WARDEN_NOTE_TAG} ${e.text}`);
@@ -641,14 +647,14 @@ If needed: attempt = what they're trying, in a few words; suggested_check = the 
 export function buildPrecheck(state) {
   const c = state.config;
   const recent = state.log.filter((e) => !["note", "aside", "aside_reply"].includes(e.kind) && !e.cut).slice(-12)
-    .map((e) => (e.kind === "player" ? `[PLAYER${e.by ? ` · ${e.by}` : ""}${e.at ? ` · at ${e.at}` : ""}] ${JSON.stringify(e.text)}` : e.kind === "warden" ? `[WARDEN] ${e.text}` : e.kind === "heard" ? `[WARDEN, ALOUD AT THE TABLE] ${e.text}` : e.kind === "table" ? `[TABLE TALK · ${tableWho(e)}] ${JSON.stringify(e.text)}` : `[${(e.entity || e.kind).toUpperCase()}] ${e.text}`))
+    .map((e) => (e.kind === "player" ? `${playerTag(e)} ${JSON.stringify(e.text)}` : e.kind === "warden" ? `[WARDEN] ${e.text}` : e.kind === "heard" ? `[WARDEN, ALOUD AT THE TABLE] ${e.text}` : e.kind === "table" ? `[TABLE TALK · ${tableWho(e)}] ${JSON.stringify(e.text)}` : `[${(e.entity || e.kind).toUpperCase()}] ${e.text}`))
     .join("\n");
   const last = state.log.findLast((e) => e.kind === "player");
   return {
     system: PRECHECK,
     context: [`STATION: ${c.stationName}`, `SECRETS:\n${c.secrets || "(none)"}`, `STATION STATE:\n${JSON.stringify(state.station)}`].join("\n\n"),
     messages: [{ role: "user", content: `RECENT:\n${recent}\n\nLATEST PLAYER INPUT: ${JSON.stringify(last?.text || "")}\n\nDoes it need the Warden's call first?` }],
-    schema: buildSchema(c.voices).properties.outcome_check,
+    schema: outcomeCheckSchema(),
     example: { needed: true, attempt: "log in as admin with password THAW", suggested_check: "none", advantage: "none", why: "Matches the admin password in SECRETS.", on_success: "They're in as ADMIN: full system access.", on_failure: "Locked out, and the failed login alerts Okonkwo's console." },
   };
 }
@@ -679,15 +685,14 @@ export function limitLength(reply, talk) {
     const out = [];
     let left = n;
     // ("Dr. Hale" is one sentence: abbreviation dots are hidden while counting.)
-    const abbr = /\b(Dr|Mr|Mrs|Ms|St|Sgt|Lt|Capt|No|vs)\./g;
-    for (const row of String(text).replace(abbr, "$1․").split("\n")) {
+    for (const row of String(text).replace(ABBREVIATION, `$1${HIDDEN_DOT}`).split("\n")) {
       if (left <= 0) break;
-      const parts = row.match(/[^.!?…]+(?:[.!?…]+["')\]]*|$)\s*/g) || [row];
+      const parts = row.match(SENTENCE) || [row];
       const keep = parts.slice(0, left);
       left -= keep.filter((p) => p.trim()).length;
       out.push(keep.join("").trimEnd());
     }
-    return out.join("\n").replaceAll("․", ".").trim();
+    return out.join("\n").replaceAll(HIDDEN_DOT, ".").trim();
   };
   const trim = (voice, text) => (voice === BUILTIN.terminal
     ? String(text).split("\n").slice(0, rows).join("\n")
@@ -704,7 +709,7 @@ export function limitLength(reply, talk) {
 // Per-turn context: live station state plus any Warden steering.
 // aside: answering a private Warden note (no lines for the players).
 // The voices the agent may use: all of them, but the narrator only while the Warden has it on.
-export const agentVoices = (config) => config.voices.filter((v) => v.id !== BUILTIN.narrator || config.narrator !== false);
+const agentVoices = (config) => config.voices.filter((v) => v.id !== BUILTIN.narrator || config.narrator !== false);
 
 // A game without a Warden: the agent is the Warden too.
 const SOLO = `NO WARDEN: nobody is running this game but you. The players chose this story and are playing it on their own, so you are the Warden as well as every voice.
@@ -744,7 +749,7 @@ function buildContext(state, steer, aside = false) {
   if (lying.length) ctx.push(`FILES IN ROOMS (not found yet; you may hand the players one that's in the room they're in, when they search it or pull it up on a terminal there):\n${lying.map((d) => `- ${d.id} [${d.room}] ${d.title} (${d.voice ? "audio recording" : "document"}): ${d.text.replace(/\s+/g, " ").slice(0, 140)}`).join("\n")}`);
   if (state.clocks?.length) ctx.push(`CLOCKS (countdowns on the players' screens, running now):\n${state.clocks.map((c) => `- ${c.label}: ${c.paused ? `${c.left}s left, paused by the Warden` : `${Math.max(0, Math.round((c.ends - Date.now()) / 1000))}s left`}`).join("\n")}`);
   if (state.config.terminals?.length) {
-    const at = (state.screens || []).map((s) => `- ${s.character || "a screen with no crew file"}: ${state.config.terminals.find((t) => t.id === s.terminal)?.name || s.terminal}`);
+    const at = screensBrief(state.screens || [], state.config.terminals);
     ctx.push(`TERMINALS ON THE STATION:\n${terminalsBrief(state.config.terminals)}\n\nWHERE THE PLAYERS ARE (which terminal each player's screen is):\n${at.join("\n") || "- (nobody has chosen yet)"}`);
     // Separate systems (ships, outposts...) each show only the lines sent on them.
     const systems = systemsOf(state.config);
@@ -854,7 +859,7 @@ export function parseReply(text, voices) {
     story_end: { ended: r?.story_end?.ended === true, how: String(r?.story_end?.how ?? "").trim().slice(0, 300) },
     layout: String(r?.layout ?? "").trim().slice(0, 4000),
     room_plans: (Array.isArray(r?.room_plans) ? r.room_plans : []).filter((p) => p && p.room && Array.isArray(p.rows)).slice(0, 8)
-      .map((p) => ({ room: String(p.room).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 60), rows: p.rows.map(String) })),
+      .map((p) => ({ room: roomId(p.room), rows: p.rows.map(String) })),
     dm_note: String(r?.dm_note ?? ""),
   };
 }
@@ -864,8 +869,8 @@ function normalizeCheck(c) {
   return {
     needed: true,
     attempt: String(c.attempt ?? "").slice(0, 140),
-    suggested_check: CHECKS[c.suggested_check] || c.suggested_check === "panic" ? c.suggested_check : "none",
-    advantage: ["advantage", "disadvantage"].includes(c.advantage) ? c.advantage : "none",
+    suggested_check: CHECKS[c.suggested_check] || c.suggested_check === PANIC ? c.suggested_check : "none",
+    advantage: ADVANTAGE.includes(c.advantage) ? c.advantage : "none",
     why: String(c.why ?? "").slice(0, 300),
     on_success: String(c.on_success ?? "").slice(0, 200),
     on_failure: String(c.on_failure ?? "").slice(0, 200),

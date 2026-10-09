@@ -8,6 +8,7 @@
 // time. The chain is worked out at 24 kHz (the voices are no brighter than that)
 // and doubled to 48 kHz at the end.
 import { Worker, isMainThread, parentPort } from "worker_threads";
+import { FX_PARAMS } from "./voices.js";
 
 const SR = 24000;
 
@@ -164,11 +165,9 @@ function convolve(input, n) {
 // voice.js chain(), sample by sample: band-limit, saturate, ring mod, then the dry
 // voice, comb, chorus, echo and radio hiss, with a shared reverb fed by the voice,
 // chorus and echoes.
-export function render(wav, fx = {}) {
-  const p = {
-    rate: 1, highpass: 80, lowpass: 9000, drive: 0, ringMix: 0, ringFreq: 55, comb: 0, combMs: 6,
-    chorus: 0, echo: 0, echoTime: 0.4, echoFeedback: 0.35, reverb: 0, noise: 0, dry: 1, ...fx,
-  };
+const FX_DEFAULTS = Object.fromEntries(Object.entries(FX_PARAMS).map(([k, [, , def]]) => [k, def]));
+function render(wav, fx = {}) {
+  const p = { ...FX_DEFAULTS, ...fx };
   const src = readWav(wav, p.rate || 1);
   if (!src || !src.length) return null;
   const len = src.length;

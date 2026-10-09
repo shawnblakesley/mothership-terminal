@@ -4,6 +4,7 @@
 // the vents...). Each has a display style, an eSpeak base voice, and a Web Audio
 // effect chain (applied in the player's browser by public/voice.js).
 
+import { clampInt } from "./clean.js";
 export const BUILTIN = { terminal: "terminal", broadcast: "broadcast", narrator: "narrator" };
 // Adversaries (the creature, the thing in the walls) are voices with an "adversary"
 // part: { revealed, picture }. Until the players see one, its lines show as "???";
@@ -196,11 +197,15 @@ export const OLD_DEFAULT_PERSONAS = {
 // One sentence per line: human voices are spoken a line at a time, so the first
 // sentence can play while the rest is still being voiced. ("Dr. Vale" stays whole.)
 export function sentenceLines(text) {
-  const abbr = /\b(Dr|Mr|Mrs|Ms|St|Sgt|Lt|Capt|No|vs)\./g;
-  return String(text).replace(abbr, "$1\u2024").split("\n")
-    .flatMap((row) => (row.match(/[^.!?…]+(?:[.!?…]+["')\]]*|$)\s*/g) || [row]).map((s) => s.trim()))
-    .filter(Boolean).join("\n").replaceAll("\u2024", ".");
+  return String(text).replace(ABBREVIATION, `$1${HIDDEN_DOT}`).split("\n")
+    .flatMap((row) => (row.match(SENTENCE) || [row]).map((s) => s.trim()))
+    .filter(Boolean).join("\n").replaceAll(HIDDEN_DOT, ".");
 }
+// Splitting text into sentences (here and agent.js limitLength): abbreviations' dots
+// are hidden first (as HIDDEN_DOT, a one-dot leader), so "Dr. Vale" stays whole.
+export const ABBREVIATION = /\b(Dr|Mr|Mrs|Ms|St|Sgt|Lt|Capt|No|vs)\./g;
+export const SENTENCE = /[^.!?…]+(?:[.!?…]+["')\]]*|$)\s*/g;
+export const HIDDEN_DOT = "\u2024";
 
 export const speechParts = (text) => String(text).split(/\n+/).map((s) => s.trim()).filter(Boolean);
 
@@ -210,7 +215,7 @@ export const speechParts = (text) => String(text).split(/\n+/).map((s) => s.trim
 // computer only on the tug; the entity is in every machine.
 const SHIP_NET = "second-chance"; // (netOf(SHIP_TERMINAL))
 const DEFAULT_SYSTEMS = { ship: [SHIP_NET], unknown: ["*"], narrator: ["*"] }; // (the narrator is the room, not a machine)
-export const defaultSystemsFor = (id) => [...(DEFAULT_SYSTEMS[id] || [""])];
+const defaultSystemsFor = (id) => [...(DEFAULT_SYSTEMS[id] || [""])];
 
 // The narrator: a plain, calm human voice describing the scene, in every adventure.
 // Always white, whatever the terminal's colour (the player screen enforces it too).
@@ -238,10 +243,6 @@ export function shipVoice() {
   return { id: "ship", name: "SECOND CHANCE", style: "label", color: "#ffb347", persona: DEFAULT_PERSONAS.ship, systems: defaultSystemsFor("ship"), ...fromPreset("radio") };
 }
 
-const clampInt = (v, min, max, def) => {
-  const n = Math.round(Number(v));
-  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
-};
 
 // Validate whatever the DM console sends; always keep the two built-ins.
 export function sanitizeVoices(list) {

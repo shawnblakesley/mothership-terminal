@@ -46,7 +46,7 @@ const links = new Map(); // guild id -> { session, guildName, channelId, channel
 // For the Warden console: whether the bot is on, how to invite it, and where it's listening.
 export function discordStatus(sessionCode) {
   if (!discordEnabled) return null;
-  const link = [...links.values()].find((l) => l.session === sessionCode);
+  const link = linkOf(sessionCode);
   return { invite: inviteUrl, listening: link ? { guild: link.guildName, channel: link.channelName, warden: link.wardenName } : null };
 }
 

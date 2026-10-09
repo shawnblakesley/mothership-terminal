@@ -6,15 +6,21 @@
 //   speaker (a voice id, or "cast:<id>"), and text is what's said, a line at a time,
 //   "NAME: ..." starting someone else's lines (session.js logParts).
 
+import { roomId } from "./clean.js";
+
 export const MAX_ROOM_DOCS = 60;
+
+// A document's title (one line) and text, as kept (handouts.js too).
+export const docTitle = (s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+export const docText = (s) => String(s ?? "").replace(/\r/g, "").trim().slice(0, 6000);
 
 export function sanitizeRoomDocs(list) {
   const out = [], ids = new Set();
   for (const d of Array.isArray(list) ? list : []) {
     const id = String(d?.id || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40);
-    const room = String(d?.room || "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 60);
-    const title = String(d?.title ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
-    const text = String(d?.text ?? "").replace(/\r/g, "").trim().slice(0, 6000);
+    const room = roomId(d?.room);
+    const title = docTitle(d?.title);
+    const text = docText(d?.text);
     if (!id || ids.has(id) || !room || !title || !text) continue;
     ids.add(id);
     out.push({ id, room, title, text, voice: String(d?.voice || "").slice(0, 60) });

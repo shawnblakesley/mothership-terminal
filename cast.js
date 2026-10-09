@@ -12,6 +12,7 @@
 // Sci-fi character portraits project, CC BY-NC 4.0, credited on the players'
 // screens while one is in use.
 import { SPEAKERS, COMMS_PRESETS, voiceFor } from "./voices.js";
+import { slug as keySlug, roomId } from "./clean.js";
 
 export const MAX_CAST = 40;
 // How someone feels about the players: everyone starts Neutral; the agent (and the Warden) move it.
@@ -63,7 +64,7 @@ export function panicEntry(n) {
 // A portrait file: an upload, or one that comes with the app (the crew's use these too).
 export const PORTRAIT_FILE = /^([a-f0-9]{12}\.(png|jpg|webp|gif)|kit\/[a-z0-9_-]{1,60}\.(png|jpg))$/;
 
-const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "someone";
+const slug = (s) => keySlug(s) || "someone";
 
 // KESTREL-9's people, where they are when the crew arrives.
 export const OLD_MARLOWE_NOTES = "Runs the reactor deck. Blunt, practical, swears. Wants the cargo bay opened and dealt with; has no patience for Okonkwo.";
@@ -99,7 +100,7 @@ export function sanitizeCast(list) {
       name,
       voice: SPEAKERS[c.voice] ? c.voice : "",
       notes: String(c?.notes || "").slice(0, 1500),
-      room: String(c?.room || "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 60),
+      room: roomId(c?.room),
       portrait: PORTRAIT_FILE.test(c?.portrait || "") ? c.portrait : "",
       attitude: clampAttitude(c?.attitude),
       why: String(c?.why || "").slice(0, 160),

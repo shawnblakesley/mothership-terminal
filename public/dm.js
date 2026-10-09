@@ -25,12 +25,23 @@
 
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const send = (msg) => ws?.readyState === 1 && ws.send(JSON.stringify(msg));
+  // A file to the server (a picture or a sound), as the Warden. Returns its JSON reply.
+  async function upload(url, body) {
+    const r = await fetch(url, { method: "POST", headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" }, body });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(out.error || `Upload failed (${r.status}).`);
+    return out;
+  }
   const time = (ts) => new Date(ts).toTimeString().slice(0, 5);
+  // Who is at a terminal: their crew names ("a screen" for one with none).
+  const screensAt = (id) => (S.screens || []).filter((s) => s.terminal === id).map((s) => s.character || "a screen");
 
   // Each effect's icon (flat line icons from Lucide, ISC licence: lucide.dev) and name.
   // A skill as the Warden reads and edits it: "Hacking +15" (crew.js keeps { name, bonus }).
   const skillStr = (s) => (typeof s === "string" ? s : `${s.name} +${s.bonus}`);
   const fxIcon = (inner) => `<svg class="fxi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+  // An effect as the Warden sees it in a reply: icon, type, its text, how long.
+  const fxLabel = (f, icon) => `${FX_META[f.type]?.[0] || icon} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s`;
   const FX_META = {
     blood: [fxIcon('<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>'), "Blood"],
     goo: [fxIcon('<path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/>'), "Goo"],
@@ -394,6 +405,8 @@
     $("discordCmd").value = listenCommand();
   }
 
+  // <option>s for [value, label] pairs, with `selected` on the current one.
+  const optionsHtml = (pairs, current) => pairs.map(([v, label]) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(label)}</option>`).join("");
   function fillSelect(sel, options, value) {
     const html = options.map(([v, label]) => `<option value="${esc(v)}">${esc(label)}</option>`).join("");
     if (sel.dataset.html !== html) { sel.innerHTML = html; sel.dataset.html = html; }
@@ -409,7 +422,6 @@
     fillSelect($("effort"), m.efforts.map((e) => [e, e === "off" ? "thinking off" : `effort ${e}`]), effort);
     $("effort").disabled = !m.efforts.length;
     $("keywarn").hidden = p.configured;
-    $("keywarn").textContent = "Add an LLM key";
   }
 
   let lastLogLen = -1;
@@ -511,7 +523,7 @@
       ${r.station_changes.length ? `<div class="label">Station changes</div><ul>${r.station_changes.map((c, i) =>
         `<li><label><input type="checkbox" data-chg="${i}" checked> ${esc(c.path)} → ${esc(c.value)}</label></li>`).join("")}</ul>` : ""}
       ${r.effects.length ? `<div class="label">Effects</div><ul>${r.effects.map((f, i) =>
-        `<li><label><input type="checkbox" data-eff="${i}" ${S.config.agentEffects ? "checked" : ""}> ${FX_META[f.type]?.[0] || ""} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s</label></li>`).join("")}</ul>` : ""}
+        `<li><label><input type="checkbox" data-eff="${i}" ${S.config.agentEffects ? "checked" : ""}> ${fxLabel(f, "")}</label></li>`).join("")}</ul>` : ""}
       ${r.outcome_check?.needed ? `<div class="note">⚖ Your call: <b>${esc(r.outcome_check.attempt)}</b>${r.outcome_check.suggested_check !== "none" ? ` · suggests ${esc(checkName(r.outcome_check.suggested_check))}${advMark(r.outcome_check.advantage)}` : ""}</div>` : ""}
       ${r.dm_note ? `<div class="note">Agent note: ${esc(r.dm_note)}</div>` : ""}
       <div class="row"><button data-act="approve" class="primary">Send to players</button><button data-act="discard" class="ghost">Discard</button></div>
@@ -527,7 +539,7 @@
     const want = netKey(system);
     const sel = want === "all" ? "ALL" : names.find((n) => netKey(n) === want) || "";
     const opts = [["", "(where they are)"], ...names.map((n) => [n, n]), ["ALL", "to All"]];
-    return `<select class="dsys" aria-label="System" title="System that shows this line">${opts.map(([v, label]) => `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>`;
+    return `<select class="dsys" aria-label="System" title="System that shows this line">${optionsHtml(opts, sel)}</select>`;
   };
 
   // One editable line of a draft: who says it, and what.
@@ -535,7 +547,7 @@
   const draftLine = (l) => `
     <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}">
       <div class="dwho">
-        <select aria-label="Voice">${S.config.voices.map((v) => `<option value="${esc(v.id)}" ${v.id === l.voice ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
+        <select aria-label="Voice">${optionsHtml(S.config.voices.map((v) => [v.id, v.name]), l.voice)}</select>
         ${sysSelect(l.system)}
         <input class="dchar" list="castNames" value="${esc(l.character || "")}" placeholder="who" aria-label="Character" title="Speaking character" ${l.voice === S.config.castChannel || l.character ? "" : "hidden"}>
       </div>
@@ -543,7 +555,7 @@
       <button data-act="delLine" class="ghost" title="Remove line">✕</button>
       <div class="dvars">${(l.variants || []).map(variantRow).join("")}
         <button data-act="addVar" class="ghost small" title="Alternate line for a player or class">+ Variant</button></div>
-      ${l.effects?.length ? `<div class="dfx">${l.effects.map((f, i) => `<label class="chip"><input type="checkbox" data-leff="${i}" ${S.config.agentEffects ? "checked" : ""}> ${FX_META[f.type]?.[0] || "⚡"} ${esc(f.type)}${f.text ? ` "${esc(f.text)}"` : ""} · ${f.seconds || "∞"}s <span class="muted">as this line starts</span></label>`).join("")}</div>` : ""}
+      ${l.effects?.length ? `<div class="dfx">${l.effects.map((f, i) => `<label class="chip"><input type="checkbox" data-leff="${i}" ${S.config.agentEffects ? "checked" : ""}> ${fxLabel(f, "⚡")} <span class="muted">as this line starts</span></label>`).join("")}</div>` : ""}
     </div>`;
   const variantRow = (v) => `<div class="dvar">
       <input class="dvfor" list="variantTargets" value="${esc(v.for)}" placeholder="for: name or class" aria-label="Variant for">
@@ -571,6 +583,7 @@
   // ------------------------------------------------------------ crew (player characters)
   const CREW_CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
   let crewDraft = null, crewTimer = null, crewSentAt = 0;
+  const sendCrewNow = () => { crewSentAt = 0; send({ t: "crew", crew: crewDraft }); };
 
   function renderCrew(fromDraft = false) {
     const panel = $("crew");
@@ -589,7 +602,7 @@
       const playing = S.claims?.[c.id] || 0;
       const onDiscord = discordReady() && S.discord.players?.find((p) => p.crew === c.id); // (who plays them on Discord)
       return `<details class="pc" data-i="${i}">
-        <summary><button class="pick small" data-pcpic="${i}" title="${c.portrait ? "Change their picture" : "Add a picture"}" aria-label="Picture of ${esc(c.name)}">${c.portrait ? `<img src="${esc(portraitUrl(c.portrait))}" alt="">` : `<span>${esc(initials(c.name) || "+")}</span>`}</button><span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
+        <summary>${pickButton(c, `class="pick small" data-pcpic="${i}"`)}<span class="pcname ${playing ? "online" : "offline"}" title="${playing ? `Playing on ${playing} screen${playing > 1 ? "s" : ""}` : "No player has picked them"}">${esc(c.name || "Unnamed")}</span>${onDiscord ? `<span class="dlogo" title="Played on Discord by ${esc(onDiscord.name)}" aria-label="On Discord: ${esc(onDiscord.name)}">${DISCORD_ICON}</span>` : ""}
           <span class="muted small">${esc(c.className)} · Stress ${c.stress} · HP ${c.health.current}/${c.health.max}</span>
           ${playing ? `<span class="muted small where">at <select data-move="${esc(c.id)}" title="Move to another terminal" aria-label="Move ${esc(c.name)} to">${
             (whereIs(c.id) ? "" : '<option value="" selected>(none yet)</option>') + S.config.terminals.map((t) =>
@@ -630,6 +643,8 @@
   const ATTITUDES = [[-3, "Hostile"], [-2, "Resentful"], [-1, "Wary"], [0, "Neutral"], [1, "Friendly"], [2, "Trusting"], [3, "Loyal"]];
   const portraitUrl = (file) => (file.startsWith("kit/") ? `portraits/${file.slice(4)}` : `api/sessions/${code}/portraits/${file}`);
   const initials = (name) => { const w = name.split(/\s+/).filter(Boolean); return ((w[0]?.[0] || "") + (w.length > 1 ? w.at(-1)[0] : "")).toUpperCase(); };
+  // The button showing someone's picture (or initials), that changes it.
+  const pickButton = (m, attrs) => `<button ${attrs} title="${m.portrait ? "Change their picture" : "Add a picture"}" aria-label="Picture of ${esc(m.name)}">${m.portrait ? `<img src="${esc(portraitUrl(m.portrait))}" alt="">` : `<span>${esc(initials(m.name) || "+")}</span>`}</button>`;
   function renderCast(fromDraft = false) {
     const panel = $("cast");
     if (!fromDraft) {
@@ -644,13 +659,13 @@
     const withPlayers = new Set((S.screens || []).map((sc) => S.config.terminals.find((t) => t.id === sc.terminal)?.room).filter(Boolean));
     const speakers = Object.entries(S.voiceOptions.speakers);
     panel.innerHTML = castDraft.map((m, i) => `<div class="castm" data-i="${i}">
-        <button class="pick" data-mact="pic" title="${m.portrait ? "Change their picture" : "Add a picture"}" aria-label="Picture of ${esc(m.name)}">${m.portrait ? `<img src="${esc(portraitUrl(m.portrait))}" alt="">` : `<span>${esc(initials(m.name) || "+")}</span>`}</button>
+        ${pickButton(m, `class="pick" data-mact="pic"`)}
         <div class="castbody">
           <div class="row wrap">
             <input data-m="name" class="edit-only cname" value="${esc(m.name)}" placeholder="Name" aria-label="Name">
             <b class="play-only">${esc(m.name)}</b>
             <label class="small muted where">in <select data-m="room" aria-label="Where ${esc(m.name)} is"><option value="">nowhere on the map</option>${
-              [...rooms].map(([id, label]) => `<option value="${esc(id)}" ${id === m.room ? "selected" : ""}>${esc(label)}</option>`).join("")}${
+              optionsHtml([...rooms], m.room)}${
               m.room && !rooms.has(m.room) ? `<option value="${esc(m.room)}" selected>${esc(m.room)}</option>` : ""}</select></label>
             <label class="small muted mood" title="Attitude to players, hidden from them">feels <select data-m="attitude" data-num aria-label="How ${esc(m.name)} feels about the players" class="att${m.attitude > 0 ? " up" : m.attitude < 0 ? " down" : ""}">${
               ATTITUDES.map(([n, label]) => `<option value="${n}" ${n === (m.attitude || 0) ? "selected" : ""}>${label} (${n > 0 ? "+" : ""}${n})</option>`).join("")}</select></label>
@@ -741,7 +756,6 @@
   });
   $("portraitUpload").onclick = () => { $("portraitFile").value = ""; $("portraitFile").click(); };
   $("portraitNone").onclick = () => setPortrait("");
-  $("portraitClose").onclick = () => $("portraitDialog").close();
 
   // A picture of their own: cropped to a small square here, then uploaded.
   $("portraitFile").addEventListener("change", async () => {
@@ -763,10 +777,7 @@
       }
       g.putImageData(px, 0, 0);
       const blob = await new Promise((res) => cv.toBlob(res, "image/png"));
-      const r = await fetch(`api/sessions/${code}/portraits`, { method: "POST", headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" }, body: blob });
-      const out = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(out.error || `Upload failed (${r.status}).`);
-      setPortrait(out.file);
+      setPortrait((await upload(`api/sessions/${code}/portraits`, blob)).file);
     } catch (err) {
       toast(err.message || "That picture couldn't be used.", "error");
     }
@@ -842,10 +853,7 @@
       const cv = Object.assign(document.createElement("canvas"), { width: Math.round(img.width * scale), height: Math.round(img.height * scale) });
       cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
       const blob = await new Promise((res) => cv.toBlob(res, "image/jpeg", 0.82));
-      const r = await fetch(`api/sessions/${code}/portraits`, { method: "POST", headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" }, body: blob });
-      const out = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(out.error || `Upload failed (${r.status}).`);
-      advPatch(advFor, { picture: out.file });
+      advPatch(advFor, { picture: (await upload(`api/sessions/${code}/portraits`, blob)).file });
     } catch (err) {
       toast(err.message || "That picture couldn't be used.", "error");
     }
@@ -924,16 +932,14 @@
     const del = e.target.closest("[data-item-del]")?.dataset.itemDel;
     if (del === undefined) return;
     crewDraft[Number(e.target.closest(".pc").dataset.i)].items.splice(Number(del), 1);
-    crewSentAt = 0;
-    send({ t: "crew", crew: crewDraft });
+    sendCrewNow();
   });
   $("crew").addEventListener("keydown", (e) => {
     if (!e.target.matches("[data-item-add]") || e.key !== "Enter" || !e.target.value.trim()) return;
     crewDraft[Number(e.target.closest(".pc").dataset.i)].items.push(e.target.value.trim());
     e.target.value = "";
     e.target.blur();
-    crewSentAt = 0;
-    send({ t: "crew", crew: crewDraft });
+    sendCrewNow();
   });
   $("crew").addEventListener("click", async (e) => {
     if (e.target.closest("[data-cact]")?.dataset.cact !== "del") return;
@@ -941,8 +947,7 @@
     if (!(await sure(`Remove ${crewDraft[i].name || "this character"}?`, "Deletes their crew file. Its player picks again.", "Remove"))) return;
     crewDraft.splice(i, 1);
     openCrew.clear();
-    send({ t: "crew", crew: crewDraft });
-    crewSentAt = 0;
+    sendCrewNow();
   });
   $("addCrew").onclick = () => {
     if (crewDraft.length >= 4) return;
@@ -952,8 +957,7 @@
       health: { current: 12, max: 12 }, wounds: { current: 0, max: 2 }, stress: 2, skills: [], loadout: "", items: [], trinket: "", patch: "", notes: "",
     });
     openCrew.add(String(crewDraft.length - 1));
-    send({ t: "crew", crew: crewDraft });
-    crewSentAt = 0;
+    sendCrewNow();
   };
 
   // ------------------------------------------------------------ story builder
@@ -1011,7 +1015,6 @@
   }
 
   $("builderBtn").onclick = () => { builderKey = ""; $("builderDialog").showModal(); renderBuilder(); $("bInput").focus(); };
-  $("builderClose").onclick = () => $("builderDialog").close();
   const builderSend = () => {
     const text = $("bInput").value.trim();
     if (!text || S.builderBusy) return;
@@ -1046,7 +1049,7 @@
   let synopsisKey = "";
   function renderSynopsis() {
     if (!$("synopsisDialog").open) return;
-    const kind = synKind || (S.storyStartedAt ? "sofar" : "prebrief");
+    const kind = shownKind();
     const syn = synopsisOf(kind), busy = S.synopsisBusy, mine = busy === kind;
     // Entries since it was written (things said or typed, not console notes). (Not for the prebrief: it's the setup.)
     const newer = syn && kind !== "prebrief" ? S.log.filter((e) => e.id > syn.logId && e.kind !== "note").length : 0;
@@ -1085,7 +1088,6 @@
     synKind = k;
     renderSynopsis();
   });
-  $("synClose").onclick = () => $("synopsisDialog").close();
   $("synWrite").onclick = writeSynopsis;
   $("synCopy").onclick = async () => {
     const text = synopsisOf(shownKind()).sections.filter((x) => x.audience === "players").map((x) => `${x.heading.toUpperCase()}\n${x.text}`).join("\n\n");
@@ -1096,6 +1098,7 @@
   // ------------------------------------------------------------ terminals
   const LOOKS = { blood: "Blood", goo: "Goo", crack: "Cracked", flicker: "Flicker", dim: "Dim", grime: "Grime", portable: "Handheld" };
   let termDraft = null, termTimer = null, termSentAt = 0;
+  const sendTermsNow = () => { termSentAt = 0; send({ t: "terminals", terminals: termDraft }); };
   function renderTerminals(fromDraft = false) {
     const panel = $("terminals");
     if (!fromDraft) {
@@ -1110,15 +1113,16 @@
     // Docked rooms (the crew's tug) aren't on a deck: listed by what they're docked to.
     const labelOf = (id) => decks.flatMap((d) => d.rooms).find((r) => r.id === id)?.label || id;
     const rooms = [...deckRooms, ...StationMap.parseDocked(S.config.map).map((r) => [r.id, `${r.label} (docked at ${labelOf(r.parent)})`])];
+    const doors = doorPaths();
     panel.innerHTML = termDraft.map((t, i) => {
-      const here = (S.screens || []).filter((s) => s.terminal === t.id).map((s) => s.character || "a screen");
+      const here = screensAt(t.id);
       return `<div class="tcard" data-i="${i}">
         <div class="row"><input data-t="name" value="${esc(t.name)}" aria-label="Terminal name" class="tname">
           <label class="check small"><input type="checkbox" data-t="open" ${t.open ? "checked" : ""}> reachable</label>
           <button data-tact="del" class="ghost" title="Remove">✕</button></div>
         <div class="row wrap small">
-          <label>Room <select data-t="room"><option value="">(none / portable)</option>${rooms.map(([id, label]) => `<option value="${esc(id)}" ${id === t.room ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
-          <label title="Reachable once this door reads OPEN">Opens with <select data-t="requires"><option value="">(nothing)</option>${doorPaths().map((p) => `<option value="${esc(p)}" ${p === t.requires ? "selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
+          <label>Room <select data-t="room"><option value="">(none / portable)</option>${optionsHtml(rooms, t.room)}</select></label>
+          <label title="Reachable once this door reads OPEN">Opens with <select data-t="requires"><option value="">(nothing)</option>${optionsHtml(doors.map((p) => [p, p]), t.requires)}</select></label>
           <label>Colour <select data-t="theme">${["", "green", "amber", "cyan", "white", "red"].map((x) => `<option value="${x}" ${x === t.theme ? "selected" : ""}>${x || "station's"}</option>`).join("")}</select></label>
         </div>
         <div class="looks">${Object.entries(LOOKS).map(([k, label]) => `<label class="chip"><input type="checkbox" data-look="${k}" ${t.look.includes(k) ? "checked" : ""}> ${label}</label>`).join("")}</div>
@@ -1141,7 +1145,7 @@
   const reachableNow = (t) => {
     if (t.open) return true;
     if (!t.requires) return false;
-    const v = t.requires.split(".").reduce((o, k) => o?.[k], S.station);
+    const v = stationAt(t.requires.split("."));
     return /^(OPEN|OPENED|UNLOCKED)$/i.test(String(v ?? "").trim());
   };
   function renderTerminalsPlay() {
@@ -1150,9 +1154,8 @@
     if (panel.dataset.json === json) return;
     panel.dataset.json = json;
     const rooms = roomLabels();
-    panel.className = "play-only tplay";
     panel.innerHTML = S.config.terminals.map((t) => {
-      const here = (S.screens || []).filter((s) => s.terminal === t.id).map((s) => s.character || "a screen");
+      const here = screensAt(t.id);
       const access = reachableNow(t) ? "" : `<span class="pill">${t.requires ? `locked: ${esc(t.requires)}` : "not reachable"}</span>`;
       return `<div><b>${esc(t.name)}</b><span class="muted small">${esc(rooms.get(t.room) || (t.room ? t.room : "portable"))}${t.system ? ` · ${esc(t.system)}` : ""}</span>${access}${here.length ? `<span class="here small">${here.map(esc).join(", ")}</span>` : ""}</div>`;
     }).join("") || '<p class="muted small">No terminals.</p>';
@@ -1160,7 +1163,7 @@
   // Read-only: the voices (the characters are on the Crew tab).
   function renderCastPlay() {
     const panel = $("castPlay");
-    const json = JSON.stringify(S.config.voices.map((v) => [v.name, v.color]));
+    const json = JSON.stringify(S.config.voices.map((v) => [v.name, v.color, !!v.adversary]));
     if (panel.dataset.json === json) return;
     panel.dataset.json = json;
     panel.innerHTML = S.config.voices.filter((v) => !v.adversary).map((v) => `<div class="castv"><b style="color: ${esc(v.color || "var(--fg)")}">${esc(v.name)}</b></div>`).join("");
@@ -1201,8 +1204,12 @@
 
   // Door-like paths in the station state (doors.*, hatches...), for "opens with".
   function doorPaths() {
+    return stationLeaves().map(([p]) => p.join(".")).filter((p) => /door|hatch|airlock|lock|gate/i.test(p));
+  }
+  // Every value in the station state, with its path: [[path, value]], in order.
+  function stationLeaves() {
     const out = [];
-    const walk = (o, path) => { for (const [k, v] of Object.entries(o || {})) { const p = [...path, k]; if (v && typeof v === "object") walk(v, p); else if (/door|hatch|airlock|lock|gate/i.test(p.join("."))) out.push(p.join(".")); } };
+    const walk = (o, path) => { for (const [k, v] of Object.entries(o || {})) { const p = [...path, k]; if (v && typeof v === "object") walk(v, p); else out.push([p, v]); } };
     walk(S.station, []);
     return out;
   }
@@ -1227,13 +1234,11 @@
     const i = Number(e.target.closest(".tcard").dataset.i);
     if (!(await sure(`Remove ${termDraft[i].name}?`, "Players there stay until moved.", "Remove"))) return;
     termDraft.splice(i, 1);
-    send({ t: "terminals", terminals: termDraft });
-    termSentAt = 0;
+    sendTermsNow();
   });
   $("addTerminal").onclick = () => {
     termDraft.push({ name: "NEW TERMINAL", room: "", look: [], theme: "", open: true, notes: "" });
-    send({ t: "terminals", terminals: termDraft });
-    termSentAt = 0;
+    sendTermsNow();
     renderTerminals(true);
   };
 
@@ -1359,8 +1364,7 @@
 
   // Click a value: pick a likely one or type anything; it goes into the station state.
   async function editStationValue(path) {
-    let cur = S.station;
-    for (const k of path) cur = cur?.[k];
+    const cur = stationAt(path);
     const options = StationMap.choicesFor(path).filter((o) => o !== String(cur).toUpperCase());
     const picked = await ask(path.join(".").replace(/_/g, " ").toUpperCase(), `Now: ${cur}. Pick or type a value. Hidden from players.`,
       [["set", "Set", "primary"], ...options.map((o) => [`opt:${o}`, o])], "", { value: cur }); // Set first: Enter in the field means Set
@@ -1387,7 +1391,6 @@
     $("mapDialog").showModal();
     renderMap(true);
   };
-  $("mapClose").onclick = () => $("mapDialog").close();
   $("mapDialog").addEventListener("close", () => dropIso($("mapBig"))); // (its 3D view stops drawing)
   // The 3D view (isomap.js, three.js): loaded the first time it's picked. One per map element.
   let isoLib = null;
@@ -1465,7 +1468,7 @@
     roomKey = "";
     if (!$("roomDialog").open) $("roomDialog").showModal();
     // No plan yet: the agent draws one (if it can).
-    if (!S.config.rooms?.[id] && !S.roomBusy && S.providers.find((p) => p.id === S.config.provider)?.configured) send({ t: "roomDraft", room: id, label, deck });
+    if (!S.config.rooms?.[id] && !S.roomBusy && hasKey()) send({ t: "roomDraft", room: id, label, deck });
     renderRoom(true);
   }
 
@@ -1495,9 +1498,8 @@
       `<button data-tool="${esc(c)}" class="${c === roomTool ? "on" : ""}" title="${esc(RoomPlan.TILES[c][0])}">${c === " " ? "␣ erase" : `${esc(c)} ${esc(RoomPlan.TILES[c][0].split(" ")[0])}`}</button>`).join("")
       + `<button data-tool="+col" title="Add a column">+ col</button><button data-tool="-col" title="Remove the last column">− col</button><button data-tool="+row" title="Add a row">+ row</button><button data-tool="-row" title="Remove the last row">− row</button>` : "";
     // Who sees it.
-    const sel = $("roomShowTo"), was = sel.value;
-    sel.innerHTML = `<option value="">All players</option>` + S.config.crew.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
-    sel.value = [...sel.options].some((o) => o.value === was) ? was : "";
+    const sel = $("roomShowTo"), who = [["", "All players"], ...S.config.crew.map((c) => [c.id, c.name])];
+    fillSelect(sel, who, who.some(([v]) => v === sel.value) ? sel.value : "");
     // Who and what is here.
     const castHere = S.config.cast.filter((c) => c.room === room.id).map((c) => c.name);
     $("roomPlayers").innerHTML = (pcs.length ? pcs.map((n) => `<span class="pcchip">${esc(n)}</span>`).join("") : `<span class="muted small">No player characters here.</span>`) +
@@ -1506,9 +1508,7 @@
       if (document.activeElement !== $(id) && !dirty.has(id)) $(id).value = String(stationAt([k, room.id]) ?? "");
     }
     // The room's state: everything in the station state under this room's id.
-    const vals = [];
-    const walk = (o, p) => { for (const [k, v] of Object.entries(o || {})) { const q = [...p, k]; if (v && typeof v === "object") walk(v, q); else if (q.includes(room.id) && !["occupants", "contents"].includes(q[0])) vals.push([q, v]); } };
-    walk(S.station, []);
+    const vals = stationLeaves().filter(([q]) => q.includes(room.id) && !["occupants", "contents"].includes(q[0]));
     $("roomValues").innerHTML = vals.length ? vals.map(([p, v]) => `<button class="ghost small" data-path="${esc(JSON.stringify(p))}" title="${esc(p.join("."))}">${esc(p.filter((x) => x !== room.id).join(" ").replace(/_/g, " "))}: <b>${esc(v)}</b></button>`).join("") : `<span class="muted small">Nothing tracked here.</span>`;
     const terms = S.config.terminals.filter((t) => t.room === room.id);
     $("roomTerminals").innerHTML = terms.length ? terms.map((t) => `<div><b>${esc(t.name)}</b>: ${esc(t.notes)}</div>`).join("") : "None.";
@@ -1577,7 +1577,6 @@
     const p = e.target.closest("[data-path]")?.dataset.path;
     if (p) editStationValue(JSON.parse(p));
   });
-  $("roomClose").onclick = () => $("roomDialog").close();
   $("roomDialog").addEventListener("close", () => {
     if (roomEditing) saveRoomNow();
     room = null;
@@ -1654,13 +1653,7 @@
       toast(`Uploading ${file.name}…`);
       try {
         const seconds = await clipSeconds(file);
-        const r = await fetch(`api/sessions/${code}/sounds?name=${encodeURIComponent(file.name)}&seconds=${seconds.toFixed(2)}`, {
-          method: "POST",
-          headers: { "X-Warden-Token": key, "Content-Type": "application/octet-stream" },
-          body: file,
-        });
-        const body = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(body.error || `Upload failed (${r.status}).`);
+        const body = await upload(`api/sessions/${code}/sounds?name=${encodeURIComponent(file.name)}&seconds=${seconds.toFixed(2)}`, file);
         toast(`Added "${body.name}".`);
       } catch (err) {
         toast(`${file.name}: ${err.message}`, "error");
@@ -1778,7 +1771,6 @@
   for (const id of ["theme", "talk", "provider", "model", "effort"]) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.value } }));
   for (const id of SETTING_SWITCHES) $(id).addEventListener("change", (e) => send({ t: "config", patch: { [id]: e.target.checked } }));
   $("settingsBtn").onclick = () => $("settingsDialog").showModal();
-  $("settingsClose").onclick = () => $("settingsDialog").close();
 
   $("station").addEventListener("input", () => { dirty.add("station"); $("stationErr").textContent = "unsaved changes"; });
   $("stationSave").addEventListener("click", () => {
@@ -2021,13 +2013,9 @@
   $("clearScreen").onclick = () => send({ t: "clearScreen" });
   $("resetSession").onclick = async () => {
     const since = S.storyStartedAt ? new Date(S.storyStartedAt).toLocaleString() : "";
-    const how = await ask("Restart the story?",
-      (since
-        ? `Undoes every story change since play began (${since}).`
-        : "Not played yet. Characters are made fresh.")
-      + " Clears the log, rolls, clocks, effects and handouts. Players return to the start.",
-      [["default", "Restart", "danger"]]);
-    if (how) send({ t: "resetSession" });
+    const text = (since ? `Undoes every story change since play began (${since}).` : "Not played yet. Characters are made fresh.")
+      + " Clears the log, rolls, clocks, effects and handouts. Players return to the start.";
+    if (await sure("Restart the story?", text, "Restart")) send({ t: "resetSession" });
   };
   $("resetAll").onclick = async () => (await sure("Factory reset?", "Resets the whole story to the defaults.", "Factory reset")) && send({ t: "resetAll" });
 
@@ -2035,6 +2023,8 @@
   const BUILTIN_IDS = ["terminal", "broadcast", "narrator"];
   // Every voice keeps settings for both engines, so switching engine loses nothing.
   const BASE_VOICE = { engine: "espeak", speaker: "am_michael", pace: 1, variant: "", pitch: 50, speed: 170, wordgap: 0 };
+  // A preset's sound: its voice and its effects (the defaults for any it leaves out).
+  const presetSound = (p) => ({ voice: { ...BASE_VOICE, ...p.voice }, fx: Object.fromEntries(Object.entries(S.voiceOptions.fxParams).map(([k, [, , def]]) => [k, p.fx[k] ?? def])) });
   const FX_LABELS = {
     rate: "Speed / pitch", highpass: "Low cut (Hz)", lowpass: "High cut (Hz)", drive: "Distortion",
     ringMix: "Robot warble", ringFreq: "Warble freq (Hz)", comb: "Metallic", combMs: "Metallic tone (ms)",
@@ -2045,6 +2035,7 @@
 
   let voicesDraft = null; // working copy while the Warden edits
   let voicesSentAt = 0;
+  const sendVoicesNow = () => { voicesSentAt = 0; send({ t: "voices", voices: voicesDraft }); };
   let voicesTimer = null;
 
   function voiceName(id) {
@@ -2170,8 +2161,7 @@
       const p = S.voiceOptions.presets[e.target.value];
       v.preset = e.target.value;
       if (p) {
-        v.voice = { ...BASE_VOICE, ...p.voice };
-        v.fx = Object.fromEntries(Object.entries(S.voiceOptions.fxParams).map(([k, [, , def]]) => [k, p.fx[k] ?? def]));
+        Object.assign(v, presetSound(p));
         saveVoices();
         return renderVoices(true), restoreCard(card.dataset.i);
       }
@@ -2213,8 +2203,7 @@
       i = voicesDraft.indexOf(v);
       if (i < 0) return;
       voicesDraft.splice(i, 1);
-      send({ t: "voices", voices: voicesDraft });
-      voicesSentAt = 0;
+      sendVoicesNow();
     }
   });
 
@@ -2227,11 +2216,9 @@
       style: "label",
       color: "",
       preset: "intercom",
-      voice: { ...BASE_VOICE, ...p.voice },
-      fx: Object.fromEntries(Object.entries(S.voiceOptions.fxParams).map(([k, [, , def]]) => [k, p.fx[k] ?? def])),
+      ...presetSound(p),
     });
-    voicesSentAt = 0;
-    send({ t: "voices", voices: voicesDraft });
+    sendVoicesNow();
   };
 
   // ------------------------------------------------------------ rule of cool + ability rolls
@@ -2433,15 +2420,14 @@
   function renderHandouts() {
     const to = $("docTo");
     const opts = [["", "Everyone"], ...S.config.crew.map((c) => [c.id, c.name])];
-    const key = JSON.stringify(opts);
-    if (to.dataset.key !== key) { to.dataset.key = key; const was = to.value; to.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join(""); to.value = opts.some(([v]) => v === was) ? was : ""; }
+    fillSelect(to, opts, opts.some(([v]) => v === to.value) ? to.value : "");
     // An audio log's speaker: none (a written document), a voice, or someone of the cast.
     fillSelect($("docVoice"), [["", "None (written)"], ...S.config.voices.map((v) => [v.id, v.name]), ...(S.config.cast || []).map((c) => [`cast:${c.id}`, c.name])], $("docVoice").value || "");
     // Where: handed out now, or left in a room to be found.
     const roomsOf = [...StationMap.parseLayout(S.config.map).flatMap((d) => d.rooms), ...StationMap.parseDocked(S.config.map)];
     const roomLabel = (id) => roomsOf.find((r) => r.id === id)?.label || id;
     fillSelect($("docRoom"), [["", "Hand out now"], ...roomsOf.map((r) => [r.id, `In ${r.label}`])], $("docRoom").value || "");
-    $("docSend").textContent = $("docRoom").value ? "Leave it there" : "Hand it out";
+    syncDocSend();
     // What's lying in rooms: found ones are struck through; Give hands one over now, ✕ takes it out of the story.
     const found = new Set(S.found || []);
     const docs = S.config.roomDocs || [];
@@ -2468,7 +2454,8 @@
     else send({ t: "handout", title, text, to: $("docTo").value, voice: $("docVoice").value });
     $("docTitle").value = $("docText").value = "";
   };
-  $("docRoom").onchange = () => { $("docSend").textContent = $("docRoom").value ? "Leave it there" : "Hand it out"; };
+  function syncDocSend() { $("docSend").textContent = $("docRoom").value ? "Leave it there" : "Hand it out"; }
+  $("docRoom").onchange = syncDocSend;
   $("roomDocList").addEventListener("click", (e) => {
     const give = e.target.closest("[data-rdoc-give]")?.dataset.rdocGive, del = e.target.closest("[data-rdoc-del]")?.dataset.rdocDel;
     if (give) send({ t: "roomDocGive", id: give, to: $("docTo").value });
@@ -2531,6 +2518,7 @@
   $("discordCmd").onfocus = (e) => e.target.select();
   $("keyBtn").onclick = openKeyDialog;
   $("keywarn").onclick = openKeyDialog;
+  for (const [button, dialog] of [["portraitClose", "portraitDialog"], ["builderClose", "builderDialog"], ["synClose", "synopsisDialog"], ["mapClose", "mapDialog"], ["roomClose", "roomDialog"], ["settingsClose", "settingsDialog"]]) $(button).onclick = () => $(dialog).close();
   $("sessionCode").onclick = () => copy(playerLink(), "Player link");
   $("copyPlayer").onclick = () => copy(playerLink(), "Player link");
   $("copyWarden").onclick = async () => (await sure("Copy the Warden link?", "Anyone with it can run your session.", "Copy link", "primary")) && copy(wardenLink(), "Warden link");

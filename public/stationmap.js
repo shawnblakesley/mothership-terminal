@@ -1,6 +1,4 @@
-// The Warden's station map: the station state drawn two ways, with every value
-// on it.
-//   render(): a status board, decks and rooms as tiles of values.
+// The Warden's station map: the station state drawn with every value on it.
 //   draw():   a schematic drawing: decks stacked on a lift shaft, each with a
 //             corridor its rooms open off, doors on the doorways, cameras,
 //             lights, and extra connections (vents, maintenance shafts...).
@@ -122,26 +120,6 @@
       <div class="mchips">${items.map((leaf) => chip(leaf, labelFor(leaf.path.slice(group ? 1 : 0)), editable)).join("")}</div>
     </div>`).join("")}</div>`;
 
-  // ---------------------------------------------------------------- status board
-  function render(el, station, layoutText, { editable = true } = {}) {
-    const m = build(station, layoutText);
-    const roomTile = (label, items, id = "", deck = "") => `<div class="mroom ${items.some((x) => tone(x.leaf.path, x.leaf.value) === "bad") ? "alarm" : ""}">
-        <div class="mrname" ${editable && id ? `data-room="${esc(id)}" data-label="${esc(label)}" data-deck="${esc(deck)}" title="Room view"` : ""}>${esc(label)}</div>
-        <div class="mchips">${items.map((x) => chip(x.leaf, x.label, editable)).join("") || `<span class="mnone">no data</span>`}</div>
-      </div>`;
-    const deckBand = (d, rooms) => {
-      const look = d.id === "_elsewhere" ? {} : m.deckLook(d);
-      return `<section class="mdeck ${look.dark ? "dark" : ""} ${look.flicker ? "flicker" : ""} ${look.quarantine ? "quarantine" : ""}">
-        <header><span class="mdname">${esc(d.label)}</span><span class="mchips">${(m.byDeck.get(d.id) || []).map((x) => chip(x.leaf, x.label, editable)).join("")}</span></header>
-        <div class="mrooms">${rooms}</div>
-      </section>`;
-    };
-    el.innerHTML = `${systemsHtml(m, editable)}
-      <div class="mdecks">
-        ${m.decks.map((d) => deckBand(d, d.rooms.flatMap((r) => [r, ...m.docked.filter((x) => x.parent === r.id)]).map((r) => roomTile(r.label, m.byRoom.get(r.id) || [], r.id, d.label)).join(""))).join("")}
-        ${m.elsewhere.size ? deckBand({ id: "_elsewhere", label: "Not on the map yet" }, [...m.elsewhere.entries()].map(([id, items]) => roomTile(human(id), items)).join("")) : ""}
-      </div>`;
-  }
 
   // How a lift value reads: "perm" (needs clearance: yellow stripes), "fault" (broken: red stripes) or "".
   const liftState = (v) => {
@@ -216,7 +194,7 @@
       };
       place(above, top + LABEL, "above");
       place(below, cy + GAP, "below");
-      extra.forEach((r) => (rooms[r.id] = null)); // too many for one deck: still listed on the status board
+      extra.forEach((r) => (rooms[r.id] = null)); // too many for one deck: not drawn
       // Docked rooms: straight onto their parent, outside the deck.
       for (const r of [...dockAbove, ...dockBelow]) {
         const p = rooms[r.parent];
@@ -366,6 +344,6 @@
   }
 
   // (and for the 3D view, isomap.js: the same model, values and tones, so it shows what the 2D view does)
-  window.StationMap = { render, draw, mini, parseLayout, parseLinks, parseDocked, parseLift, choicesFor,
+  window.StationMap = { draw, mini, parseLayout, parseLinks, parseDocked, parseLift, choicesFor,
     model: build, tone, liftState, labelFor, isRoster, names, chip, systemsHtml, elsewhereHtml, esc };
 })();

@@ -2,6 +2,7 @@
 // a portable one). Each player screen is "at" one; its look (blood, a cracked
 // screen, flicker...) is drawn on that screen, and the agent knows where
 // everyone is, so what they see depends on where they are.
+import { keyOf, slug, roomId } from "./clean.js";
 
 // blood, goo, crack: the screen effects, left on permanently. The rest are
 // screen styles (public/player.css .look-*). portable: a handheld unit.
@@ -53,7 +54,7 @@ export const DEFAULT_TERMINALS = [
   { id: "portable", name: "PORTABLE TERMINAL", room: "", look: ["portable"], theme: "", open: true, notes: "A handheld maintenance unit from the crew's kit. Weak signal: it can read the station network, but can't work doors or cameras without a hard link at a wall terminal." },
 ];
 
-const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+
 
 export function sanitizeTerminals(list) {
   const out = [];
@@ -67,7 +68,7 @@ export function sanitizeTerminals(list) {
     out.push({
       id,
       name,
-      room: String(t.room || "").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 60),
+      room: roomId(t.room),
       look: [...new Set((Array.isArray(t.look) ? t.look : []).filter((l) => LOOKS.includes(l)))],
       theme: THEMES.includes(t.theme) ? t.theme : "",
       open: t.open !== false,
@@ -86,7 +87,7 @@ export function sanitizeTerminals(list) {
 }
 
 // Which system a terminal is on, as a key: "" for the station's network.
-export const netKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+export const netKey = keyOf;
 export const netOf = (t) => (t?.system ? netKey(t.system) : "");
 
 // Every system, station first: [{ net, name }] (name: the station's for "").
@@ -132,6 +133,9 @@ const V1 = JSON.stringify(sanitizeTerminals([
 export const upgradeTerminals = (list) => (JSON.stringify(list) === V1 ? sanitizeTerminals(DEFAULT_TERMINALS) : list);
 
 // For the agent: every terminal, and who is at which.
+// Where the players' screens are, for the agent: "- Ash: AIRLOCK A" per screen.
+export const screensBrief = (screens, terminals) => screens.map((s) => `- ${s.character || "a screen with no crew file"}: ${terminals.find((t) => t.id === s.terminal)?.name || s.terminal}`);
+
 export function terminalsBrief(terminals) {
   return terminals.map((t) => `- ${t.name}${t.room ? ` (room: ${t.room})` : ""}${t.look.length ? ` · looks: ${t.look.map((l) => LOOK_LABELS[l]).join(", ")}` : " · clean"}${t.system ? ` · on its own system, ${t.system}${t.os ? ` (${t.os})` : ""}, not the station network: players there see only what was said on it` : ""}${t.open ? "" : t.requires ? ` · reachable once ${t.requires} is open` : " · not reachable yet"}${t.notes ? ` · ${t.notes}` : ""}`).join("\n");
 }

@@ -64,16 +64,21 @@ function addSession(saved) {
   return session;
 }
 
-// provider: start on this one (needed when there are no keys, e.g. the free one).
-function createSession(keys = {}, provider = "") {
-  for (const k of Object.values(keys)) rememberSecret(k);
+// A new session for a game, with a new code and Warden token.
+function newSession(game) {
   const code = newCode();
   const token = crypto.randomBytes(24).toString("base64url");
+  const session = addSession({ code, tokenHash: hashToken(token), game });
+  scheduleSave(session);
+  return { session, token };
+}
+
+// provider: start on this one (needed when there are no keys, e.g. the free one).
+function createSession(keys = {}, provider = "") {
   const game = defaultGame(keys);
   if (provider) Object.assign(game.config, fixSelection({ provider }));
-  const session = addSession({ code, tokenHash: hashToken(token), game });
-  Object.assign(session.keys, keys);
-  scheduleSave(session);
+  const { session, token } = newSession(game);
+  Object.assign(session.keys, keys); // (memory only: never saved)
   track("SessionCreated", { Provider: provider || Object.keys(keys)[0] });
   return { session, token };
 }
@@ -112,13 +117,9 @@ function importLegacyGame() {
   const legacy = path.join(DATA_DIR, "state.json");
   if (!fs.existsSync(legacy)) return null;
   try {
-    const game = JSON.parse(fs.readFileSync(legacy, "utf8"));
-    const code = newCode();
-    const token = crypto.randomBytes(24).toString("base64url");
-    const session = addSession({ code, tokenHash: hashToken(token), game });
-    scheduleSave(session);
+    const made = newSession(JSON.parse(fs.readFileSync(legacy, "utf8")));
     fs.renameSync(legacy, `${legacy}.imported`);
-    return { session, token };
+    return made;
   } catch (err) {
     console.warn(`  ! Couldn't import data/state.json: ${err.message}`);
     return null;
@@ -247,11 +248,30 @@ router.post("/api/sessions", express.json({ limit: "4kb" }), (req, res) => {
   res.json({ code: session.code, token });
 });
 
+// The session a request's :code names, and the same only if it carries that session's Warden token.
+const sessionOf = (req) => sessions.get(normCode(req.params.code));
+const wardenOf = (req) => {
+  const s = sessionOf(req);
+  return s?.checkToken(req.get("x-warden-token")) ? s : null;
+};
+
+// A clip as the response (none: `empty`, e.g. 204 when there's nothing to say).
+async function sendWav(res, job, empty, what) {
+  try {
+    const wav = await job();
+    if (!wav) return res.status(empty).end();
+    res.set("Content-Type", "audio/wav").send(wav);
+  } catch (err) {
+    console.error(`${what} failed:`, err?.message || err);
+    res.status(500).end();
+  }
+}
+
 // Does a session exist? (The join screen checks codes before connecting.)
 router.get("/api/sessions/:code", (req, res) => {
   noStore(res);
   if (limited(`lookup:${clientIp(req)}`, 30, 60_000)) return res.status(429).json({ error: "Slow down." });
-  const s = sessions.get(normCode(req.params.code));
+  const s = sessionOf(req);
   if (!s) return res.status(404).json({ error: "No session with that code." });
   res.json({ code: s.code, stationName: s.state.config.stationName });
 });
@@ -259,68 +279,44 @@ router.get("/api/sessions/:code", (req, res) => {
 // Warden-only: hear a voice with any text (the "Test" button).
 router.post("/api/sessions/:code/tts-test", express.json({ limit: "20kb" }), async (req, res) => {
   noStore(res);
-  const s = sessions.get(normCode(req.params.code));
-  if (!s || !s.checkToken(req.get("x-warden-token"))) return res.status(403).end();
+  const s = wardenOf(req);
+  if (!s) return res.status(403).end();
   if (limited(`tts-test:${s.code}`, 30, 60_000)) return res.status(429).end();
-  try {
+  await sendWav(res, () => {
     // The id goes last: the console sends the whole voice, whose own id must not win.
     const [voice] = sanitizeVoices([{ ...req.body?.voice, id: "test" }]).filter((v) => v.id === "test");
-    const wav = await synthesize(String(req.body?.text || "Testing. One, two, three.").slice(0, 500), voice.voice);
-    if (!wav) return res.status(204).end();
-    res.set("Content-Type", "audio/wav").send(wav);
-  } catch (err) {
-    console.error("tts test failed:", err?.message || err);
-    res.status(500).end();
-  }
+    return synthesize(String(req.body?.text || "Testing. One, two, three.").slice(0, 500), voice.voice);
+  }, 204, "tts test");
 });
 
 // Spoken audio for a log line players can already see (so it can't read
 // arbitrary text, Warden notes or commands).
 router.get("/api/sessions/:code/tts/:id", async (req, res) => {
   noStore(res);
-  const s = sessions.get(normCode(req.params.code));
+  const s = sessionOf(req);
   const entry = s?.state.log.find((e) => e.id === Number(req.params.id));
   if (!s || !s.speaksOnScreens() || !entry || entry.hidden || !SPOKEN_KINDS.has(entry.kind)) return res.status(404).end();
-  try {
-    // ?part=N: just that text line (human voices are fetched line by line so speech starts sooner).
-    // ?v=N: the per-player variant this screen shows instead of the main text.
-    const whole = req.query.v === undefined ? entry.text : entry.variants?.[Number(req.query.v)]?.text;
-    const text = whole === undefined ? undefined : req.query.part === undefined ? whole : speechParts(whole)[Number(req.query.part)];
-    if (text === undefined) return res.status(404).end();
-    const wav = await synthesize(text, speakingVoice(s.state.config, entry));
-    if (!wav) return res.status(204).end();
-    res.set("Content-Type", "audio/wav").send(wav);
-  } catch (err) {
-    console.error("tts failed:", err?.message || err);
-    res.status(500).end();
-  }
+  // ?part=N: just that text line (human voices are fetched line by line so speech starts sooner).
+  // ?v=N: the per-player variant this screen shows instead of the main text.
+  const whole = req.query.v === undefined ? entry.text : entry.variants?.[Number(req.query.v)]?.text;
+  const text = whole === undefined ? undefined : req.query.part === undefined ? whole : speechParts(whole)[Number(req.query.part)];
+  if (text === undefined) return res.status(404).end();
+  await sendWav(res, () => synthesize(text, speakingVoice(s.state.config, entry)), 204, "tts");
 });
 
 // One line of an audio log the players were given (a handout with a voice; see Session.handoutAudio).
 router.get("/api/sessions/:code/handouts/:id/audio/:part", async (req, res) => {
   noStore(res);
-  const s = sessions.get(normCode(req.params.code));
+  const s = sessionOf(req);
   if (!s) return res.status(404).end();
   if (limited(`logaudio:${clientIp(req)}`, 240, 60_000)) return res.status(429).end();
-  try {
-    const wav = await s.handoutAudio(String(req.params.id), Number(req.params.part));
-    if (!wav) return res.status(404).end();
-    res.set("Content-Type", "audio/wav").send(wav);
-  } catch (err) {
-    console.error("audio log failed:", err?.message || err);
-    res.status(500).end();
-  }
+  await sendWav(res, () => s.handoutAudio(String(req.params.id), Number(req.params.part)), 404, "audio log");
 });
 
 // ---------------------------------------------------------------------------
 // Sound library: the Warden uploads audio files and plays them on the players'
 // screens (play/stop go over the WebSocket; see Session "soundPlay").
 // ---------------------------------------------------------------------------
-
-const wardenOf = (req) => {
-  const s = sessions.get(normCode(req.params.code));
-  return s?.checkToken(req.get("x-warden-token")) ? s : null;
-};
 
 // Upload: the file is the raw request body; ?name= is its display name.
 router.post("/api/sessions/:code/sounds", express.raw({ type: () => true, limit: MAX_SOUND_BYTES + 1024 }), (req, res) => {
@@ -348,7 +344,7 @@ router.delete("/api/sessions/:code/sounds/:id", (req, res) => {
 
 // The audio itself (players fetch it when it's played; ids never change, so it caches).
 router.get("/api/sessions/:code/sounds/:id", (req, res) => {
-  const s = sessions.get(normCode(req.params.code));
+  const s = sessionOf(req);
   const sound = s?.state.sounds.find((x) => x.id === req.params.id);
   if (!sound) return res.status(404).end();
   res.set({ "Content-Type": sound.type, "Cache-Control": "private, max-age=604800, immutable" });
@@ -371,7 +367,7 @@ router.post("/api/sessions/:code/portraits", express.raw({ type: () => true, lim
 
 // The picture itself (file names never change, so it caches).
 router.get("/api/sessions/:code/portraits/:file", (req, res) => {
-  const s = sessions.get(normCode(req.params.code));
+  const s = sessionOf(req);
   const file = s && portraitPath(s.code, req.params.file);
   if (!file) return res.status(404).end();
   res.set({ "Content-Type": portraitType(req.params.file), "Cache-Control": "private, max-age=604800, immutable" });
