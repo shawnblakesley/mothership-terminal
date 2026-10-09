@@ -20,6 +20,7 @@ import { discordStatus, stopListening, discordLinked, discordSay, discordCut, se
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
 import { CHECKS, SKILL_LEVELS, sanitizeRequest, resolve, diceFor, rollTarget, resultText, checkLabel, skillLabel, PANIC, checkInfo } from "./rolls.js";
+import { cleanComms, openComms, commsView } from "./comms.js";
 import { ALL_EFFECTS, AGENT_EFFECTS, effectType, buildRequest, buildPrecheck, limitLength, parseReply, splitVoiceTags, resolveVoice, kindOf, currentDirectives, normalizeEffects } from "./agent.js";
 
 const FREE_CALLS_PER_DAY = Number(process.env.FREE_CALLS_PER_DAY || 150);
@@ -35,7 +36,7 @@ const PLAYER_INPUT_GAP_MS = 1200;
 const WARDEN_ACTIONS = {
   command: "direction", inject: "speak", note: "note", heard: "speech", effect: "effect", soundPlay: "sound", rollRequest: "roll", retcon: "retcon",
   synopsis: "synopsis", roomShow: "room_show", roomDraft: "room_draft", builderSay: "builder_chat", builderDraft: "builder_draft",
-  builderApply: "builder_apply", resetSession: "story_restart", adversaryShow: "adversary_show", campaignPlay: "campaign_story",
+  builderApply: "builder_apply", resetSession: "story_restart", adversaryShow: "adversary_show", commsOpen: "comms_open", commsClose: "comms_close", campaignPlay: "campaign_story",
 };
 const newId = (prefix, n) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 2 + n)}`;
 
@@ -192,6 +193,7 @@ export function defaultGame(keys = {}) {
     whisper: "",
     sounds: kitSounds(),
     synopses: {},
+    comms: null,
   };
 }
 
@@ -420,6 +422,7 @@ function migrateGame(saved) {
     clocks: Array.isArray(saved.clocks) ? saved.clocks : [],
     storyStart: saved.storyStart && saved.storyStart.config ? saved.storyStart : null,
     campaign: saved.campaign ? sanitizeProgress(saved.campaign) : null,
+    comms: cleanComms(saved.comms),
     solo: saved.solo ? { ...saved.solo, phase: saved.solo.phase === "building" ? "pick" : saved.solo.phase, busy: "" } : null,
   };
 }
@@ -716,7 +719,31 @@ export class Session {
       claims: this.claims(),
       busy: !!this.state.pending,
       roll: this.publicRoll(),
+      comms: this.commsFor(),
     };
+  }
+  commsFor(comms = this.state.comms) { return commsView(comms, this.state.config, (p) => this.pictureSrc(p)); }
+  agentComms(c) {
+    const none = { open: null, close: 0 };
+    if (c?.open?.who) {
+      const k = openComms(this.state.config, c.open);
+      if (!k) return none;
+      if (k.adv) this.revealAdversaries([k.adv]);
+      this.setComms(k, false);
+      this.addLog("note", `Agent: opened a channel to ${k.who}${k.ship ? ` (${k.ship})` : ""}.`);
+      return { open: this.commsFor(), close: 0 };
+    }
+    if (c?.close && this.state.comms) {
+      const since = this.state.comms.since;
+      this.addLog("note", `Agent: closed the channel to ${this.state.comms.who}.`);
+      this.setComms(null, false);
+      return { open: null, close: since };
+    }
+    return none;
+  }
+  setComms(comms, tell = true) {
+    this.state.comms = comms;
+    if (tell) this.toPlayers({ t: "comms", comms: this.commsFor() });
   }
 
   playerHeader() {
@@ -1040,6 +1067,19 @@ export class Session {
         this.addLog("note", `Showed the players ${v.name}.`);
         break;
       }
+      case "commsOpen": {
+        const k = openComms(s.config, { who: msg.who, ship: msg.ship, transponder: msg.transponder, cast: msg.kind === "cast" ? msg.id : "", adv: msg.kind === "adversary" ? msg.id : "" });
+        if (!k) break;
+        if (k.adv) this.revealAdversaries([k.adv]);
+        this.setComms(k);
+        this.addLog("note", `Opened a channel to ${k.who}${k.ship ? ` (${k.ship})` : ""}.`);
+        break;
+      }
+      case "commsClose":
+        if (!s.comms) break;
+        this.addLog("note", `Closed the channel to ${s.comms.who}.`);
+        this.setComms(null);
+        break;
       case "castPanic": {
         const member = s.config.cast.find((m) => m.id === msg.id);
         if (member) this.castPanic(member, "warden");
@@ -1716,7 +1756,7 @@ export class Session {
     Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] });
     patch?.(s.config);
     s.config.roomDocs = sanitizeRoomDocs(config.roomDocs);
-    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, synopses: {} });
+    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, comms: null, outcomeCheck: null, synopses: {} });
     this.endAllEffects();
     this.stopSounds();
     for (const ws of this.sockets) if (ws.role === "player") ws.character = null;
@@ -1927,7 +1967,7 @@ export class Session {
   }
 
   deliver(reply, source) {
-    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms) };
+    this.delivering = { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, comms: this.state.comms, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms) };
     try {
       this.deliverReply(reply, source);
     } finally {
@@ -1953,6 +1993,7 @@ export class Session {
       if (was) Object.assign(pc, { health: was.health, wounds: was.wounds, stress: was.stress, items: was.items });
     }
     s.outcomeCheck = undo.outcome;
+    s.comms = undo.comms ?? null;
     this.playhead = 0;
     this.addLog("note", "↶ Retconned the agent's last reply.");
     this.initPlayers();
@@ -1984,6 +2025,9 @@ export class Session {
     const config = this.state.config;
     const channel = channelOf(config);
     let prev = null;
+    const hail = source === "agent" ? this.agentComms(reply?.comms) : { open: null, close: 0 };
+    let hailOpen = hail.open, hailClose = hail.close;
+    let left = lines.filter((l) => (l.text || l.variants?.length) && !(l.voice === BUILTIN.narrator && source === "agent" && config.narrator === false)).length;
     for (let { voice, character, system, reveal, text, effects: lineFx, variants: rawVariants } of lines) {
       if (voice === BUILTIN.narrator && source === "agent" && config.narrator === false) continue;
       let member = character && voice === channel ? findCast(config.cast, character) : null;
@@ -1998,6 +2042,7 @@ export class Session {
       if (!text && !variants.length) { waiting = cues.map((c) => ({ ...c, hold: c.type !== "sound" })); continue; }
       for (const c of cues) if (c.type === "blackout") c.hold = true;
       waiting = [];
+      left--;
       const named = netNamed(config, system);
       const asked = named === ALL_NET || (split && named !== null) ? named : here;
       let net, inPerson = false, room = "";
@@ -2010,12 +2055,15 @@ export class Session {
       const shown = source === "agent" && reveal ? this.revealOnLine(reveal) : null;
       this.introduce(voice, net, { inPerson, done: prev === BUILTIN.narrator });
       prev = voice;
-      const entry = this.addLog(kind, text, { source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson ? { inPerson: true, room } : {}), ...(variants.length ? { variants } : {}), ...(shown ? { reveal: shown } : {}), ...meta, ...(cues.length ? { cues } : {}) });
+      const entry = this.addLog(kind, text, { ...(hailOpen ? { commsOpen: hailOpen } : {}), ...(hailClose && !left ? { commsClose: hailClose } : {}), source, net, ...(kind === "entity" ? { entity: voice } : {}), ...(character ? { character } : {}), ...(inPerson ? { inPerson: true, room } : {}), ...(variants.length ? { variants } : {}), ...(shown ? { reveal: shown } : {}), ...meta, ...(cues.length ? { cues } : {}) });
       meta = {};
+      if (!left) hailClose = 0;
+      hailOpen = null;
       lastEntry = entry;
       for (const c of cues) this.startEffect(c, "agent", { atEntry: entry.id, when: "before", hold: c.hold });
     }
     for (const c of waiting) this.startEffect(c, "agent", lastEntry ? { atEntry: lastEntry.id, when: "after" } : null);
+    if (hailOpen || hailClose) this.toPlayers({ t: "comms", comms: this.commsFor() });
     if (source === "agent") this.applyCastChanges(reply?.cast_changes, "after");
     if (source === "agent") this.revealAdversaries(reply?.reveal);
     for (const id of this.panics?.splice(0) || []) {
@@ -2374,7 +2422,7 @@ export class Session {
     }
     for (const t of s.config.terminals) Object.assign(t, { open: t.startOpen, openedInPlay: false });
     s.station.access_level = DEFAULT_STATION.access_level;
-    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, storyStart: null });
+    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, comms: null, outcomeCheck: null, storyStart: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);
     this.toPlayers({ t: "roomPlan", rows: null });

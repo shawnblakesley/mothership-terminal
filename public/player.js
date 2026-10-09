@@ -157,6 +157,8 @@
     const div = document.createElement("div");
     div.className = `line ${entry.kind}`;
     div.dataset.id = entry.id;
+    if (entry.character) div.dataset.character = entry.character;
+    if (entry.entity) div.dataset.entity = entry.entity;
     if (entry.kind === "player") {
       if (stream) whereTag(entry);
       div.dataset.prompt = stream ? `${entry.by ? shortName({ name: entry.by }) : "CREW"}@${sysOf(entry.net) || header.stationName}> ` : `${promptText()} `;
@@ -307,7 +309,7 @@
     if (plays.has(raw.id) || linesEl.querySelector(`[data-id="${raw.id}"]`)) return;
     const entry = forMe(raw);
     const v = !entry || (stream && !raw.text) ? -1 : entry.vi >= 0 ? entry.vi + 1 : 0;
-    const play = { gen: lineGen, raw, entry, v, pieces: entry ? piecesOf(entry) : [], div: null, finished: false };
+    const play = { gen: lineGen, raw, entry, v, pieces: entry ? piecesOf(entry) : [], div: null, finished: false, replay: replaying };
     plays.set(raw.id, play);
     cueState.set(raw.id, "queued");
     updateBusy();
@@ -320,6 +322,7 @@
     if (play.gen !== lineGen) return;
     cueState.set(play.raw.id, "showing");
     if (play.raw.reveal) showImage(play.raw.reveal);
+    if (play.raw.commsOpen && !play.replay) setComms(play.raw.commsOpen);
     releaseCues(play.raw.id, "before");
   }
 
@@ -359,6 +362,7 @@
     }
     cueState.set(play.raw.id, "done");
     releaseCues(play.raw.id, "after");
+    if (play.raw.commsClose && !play.replay && comms?.since === play.raw.commsClose) setComms(null);
     plays.delete(play.raw.id);
     updateBusy();
   }
@@ -1531,6 +1535,140 @@
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("isofx").hidden) closeIso(); });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("planfx").hidden) $("planfx").hidden = true; });
 
+  let comms = null, replaying = false, commsTick = 0, commsGone = 0;
+  const commsEl = $("commsfx"), lineMirrors = new Map();
+  const commsLines = new MutationObserver((recs) => {
+    for (const r of recs) {
+      for (const n of r.removedNodes) dropMirror(n);
+      for (const n of r.addedNodes) if (n.nodeType === 1 && n.classList.contains("line")) mirrorLine(n);
+    }
+  });
+  const sameName = (a, b) => String(a || "").toLowerCase() === String(b || "").toLowerCase();
+  function dropMirror(n) {
+    const m = lineMirrors.get(n);
+    if (!m) return;
+    m.mo.disconnect();
+    m.el.remove();
+    lineMirrors.delete(n);
+    commsTalk();
+  }
+  function commsTalk() {
+    commsEl.classList.toggle("talking", [...lineMirrors].some(([n, m]) => m.mine && n.classList.contains("typing")));
+  }
+  function mirrorLine(n) {
+    if (!comms || n.classList.contains("meta") || n.classList.contains("roll") || n.classList.contains("note")) return;
+    const mine = !!(n.dataset.character && sameName(n.dataset.character, comms.match.character)) || !!(n.dataset.entity && n.dataset.entity === comms.match.entity);
+    const src = textOf(n), el = document.createElement("div");
+    el.className = "cm-line";
+    const label = mine ? "" : n.dataset.prompt || n.dataset.label || src.dataset.label || "";
+    const sync = () => {
+      el.textContent = label + src.textContent;
+      el.classList.toggle("typing", mine && n.classList.contains("typing"));
+      const box = mine ? commsEl.querySelector(".cm-text") : commsEl.querySelector(".cm-strip");
+      box.scrollTop = box.scrollHeight;
+      commsTalk();
+    };
+    const mo = new MutationObserver(sync);
+    mo.observe(n, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    const box = commsEl.querySelector(mine ? ".cm-text" : ".cm-strip");
+    box.append(el);
+    lineMirrors.set(n, { el, mo, mine });
+    for (const [other, m] of lineMirrors) if (m.el.parentNode === box && box.children.length > (mine ? 4 : 3)) dropMirror(other);
+    sync();
+  }
+  function commsPlace() {
+    const r = screenEl.getBoundingClientRect(), root = document.documentElement.style;
+    for (const [k, v] of Object.entries({ l: r.left, t: r.top, w: r.width, h: r.height, r: innerWidth - r.right, b: innerHeight - r.bottom })) root.setProperty(`--cm-${k}`, `${Math.max(0, v)}px`);
+  }
+  const commsIn = commsEl.querySelector(".cm-in"), commsBox = commsIn.querySelector("input");
+  commsIn.addEventListener("submit", (e) => {
+    e.preventDefault();
+    input.value = commsBox.value;
+    commsBox.value = "";
+    form.requestSubmit();
+  });
+  function commsBurst() {
+    const c = document.createElement("canvas");
+    c.className = "cm-burst";
+    c.width = 160; c.height = 100;
+    const g = c.getContext("2d"), px = g.createImageData(c.width, c.height);
+    for (let i = 0; i < px.data.length; i += 4) { px.data[i] = px.data[i + 1] = px.data[i + 2] = Math.random() * 255; px.data[i + 3] = 255; }
+    g.putImageData(px, 0, 0);
+    document.body.append(c);
+    FX.Sound.burst(0.3, 0.2, 3500);
+    setTimeout(() => c.remove(), calmNow() ? 160 : 380);
+  }
+  const calmNow = () => document.body.classList.contains("calm");
+  function commsClock() {
+    const s = Math.max(0, Math.floor((serverNow() - comms.since) / 1000));
+    commsEl.querySelector(".cm-time").textContent = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+    commsPlace();
+    commsIn.hidden = stream || watching();
+    commsIn.querySelector(".cm-prompt").textContent = promptEl.textContent;
+  }
+  function drawComms() {
+    const face = commsEl.querySelector(".cm-face"), pic = comms.pic;
+    face.className = `cm-face${pic?.src ? " photo" : ""}`;
+    if (pic?.portrait) face.innerHTML = portraitHtml(pic.portrait);
+    else if (pic?.src) face.innerHTML = `<img src="${escH(pic.src)}" alt="" referrerpolicy="no-referrer">`;
+    else face.innerHTML = `<div class="cm-novideo"><div>NO VIDEO: AUDIO ONLY</div><div class="cm-wave">${Array.from({ length: 28 }, (_, i) => `<i style="--h:${(0.25 + 0.75 * Math.abs(Math.sin(i * 1.7) * Math.cos(i * 0.6))).toFixed(2)};--d:${(-0.07 * i).toFixed(2)}s"></i>`).join("")}</div></div>`;
+    const probe = face.querySelector("img");
+    if (probe) probe.onerror = () => { probe.remove(); face.classList.remove("photo"); face.innerHTML = '<div class="cm-novideo"><div>NO VIDEO: AUDIO ONLY</div></div>'; };
+    commsEl.querySelector(".cm-name").textContent = comms.who;
+    commsEl.querySelector(".cm-ship").textContent = comms.ship ? `// ${comms.ship}` : "";
+    commsEl.querySelector(".cm-xpdr").textContent = comms.transponder ? `TRANSPONDER: ${comms.transponder}` : "";
+    commsEl.querySelector(".cm-text").innerHTML = "";
+    commsEl.querySelector(".cm-strip").innerHTML = "";
+    commsClock();
+  }
+  function setComms(next, quiet = false) {
+    if (!next) return closeComms(quiet);
+    if (comms?.since === next.since) return;
+    const fresh = !comms;
+    closeComms(true);
+    clearTimeout(commsGone);
+    comms = next;
+    document.body.classList.add("comms-on");
+    document.body.classList.remove("comms-min");
+    drawComms();
+    commsPlace();
+    if (!quiet) commsBox.focus();
+    commsLines.observe(linesEl, { childList: true });
+    clearInterval(commsTick);
+    commsTick = setInterval(commsClock, 1000);
+    if (!quiet) {
+      commsBurst();
+      [[620, 0.07], [930, 0.09], [1240, 0.12]].forEach(([f, d], i) => setTimeout(() => FX.Sound.beep(f, d, 0.06), i * 85));
+    }
+  }
+  function closeComms(quiet = false) {
+    const was = comms;
+    comms = null;
+    clearInterval(commsTick);
+    commsLines.disconnect();
+    for (const n of [...lineMirrors.keys()]) dropMirror(n);
+    commsEl.classList.remove("talking");
+    if (!was) return;
+    if (quiet) { document.body.classList.remove("comms-on", "comms-min"); return; }
+    commsBurst();
+    [[900, 0.08], [600, 0.1], [330, 0.18]].forEach(([f, d], i) => setTimeout(() => FX.Sound.beep(f, d, 0.06), i * 95));
+    commsGone = setTimeout(() => document.body.classList.remove("comms-on", "comms-min"), calmNow() ? 120 : 330);
+  }
+  const commsMinimize = (min) => {
+    document.body.classList.toggle("comms-min", min);
+    commsPlace();
+    (min ? input : commsBox).focus();
+  };
+  $("commstab").addEventListener("click", () => commsMinimize(false));
+  new ResizeObserver(() => comms && commsPlace()).observe(screenEl);
+  addEventListener("resize", () => comms && commsPlace());
+  addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !comms || document.body.classList.contains("comms-min")) return;
+    if (["reveal", "planfx", "sectorfx", "isofx"].some((id) => !$(id).hidden)) return;
+    e.preventDefault();
+    commsMinimize(true);
+  }, true);
+
   function socketUrl() {
     const u = new URL(`ws?s=${encodeURIComponent(code)}`, location.href);
     u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -1584,6 +1722,7 @@
           lineGen++;
           plays.clear();
           Voice.stop();
+          closeComms(true);
           linesEl.innerHTML = "";
           lastWhere = "";
           cueState.clear();
@@ -1592,10 +1731,13 @@
           setTimeout(() => setIso(msg.iso || null));
           setCrew(msg.crew, msg.claims, msg.played);
           if (mine()) ws.send(JSON.stringify({ t: "claim", id: myId }));
+          replaying = true;
           for (const e of msg.log) {
             if (e.timing && e.kind !== "player" && (e.timing.end ?? Infinity) > serverNow()) enqueue(e);
             else renderInstant(e);
           }
+          replaying = false;
+          setComms(msg.comms || null, true);
           FX.sync(msg.effects.filter((e) => !(e.atEntry && e.seconds > 0) && e.type !== "sound"));
           Sfx.sync(msg.playing || []);
           busy = msg.busy;
@@ -1636,6 +1778,7 @@
         case "rollResult": showRollResult(msg); break;
         case "roomPlan": showPlan(msg); break;
         case "sector": showSector(msg); break;
+        case "comms": setComms(msg.comms || null); break;
         case "showImage": showImage(msg); break;
         case "rollError": rbErr.textContent = String(msg.text || "").toUpperCase(); $("sr-err").textContent = rbErr.textContent; break;
         case "endEffect": dropCue(msg.id); FX.end(msg.id); break;

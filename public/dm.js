@@ -159,6 +159,12 @@
       };
     });
   }
+  async function openChannel(kind, id, who) {
+    if (await ask(`Open channel to ${who}`, "Which ship or station are they on? Their picture fills every player's screen.", [["yes", "Next"]], "", { value: "" }) !== "yes") return;
+    const ship = $("askCopy").value.trim();
+    if (await ask(`Open channel to ${who}`, "Transponder line (class, home port, registry). Optional.", [["yes", "Open channel"]], "", { value: "" }) !== "yes") return;
+    send({ t: "commsOpen", kind, id, who, ship, transponder: $("askCopy").value.trim() });
+  }
   const sure = async (title, text, label, cls = "danger") => (await ask(title, text, [["yes", label, cls]])) === "yes";
 
   async function copy(text, what) {
@@ -621,7 +627,7 @@
     const panel = $("cast");
     if (!fromDraft) {
       const editing = panel.contains(document.activeElement) || castTimer !== null || Date.now() - castSentAt < 1500;
-      const json = JSON.stringify([S.config.cast, S.config.castChannel, S.config.map, S.screens, S.config.terminals.map((t) => t.room), S.config.voices.map((v) => [v.id, v.name])]);
+      const json = JSON.stringify([S.config.cast, S.config.castChannel, S.config.map, S.screens, S.config.terminals.map((t) => t.room), S.config.voices.map((v) => [v.id, v.name]), S.comms?.cast]);
       if ((castDraft && editing) || panel.dataset.json === json) return;
       panel.dataset.json = json;
       castDraft = structuredClone(S.config.cast || []);
@@ -643,6 +649,7 @@
               ATTITUDES.map(([n, label]) => `<option value="${n}" ${n === (m.attitude || 0) ? "selected" : ""}>${label} (${n > 0 ? "+" : ""}${n})</option>`).join("")}</select></label>
             <label class="small muted stress" title="Stress, 0-20">Stress <input type="number" data-m="stress" data-num min="0" max="20" value="${m.stress ?? 2}" aria-label="${esc(m.name)}'s Stress"></label>
             <button data-mact="panic" class="small" title="Roll d20: at or under Stress, they panic">Panic check</button>
+            ${S.comms?.cast === m.name ? '<button data-mact="hangup" class="small" title="End the comms link on every screen">Close channel</button>' : '<button data-mact="hail" class="small" title="Put them full screen on every player\'s screen as a ship-to-ship call">Open channel</button>'}
             ${withPlayers.has(m.room) ? '<span class="pill ok" title="Face to face with players">in person</span>' : '<span class="pill" title="Heard over the intercom">intercom</span>'}
           </div>
           <div class="row wrap edit-only small">
@@ -683,6 +690,8 @@
     const i = Number(card.dataset.i), m = castDraft[i];
     if (act === "pic") openPortraits({ cast: i });
     else if (act === "panic") send({ t: "castPanic", id: m.id });
+    else if (act === "hail") openChannel("cast", m.id, m.name);
+    else if (act === "hangup") send({ t: "commsClose" });
     else if (act === "test") Voice.test({ name: "test", voice: { engine: "neural", speaker: m.voice || "am_michael", pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     else if (act === "del") {
       if (!(await sure(`Remove ${m.name || "this character"}?`, "The agent forgets them.", "Remove"))) return;
@@ -756,7 +765,7 @@
     const panel = $("adversaries");
     const editing = panel.contains(document.activeElement) && document.activeElement.matches("input:not([type=checkbox]), textarea");
     const list = S.config.voices.filter((v) => v.adversary);
-    const json = JSON.stringify(list);
+    const json = JSON.stringify([list, S.comms?.adv]);
     if (editing || advTimer || panel.dataset.json === json) return;
     panel.dataset.json = json;
     const presets = Object.keys(S.voiceOptions.presets);
@@ -770,6 +779,7 @@
               <input type="checkbox" data-a="revealed" ${v.adversary.revealed ? "checked" : ""}> revealed</label>
             <span class="pill ${v.adversary.revealed ? "ok" : ""}">${v.adversary.revealed ? "players see its name" : "players see ???"}</span>
             ${v.adversary.picture ? `<button data-aact="show" class="small" title="Show on every screen. Reveals it.">Show players</button>` : ""}
+            ${S.comms?.adv === v.id ? '<button data-aact="hangup" class="small" title="End the comms link on every screen">Close channel</button>' : '<button data-aact="hail" class="small" title="Put it full screen on every player\'s screen as a ship-to-ship call. Reveals it.">Open channel</button>'}
           </div>
           <div class="row wrap edit-only small">
             <select data-a="preset" aria-label="How it sounds">${presets.map((p) => `<option ${p === v.preset ? "selected" : ""}>${p}</option>`).join("")}${v.preset === "custom" ? '<option selected value="custom">custom (Story tab)</option>' : ""}</select>
@@ -802,6 +812,8 @@
     if (act === "pic") { advFor = id; $("advFile").value = ""; $("advFile").click(); }
     else if (act === "nopic") advPatch(id, { picture: "" });
     else if (act === "show") send({ t: "adversaryShow", id });
+    else if (act === "hail") openChannel("adversary", id, v.name);
+    else if (act === "hangup") send({ t: "commsClose" });
     else if (act === "test") Voice.test(v, $("testText").value || "i can hear you.", `api/sessions/${code}/tts-test`, key);
     else if (act === "del" && (await sure(`Remove ${v.name}?`, "Removes it and its voice from the story.", "Remove"))) send({ t: "adversaryDel", id });
   });

@@ -142,6 +142,14 @@
   <div id="planfx" class="planfx" hidden role="dialog" aria-label="Room layout"><div class="pf-title"></div><div class="pf-plan"></div><div class="pf-hint">[ ESC OR CLICK TO CLOSE ]</div></div>
   <div id="sectorfx" class="planfx sectorfx" hidden role="dialog" aria-label="Sector map and job board"><div class="pf-title"></div><div class="sf-body"><div class="sf-map"></div><div class="sf-side"></div></div><div class="pf-hint">[ NUMBER OR CLICK TO VOTE · ESC TO CLOSE ]</div></div>
   <div id="isofx" class="planfx isofx mapfx" hidden role="dialog" aria-label="Station map"><div class="pf-title">STATION MAP</div><div class="if-map"></div><button type="button" class="p-btn pf-hint if-close">[ DRAG TO TURN · ESC TO CLOSE ]</button></div>
+  <div id="commsfx" role="dialog" aria-label="Comms link">
+    <div class="cm-vid"><div class="cm-face"></div><div class="cm-stamp"><span class="cm-dot"></span> LINK ESTABLISHED <span class="cm-time">00:00</span></div><div class="cm-esc">[ ESC TO MINIMIZE ]</div></div>
+    <div class="cm-id"><span class="cm-name"></span> <span class="cm-ship"></span><div class="cm-xpdr"></div></div>
+    <div class="cm-text" aria-live="polite"></div>
+    <div class="cm-strip" aria-hidden="true"></div>
+    <form class="cm-in" autocomplete="off"><label class="cm-prompt" for="cm-in"></label><input id="cm-in" spellcheck="false" autocapitalize="characters" aria-label="Your reply"></form>
+  </div>
+  <button type="button" id="commstab" class="p-btn" title="Restore the comms link">[ CHANNEL OPEN ]</button>
 
   <div id="boot">
     <pre id="boot-text"></pre>

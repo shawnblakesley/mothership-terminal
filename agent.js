@@ -108,7 +108,7 @@ function buildSchema(voices) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["lines", "station_changes", "crew_changes", "item_changes", "moves", "cast_changes", "clocks", "handouts", "found_docs", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
+    required: ["lines", "station_changes", "crew_changes", "item_changes", "moves", "cast_changes", "comms", "clocks", "handouts", "found_docs", "layout", "room_plans", "effects", "outcome_check", "story_end", "dm_note"],
     properties: {
       lines: {
         type: "array",
@@ -203,6 +203,25 @@ function buildSchema(voices) {
             stress_change: { type: "integer", description: "Their Stress going up for something frightening that happens to them (+1, or +2 for real horror), or down when they get real rest or relief; 0 for no change." },
             panic_check: { type: "boolean", description: "True when something truly horrifying happens to them in this reply (see THE CAST: PANIC): they roll a Panic check in front of the players once your lines are out, and the result comes back to you as a [ROLL RESULT] to play out. Usually false." },
           },
+        },
+      },
+      comms: {
+        type: "object",
+        description: "A full-screen ship-to-ship (or station) comms link on every player's screen, for a hail from another ship or station, never for people in the room or on the intercom. Open one when a ship calls the crew: the caller's picture (if they have one) fills the screen and their lines show under it. Close it when the call ends. Almost always empty (open.who \"\" and close false).",
+        additionalProperties: false,
+        required: ["open", "close"],
+        properties: {
+          open: {
+            type: "object",
+            additionalProperties: false,
+            required: ["who", "ship", "transponder"],
+            properties: {
+              who: { type: "string", description: "The caller's name, from THE CAST or an adversary if it is one of them (so their picture is used), otherwise a new name. \"\" for no new channel." },
+              ship: { type: "string", description: "The ship or station they are calling from, in caps, e.g. \"RCEA CUTTER WRIT OF SEIZURE\"." },
+              transponder: { type: "string", description: "Their transponder line: class, home port, registry. May be empty." },
+            },
+          },
+          close: { type: "boolean", description: "True when the call ends in this reply (after its last line). Ignored if open.who is given." },
         },
       },
       clocks: {
@@ -315,6 +334,7 @@ const REPLY_EXAMPLE = {
   item_changes: [],
   moves: [],
   cast_changes: [{ name: "Dr. Imre Salk", room: "", notes: "", attitude_change: 1, why: "they promised medicine for Webb", stress_change: 0, panic_check: false }],
+  comms: { open: { who: "", ship: "", transponder: "" }, close: false },
   clocks: [],
   handouts: [],
   found_docs: [],
@@ -415,6 +435,7 @@ THE CAST (the story's people: see THE CAST below, and WHERE THE CAST ARE in the 
 - You may bring in someone not listed (someone the lore allows): give their name with (f) or (m) the first time, e.g. "Marlowe (f)", and add them with cast_changes (with where they are, and notes on who they are). A cast_changes note is added to what's already known about someone: use it for something new that's now true (hurt, infected, dead), never to restate them. They get a voice of their own. Keep using the same name afterwards.
 - Never put the speaker's name in the text itself; the screen shows it.
 - STRESS and PANIC: each of them has Stress (0-20, listed in WHERE THE CAST ARE). Raise it (stress_change) when something frightening happens to them; lower it only for real rest or relief. When something truly horrifying happens to them (a door blown open on the thing, a friend torn apart in front of them, no way out), set panic_check: they roll a d20 in front of the players, and at or under their Stress they panic. Raise their Stress first in the same item when the horror warrants it: the more stressed they are, the likelier (and the worse) the panic. Don't write the panic yourself: the [ROLL RESULT] that comes back says how they react (from kept their cool to a heart attack), and then you play it out fully.
+- COMMS LINK: when another ship or station hails the crew (a customs cutter, a rival hauler, a station control), open a full-screen comms link with comms.open (who, ship, transponder) in the same reply as the hail's first line, and speak their lines as that person (a CAST member, or an adversary). Close it with comms.close when the call ends. Not for people in the room or on the intercom. If CHANNEL OPEN is listed in the context, the link is up: keep it for the whole call and don't open another unless the caller changes. Usually leave comms empty.
 - ATTITUDES: each of them feels a certain way about the players, from Hostile (-3) through Wary (-1), Neutral (0) and Friendly (1) to Loyal (3), listed in WHERE THE CAST ARE with why. Play them by it: what they'll share, how they talk to the players, whether they help, stall, lie or turn on them. When the players clearly earn or lose someone's trust (help them, keep a promise, threaten them, abandon someone they care about, lie and get caught), move it with cast_changes (attitude_change, and why), in the same reply. One step for most things; it changes slowly, and not for small talk. They don't announce it.
 
 PER-PLAYER VARIATIONS
@@ -710,6 +731,7 @@ function buildContext(state, steer, aside = false) {
     }
   }
   ctx.push(castWhereabouts(state));
+  if (state.comms) ctx.push(`CHANNEL OPEN: a full-screen comms link to ${state.comms.who}${state.comms.ship ? ` aboard ${state.comms.ship}` : ""} is up on every player's screen (set comms.close when the call ends).`);
   if (state.unheard?.length && state.config.narrator !== false) ctx.push(`NOT YET HEARD (where the players are; the first line from one of these gets a one-line narrator intro right before it, see SPOKEN VOICES): ${state.unheard.join(", ")}`);
   if (state.solo?.phase === "play") ctx.push(SOLO);
   ctx.push(TALK[state.config.talk] || TALK.brief);
@@ -779,6 +801,7 @@ export function parseReply(text, voices) {
       .filter((c) => c && String(c.name ?? "").trim())
       .slice(0, 12)
       .map((c) => ({ name: scrub(c.name).trim().slice(0, 60), room: String(c.room ?? "").trim().slice(0, 60), notes: scrub(c.notes).trim().slice(0, 600), attitude_change: Math.max(-3, Math.min(3, Math.round(Number(c.attitude_change) || 0))), why: scrub(c.why).trim().slice(0, 160), stress_change: Math.max(-20, Math.min(20, Math.round(Number(c.stress_change) || 0))), panic_check: c.panic_check === true })),
+    comms: { open: String(r?.comms?.open?.who ?? "").trim() ? { who: scrub(r.comms.open.who).trim().slice(0, 60), ship: scrub(r.comms.open.ship).trim().slice(0, 80), transponder: scrub(r.comms.open.transponder).trim().slice(0, 120) } : null, close: r?.comms?.close === true },
     clocks: (Array.isArray(r?.clocks) ? r.clocks : [])
       .filter((c) => c && ["start", "stop"].includes(c.action) && String(c.label ?? "").trim())
       .slice(0, 4)
