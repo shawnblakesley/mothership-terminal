@@ -3296,7 +3296,10 @@ export class Session {
         else {
           x.error = "";
           const at = (id) => c.locations.find((l) => l.id === id).name;
-          if (r.lane) for (const l of passDays(p, [this.state.config.crew, p.crew], r.lane.days)) this.addLog("note", l);
+          if (r.lane) {
+            for (const l of passDays(p, [this.state.config.crew, p.crew], r.lane.days)) this.addLog("note", l);
+            this.crewChanged();
+          }
           this.addLog("note", r.lane
             ? `${c.ship.name} noses out of ${at(r.from)} and runs ${r.lane.name} (${r.lane.days} days) to ${at(p.at)}: ${r.cost} fuel (house rule), ${r.left} left.`
             : msg.t === "pilotDispatch"

@@ -355,3 +355,13 @@ test("Pass days ages every character's timed conditions, each sheet once, and re
   assert.equal(a.cond.dead, "lethal radiation dose");
   assert.equal(lines.filter((l) => l.startsWith(a.name + ": ") && /died/.test(l)).length, 1);
 });
+
+test("Pass days ages both copies of a character (live crew and campaign clone) but reports each character once", () => {
+  const [p, a] = rich();
+  Object.assign(a.cond, { cryo: 168, lethal: 24 });
+  const twin = structuredClone(a);
+  const lines = passDays(p, [[a], [twin]], 10);
+  assert.equal(twin.cond.cryo, 0);
+  assert.equal(twin.cond.dead, "lethal radiation dose");
+  assert.equal(lines.filter((l) => l.startsWith(a.name + ": ")).length, 1);
+});

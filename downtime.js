@@ -234,13 +234,13 @@ export function sanitizeDowntime(d, crew = []) {
 export function passDays(p, crews, n) {
   const days = clampInt(n, 0, 3650, 0), lines = [];
   p.downtime.day += days;
-  const aged = new Set();
+  const aged = new Set(), told = new Set();
   for (const crew of crews) {
     for (const pc of crew) {
       if (days && pc.cond && !aged.has(pc.cond)) {
         aged.add(pc.cond);
         const said = ageDays(pc, days);
-        if (said.length) lines.push(`${pc.name}: ${said.join("; ")}.`);
+        if (said.length && !told.has(pc.id)) { told.add(pc.id); lines.push(`${pc.name}: ${said.join("; ")}.`); }
       }
       const gone = pc.cond.tags.filter((t) => expiry(t) && expiry(t) <= p.downtime.day);
       if (!gone.length) continue;
