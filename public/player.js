@@ -594,7 +594,8 @@
     $("cb-crew").innerHTML = pcs.map(({ c, by }) => {
       const wounds = Array.from({ length: c.wounds.max }, (_, i) => `<i class="${i < c.wounds.current ? "on" : ""}"></i>`).join("");
       return `<div class="cb-pc" data-id="${escH(c.id)}">
-        <div class="cb-face">${portraitHtml(c.portrait, "cb-portrait") || '<span class="cb-noface">NO PHOTO</span>'}<span class="cb-waves" aria-hidden="true">${WAVE_BARS}</span></div>
+        <span class="cb-waves" aria-hidden="true">${WAVE_BARS}</span>
+        <div class="cb-face">${portraitHtml(c.portrait, "cb-portrait") || '<span class="cb-noface">NO PHOTO</span>'}</div>
         <div class="cb-name"><span>${escH(shortName(c))}</span><span class="cb-wounds" title="Wounds">${wounds}</span></div>
         <div class="cb-vit"><span>HP ${c.health.current}/${c.health.max}</span><span>STRESS ${c.stress}</span></div>
         ${by ? `<div class="cb-by">${escH(by.toUpperCase())}</div>` : ""}
