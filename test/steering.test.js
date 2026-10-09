@@ -8,6 +8,8 @@ import { handoutRequest } from "../handouts.js";
 import { draftRequest as roomRequest } from "../rooms.js";
 import { jsonInstructions } from "../providers/openai-compatible.js";
 import { Session } from "../session.js";
+import { sanitizeShip } from "../ships.js";
+import { HAZARDS } from "../hazards.js";
 import { kestrelState, haulersState, promptSize } from "../scripts/steering-fixtures.mjs";
 
 // What the agent is told must match _out/tickets/RULES.md. When you add a reply field, describe it in the schema (or name it in the system prompt),
@@ -28,7 +30,8 @@ const everything = (state, steer = "") => {
   const r = buildRequest(state, steer);
   return [r.system, r.context, r.messages.map((m) => m.content).join("\n"), jsonInstructions(r.schema, r.example)].join("\n\n");
 };
-const full = () => ({ ...kestrelState(), solo: { phase: "play" } });
+// Every field on: a game with no Warden (story_end) and a ship in the story (ship_fight).
+const full = () => { const s = kestrelState(); return { ...s, solo: { phase: "play" }, config: { ...s.config, ships: [sanitizeShip({ id: "writ", name: "WRIT OF SEIZURE", weapons: [{ name: "Railgun" }] })] } }; };
 
 test("every reply field has a schema description, and every nested field a description or a mention in the system prompt", () => {
   const r = buildRequest(full(), "");
@@ -67,6 +70,7 @@ const SAMPLE = {
   effects: [{ type: "alarm", text: "ALARM", seconds: 3 }],
   outcome_check: { needed: true, attempt: "hack the door", suggested_check: "intellect", advantage: "none", why: "uncertain", on_success: "opens", on_failure: "alarm" },
   story_end: { ended: true, how: "They escaped." },
+  ship_fight: { enemy_move: "evade", fuel: 2, enemy_fire: true },
   dm_note: "a note",
 };
 
@@ -129,6 +133,9 @@ test("a prompt is built from the features that are on, not with 'don't use X' no
   for (const k of ["crew_changes", "attacks", "crew_attacks", "round", "reveal_death_save", "effects"]) assert.ok(k in on.schema.properties, `${k} missing while its feature is on`);
   assert.ok(!("story_end" in on.schema.properties), "story_end is only for a game with no Warden");
   assert.ok("story_end" in buildRequest(full(), "").schema.properties);
+  assert.ok(!("ship_fight" in on.schema.properties), "ship_fight is only for a story with ships");
+  assert.ok("ship_fight" in buildRequest(full(), "").schema.properties);
+  assert.ok("ship_fight" in buildRequest(haulersState(18), "").schema.properties, "a Rim Haulers story with a ship to fight");
 });
 
 test("the per-reply prompt stays under its size budget", () => {
@@ -187,4 +194,82 @@ test("Retcon puts a screen the agent moved back where it was", () => {
   assert.equal(ws.terminal, "t2");
   s.retcon();
   assert.equal(ws.terminal, "t1");
+});
+
+test("the agent is told about a Death Save rolled in secret, so it can reveal it when someone checks vitals", () => {
+  const state = kestrelState();
+  const pc = state.config.crew[3];
+  assert.doesNotMatch(buildRequest(state, "").context, /rolled in secret/);
+  state.deathSaves = { [pc.id]: 6 };
+  const ctx = buildRequest(state, "").context;
+  assert.match(ctx, new RegExp(`${pc.name}: a Death Save was rolled in secret`));
+  assert.doesNotMatch(ctx, /ROLLED 06|\b6\b.*Death Save/, "the result itself stays hidden");
+});
+
+test("check-first knows the faction standings, so a held attempt gets the house-rule [+] or [-]", () => {
+  const state = haulersState(0);
+  state.campaign.factions.union = 2;
+  assert.match(buildPrecheck(state).context, /FACTION STANDING \(campaign house rule[\s\S]*\[\+\] on the crew's social rolls with The Union/);
+  assert.doesNotMatch(buildPrecheck(kestrelState()).context, /FACTION STANDING/);
+});
+
+test("the faction standings go out once per reply: in the context, not again in the standing orders", () => {
+  const state = haulersState(0);
+  const r = buildRequest(state, "");
+  assert.equal(r.context.split("FACTION STANDING (").length - 1, 1);
+  assert.doesNotMatch(r.system, /FACTION STANDING \(/);
+});
+
+test("the length reminder on the player's message names the setting's limits", () => {
+  const state = kestrelState();
+  state.config.talk = "terse";
+  assert.match(buildRequest(state, "").messages.at(-1).content, /LENGTH TERSE: 2 lines at most/);
+  assert.match(buildRequest(state, "").context, /TERSE, a hard limit\): at most 2 lines/);
+});
+
+test("hazard rules that are this app's reading say so", () => {
+  for (const k of ["fire", "explosion"]) assert.match(HAZARDS[k].rule, /^This app/, k);
+});
+
+test("saved sheets: Heavy Machinery becomes Industrial Equipment, the bonus kept, on every crew list", () => {
+  const sheet = (skills) => ({ name: "Rook", className: "Teamster", skills });
+  const game = {
+    config: { stationName: "KESTREL-9", crew: [sheet(["Zero-G +10", "Heavy Machinery +10", "Mechanical Repair +15"]), { ...sheet([{ name: "Heavy Machinery", bonus: 10 }, { name: "Industrial Equipment", bonus: 10 }]), name: "Two" }] },
+    storyStart: { config: { crew: [sheet(["Heavy Machinery"])] } },
+  };
+  const s = new Session({ code: "T", tokenHash: "x", game }, { onChange() {}, onEnd() {} });
+  const names = (pc) => pc.skills.map((k) => `${k.name} +${k.bonus}`);
+  assert.deepEqual(names(s.state.config.crew[0]), ["Zero-G +10", "Industrial Equipment +10", "Mechanical Repair +15"]);
+  assert.deepEqual(names(s.state.config.crew[1]), ["Industrial Equipment +10"]);
+  assert.deepEqual(s.state.storyStart.config.crew[0].skills, ["Industrial Equipment"]);
+  assert.ok(s.state.config.upgrades.includes("industrial-equipment"));
+  const rook = new Session({ code: "T2", tokenHash: "x", game: {} }, { onChange() {}, onEnd() {} }).state.config.crew[0];
+  assert.ok(names(rook).includes("Industrial Equipment +10") && !names(rook).some((k) => /Heavy/.test(k)), "KESTREL-9's Rook");
+});
+
+test("Retcon takes back an ending the agent wrote in a game with no Warden, even after the recap", async () => {
+  const s = session();
+  s.soloChanged = () => {};
+  s.state.solo = { phase: "play", pitches: [], busy: "", error: "", opened: true };
+  let release;
+  s.ask = () => new Promise((ok) => { release = () => ok({ verdict: "They escaped.", sections: [] }); });
+  const before = s.state.log.length;
+  s.deliver({ lines: [{ voice: "terminal", text: "UNDOCKING." }], story_end: { ended: true, how: "They escaped." } }, "agent");
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(s.state.solo.phase, "ended");
+  release();
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(s.state.solo.busy, "", "the recap is done");
+  s.retcon();
+  assert.equal(s.state.solo.phase, "play");
+  assert.ok(!s.state.log.some((e) => /The story ended/.test(e.text)), "the ending's log note goes too");
+  assert.equal(s.state.log.filter((e) => !/Retconned/.test(e.text)).length, before);
+  // A recap still being written when the ending is retconned changes nothing.
+  s.deliver({ lines: [{ voice: "terminal", text: "UNDOCKING." }], story_end: { ended: true, how: "Again." } }, "agent");
+  await new Promise((r) => setTimeout(r, 5));
+  s.retcon();
+  release();
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(s.state.solo.phase, "play");
+  assert.ok(!s.state.solo.busy && !s.state.solo.recap, "a late recap is dropped");
 });

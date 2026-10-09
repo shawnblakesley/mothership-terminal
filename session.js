@@ -7,7 +7,7 @@ import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, 
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
-import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings } from "./crew.js";
+import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings, renameSkill } from "./crew.js";
 import { combatCheck, damageAdversary, rollDeathSave, deathSaveText, sanitizeStats, statsLine } from "./combat.js";
 import { rollDice, rollWithAdv, cancelAdv } from "./dice.js";
 import { woundText } from "./wounds.js";
@@ -197,7 +197,7 @@ export function defaultGame(keys = {}) {
       rooms: structuredClone(DEFAULT_ROOMS),
       startDocs: [WORK_ORDER],
       roomDocs: structuredClone(DEFAULT_ROOM_DOCS),
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "portraits-2", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", "trauma-notes", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "portraits-2", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", "trauma-notes", "industrial-equipment", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -385,6 +385,10 @@ function migrateGame(saved) {
       if (v) Object.assign(v.adversary, DEFAULT_COLD);
     }
     config.upgrades.push("the-cold-picture-2");
+  }
+  if (!config.upgrades.includes("industrial-equipment")) {
+    for (const crew of [config.crew, saved.storyStart?.config?.crew, saved.campaign?.crew]) renameSkill(crew);
+    config.upgrades.push("industrial-equipment");
   }
   if (!config.upgrades.includes("cold-combat")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
@@ -2812,6 +2816,12 @@ export class Session {
     s.outcomeCheck = undo.outcome;
     this.undoDelivered(undo);
     restoreShip(this, undo.ship);
+    if (undo.ended && ["ended", "play"].includes(s.solo?.phase)) {
+      s.solo = undo.solo;
+      s.campaign = undo.campaign;
+      this.moneySync();
+      this.soloChanged();
+    }
     this.playhead = 0;
     this.addLog("note", "↶ Retconned the agent's last reply.");
     this.initPlayers();
@@ -2917,7 +2927,12 @@ export class Session {
     this.applyCrewChanges(reply?.crew_changes);
     this.applyItemChanges(reply?.item_changes);
     if (source === "agent" && this.state.config.agentCrew) this.applyAttacks(reply);
-    if (reply?.story_end?.ended && this.state.solo?.phase === "play") setTimeout(() => this.soloEnd(reply.story_end.how), 0);
+    if (reply?.story_end?.ended && this.state.solo?.phase === "play") {
+      // Retcon can take the ending back: the undo entry keeps the story and campaign as they were, and soloEnd records what it does into it.
+      const undo = this.delivering;
+      if (undo) Object.assign(undo, { ended: true, solo: structuredClone(this.state.solo), campaign: structuredClone(this.state.campaign ?? null) });
+      setTimeout(() => this.soloEnd(reply.story_end.how, undo), 0);
+    }
     for (const c of reply?.clocks || []) c.action === "stop" ? this.stopClock(c.label) : this.startClock(c.label, c.seconds, "agent");
     for (const f of reply?.found_docs || []) {
       const to = findCharacterId(this.state.config.crew, f.for);
@@ -3163,14 +3178,22 @@ export class Session {
     x.after = { factions, rest, pay: paid.lines };
   }
 
-  async soloEnd(how) {
+  // undo: the agent reply's Retcon entry when the agent ended the story, so its log notes, handouts and campaign changes are taken back with it.
+  async soloEnd(how, undo = null) {
     const x = this.state.solo;
     if (!x || x.phase !== "play") return;
-    Object.assign(x, { phase: "ended", ending: String(how || "").slice(0, 300), recap: null, earned: [], delivery: null, after: null, busy: "recap", error: "" });
-    this.dropReply();
-    for (const c of [...this.state.clocks]) this.stopClock(c.id, true);
-    this.clocksChanged();
-    this.addLog("note", `The story ended${x.ending ? `: ${x.ending}` : "."}`);
+    const track = (fn) => {
+      if (!undo || this.delivering) return fn();
+      this.delivering = undo;
+      try { return fn(); } finally { this.delivering = null; }
+    };
+    track(() => {
+      Object.assign(x, { phase: "ended", ending: String(how || "").slice(0, 300), recap: null, earned: [], delivery: null, after: null, busy: "recap", error: "" });
+      this.dropReply();
+      for (const c of [...this.state.clocks]) this.stopClock(c.id, true);
+      this.clocksChanged();
+      this.addLog("note", `The story ended${x.ending ? `: ${x.ending}` : "."}`);
+    });
     this.soloChanged();
     try {
       const p = this.state.campaign, c = campaignById(p?.id), story = x.campaign && c?.stories.find((t) => t.id === p.current);
@@ -3182,7 +3205,8 @@ export class Session {
     } catch (err) {
       x.error = `Couldn't write the recap (${err?.message || err}).`;
     }
-    if (x.campaign) this.soloFinish();
+    if (this.state.solo !== x || x.phase !== "ended") return; // retconned (or moved on) while the recap was written
+    if (x.campaign) track(() => this.soloFinish());
     x.busy = "";
     this.soloChanged();
   }

@@ -728,7 +728,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
             <label class="small muted where">in <select data-m="room" aria-label="Where ${esc(m.name)} is"><option value="">nowhere on the map</option>${
               optionsHtml([...rooms], m.room)}${
               m.room && !rooms.has(m.room) ? `<option value="${esc(m.room)}" selected>${esc(m.room)}</option>` : ""}</select></label>
-            <label class="small muted mood" title="Attitude to players, hidden from them">feels <select data-m="attitude" data-num aria-label="How ${esc(m.name)} feels about the players" class="att${m.attitude > 0 ? " up" : m.attitude < 0 ? " down" : ""}">${
+            <label class="small muted mood" title="Attitude to the players (this app's scale, not a Mothership rule), hidden from them">feels <select data-m="attitude" data-num aria-label="How ${esc(m.name)} feels about the players" class="att${m.attitude > 0 ? " up" : m.attitude < 0 ? " down" : ""}">${
               ATTITUDES.map(([n, label]) => `<option value="${n}" ${n === (m.attitude || 0) ? "selected" : ""}>${label} (${n > 0 ? "+" : ""}${n})</option>`).join("")}</select></label>
             <label class="small muted stress" title="Stress, 0-20">Stress <input type="number" data-m="stress" data-num min="0" max="20" value="${m.stress ?? 2}" aria-label="${esc(m.name)}'s Stress"></label>
             <button data-mact="panic" class="small" title="Roll d20: at or under Stress, they panic">Panic check</button>

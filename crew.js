@@ -72,7 +72,7 @@ export const DEFAULT_CREW = [
     health: { current: 15, max: 15 },
     wounds: { current: 0, max: 2 },
     stress: 2,
-    skills: ["Zero-G", "Heavy Machinery", "Mechanical Repair", "Jury-Rigging"],
+    skills: ["Zero-G", "Industrial Equipment", "Mechanical Repair", "Jury-Rigging"],
     loadout: "Vaccsuit, plasma cutter, tool rig, 2 flares, ration bar.",
     trinket: "Her niece's drawing of a ship, laminated.",
     patch: "\"SAFETY THIRD\"",
@@ -414,7 +414,7 @@ export function changeItem(pc, action, rawItem) {
 
 export const SKILL_BONUSES = [10, 15, 20];
 const SKILL_TIERS = {
-  10: ["Linguistics", "Zoology", "Botany", "Geology", "Industrial Equipment", "Heavy Machinery", "Jury-Rigging", "Chemistry", "Computers", "Zero-G", "Mathematics", "Art", "Archaeology", "Theology", "Military Training", "Rimwise", "Athletics"],
+  10: ["Linguistics", "Zoology", "Botany", "Geology", "Industrial Equipment", "Jury-Rigging", "Chemistry", "Computers", "Zero-G", "Mathematics", "Art", "Archaeology", "Theology", "Military Training", "Rimwise", "Athletics"],
   15: ["Psychology", "Pathology", "Field Medicine", "Ecology", "Asteroid Mining", "Mechanical Repair", "Explosives", "Pharmacology", "Hacking", "Piloting", "Physics", "Mysticism", "Wilderness Survival", "Firearms", "Hand-to-Hand Combat"],
   20: ["Sophontology", "Exobiology", "Surgery", "Planetology", "Robotics", "Engineering", "Cybernetics", "Artificial Intelligence", "Hyperspace", "Xenoesotericism", "Command"],
 };
@@ -435,8 +435,18 @@ export function skillOf(raw) {
   return { name, bonus: Number.isFinite(n) && n > 0 ? nearestTier(n) : BOOK.get(skillKey(name)) ?? 10 };
 }
 export const skillText = (s) => `${s.name} +${s.bonus}`;
+
+// Saved sheets can carry "Heavy Machinery", which is not a Mothership 1e skill: it is Industrial Equipment (Trained). The bonus stays.
+export function renameSkill(crew, from = "Heavy Machinery", to = "Industrial Equipment") {
+  const named = (s) => skillKey(s && typeof s === "object" ? s.name : String(s ?? "").replace(/\s*\+\s*\d{1,2}\s*$/, ""));
+  for (const pc of Array.isArray(crew) ? crew : []) {
+    if (!Array.isArray(pc?.skills) || !pc.skills.some((s) => named(s) === skillKey(from))) continue;
+    const has = pc.skills.some((s) => named(s) === skillKey(to));
+    pc.skills = pc.skills.flatMap((s) => (named(s) !== skillKey(from) ? [s] : has ? [] : [s && typeof s === "object" ? { ...s, name: to } : String(s).replace(/^\s*heavy machinery/i, to)]));
+  }
+}
 export const findSkill = (pc, name) => (name ? (pc?.skills || []).find((s) => s.name.toLowerCase() === String(name).toLowerCase()) : null) || null;
 
 export function crewBrief(crew, { trauma = true } = {}) {
-  return crew.map((c) => `- ${c.name} (${c.pronouns ? `pronouns ${c.pronouns}` : "no pronouns given: use they/them"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} ${c.cond?.dead ? "[DECEASED: no longer playable] " : c.retired ? "[RETIRED: no longer playable] " : ""}Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout}${trauma ? ` Trauma response (${c.className}): ${traumaResponse(c)}` : ""}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
+  return crew.map((c) => `- ${c.name} (${c.pronouns ? `pronouns ${c.pronouns}` : "no pronouns given: use they/them, never guessed from the name"}; ${c.className}, ${c.role}). Convicted: ${c.crime} ${c.backstory} ${c.cond?.dead ? "[DECEASED: no longer playable] " : c.retired ? "[RETIRED: no longer playable] " : ""}Skills: ${c.skills.map(skillText).join(", ") || "none"}. Started with: ${c.loadout}${trauma ? ` Trauma response (${c.className}): ${traumaResponse(c)}` : ""}${c.notes ? ` Warden notes: ${c.notes}` : ""}`).join("\n");
 }

@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "regress": "node --env-file-if-exists=.env scripts/regress.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",

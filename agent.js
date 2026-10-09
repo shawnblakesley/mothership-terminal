@@ -242,7 +242,7 @@ function buildSchema(voices, config = {}, { solo = false, files = false, ships =
         properties: {
           room: { type: "string", description: "A room id from the map." },
           type: { type: "string", enum: [...Object.keys(HAZARDS), "none"], description: "The hazard, or none to end it." },
-          level: { type: "integer", description: "Radiation 1-3; corrosive or acid 1-10; crush, collapse or machinery 1-3; 0 for the others." },
+          level: { type: "integer", description: "Radiation 1 trace, 2 acute (an unshielded reactor), 3 lethal; corrosive or acid 1-10; crush, collapse or machinery 1-3; 0 for the others." },
         },
       },
     },
@@ -476,7 +476,7 @@ THE CAST (the story's people: THE CAST and WHERE THE CAST ARE)
 - When one speaks, set "character" to their name and "voice" to the cast's channel; switch freely between people to stage conversations. Never put the speaker's name in the text.
 - Where they are decides how they're heard, and the app does it: someone in a player's room talks face to face (only players there hear it); anyone else comes over the intercom. Write their words to fit.
 - Keep rooms true with cast_changes in the same reply that shows it: someone comes to the players, flees, is dragged off, hides or dies ("none" is nowhere on the map). You may bring in someone the lore allows: name plus (f) or (m) the first time, with their room and notes.
-- STRESS and PANIC: each has Stress (up to 20, in WHERE THE CAST ARE). Raise it with stress_change when something frightening happens to them. When something truly horrifying happens (a door blown open on the thing, a friend torn apart in front of them, no way out), raise their Stress first, then set panic_check: they roll a d20 in front of the players and panic if the roll is equal to or under their Stress. Don't write the panic: the [ROLL RESULT] says how they react, then play it out fully.
+- STRESS and PANIC (this app gives the cast the players' Stress and Panic Check): each has Stress (up to 20, in WHERE THE CAST ARE). Raise it with stress_change when something frightening happens to them. When something truly horrifying happens (a door blown open on the thing, a friend torn apart in front of them, no way out), raise their Stress first, then set panic_check: they roll a d20 in front of the players and panic if the roll is equal to or under their Stress. Don't write the panic: the [ROLL RESULT] says how they react, then play it out fully.
 - ATTITUDES (this app's scale, not a Mothership rule) run from Hostile (-3) through Wary (-1), Neutral (0) and Friendly (1) to Loyal (3). Play them: what they share, whether they help, stall, lie or turn on the players. Move one with attitude_change when the players clearly earn or lose trust; slowly, never for small talk, unannounced.
 
 WHERE PEOPLE ARE
@@ -498,9 +498,9 @@ const PROTOCOL_CREW = `CREW AND COMBAT (Mothership 1e)
 - Violence is very dangerous for these workers. Avoid it and let the players feel why: running, hiding, bargaining and sabotage beat fighting, and the biggest threats cannot be beaten head-on (their special line says how they are). There is no initiative: describe the threat and what happens if nobody responds, let the players declare, then resolve everything together (checks and saves first, then Damage and Wounds) and describe the new situation. A round is about 10 seconds.
 - A player's attack is a Combat Check; a failed one deals no damage and makes things worse. Only right after a character's Combat check succeeded on an adversary, set crew_attacks (a weapon from CREW CONDITION, else "Unarmed").
 - Every attack by a creature or person on a character (also one a Warden command calls for) is an entry in attacks, never crew_changes or narrated damage. The app rolls their Combat and the damage and applies armor, Health, Wounds, Wounds Table results and Bleeding: narrate from the [ROLL RESULT] entries and never invent damage numbers or Wounds. ADVERSARIES' CONDITION has each adversary's numbers; at 0 Wounds it is dead or destroyed.
-- Firearms have shots per magazine: CREW CONDITION lists rounds loaded and spare magazines (Ammunition). Each crew_attacks with a firearm spends 1 shot, and one at 0 loaded is refused, so don't set it. Reloading is an action: set reloads. A Stimpak or First Aid Kit used for its effect goes in item_changes with action "use"; the app applies it, so don't also change Health or Stress.
-- Set round=true in the reply where a round passes in a fight (Bleeding and hazard damage run then). A First Aid Kit stops Bleeding: item_changes (remove).
-- A Death Save is rolled secretly: nobody knows the result, you included. CREW CONDITION says when one is due. Don't say whether that character lives, dies or wakes. Only when someone spends a turn checking their vitals, put their name in reveal_death_save and narrate the [ROLL RESULT].`;
+- Firearms have shots per magazine: CREW CONDITION lists rounds loaded and spare magazines (Ammunition). Each crew_attacks with a firearm spends 1 shot, and one at 0 loaded is refused, so don't set it. Reloading is an action: set reloads (the app moves the magazine). A Stimpak or First Aid Kit (which stops Bleeding) used for its effect goes in item_changes with action "use"; the app applies it, so don't also change Health or Stress.
+- Set round=true in the reply where a round passes in a fight (Bleeding and hazard damage run then).
+- A Death Save is rolled secretly: nobody knows the result, you included. CREW CONDITION shows one that is due or rolled and hidden. Don't say whether that character lives, dies or wakes. Only when someone spends a turn checking their vitals, put their name in reveal_death_save and narrate the [ROLL RESULT].`;
 
 const PROTOCOL_HAZARDS = `HAZARDS
 - The app runs the rules for hazards in a room (vacuum, toxic or corrosive air, radiation, extreme cold or heat, fire, explosion, hull breach, life support offline, and story hazards) and for exhaustion, hunger, thirst, Bleeding and cryosickness. When the fiction starts, changes or ends one (a room vented to space is vacuum), record it in hazards (type "none" ends it). Don't also apply its damage, Stress or penalties: the Warden's Next round and Pass time controls and the players' rolls handle them. When the story skips ahead, set time_passes.hours. HAZARDS IN PLAY lists what is running with each rule: narrate by it, never invent rules. Story hazards are not Mothership rules.`;
@@ -645,7 +645,7 @@ NEEDS THE WARDEN (needed=true):
 - Bluffing, lying to, persuading or intimidating someone.
 - Risky physical actions, or anything else that could reasonably go either way.
 
-DOES NOT (needed=false): routine commands and queries the system would simply answer (help, status, list, reading what their access allows, asking a question), talking to someone, describing what they look at.
+DOES NOT (needed=false): routine commands and queries the system would simply answer (help, status, list, reading what their access allows), talking to someone or asking them something, even pointedly (what they share is theirs to decide), describing what they look at, and plain actions nothing opposes (using a stimpak or first aid kit, reloading, checking someone's pulse, going through an open door, anything the station state already allows).
 
 If needed, fill in the fields as described (suggested_check none if it should simply work or fail).`;
 
@@ -657,7 +657,7 @@ export function buildPrecheck(state) {
   const last = state.log.findLast((e) => e.kind === "player");
   return {
     system: PRECHECK,
-    context: [`STATION: ${c.stationName}`, `SECRETS:\n${c.secrets || "(none)"}`, `STATION STATE:\n${JSON.stringify(state.station)}`].join("\n\n"),
+    context: [`STATION: ${c.stationName}`, `SECRETS:\n${c.secrets || "(none)"}`, `STATION STATE:\n${JSON.stringify(state.station)}`, factionsNow(state)].filter(Boolean).join("\n\n"),
     messages: [{ role: "user", content: `RECENT:\n${recent}\n\nLATEST PLAYER INPUT: ${JSON.stringify(last?.text || "")}\n\nDoes it need the Warden's call first?` }],
     schema: outcomeCheckSchema(),
     example: { needed: true, attempt: "log in as admin with password THAW", suggested_check: "none", advantage: "none", why: "Matches the admin password in SECRETS.", on_success: "They're in as ADMIN: full system access.", on_failure: "Locked out, and the failed login alerts Okonkwo's console." },
@@ -669,13 +669,14 @@ export function currentDirectives(state, steer) {
 }
 
 const TALK = {
-  terse: "LENGTH (the Warden's setting: TERSE): every voice says at most 1-2 short lines per reply. No speeches, no explanations, fragments are fine. Terminal output: only the essentials. The whole reply is a few lines.",
-  brief: "LENGTH (the Warden's setting: BRIEF): characters and announcements say at most 2-3 short sentences per turn, then stop and let the players react. No monologues; one idea per line. Terminal output stays compact (a short readout, not a report). Keep the whole reply short.",
-  normal: "LENGTH (the Warden's setting: NORMAL): characters say a few sentences per turn; avoid long monologues and let the players get a word in. Terminal output as long as the request needs.",
+  terse: "LENGTH (the Warden's setting: TERSE, a hard limit): at most 2 lines in the whole reply (any voices), each 1-2 short sentences; a terminal printout at most 4 rows. It overrides personas and notes (even someone who rambles). No speeches, no explanations.",
+  brief: "LENGTH (the Warden's setting: BRIEF, a hard limit): at most 3 lines in the whole reply (any voices), each at most 3 short sentences; a terminal printout at most 8 rows (a readout, not a report). It overrides personas and notes (even someone who rambles). Then stop and let the players react.",
+  normal: "LENGTH (the Warden's setting: NORMAL, a hard limit): at most 5 lines in the whole reply, each at most 6 sentences; a terminal printout at most 16 rows. No long monologues: let the players get a word in.",
   long: "LENGTH (the Warden's setting: EXPANSIVE): characters may speak at length when the moment is dramatic, but still leave room for the players.",
 };
 
 const TALK_LIMITS = { terse: [2, 4, 2], brief: [3, 8, 3], normal: [6, 16, 5] };
+const TALK_REMINDER = { terse: "TERSE: 2 lines at most, 1-2 short sentences each", brief: "BRIEF: 3 lines at most, 3 short sentences each", normal: "NORMAL: 5 lines at most", long: "EXPANSIVE" };
 
 export function limitLength(reply, talk) {
   const lim = TALK_LIMITS[talk ?? "brief"];
@@ -744,7 +745,10 @@ function buildContext(state, steer, aside = false) {
   ctx.push(`MAP LAYOUT (now; decks are listed from the TOP down, so a deck listed later is further DOWN):\n${state.config.map || "(none)"}`);
   const plans = Object.entries(state.config.rooms || {});
   if (plans.length) ctx.push(`ROOM FLOOR PLANS (now):\n${plans.map(([id, p]) => `${id}:\n${p.rows.join("\n")}`).join("\n\n")}`);
-  if (state.config.crew?.length) ctx.push(`CREW CONDITION (now):\n${crewStatus(state.config.crew)}`);
+  if (state.config.crew?.length) {
+    const hidden = state.config.crew.filter((pc) => state.deathSaves?.[pc.id] !== undefined).map((pc) => `- ${pc.name}: a Death Save was rolled in secret and is not revealed yet.`);
+    ctx.push(`CREW CONDITION (now):\n${[crewStatus(state.config.crew), ...hidden].join("\n")}`);
+  }
   { const ships = shipBrief(state); if (ships) ctx.push(ships); }
   if (state.campaign && state.station?.rig) ctx.push(`${rigBrief(state.station)}${state.rationing ? "\n- RATIONING: food and water are cut off; the app tracks hunger every hour (PSG 32.5)." : ""}`);
   const fighters = state.config.voices.filter((v) => v.adversary?.stats);
@@ -792,7 +796,7 @@ function castWhereabouts(state) {
 export function buildRequest(state, steer, { aside = false } = {}) {
   const messages = buildMessages(state);
   const last = messages.at(-1);
-  if (!aside && last?.role === "user") last.content += "\n\n(Follow the LENGTH setting; earlier replies may be longer.)";
+  if (!aside && last?.role === "user") last.content += `\n\n(LENGTH ${TALK_REMINDER[state.config.talk] || TALK_REMINDER.brief}; earlier replies may be longer.)`;
   const found = new Set(state.found || []);
   const schema = buildSchema(agentVoices(state.config), state.config, { solo: state.solo?.phase === "play", files: (state.config.roomDocs || []).some((d) => !found.has(d.id)), ships: !!(state.config.ships?.length || state.shipFight) });
   return {

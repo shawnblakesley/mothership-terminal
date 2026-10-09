@@ -21,7 +21,8 @@ export function kestrelState() {
 }
 
 // A Rim Haulers story built the way the app builds one, from a canned (but realistically sized) agent draft.
-export function haulersState(storyIndex = 0) {
+// rig: also put the rig's resources in the station state, as the app does (the size budget was measured without them).
+export function haulersState(storyIndex = 0, { rig = false } = {}) {
   const c = CAMPAIGNS[0];
   const story = c.stories[storyIndex];
   const p = newProgress(c);
@@ -40,7 +41,7 @@ export function haulersState(storyIndex = 0) {
   };
   const draft = normalizeDraft(composeDraft(c, story, p, raw));
   const { config, station } = applyDraft(draft);
-  carryInto(config, c, story, p);
+  carryInto(config, c, story, p, rig ? station : undefined);
   const g = defaultGame();
   const state = { ...g, config: { ...g.config, ...config }, station, campaign: p, log: structuredClone(LOG), solo: null };
   return withScreens(state);
