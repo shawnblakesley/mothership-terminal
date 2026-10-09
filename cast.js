@@ -97,9 +97,12 @@ export function findCast(cast, name) {
   return cast.find((c) => { const cw = words(c.name); return nw.length && nw.every((w) => cw.includes(w)); }) || null;
 }
 
-export function addCast(cast, raw, { room = "", notes = "" } = {}) {
+export const isCrew = (crew, raw) => !!findCast(crew, raw);
+
+export function addCast(cast, raw, { room = "", notes = "", crew = [] } = {}) {
   const found = findCast(cast, raw);
   if (found) return { member: found, created: false };
+  if (isCrew(crew, raw)) return { member: null, created: false };
   const m = String(raw || "").trim().match(/^(.*?)\s*\((f|m|female|male|woman|man)\)\s*$/i);
   const name = (m ? m[1] : String(raw || "")).replace(/\s+/g, " ").trim().slice(0, 40);
   if (!name || cast.length >= MAX_CAST) return { member: null, created: false };

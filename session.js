@@ -3,7 +3,7 @@ import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLike
 import { warmNeural } from "./tts.js";
 import { VoiceRelay } from "./voicerelay.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, COLD_STATS, OLD_COLD_PICTURES } from "./voices.js";
-import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, placeByOccupants, speakingVoice, finalVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
+import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, isCrew, placeByOccupants, speakingVoice, finalVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
@@ -17,7 +17,7 @@ import { loaded, magazines, spendShot, reload, TANK, STORES } from "./resources.
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
 import { restAndRecover, downtimeLines } from "./downtime-lite.js";
-import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory } from "./campaign.js";
+import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, crewIntoCampaign, crewFromCampaign, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory } from "./campaign.js";
 import { transfer, ledgerLine, exact, DEBT_PAYMENT, DEBT_EVERY } from "./money.js";
 import { downtimeReady, planRoll, settleRoll, mirror, passDays, treat, treatmentList, shoreText, applyConversion } from "./downtime.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
@@ -26,7 +26,7 @@ import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from
 import { shipDm, shipPlayer, shipRollDone, shipClockRan, shipSnapshot, restoreShip, shipDmView, shipPlayerView, applyShipFight } from "./shipfight.js";
 import { track } from "./telemetry.js";
 import { roomId, keyOf } from "./clean.js";
-import { rememberSecret } from "./redact.js";
+import { rememberSecret, playerStation, playerEntry } from "./redact.js";
 import { discordStatus, stopListening, discordLinked, discordSay, discordCut, setDiscordTalk } from "./discordbot.js";
 import { DEFAULT_ROOMS, sanitizeRooms, sanitizeRows, draftRequest as roomDraftRequest } from "./rooms.js";
 import { DEFAULT_TERMINALS, SHIP_TERMINAL, SHIP_SYSTEM, OLD_SHIP_NOTES, startAboardShip, netOf, netNamed, shownOn, systemsOf, systemName, ALL_NET, netKey, sanitizeTerminals, upgradeTerminals, reachable } from "./terminals.js";
@@ -338,6 +338,14 @@ function migrateGame(saved) {
     for (const m of config.cast) m.portrait ||= findCast(DEFAULT_CAST, m.name)?.portrait || "";
     for (const pc of config.crew) pc.portrait ||= DEFAULT_CREW.find((d) => d.id === pc.id && d.name === pc.name)?.portrait || "";
     config.upgrades.push(upgrade);
+  }
+  if (!config.upgrades.includes("no-pc-cast")) {
+    for (const c of [config, saved.storyStart?.config].filter((x) => Array.isArray(x?.cast) && Array.isArray(x.crew))) {
+      const norm = (n) => String(n || "").replace(/\s+/g, " ").trim().toLowerCase();
+      const pcs = new Set(c.crew.map((p) => norm(p.name)).filter(Boolean));
+      c.cast = c.cast.filter((m) => !pcs.has(norm(m.name)));
+    }
+    config.upgrades.push("no-pc-cast");
   }
   if (!config.upgrades.includes("intercom-colour")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
@@ -651,7 +659,7 @@ export class Session {
     const screens = [...this.sockets].filter((c) => c.role === "player" && !c.stream);
     return !screens.length || screens.some((c) => this.sees(c, entry));
   }
-  toEntry(entry, p) { this.toPlayersIf((c) => this.sees(c, entry), p); }
+  toEntry(entry, p) { this.toPlayersIf((c) => this.sees(c, entry), p.entry ? { ...p, entry: playerEntry(p.entry) } : p); }
   toPlayersIf(pred, p) {
     const data = typeof p === "string" ? p : JSON.stringify(p);
     for (const c of this.sockets) if (c.role === "player" && c.readyState === 1 && pred(c)) c.send(data);
@@ -705,8 +713,7 @@ export class Session {
   isoView() {
     const view = this.state.mapShown;
     if (!view) return null;
-    const { occupants, ...station } = this.state.station || {};
-    return { view, station, ...this.streamMap(), rooms: this.state.config.rooms };
+    return { view, station: playerStation(this.state.station), ...this.streamMap(), rooms: this.state.config.rooms };
   }
   syncIso() {
     const map = JSON.stringify(this.isoView());
@@ -749,7 +756,7 @@ export class Session {
     const net = ws ? this.netOfSocket(ws) : "";
     const log = ws?.stream
       ? this.state.log.filter((e) => !e.queued && !e.cut)
-      : this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net)));
+      : this.state.log.filter((e) => !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net))).map(playerEntry);
     if (ws?.stream) {
       ws.sent = new Map(log.filter((e) => PRIVATE_KINDS.has(e.kind)).map((e) => [e.id, e.text]));
       ws.mapSent = JSON.stringify(this.streamMap());
@@ -1121,6 +1128,7 @@ export class Session {
   }
 
   crewChanged() {
+    if (this.state.campaign) crewIntoCampaign(this.state.campaign, this.state.config.crew);
     this.noteEndings();
     this.toPlayers({ t: "crew", crew: this.state.config.crew, conds: this.condMap(), claims: this.claims(), played: this.played() });
     this.syncDm();
@@ -1680,6 +1688,7 @@ export class Session {
         else {
           this.addLog("note", `Resupply at ${r.at}: ${r.bought.join(", ") || "nothing"}${r.to ? ` (carried by ${r.to})` : ""}. Total ${exact(r.total)}.${r.fuelFree ? " (No fuel price was set: the fuel was free.)" : ""}`);
           for (const e of r.entries) this.addLog("note", ledgerLine(s.campaign, e));
+          crewFromCampaign(s.campaign, s.config.crew);
           this.moneySync();
           this.sendHeader();
         }
@@ -1891,7 +1900,7 @@ export class Session {
     let any = false;
     for (const ch of Array.isArray(list) ? list : []) {
       if (leaving(ch) !== (step === "after")) continue;
-      const { member, created } = addCast(c.cast, String(ch?.name || "").trim());
+      const { member, created } = addCast(c.cast, String(ch?.name || "").trim(), { crew: c.crew });
       if (!member) continue;
       const room = String(ch.room ?? "").trim().toLowerCase();
       const to = target(ch);
@@ -2876,9 +2885,10 @@ export class Session {
     let prev = null;
     for (let { voice, character, system, reveal, text, effects: lineFx, variants: rawVariants } of lines) {
       if (voice === BUILTIN.narrator && source === "agent" && config.narrator === false) continue;
+      if (source === "agent" && character && !findCast(config.cast, character) && isCrew(config.crew, character)) continue;
       let member = character && voice === channel ? findCast(config.cast, character) : null;
       if (!member && character && voice === channel) {
-        member = addCast(config.cast, character).member;
+        member = addCast(config.cast, character, { crew: config.crew }).member;
         if (member) this.addLog("note", `Cast: ${member.name} joins the story.`);
       }
       character = member?.name || "";
@@ -3174,6 +3184,7 @@ export class Session {
     if (paid.handout) this.giveHandout(paid.handout);
     this.moneySync();
     const rest = downtimeLines(restAndRecover(p.crew));
+    crewFromCampaign(p, s.config.crew);
     this.addLog("note", `Downtime between stories (short-term recovery and a Rest Save for each, rolled for them):\n${rest.join("\n")}`);
     x.after = { factions, rest, pay: paid.lines };
   }
@@ -3408,6 +3419,7 @@ export class Session {
     s.station.access_level = DEFAULT_STATION.access_level;
     delete s.station.hazards;
     for (const pc of s.config.crew) pc.cond = newCond();
+    if (s.campaign) for (const pc of s.config.crew) pc.credits = s.campaign.crew.find((x) => x.id === pc.id)?.credits ?? pc.credits;
     Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, storyStart: null, deathSaves: {}, shipFight: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);
