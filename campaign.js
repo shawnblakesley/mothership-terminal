@@ -6,6 +6,7 @@ import { sanitizeCast, findCast, PORTRAIT_FILE } from "./cast.js";
 import { SPEAKERS, fromPreset } from "./voices.js";
 import { sanitizeResources, rigStation, resourcesFrom, fuelCost, portMult, PRICES, MRE_PACK, TANK, firearms, addMagazines } from "./resources.js";
 import { weaponByName } from "./weapons.js";
+import { sanitizeDowntime } from "./downtime.js";
 import { sanitizeMoney, startingCredits, DEBT_PAYMENT, DEBT_EVERY, DELIVERY, finalFee, upfrontOf, duesOf, debtDue, book, spend, exact, debtLetter, DUES_PCT } from "./money.js";
 
 export const CAMPAIGNS = [RIM_HAULERS];
@@ -35,9 +36,10 @@ export const endsAt = (story) => story.at || story.to;
 
 export function newProgress(c, rng) {
   const crew = sanitizeCrew(structuredClone(c.crew));
-  const p = { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew, cast: {}, sessions: 0, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {}, resources: sanitizeResources(c.ship.resources, c.ship.resources), ...sanitizeMoney({}, c, crew) };
+  const p = { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew, cast: {}, sessions: 0, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {}, resources: sanitizeResources(c.ship.resources, c.ship.resources), ...sanitizeMoney({}, c, crew), ...sanitizeDowntime({}, crew) };
   // Starting credits are 2d10x10 per character, rolled once here (PSG), and shown in the ledger.
   for (const pc of p.crew) {
+    pc.base = { stats: { ...pc.stats }, saves: { ...pc.saves } };
     const r = startingCredits(rng);
     pc.credits = 0;
     book(p, pc.id, r.total, `starting credits, 2d10x10: (${r.dice[0]}+${r.dice[1]})x10`);
@@ -76,6 +78,7 @@ export function sanitizeProgress(p) {
     nudges: Object.fromEntries(c.cast.map((m) => [m.id, Math.max(-1, Math.min(1, Math.round(Number(p.nudges?.[m.id]) || 0)))]).filter(([, n]) => n)),
     resources: sanitizeResources(p.resources, c.ship.resources),
     ...sanitizeMoney(p, c, crew),
+    ...sanitizeDowntime(p.downtime, crew),
   };
 }
 
@@ -397,6 +400,58 @@ export function resupply(p, c, { to, lines = {}, ammoFor = "", fuelPrice = 0, pa
     if (want[k]) bought.push(`${want[k]} ${item}${want[k] > 1 ? "s" : ""}`);
   }
   return { ok: true, total, bought, to: pc?.name || "", at: v.name, fuelFree: want.fuel > 0 && !fuelEach, entries: paid.entries };
+}
+
+// The jobs a pilot with no Warden can take: unplayed stories at the port the rig is at, and on the lanes that leave it.
+// Player-safe: the sector payload's whitelist (id, title, hook, job) plus where it is and how long the lane is.
+export function jobsAt(c, p) {
+  const stories = c.stories.filter((s) => (s.at || s.from) === p.at && !p.done.some((d) => d.id === s.id));
+  const jobs = sectorPayload(c, { ...p, offered: stories.map((s) => s.id) }).offered.map(({ id, title, hook, job }) => {
+    const s = c.stories.find((x) => x.id === id), l = isTransit(s) && laneBetween(c, s.from, s.to);
+    return { id, title, hook, job, where: placeOf(c, s), ...(l ? { lane: l.name, days: l.days, cost: fuelCost(l.days), short: p.resources.fuel < fuelCost(l.days) } : {}) };
+  });
+  const lanes = c.lanes.filter((l) => l.a === p.at || l.b === p.at).map((l) => {
+    const to = l.a === p.at ? l.b : l.a, cost = fuelCost(l.days);
+    return { to, dest: loc(c, to).name, lane: l.name, days: l.days, cost, short: p.resources.fuel < cost };
+  });
+  const cheapest = lanes.length ? Math.min(...lanes.map((l) => l.cost)) : 0;
+  const v = resupplyView(c, p), trade = v.trade;
+  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, capacity: TANK, money: p.money, fuelEach: trade ? Math.round(FUEL_PRICE * v.fuelFactor) : 0, low: p.resources.fuel < cheapest, stuck: isStuck(c, p), canRefuel: trade && p.resources.fuel < TANK, jobs, lanes };
+}
+
+// Stuck (no Warden): the rig can't afford the cheapest lane from here and its account can't buy the fuel for it.
+const dispatchNeed = (c, p) => {
+  const costs = c.lanes.filter((l) => l.a === p.at || l.b === p.at).map((l) => fuelCost(l.days));
+  return costs.length ? Math.max(0, Math.min(...costs) - p.resources.fuel) : 0;
+};
+const fuelEach = (c, p) => Math.round(FUEL_PRICE * (resupplyView(c, p).fuelFactor ?? portMult(loc(c, p.at)?.portClass)));
+export function isStuck(c, p) {
+  const need = dispatchNeed(c, p);
+  return need > 0 && (!resupplyView(c, p).trade || need * fuelEach(c, p) > p.money);
+}
+
+// Call dispatch (house rule): Local 1312 advances the fuel for the cheapest lane; its price is added to the note, union standing unchanged.
+export function callDispatch(p, c) {
+  if (p.current) return { ok: false, error: "Finish the story being played first." };
+  if (!isStuck(c, p)) return { ok: false, error: "The rig isn't stuck: dispatch only helps a rig that can't buy the fuel for a lane." };
+  const units = dispatchNeed(c, p), cost = units * fuelEach(c, p);
+  p.resources.fuel += units;
+  const e = book(p, "debt", cost, "Union fuel advance");
+  return { ok: true, units, cost, entries: [e], at: loc(c, p.at).name };
+}
+
+// No Warden to resupply: the pilot buys fuel for the rig account at the port the rig is at, the Warden's resupply at the default 500cr a unit (house rule, the port's multiplier applies), as much as fills the tank or the rig account allows.
+export const FUEL_PRICE = 500;
+export function refuel(p, c) {
+  if (p.current) return { ok: false, error: "Finish the story being played first." };
+  const v = resupplyView(c, p);
+  if (!v.trade) return { ok: false, error: `${v.name} won't trade with the crew.` };
+  const each = Math.round(FUEL_PRICE * v.fuelFactor), room = TANK - p.resources.fuel;
+  if (room <= 0) return { ok: false, error: "The tank is full." };
+  const n = Math.min(room, each ? Math.floor(p.money / each) : room);
+  if (n < 1) return { ok: false, error: `Not enough credits: the rig account has ${exact(p.money)} and a unit of fuel is ${exact(each)}.` };
+  const r = resupply(p, c, { lines: { fuel: n }, fuelPrice: FUEL_PRICE });
+  return r.ok ? { ...r, added: n } : r;
 }
 
 // What the players' screens get of the sector: a whitelist, so nothing of a story's arc, adversary, secrets, cast or description can leak.

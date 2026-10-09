@@ -20,7 +20,7 @@ export function sanitizeCond(c) {
   for (const k of COND_FLAGS) out[k] = c?.[k] === true;
   out.dead = str(c?.dead, 40);
   out.stims = (Array.isArray(c?.stims) ? c.stims : []).map((a) => int(a, 0, 23, 24)).filter((a) => a < 24).slice(0, 20);
-  out.tags = (Array.isArray(c?.tags) ? c.tags : []).map((t) => str(t, 60).trim()).filter(Boolean).slice(0, 8);
+  out.tags = (Array.isArray(c?.tags) ? c.tags : []).map((t) => str(t, 60).trim()).filter(Boolean).slice(0, 12);
   return out;
 }
 export const TRAUMA_RESPONSES = {
@@ -185,6 +185,7 @@ export function sanitizeCrew(list) {
       trinket: str(c.trinket, 160),
       patch: str(c.patch, 80),
       ...creditsOf(c),
+      ...(c.base?.stats && c.base?.saves ? { base: { stats: Object.fromEntries(STATS.map((k) => [k, int(c.base.stats[k], 1, 99, 30)])), saves: Object.fromEntries(SAVES.map((k) => [k, int(c.base.saves[k], 1, 99, 30)])) } } : {}),
       cond: legacy(sanitizeCond(c.cond), c.status),
       portrait: PORTRAIT_FILE.test(c.portrait || "") ? c.portrait : "",
       retired: !!c.retired || c.status === "retired",

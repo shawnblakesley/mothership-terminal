@@ -1315,12 +1315,67 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   }
   const TANK_UNITS = 10, DEBT_EVERY = 2, DUES_PCT = 4;
 
+  // Downtime between stories: short-term recovery, Rest Saves, Shore Leave and medical treatment (PSG 20.2, 34-39). Day counting and Condition durations are house rules.
+  const cmpDt = { leisure: false, helped: false, unsafe: false, safe: false, days: "" };
+  const cmpTr = { pc: "", id: "counselor", choice: "", pay: "" };
+  const cmpSpread = {};
+  const TR_CHOICES = {
+    slicksim: [["combat", "Combat"], ["fear", "Fear Save"]],
+    pseudoflesh: [["speed", "Speed"], ["strength", "Strength"], ["body", "Body Save"], ["wounds", "All Wounds"]],
+    psychosurgery: [["intellect", "Intellect"], ["sanity", "Sanity Save"], ["fear", "Fear Save"], ["minstress", "Minimum Stress to 2"]],
+  };
+  function cmpDowntime(c, p) {
+    const d = S.downtime, crew = S.config.crew.filter((x) => !x.cond?.dead && !x.retired);
+    if (!d) return "";
+    const off = d.ready ? "" : "disabled";
+    const tip = d.ready ? "" : ` title="Downtime comes between stories: finish a story first"`;
+    const chk = (k, label) => `<label class="cmpfx"><input type="checkbox" data-dt="${k}" ${cmpDt[k] ? "checked" : ""}> ${label}</label>`;
+    const sh = d.shore;
+    const rows = crew.map((x) => `<div class="bcard"><div class="row wrap"><b class="grow">${esc(x.name)}</b>
+        <span class="small mono">HP ${x.health.current}/${x.health.max} · Wounds ${x.wounds.current}/${x.wounds.max} · Stress ${x.stress} (min ${x.minStress ?? 2}) · ${cr(x.credits || 0)}</span></div>
+        ${x.cond?.tags?.length ? `<div class="small">Conditions: ${x.cond.tags.map(esc).join("; ")}</div>` : ""}
+        <div class="row wrap"><button class="small" data-dt-go="recovery" data-pc="${esc(x.id)}" ${off}${tip}>Short-term recovery</button><button class="small" data-dt-go="rest" data-pc="${esc(x.id)}" ${off}${tip}>Rest Save</button><button class="small" data-dt-go="shore" data-pc="${esc(x.id)}" ${off}${tip}>Shore Leave</button></div></div>`).join("");
+    const pend = Object.entries(p.downtime?.pending || {}).map(([id, v]) => {
+      const x = crew.find((y) => y.id === id);
+      if (!x) return "";
+      const sp = cmpSpread[id] || {};
+      return `<div class="bcard"><b>${esc(x.name)}</b> has ${v.points} Stress converted at ${esc(v.port)}: spread exactly ${v.points} points over the Saves (+1 each).
+        <div class="row wrap">${["sanity", "fear", "body"].map((k) => `<label class="small">${k[0].toUpperCase() + k.slice(1)} (${x.saves[k]}) <input type="number" min="0" max="${v.points}" style="width:4em" data-spread="${esc(id)}" data-save="${k}" value="${sp[k] || 0}"></label>`).join("")}<button class="small primary" data-spread-go="${esc(id)}">Apply</button></div></div>`;
+    }).join("");
+    const pcT = crew.find((x) => x.id === cmpTr.pc) || crew[0];
+    const tr = d.treatments.find((t) => t.id === cmpTr.id) || d.treatments[0];
+    const opts = tr.id === "defrag" ? (pcT?.cond?.tags || []).map((t) => [t, t]) : TR_CHOICES[tr.id] || [];
+    const choice = opts.some(([v]) => v === cmpTr.choice) ? cmpTr.choice : opts[0]?.[0] || "";
+    const payer = cmpTr.pay || pcT?.id || "rig";
+    return `<details open><summary>Downtime <span class="muted small">(optional; skip any part)</span></summary>
+      ${d.ready ? "" : `<p class="small muted">Downtime comes between stories: finish the story being played, then the crew rest, recover, take Shore Leave and see a doctor before the next job.</p>`}
+      <div class="bcard"><div class="small"><b>${esc(d.port || "?")}</b>${d.portClass ? ` · port class ${esc(d.portClass)}` : ""} · day ${p.downtime?.day || 0} <span class="muted">(house rule: a day count so that treatment limits and Condition durations can run out)</span></div>
+        <div class="row wrap"><input type="number" min="1" max="365" style="width:5em" data-dt="days" value="${esc(cmpDt.days)}" placeholder="days" aria-label="Days to pass"><button class="small" data-dt-days>Pass days</button></div></div>
+      <div class="bcard"><div class="small"><b>Rest Save</b> (PSG 20.2): the character's worst Save; success reduces Stress by the ones digit of the roll (never below Minimum Stress), failure +1 Stress. The roll goes to the player's screen.</div>
+        ${chk("leisure", "A suitable leisure activity [+]")}${chk("helped", "A crewmate gives up their own rest to help [+]")}${chk("unsafe", "An unsafe place [-]")}
+        <div class="small muted">The Nightmares Condition makes it [-] automatically.</div>
+        <div class="small"><b>Short-term recovery</b> (PSG 34.1): after 6+ hours of rest, once per day, a Body Save; success brings Health back to Maximum. Wounds stay.</div></div>
+      <div class="bcard"><div class="small"><b>Shore Leave</b> (PSG 39) ${sh ? `at a class ${esc(sh.cls)} port (${esc(sh.name)}): costs ${esc(sh.cost)}; a Sanity Save converts up to ${esc(sh.convert)} (critical success: ${esc(sh.max)}), the rest relieved down to Minimum Stress; about 2d10 days.` : "needs a port with a class."}</div>
+        ${chk("safe", `The port is relatively safe (required)`)}</div>
+      <div class="row wrap"><button class="small" data-dt-go="recovery" data-pc="all" ${off}${tip}>Recovery: everyone</button><button class="small" data-dt-go="rest" data-pc="all" ${off}${tip}>Rest Save: everyone</button></div>
+      ${rows || '<p class="muted small">No playable crew.</p>'}${pend}
+      <div class="bcard"><b>Medical treatment</b> <span class="small muted">(PSG 35; at a port, paid from the account you pick)</span>
+        <div class="row wrap"><label class="small">Who <select data-tr="pc">${crew.map((x) => `<option value="${esc(x.id)}" ${pcT?.id === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label>
+          <label class="small">Treatment <select data-tr="id">${d.treatments.map((t) => `<option value="${t.id}" ${tr.id === t.id ? "selected" : ""}>${esc(t.name)} (${cr(t.cost)})</option>`).join("")}</select></label>
+          ${opts.length ? `<label class="small">Choice <select data-tr="choice">${opts.map(([v, n]) => `<option value="${esc(v)}" ${choice === v ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>` : ""}
+          <label class="small">Paid from <select data-tr="pay"><option value="rig" ${payer === "rig" ? "selected" : ""}>Rig account (${cr(p.money)})</option>${p.crew.map((x) => `<option value="${esc(x.id)}" ${payer === x.id ? "selected" : ""}>${esc(x.name)} (${cr(x.credits || 0)})</option>`).join("")}</select></label>
+          <button class="small primary" data-tr-go ${off}${tip}>Treat</button></div>
+        <div class="small">${esc(tr.text)}${tr.time ? ` (${esc(tr.time)})` : ""} Side effects are recorded as Conditions with an end day (house rule: the PSG gives the durations but not a calendar).</div></div>
+    </details>`;
+  }
+
   function cmpOverview(c, p) {
     const played = p.done.map((d) => ({ d, s: c.stories.find((x) => x.id === d.id) })).filter((x) => x.s);
     return `<div class="btitle">${esc(c.title)}</div>
       <p class="muted"><i>${esc(c.tagline)}</i></p><p>${esc(c.pitch)}</p>
       <p class="small muted">Offer jobs to put them on the players' job board, then Show players; their votes appear on the map. Click a port or a numbered job on the map. Numbers on a lane are jobs in transit; under a port, jobs there.</p>
       ${cmpRig(c, p)}
+      ${cmpDowntime(c, p)}
       ${cmpMoney(c, p)}
       ${cmpRecords(p)}
       <details open><summary>Played (${played.length} of ${c.stories.length})</summary>${played.length ? played.map(({ d, s }) => `<div class="bcard"><button class="cmplink" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b></button><div class="small">${esc(d.outcome || "No notes.")}</div></div>`).join("") : '<p class="muted small">Nothing yet. A good first job: 1. FIRST SHIFT at Port Gallow, where the rig starts.</p>'}</details>
@@ -1386,7 +1441,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   function renderCampaign() {
     if (!$("campaignDialog").open || !campaignData) return;
     const p = S.campaign, c = p && campaignData.campaigns.find((x) => x.id === p.id);
-    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes, S.rig, cmpFin, cmpMove.from, cmpMove.to, S.config.crew.map((x) => [x.id, x.cond?.dead, x.retired, x.highScore, x.endedIn, x.finalWords, x.epitaph])]);
+    const key = JSON.stringify([p, S.campaignBusy, cmpSel, S.sectorShown, S.sectorVotes, S.rig, cmpFin, cmpMove.from, cmpMove.to, S.downtime, cmpDt, cmpTr, S.config.crew.map((x) => [x.stress, x.minStress, x.health, x.wounds, x.saves, x.stats, x.cond?.tags, x.credits]), S.config.crew.map((x) => [x.id, x.cond?.dead, x.retired, x.highScore, x.endedIn, x.finalWords, x.epitaph])]);
     if (key === campaignKey || document.activeElement?.matches?.("#cmpBody [data-epitaph]")) return;
     campaignKey = key;
     $("cmpLeave").hidden = !c;
@@ -1448,6 +1503,20 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     else if (t.matches("[data-buy-to]")) cmpBuy.to = t.value;
     else if (t.matches("[data-buy-pay]")) cmpBuy.pay = t.value;
     else if (t.dataset.move) cmpMove[t.dataset.move] = t.value;
+    else if (t.dataset.dt) {
+      cmpDt[t.dataset.dt] = t.type === "checkbox" ? t.checked : t.value;
+      campaignKey = "";
+      return;
+    } else if (t.dataset.tr) {
+      cmpTr[t.dataset.tr] = t.value;
+      campaignKey = "";
+      renderCampaign();
+      return;
+    } else if (t.dataset.spread) {
+      (cmpSpread[t.dataset.spread] ||= {})[t.dataset.save] = Math.max(0, Math.round(Number(t.value) || 0));
+      campaignKey = "";
+      return;
+    }
     else if (t.dataset.fin) {
       cmpFin[t.dataset.fin] = t.type === "checkbox" ? t.checked : t.value;
       if (t.dataset.fin !== "fee") { campaignKey = ""; renderCampaign(); } else campaignKey = "";
@@ -1473,6 +1542,30 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       cmpMove.amount = "";
       cmpMove.what = "";
       campaignKey = "";
+      return;
+    }
+    const dtGo = e.target.closest("[data-dt-go]");
+    if (dtGo) return send({ t: "campaignDowntime", kind: dtGo.dataset.dtGo, pc: dtGo.dataset.pc, opts: { leisure: cmpDt.leisure, helped: cmpDt.helped, unsafe: cmpDt.unsafe, safe: cmpDt.safe } });
+    if (e.target.closest("[data-dt-days]")) {
+      send({ t: "campaignDays", days: Number(cmpDt.days) || 0 });
+      cmpDt.days = "";
+      campaignKey = "";
+      return;
+    }
+    const spreadGo = e.target.closest("[data-spread-go]")?.dataset.spreadGo;
+    if (spreadGo) {
+      send({ t: "campaignShoreSpread", pc: spreadGo, alloc: cmpSpread[spreadGo] || {} });
+      delete cmpSpread[spreadGo];
+      return;
+    }
+    if (e.target.closest("[data-tr-go]")) {
+      const d = S.downtime, crew = S.config.crew.filter((x) => !x.cond?.dead && !x.retired);
+      const pcT = crew.find((x) => x.id === cmpTr.pc) || crew[0], tr = d.treatments.find((t) => t.id === cmpTr.id) || d.treatments[0];
+      const opts = tr.id === "defrag" ? (pcT?.cond?.tags || []).map((t) => [t, t]) : TR_CHOICES[tr.id] || [];
+      const choice = opts.some(([v]) => v === cmpTr.choice) ? cmpTr.choice : opts[0]?.[0] || "";
+      const pay = cmpTr.pay || pcT?.id || "rig";
+      if (!pcT) return;
+      if (await sure(`${tr.name} for ${pcT.name}?`, `${tr.text} It costs ${cr(tr.cost)}, taken from ${pay === "rig" ? "the rig account" : (S.campaign.crew.find((x) => x.id === pay)?.name || "the account")}, and its side effects are real.`, "Treat", "primary")) send({ t: "campaignTreat", pc: pcT.id, treatment: tr.id, choice, pay });
       return;
     }
     const trav = e.target.closest("[data-travel]")?.dataset.travel;
