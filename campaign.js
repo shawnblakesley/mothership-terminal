@@ -31,7 +31,7 @@ export const placeOf = (c, story) => (story.at ? loc(c, story.at).name : `${loc(
 export const endsAt = (story) => story.at || story.to;
 
 export function newProgress(c) {
-  return { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew: sanitizeCrew(structuredClone(c.crew)), cast: {}, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {} };
+  return { id: c.id, startedAt: Date.now(), at: c.start, current: "", done: [], crew: sanitizeCrew(structuredClone(c.crew)), cast: {}, sessions: 0, offered: [], factions: Object.fromEntries(c.factions.map((f) => [f.id, 0])), favours: {}, nudges: {} };
 }
 
 export function sanitizeProgress(p) {
@@ -54,6 +54,7 @@ export function sanitizeProgress(p) {
     startedAt: Number(p.startedAt) || Date.now(),
     at: loc(c, p.at) ? p.at : c.start,
     current: has(p.current) ? p.current : "",
+    sessions: Math.max(0, Math.min(9999, Math.round(Number(p.sessions) || 0))),
     offered: [...new Set(Array.isArray(p.offered) ? p.offered : [])].filter(has).slice(0, 9),
     done: (Array.isArray(p.done) ? p.done : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, outcome: String(d.outcome || "").slice(0, 1500), at: Number(d.at) || 0 })).slice(-100),
     crew: sanitizeCrew(Array.isArray(p.crew) && p.crew.length ? p.crew : structuredClone(c.crew)),
