@@ -468,6 +468,8 @@ export class Session {
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
     this.lastNet = this.state.log.findLast((e) => e.net !== "*")?.net || "";
     this.clockTimers = new Map();
+    this.talkers = new Set();
+    this.talkingSent = "";
     for (const c of this.state.clocks) this.scheduleClock(c);
     this.genCounter = 0;
     this.playhead = 0;
@@ -2430,6 +2432,15 @@ export class Session {
     return { enabled: true, ...d, players, sttKey: !!this.sttKey };
   }
 
+  talking(userId, on) {
+    if (userId === null) this.talkers.clear();
+    else if (on) this.talkers.add(userId);
+    else this.talkers.delete(userId);
+    const ids = [...new Set([...this.talkers].map((u) => this.state.discordPlayers?.[u]?.crew).filter(Boolean))];
+    if (ids.join() === this.talkingSent) return;
+    this.talkingSent = ids.join();
+    this.toPlayersIf((c) => c.stream, { t: "talking", ids });
+  }
   playerOf(userId) {
     const id = this.state.discordPlayers?.[userId]?.crew;
     return (id && this.crewById(id)) || null;

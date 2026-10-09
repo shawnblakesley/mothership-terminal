@@ -53,6 +53,7 @@ function leave(guildId, why = "") {
   try { l.connection.destroy(); } catch {}
   const s = getSession(l.session);
   if (s) {
+    s.talking(null);
     if (why) s.send("dm", { t: "toast", level: "info", text: why });
     s.discordMoved();
   }
@@ -287,7 +288,12 @@ async function onListen(i) {
     leave(i.guildId);
     return i.editReply("Couldn't connect to the voice channel. Try again.");
   }
-  connection.receiver.speaking.on("start", (userId) => links.get(i.guildId) === link && capture(i.guild, link, userId));
+  connection.receiver.speaking.on("start", (userId) => {
+    if (links.get(i.guildId) !== link) return;
+    getSession(link.session)?.talking(userId, true);
+    capture(i.guild, link, userId);
+  });
+  connection.receiver.speaking.on("end", (userId) => links.get(i.guildId) === link && getSession(link.session)?.talking(userId, false));
   connection.on(VoiceConnectionStatus.Disconnected, async () => {
     try {
       await Promise.race([entersState(connection, VoiceConnectionStatus.Signalling, 5_000), entersState(connection, VoiceConnectionStatus.Connecting, 5_000)]);

@@ -593,13 +593,18 @@
     const pcs = played.map((p) => ({ ...p, c: crew.find((c) => c.id === p.id) })).filter((p) => p.c);
     $("cb-crew").innerHTML = pcs.map(({ c, by }) => {
       const wounds = Array.from({ length: c.wounds.max }, (_, i) => `<i class="${i < c.wounds.current ? "on" : ""}"></i>`).join("");
-      return `<div class="cb-pc">
-        <div class="cb-face">${portraitHtml(c.portrait, "cb-portrait") || '<span class="cb-noface">NO PHOTO</span>'}</div>
+      return `<div class="cb-pc" data-id="${escH(c.id)}">
+        <div class="cb-face">${portraitHtml(c.portrait, "cb-portrait") || '<span class="cb-noface">NO PHOTO</span>'}<span class="cb-waves" aria-hidden="true">${"<i></i>".repeat(9)}</span></div>
         <div class="cb-name"><span>${escH(shortName(c))}</span><span class="cb-wounds" title="Wounds">${wounds}</span></div>
         <div class="cb-vit"><span>HP ${c.health.current}/${c.health.max}</span><span>STRESS ${c.stress}</span></div>
         ${by ? `<div class="cb-by">${escH(by.toUpperCase())}</div>` : ""}
       </div>`;
     }).join("");
+    showTalking();
+  }
+  let talking = new Set();
+  function showTalking() {
+    for (const el of $("cb-crew").querySelectorAll(".cb-pc")) el.classList.toggle("talking", talking.has(el.dataset.id));
   }
 
   const shortName = (c) => (c.name.match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || c.name.split(" ")[0]).toUpperCase();
@@ -1549,6 +1554,7 @@
         case "crew": setCrew(msg.crew, msg.claims, msg.played); break;
         case "wardenLog": onWardenLog(msg); break;
         case "streamMap": stationMap = msg.map; renderCastbar(); break;
+        case "talking": talking = new Set(msg.ids); showTalking(); break;
         case "isoMap": setIso(msg.map); break;
         case "rollResult": showRollResult(msg); break;
         case "roomPlan": showPlan(msg); break;
