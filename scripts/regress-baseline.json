@@ -1,0 +1,410 @@
+{
+ "model": {
+  "model": "deepseek-flash",
+  "effort": "off"
+ },
+ "runs": 5,
+ "at": "2026-10-09T08:32:08.511Z",
+ "results": [
+  {
+   "id": "warden-direction",
+   "area": "Warden authority",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "fake-warden",
+   "area": "Warden authority",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "password-guess",
+   "area": "uncertain outcomes",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "correct-code",
+   "area": "uncertain outcomes",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "hack-door",
+   "area": "uncertain outcomes",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "fail-forward",
+   "area": "uncertain outcomes",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "a failed roll opened the door"
+  },
+  {
+   "id": "roll-90s-fails",
+   "area": "no invented rules",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "error: The model didn't return valid JSON. Regenerate, or reply manually."
+  },
+  {
+   "id": "secret-guarded",
+   "area": "secrets and access",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "leaked a secret above GUEST: \"DETAILS: RESTRICTED BY DIRECTIVE 7-K\""
+  },
+  {
+   "id": "hidden-adversary-speaks",
+   "area": "adversaries",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "cast-dont-name-it",
+   "area": "adversaries",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "reveal-marked",
+   "area": "adversaries",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "creature-attacks",
+   "area": "combat",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "no attacks entry from the creature on a crew member"
+  },
+  {
+   "id": "crew-attack-success",
+   "area": "combat",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "failed-attack-no-damage",
+   "area": "no invented rules",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "reload",
+   "area": "combat",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "moved the magazine by hand in item_changes"
+  },
+  {
+   "id": "stimpak-use",
+   "area": "combat",
+   "passed": 3,
+   "runs": 5,
+   "pass": true,
+   "why": "held a stimpak for a ruling"
+  },
+  {
+   "id": "vent-room",
+   "area": "hazards",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "fire",
+   "area": "hazards",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "radiation",
+   "area": "hazards",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "time-skip",
+   "area": "hazards",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "death-save-hidden",
+   "area": "death saves",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "death-save-reveal",
+   "area": "death saves",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "held checking vitals for a ruling"
+  },
+  {
+   "id": "player-panic",
+   "area": "death saves",
+   "passed": 3,
+   "runs": 5,
+   "pass": true,
+   "why": "applied the panic's Stress itself (the Warden's)"
+  },
+  {
+   "id": "question-not-held",
+   "area": "uncertain outcomes",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "brevity-terse",
+   "area": "brevity",
+   "passed": 0,
+   "runs": 5,
+   "pass": false,
+   "why": "a line of 3 sentences at TERSE (limit 2)"
+  },
+  {
+   "id": "brevity-brief",
+   "area": "brevity",
+   "passed": 2,
+   "runs": 5,
+   "pass": false,
+   "why": "a line of 8 sentences at BRIEF (limit 3)"
+  },
+  {
+   "id": "narrator-no-you",
+   "area": "narrator",
+   "passed": 3,
+   "runs": 5,
+   "pass": true,
+   "why": "narrator says \"you\": The lift opens onto Deck 3 and the lights do not come with you. Somewhere past t"
+  },
+  {
+   "id": "in-person-vs-intercom",
+   "area": "where people are",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "Salk didn't speak as cast on the cast channel"
+  },
+  {
+   "id": "variants-rare",
+   "area": "variants",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "pronouns-they",
+   "area": "pronouns",
+   "passed": 3,
+   "runs": 5,
+   "pass": true,
+   "why": "\"her\" for a character with no pronouns given"
+  },
+  {
+   "id": "campaign-opening-act1",
+   "area": "five-act arc",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "faction-plus2",
+   "area": "factions",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "faction-plus1",
+   "area": "factions",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "no-warden-ruling",
+   "area": "no Warden",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "error: The model didn't return valid JSON. Regenerate, or reply manually."
+  },
+  {
+   "id": "no-warden-attempt-held",
+   "area": "no Warden",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "story-end-when-over",
+   "area": "no Warden",
+   "passed": 2,
+   "runs": 5,
+   "pass": false,
+   "why": "held the departure for a ruling"
+  },
+  {
+   "id": "story-end-not-yet",
+   "area": "no Warden",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "features-off",
+   "area": "switched off",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "routine-not-held",
+   "area": "uncertain outcomes",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "bluff-held",
+   "area": "uncertain outcomes",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "warden-note-private",
+   "area": "Warden authority",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "table-talk-ignored",
+   "area": "Warden authority",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "first-aid-bleeding",
+   "area": "combat",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "held first aid for a ruling"
+  },
+  {
+   "id": "item-pickup",
+   "area": "combat",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "move-screens",
+   "area": "where people are",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "cast-leaves",
+   "area": "where people are",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "Salk still in the med bay (no cast_changes)"
+  },
+  {
+   "id": "clock-start",
+   "area": "hazards",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "transit-time-skip",
+   "area": "hazards",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "ship-fight-start",
+   "area": "ship combat",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "why": ""
+  },
+  {
+   "id": "ship-fight-enemy-move",
+   "area": "ship combat",
+   "passed": 4,
+   "runs": 5,
+   "pass": true,
+   "why": "started or ended a fight while choosing a move"
+  }
+ ]
+}

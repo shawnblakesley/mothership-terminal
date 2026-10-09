@@ -518,6 +518,7 @@
         ...(r.round ? ["A round passes: Bleeding hurts"] : []),
         ...(r.reveal_death_save || []).map((n) => `Death Save revealed: ${esc(n)}`),
       ].map((t) => `<li>${t}</li>`).join("")}</ul>` : ""}
+      ${alsoList(r).length ? `<div class="label">Also happens when you send</div><ul>${alsoList(r).map((x) => `<li>${x}</li>`).join("")}</ul>` : ""}
       ${r.ship_fight ? `<div class="label">Ship fight <span class="muted">applied when you send</span></div><ul>${[
         r.ship_fight.start && `Starts a ship fight with ${esc(r.ship_fight.start.ship)} at ${esc(r.ship_fight.start.range)} range`,
         r.ship_fight.enemy_move && `The enemy chooses ${esc(r.ship_fight.enemy_move)}${r.ship_fight.fuel ? `, ${r.ship_fight.fuel} fuel` : ""}`,
@@ -534,6 +535,23 @@
       ${steerRow()}
       <div class="row"><button data-act="regen">↻ Regenerate</button></div>`;
   }
+  // The parts of an agent draft that have no checkbox: they are applied as written when the Warden sends.
+  function alsoList(r) {
+    const n = (c) => esc(c.name || c.for || "");
+    return [
+      ...(r.item_changes || []).map((c) => `${esc(c.for)} ${c.action === "add" ? "gets" : c.action === "use" ? "uses" : "loses"} ${esc(c.item)}`),
+      ...(r.hazards || []).map((h) => (h.type === "none" ? `Hazard ends in ${esc(h.room)}` : `Hazard in ${esc(h.room)}: ${esc(h.type)}${h.level ? ` (level ${h.level})` : ""}`)),
+      ...(r.time_passes?.hours > 0 ? [`${r.time_passes.hours} hour${r.time_passes.hours > 1 ? "s" : ""} pass`] : []),
+      ...(r.moves || []).map((m) => `${esc(m.for)} moves to ${esc(m.terminal)}`),
+      ...(r.cast_changes || []).map((c) => `${n(c)}: ${[c.room && (c.room === "none" ? "leaves the map" : `to ${esc(c.room)}`), c.notes && esc(c.notes), c.attitude_change && `attitude ${c.attitude_change > 0 ? "+" : ""}${c.attitude_change}`, c.stress_change && `Stress ${c.stress_change > 0 ? "+" : ""}${c.stress_change}`, c.panic_check && "Panic Check"].filter(Boolean).join(", ") || "no change"}`),
+      ...(r.clocks || []).map((c) => (c.action === "stop" ? `Clock stops: ${esc(c.label)}` : `Clock starts: ${esc(c.label)} (${c.seconds}s)`)),
+      ...(r.handouts || []).map((h) => `Handout${h.for ? ` for ${esc(h.for)}` : ""}: ${esc(h.title)}`),
+      ...(r.found_docs || []).map((f) => `File found: ${esc(f.id)}`),
+      ...(r.layout ? ["The map layout changes"] : []),
+      ...(r.room_plans || []).map((p) => `Floor plan redrawn: ${esc(p.room)}`),
+      ...(r.story_end?.ended ? [`The story ends: ${esc(r.story_end.how)}`] : []),
+    ];
+  }
   const systemNames = () => [...new Set([S.config.stationName, ...S.config.terminals.filter((t) => t.system).map((t) => t.system)])];
   const sysSelect = (system) => {
     const names = systemNames();
@@ -545,7 +563,7 @@
   };
 
   const draftLine = (l) => `
-    <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}">
+    <div class="dline" data-effects="${esc(JSON.stringify(l.effects || []))}" data-reveal="${esc(l.reveal || "")}">
       <div class="dwho">
         <select aria-label="Voice">${optionsHtml(S.config.voices.map((v) => [v.id, v.name]), l.voice)}</select>
         ${sysSelect(l.system)}
@@ -556,6 +574,7 @@
       <div class="dvars">${(l.variants || []).map(variantRow).join("")}
         <button data-act="addVar" class="ghost small" title="Alternate line for a player or class">+ Variant</button></div>
       ${l.effects?.length ? `<div class="dfx">${l.effects.map((f, i) => `<label class="chip"><input type="checkbox" data-leff="${i}" ${S.config.agentEffects ? "checked" : ""}> ${fxLabel(f, "⚡")} <span class="muted">as this line starts</span></label>`).join("")}</div>` : ""}
+      ${l.reveal ? `<div class="dfx"><span class="chip">Shows the players ${esc(l.reveal)} as this line starts</span></div>` : ""}
     </div>`;
   const variantRow = (v) => `<div class="dvar">
       <input class="dvfor" list="variantTargets" value="${esc(v.for)}" placeholder="for: name or class" aria-label="Variant for">
@@ -709,7 +728,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
             <label class="small muted where">in <select data-m="room" aria-label="Where ${esc(m.name)} is"><option value="">nowhere on the map</option>${
               optionsHtml([...rooms], m.room)}${
               m.room && !rooms.has(m.room) ? `<option value="${esc(m.room)}" selected>${esc(m.room)}</option>` : ""}</select></label>
-            <label class="small muted mood" title="Attitude to players, hidden from them">feels <select data-m="attitude" data-num aria-label="How ${esc(m.name)} feels about the players" class="att${m.attitude > 0 ? " up" : m.attitude < 0 ? " down" : ""}">${
+            <label class="small muted mood" title="Attitude to the players (this app's scale, not a Mothership rule), hidden from them">feels <select data-m="attitude" data-num aria-label="How ${esc(m.name)} feels about the players" class="att${m.attitude > 0 ? " up" : m.attitude < 0 ? " down" : ""}">${
               ATTITUDES.map(([n, label]) => `<option value="${n}" ${n === (m.attitude || 0) ? "selected" : ""}>${label} (${n > 0 ? "+" : ""}${n})</option>`).join("")}</select></label>
             <label class="small muted stress" title="Stress, 0-20">Stress <input type="number" data-m="stress" data-num min="0" max="20" value="${m.stress ?? 2}" aria-label="${esc(m.name)}'s Stress"></label>
             <button data-mact="panic" class="small" title="Roll d20: at or under Stress, they panic">Panic check</button>
@@ -2461,7 +2480,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
           const fx = JSON.parse(row.dataset.effects || "[]").filter((_, i) => row.querySelector(`[data-leff="${i}"]`)?.checked);
           const variants = [...row.querySelectorAll(".dvar")].map((d) => ({ for: d.querySelector(".dvfor").value.trim(), text: d.querySelector(".dvtext").value }))
             .filter((v) => v.for && v.text.trim());
-          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), system: row.querySelector(".dsys")?.value || "", text: row.querySelector(".dwho + textarea").value, effects: fx, variants };
+          return { voice: row.querySelector("select").value, character: row.querySelector(".dchar").value.trim(), system: row.querySelector(".dsys")?.value || "", text: row.querySelector(".dwho + textarea").value, effects: fx, variants, reveal: row.dataset.reveal || "" };
         })
         .filter((l) => l.text.trim() || l.effects.length || l.variants.length),
       station_changes: r.station_changes.filter((_, i) => card.querySelector(`[data-chg="${i}"]`)?.checked),

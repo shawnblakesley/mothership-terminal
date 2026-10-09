@@ -7,7 +7,7 @@ import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, 
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
-import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings } from "./crew.js";
+import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings, renameSkill } from "./crew.js";
 import { combatCheck, damageAdversary, rollDeathSave, deathSaveText, sanitizeStats, statsLine } from "./combat.js";
 import { rollDice, rollWithAdv, cancelAdv } from "./dice.js";
 import { woundText } from "./wounds.js";
@@ -197,7 +197,7 @@ export function defaultGame(keys = {}) {
       rooms: structuredClone(DEFAULT_ROOMS),
       startDocs: [WORK_ORDER],
       roomDocs: structuredClone(DEFAULT_ROOM_DOCS),
-      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "portraits-2", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", "trauma-notes", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
+      upgrades: ["ship", "rooms", "systems", "start-ship", "work-order", "cyan", "ship-cyan", "ship-cyan-2", "stress-2", "airlock-closed", "portraits", "portraits-2", "intercom-colour", "adversaries", "the-cold", "the-cold-picture", "the-cold-picture-2", "connections-all", "trauma-notes", "industrial-equipment", ...(kitSounds().length === KIT_FILES.length ? ["sound-kit"] : [])],
     },
     station: structuredClone(DEFAULT_STATION),
     log: [],
@@ -385,6 +385,10 @@ function migrateGame(saved) {
       if (v) Object.assign(v.adversary, DEFAULT_COLD);
     }
     config.upgrades.push("the-cold-picture-2");
+  }
+  if (!config.upgrades.includes("industrial-equipment")) {
+    for (const crew of [config.crew, saved.storyStart?.config?.crew, saved.campaign?.crew]) renameSkill(crew);
+    config.upgrades.push("industrial-equipment");
   }
   if (!config.upgrades.includes("cold-combat")) {
     for (const list of [voices, saved.storyStart?.config?.voices].filter(Array.isArray)) {
@@ -1298,8 +1302,8 @@ export class Session {
       case "approve":
         if (!s.pending || s.pending.status !== "ready") break;
         this.logDirectives(s.pending.directives);
-        const { attacks, crew_attacks, reloads, round, reveal_death_save, ship_fight } = s.pending.reply || {};
-        this.deliver({ ...msg.reply, outcome_check: s.pending.reply?.outcome_check, attacks, crew_attacks, reloads, round, reveal_death_save, ship_fight }, "agent");
+        const { lines, station_changes, crew_changes, effects, ...kept } = s.pending.reply || {};
+        this.deliver({ ...kept, ...msg.reply }, "agent");
         s.pending = null;
         this.setBusy(false);
         break;
@@ -2744,7 +2748,11 @@ export class Session {
       const ids = everyone ? null : new Set(crewTargets(m.for, this.state.config.crew));
       for (const ws of this.sockets) {
         if (ws.role !== "player" || !ws.terminal || ws.terminal === t.id) continue;
-        if (everyone || ids.has(ws.character)) this.playerTerminal(ws, t.id, "agent");
+        if (everyone || ids.has(ws.character)) {
+          const was = ws.terminal;
+          this.playerTerminal(ws, t.id, "agent");
+          if (ws.terminal !== was) this.delivering?.moved.push([ws, was]);
+        }
       }
     }
   }
@@ -2771,7 +2779,7 @@ export class Session {
   }
 
   undoSnapshot() {
-    return { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll), ship: shipSnapshot(this) };
+    return { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll), clocks: structuredClone(this.state.clocks || []), handouts: [], found: [], moved: [], ship: shipSnapshot(this) };
   }
 
   deliver(reply, source) {
@@ -2806,11 +2814,39 @@ export class Session {
     for (const [id, stats] of undo.adversaries || []) { const v = s.config.voices.find((x) => x.id === id); if (v?.adversary) v.adversary.stats = stats; }
     if (s.roll && undo.roll && s.roll.id === undo.roll.id) s.roll.results = undo.roll.results;
     s.outcomeCheck = undo.outcome;
+    this.undoDelivered(undo);
     restoreShip(this, undo.ship);
+    if (undo.ended && ["ended", "play"].includes(s.solo?.phase)) {
+      s.solo = undo.solo;
+      s.campaign = undo.campaign;
+      this.moneySync();
+      this.soloChanged();
+    }
     this.playhead = 0;
     this.addLog("note", "↶ Retconned the agent's last reply.");
     this.initPlayers();
     this.crewChanged();
+  }
+
+  // The parts of an agent reply that are not in the saved state: clocks, handouts and found files given out, screens moved.
+  undoDelivered(undo) {
+    const s = this.state;
+    const now = Date.now();
+    for (const c of [...s.clocks]) if (!undo.clocks.some((x) => x.id === c.id)) this.removeClock(c);
+    for (const c of undo.clocks) {
+      if (s.clocks.some((x) => x.id === c.id) || (!c.paused && c.ends <= now)) continue;
+      const back = structuredClone(c);
+      s.clocks.push(back);
+      this.scheduleClock(back);
+    }
+    this.clocksChanged();
+    const gone = new Set(undo.handouts);
+    if (gone.size) {
+      s.handouts = s.handouts.filter((h) => !gone.has(h.id));
+      for (const id of gone) this.toPlayers({ t: "handoutGone", id });
+    }
+    s.found = (s.found || []).filter((id) => !undo.found.includes(id));
+    for (const [ws, terminal] of undo.moved) if (this.sockets.has(ws) && ws.terminal !== terminal) this.playerTerminal(ws, terminal, "agent");
   }
 
   deliverReply(reply, source) {
@@ -2891,7 +2927,12 @@ export class Session {
     this.applyCrewChanges(reply?.crew_changes);
     this.applyItemChanges(reply?.item_changes);
     if (source === "agent" && this.state.config.agentCrew) this.applyAttacks(reply);
-    if (reply?.story_end?.ended && this.state.solo?.phase === "play") setTimeout(() => this.soloEnd(reply.story_end.how), 0);
+    if (reply?.story_end?.ended && this.state.solo?.phase === "play") {
+      // Retcon can take the ending back: the undo entry keeps the story and campaign as they were, and soloEnd records what it does into it.
+      const undo = this.delivering;
+      if (undo) Object.assign(undo, { ended: true, solo: structuredClone(this.state.solo), campaign: structuredClone(this.state.campaign ?? null) });
+      setTimeout(() => this.soloEnd(reply.story_end.how, undo), 0);
+    }
     for (const c of reply?.clocks || []) c.action === "stop" ? this.stopClock(c.label) : this.startClock(c.label, c.seconds, "agent");
     for (const f of reply?.found_docs || []) {
       const to = findCharacterId(this.state.config.crew, f.for);
@@ -3137,14 +3178,22 @@ export class Session {
     x.after = { factions, rest, pay: paid.lines };
   }
 
-  async soloEnd(how) {
+  // undo: the agent reply's Retcon entry when the agent ended the story, so its log notes, handouts and campaign changes are taken back with it.
+  async soloEnd(how, undo = null) {
     const x = this.state.solo;
     if (!x || x.phase !== "play") return;
-    Object.assign(x, { phase: "ended", ending: String(how || "").slice(0, 300), recap: null, earned: [], delivery: null, after: null, busy: "recap", error: "" });
-    this.dropReply();
-    for (const c of [...this.state.clocks]) this.stopClock(c.id, true);
-    this.clocksChanged();
-    this.addLog("note", `The story ended${x.ending ? `: ${x.ending}` : "."}`);
+    const track = (fn) => {
+      if (!undo || this.delivering) return fn();
+      this.delivering = undo;
+      try { return fn(); } finally { this.delivering = null; }
+    };
+    track(() => {
+      Object.assign(x, { phase: "ended", ending: String(how || "").slice(0, 300), recap: null, earned: [], delivery: null, after: null, busy: "recap", error: "" });
+      this.dropReply();
+      for (const c of [...this.state.clocks]) this.stopClock(c.id, true);
+      this.clocksChanged();
+      this.addLog("note", `The story ended${x.ending ? `: ${x.ending}` : "."}`);
+    });
     this.soloChanged();
     try {
       const p = this.state.campaign, c = campaignById(p?.id), story = x.campaign && c?.stories.find((t) => t.id === p.current);
@@ -3156,7 +3205,8 @@ export class Session {
     } catch (err) {
       x.error = `Couldn't write the recap (${err?.message || err}).`;
     }
-    if (x.campaign) this.soloFinish();
+    if (this.state.solo !== x || x.phase !== "ended") return; // retconned (or moved on) while the recap was written
+    if (x.campaign) track(() => this.soloFinish());
     x.busy = "";
     this.soloChanged();
   }
@@ -3376,6 +3426,7 @@ export class Session {
     if (voice && this.logVoice(voice)) h.voice = String(voice);
     if (!h.title || !h.text) return;
     this.state.handouts.push(h);
+    this.delivering?.handouts.push(h.id);
     if (this.state.handouts.length > 60) this.state.handouts.shift();
     const who = h.to ? this.crewById(h.to)?.name : "everyone";
     this.addLog("note", note || `${who} received "${h.title}"`);
@@ -3460,6 +3511,7 @@ export class Session {
     const d = (this.state.config.roomDocs || []).find((x) => x.id === id);
     if (!d || (this.state.found ||= []).includes(id)) return;
     this.state.found.push(id);
+    this.delivering?.found.push(id);
     this.giveHandout({ title: d.title, text: d.text, voice: d.voice, to }, finder ? `${finder} found "${d.title}" in ${this.roomName(d.room)}` : "");
   }
 

@@ -131,7 +131,7 @@ export function factionBrief(c, story, p) {
     const help = c.factions.filter((f) => stand(f.id) >= 2);
     lines.push(`THE FINALE: the crew's standing with every faction: ${c.factions.map((f) => `${f.short} ${standingLabel(stand(f.id))}`).join(", ")}.${help.length ? ` ${help.map((f) => f.name).join(", ")} send help in the final hour.` : " Nobody comes to help."}`);
   }
-  return lines.length ? `FACTION STANDING (campaign house rule, not Mothership 1e; it is only [+]/[-] and how people treat the crew; when it gives [+] or [-] on an outcome_check, set advantage and name the faction in why):\n${lines.join("\n")}` : "";
+  return lines.length ? `FACTION STANDING (campaign house rule, not Mothership 1e; it is only [+]/[-], at +2 or more and -2 or less, and how people treat the crew; when it gives [+] or [-] on an outcome_check, set advantage and name the faction in why):\n${lines.join("\n")}` : "";
 }
 
 const castById = (c, id) => c.cast.find((m) => m.id === id);
@@ -220,7 +220,7 @@ LENGTH: lore and secrets under ~200 words each; personas under ~150 words; cast 
   };
 }
 
-function arcOrders(c, story, p) {
+function arcOrders(c, story) {
   const a = story.adversary;
   return [
     `CAMPAIGN STORY ${story.n} of ${c.stories.length}: ${story.title}. ${story.event}; ${story.horror}.`,
@@ -228,8 +228,7 @@ function arcOrders(c, story, p) {
     ...ACTS.map(([k, label], i) => `${i + 1}. ${label.toUpperCase()}: ${story.acts[k]}`),
     `THE ADVERSARY is ${a.name} (${a.type}). Keep it unseen through the Omens; it shows itself in the Manifestation.`,
     `When the Banishment is done or the crew escape or die, play the Slumber as the closing scene and leave its hooks for later stories.`,
-    factionBrief(c, story, p),
-  ].filter(Boolean).join("\n");
+  ].join("\n");
 }
 
 // The full Story Builder draft for a campaign story: the agent's part, with the campaign's fixed pieces put in.
@@ -268,7 +267,7 @@ export function composeDraft(c, story, p, raw) {
     theme: transit ? "cyan" : place.theme,
     lore: d.lore,
     secrets: [...story.secrets.map((x) => `- ${x}`), String(d.secrets || "").trim()].filter(Boolean).join("\n"),
-    standingOrders: [arcOrders(c, story, p), String(d.standingOrders || "").trim()].filter(Boolean).join("\n\n"),
+    standingOrders: [arcOrders(c, story), String(d.standingOrders || "").trim()].filter(Boolean).join("\n\n"),
     station,
     map: mapFor(c, story),
     computer,
