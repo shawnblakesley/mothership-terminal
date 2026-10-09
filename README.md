@@ -326,7 +326,7 @@ Upload your own audio in **Sounds** (under **Actions**): monster growls, attacks
 
 Sounds play through the players' VOL control. Players who join or reload mid-scene pick up any running loops once they press a key. Files are kept under `data/sounds/<CODE>/` and deleted with their session.
 
-**Built-in sounds:** every story starts with seven in its library (stories saved earlier get them once): Lurking monster, Monster growling (long), Deep monster roar, Monster bite, Monster eating, Tension drone (background) and Dramatic riser. They live in `public/sounds/`. Removing one from a story only takes it off that story's list, and they don't count toward a session's upload limit.
+**Built-in sounds:** every story starts with seven in its library (stories saved earlier get them once): Lurking monster, Monster growling (long), Deep monster roar, Monster bite, Monster eating, Tension drone (background) and Dramatic riser. The files come from a private S3 bucket onto the server (see `deploy/README.md`), not from git. Removing one from a story only takes it off that story's list, and they don't count toward a session's upload limit.
 
 **The agent's sounds:** while the agent may use screen effects, it's given the story's sounds by name and can put one on a line. It starts as that line starts and plays under the words, never holding them back (a blackout still does).
 

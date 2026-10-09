@@ -74,6 +74,10 @@ EnvironmentFile=-/etc/mothership/secrets.env
 CONF
 systemctl daemon-reload
 HOME=/root node deploy/secrets.mjs /etc/mothership/secrets.env || echo "Couldn't fetch secrets; keeping the last ones." >&2
+# The built-in sound pack (sounds.js KIT) isn't in git: it comes from the private
+# mothership-sounds-773206830395 bucket, read with the server's role. Only missing files are fetched.
+HOME=/root node deploy/sounds.mjs || echo "Couldn't fetch the sound pack; stories go without it for now." >&2
+chown -R mothership:mothership public/sounds 2>/dev/null || true
 
 systemctl restart mothership
 

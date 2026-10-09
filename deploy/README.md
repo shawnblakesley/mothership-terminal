@@ -74,6 +74,11 @@ On the existing distribution:
   ```bash
   read -rs KEY && aws ssm put-parameter --region us-west-2 --name /mothership/openrouter-api-key --type SecureString --value "$KEY" --overwrite; unset KEY
   ```
+- **Sound pack:** the built-in sounds (`sounds.js`, `KIT`) aren't in git; their licence doesn't allow sharing the files on their own. They're in the private bucket `mothership-sounds-773206830395` (us-west-2), under `sounds/`. MothershipStack should own the bucket (private, blocked from public access) and let the server's role read `sounds/*` (`s3:GetObject`). Each deploy, `update.sh` runs `deploy/sounds.mjs`, which downloads any that are missing into `public/sounds/` with the role's credentials; until it can, stories go without them. To upload or replace them, from a machine with AWS access and the files in `public/sounds/`:
+  ```bash
+  aws s3 cp public/sounds/ s3://mothership-sounds-773206830395/sounds/ --recursive --exclude "*" --include "*.mp3"
+  ```
+  For local development, `node deploy/sounds.mjs` fetches them with your own AWS credentials.
   then redeploy (any push to main). Delete the parameter and redeploy to turn free models off. If the fetch fails, the deploy keeps the last key.
   Free models cost nothing, so a public server is fine. OpenRouter allows far more free requests a day on an account that has bought at least $10 of credit at some point. Each session is also capped at `FREE_CALLS_PER_DAY` (default 150).
 - **Limits:** set in the systemd unit. `MAX_SESSIONS` defaults to 300, and idle sessions expire after `SESSION_TTL_DAYS` (default 14).
