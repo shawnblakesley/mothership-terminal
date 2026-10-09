@@ -1,7 +1,7 @@
 import { RIM_HAULERS } from "./campaigns/rim-haulers.js";
 import { APP_BRIEF, DRAFT_SCHEMA, SPEAKER_LIST } from "./builder.js";
 import { sanitizeCrew, newCond } from "./crew.js";
-import { HAZARDS } from "./hazards.js";
+import { HAZARDS, hazardTag } from "./hazards.js";
 import { sanitizeCast, findCast, PORTRAIT_FILE } from "./cast.js";
 import { SPEAKERS, fromPreset } from "./voices.js";
 import { sanitizeResources, rigStation, resourcesFrom, fuelCost, portMult, PRICES, MRE_PACK, TANK, firearms, addMagazines } from "./resources.js";
@@ -160,7 +160,7 @@ function storyBible(c, story) {
   ].filter(Boolean).join("\n");
 }
 
-export const hazardRules = (story) => (story.hazards || []).filter((h) => HAZARDS[h]).map((h) => `- ${h} (${HAZARDS[h].kind === "psg" ? "Mothership rule" : "story hazard"}): ${HAZARDS[h].rule}`);
+export const hazardRules = (story) => (story.hazards || []).filter((h) => HAZARDS[h]).map((h) => `- ${h} (${hazardTag(HAZARDS[h])}): ${HAZARDS[h].rule}`);
 
 function campaignContext(c, story, p) {
   const place = story.at ? loc(c, story.at) : null;
