@@ -22,8 +22,16 @@ test("a roll of 90-99 that is under the target is told to the agent as the failu
   const state = kestrelState();
   state.log.push({ id: "r1", kind: "roll", text: "SANITY SAVE\nTARGET 95 · ROLLED 93\nFAILURE · +1 STRESS" }, { id: "r2", kind: "roll", text: "FEAR SAVE\nTARGET 50 · ROLLED 40\nSUCCESS" });
   const last = buildRequest(state, "").messages.at(-1).content;
-  assert.match(last, /ROLLED 93[\s\S]*90-99 always fails/);
+  assert.match(last, /ROLLED 93[\s\S]*90-99 always fails[^)]*not even partly/);
+  assert.doesNotMatch(last, /ROLLED 93[^)]*near miss/);
   assert.match(last, /made it by 10/);
+});
+
+test("secrets the access level can't reach are named as locked, and open up with the access", () => {
+  const state = kestrelState();
+  assert.match(buildRequest(state, "").context, /LOCKED AT GUEST ACCESS: THE DRAIN; Company directive 7-K\./);
+  state.station.access_level = "ADMIN";
+  assert.doesNotMatch(buildRequest(state, "").context, /LOCKED AT/);
 });
 
 const everything = (state, steer = "") => {

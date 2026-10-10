@@ -4,7 +4,7 @@
   "effort": "off"
  },
  "runs": 5,
- "at": "2026-10-09T22:49:38.087Z",
+ "at": "2026-10-10T07:37:39.531Z",
  "results": [
   {
    "id": "warden-direction",
@@ -25,10 +25,10 @@
   {
    "id": "password-guess",
    "area": "uncertain outcomes",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "error: Expected ',' or '}' after property value in JSON at position 106 (line 1 column 107)"
+   "why": ""
   },
   {
    "id": "correct-code",
@@ -49,26 +49,26 @@
   {
    "id": "fail-forward",
    "area": "uncertain outcomes",
-   "passed": 3,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": "asked for another check instead of narrating the failure"
+   "why": "no lines"
   },
   {
    "id": "roll-90s-fails",
    "area": "no invented rules",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "narrated success on a 90-99"
+   "why": ""
   },
   {
    "id": "secret-guarded",
    "area": "secrets and access",
-   "passed": 3,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "leaked a secret above GUEST: \"DIRECTIVE 7-K ACTIVE\""
+   "why": ""
   },
   {
    "id": "hidden-adversary-speaks",
@@ -97,15 +97,15 @@
   {
    "id": "creature-attacks",
    "area": "combat",
-   "passed": 3,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "no attacks entry from the creature on a crew member"
+   "why": ""
   },
   {
    "id": "crew-attack-success",
    "area": "combat",
-   "passed": 3,
+   "passed": 4,
    "runs": 5,
    "pass": true,
    "why": "no crew_attacks after a successful Combat Check"
@@ -129,10 +129,10 @@
   {
    "id": "stimpak-use",
    "area": "combat",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "changed Health or Stress by hand as well"
+   "why": ""
   },
   {
    "id": "vent-room",
@@ -217,18 +217,18 @@
   {
    "id": "narrator-no-you",
    "area": "narrator",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "narrator says \"you\": The lift doors grind open on Deck 3, and the dark swallows the car whole. Only o"
+   "why": ""
   },
   {
    "id": "in-person-vs-intercom",
    "area": "where people are",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "Salk didn't speak as cast on the cast channel"
+   "why": ""
   },
   {
    "id": "variants-rare",
@@ -241,10 +241,10 @@
   {
    "id": "pronouns-they",
    "area": "pronouns",
-   "passed": 5,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "the scene doesn't show her"
   },
   {
    "id": "campaign-opening-act1",
@@ -257,7 +257,7 @@
   {
    "id": "faction-plus2",
    "area": "factions",
-   "passed": 3,
+   "passed": 4,
    "runs": 5,
    "pass": true,
    "why": "advantage \"none\" with the union at +2 (house rule [+])"
@@ -289,10 +289,10 @@
   {
    "id": "story-end-when-over",
    "area": "no Warden",
-   "passed": 4,
+   "passed": 3,
    "runs": 5,
    "pass": true,
-   "why": "error: The model didn't return valid JSON. Regenerate, or reply manually."
+   "why": "the story didn't end when it was over"
   },
   {
    "id": "story-end-not-yet",
@@ -353,18 +353,18 @@
   {
    "id": "item-pickup",
    "area": "combat",
-   "passed": 5,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "no item_changes add for the flare gun"
   },
   {
    "id": "move-screens",
    "area": "where people are",
-   "passed": 4,
+   "passed": 5,
    "runs": 5,
    "pass": true,
-   "why": "no moves to the reactor terminal (got [{\"for\":\"all\",\"terminal\":\"AIRLOCK A TERMINAL\"}])"
+   "why": ""
   },
   {
    "id": "cast-leaves",
