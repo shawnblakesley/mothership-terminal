@@ -20,7 +20,7 @@ export default {
   id: "claude",
   label: "Claude (Anthropic)",
   envKey: "ANTHROPIC_API_KEY",
-  keyHint: "sk-ant-...",
+  keyHint: "sk-ant-... or the site password",
   keyUrl: "https://console.anthropic.com/settings/keys",
   keyPattern: /^sk-ant-/,
   models: MODELS,

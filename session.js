@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, LOCAL_KEYS } from "./providers/index.js";
+import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, sitePassword, LOCAL_KEYS, SITE_KEYS } from "./providers/index.js";
 import { warmNeural } from "./tts.js";
 import { VoiceRelay } from "./voicerelay.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, COLD_STATS, OLD_COLD_PICTURES } from "./voices.js";
@@ -476,6 +476,7 @@ function migrateGame(saved) {
     handouts: Array.isArray(saved.handouts) ? saved.handouts : [],
     found: Array.isArray(saved.found) ? saved.found.map(String) : [],
     localKeys: !!saved.localKeys,
+    siteKeys: Array.isArray(saved.siteKeys) ? saved.siteKeys.filter((x) => x === "claude") : [],
     discordPlayers: saved.discordPlayers && typeof saved.discordPlayers === "object" ? saved.discordPlayers : {},
     streamKey: typeof saved.streamKey === "string" ? saved.streamKey : "",
     clocks: Array.isArray(saved.clocks) ? saved.clocks : [],
@@ -543,6 +544,7 @@ export class Session {
     this.roomBusy = "";
     this.keys = {};
     if (this.state.localKeys) this.keys[LOCAL_KEYS] = true;
+    if (this.state.siteKeys?.includes("claude")) this.keys[SITE_KEYS] = true;
     this.sttKey = "";
     this.freeCalls = { day: "", count: 0 };
     this.sockets = new Set();
@@ -586,6 +588,13 @@ export class Session {
   useLocalKeys() {
     this.state.localKeys = true;
     this.keys[LOCAL_KEYS] = true;
+    this.touch();
+  }
+
+  useSiteKey(on = true) {
+    this.state.siteKeys = on ? ["claude"] : [];
+    if (on) this.keys[SITE_KEYS] = true;
+    else delete this.keys[SITE_KEYS];
     this.touch();
   }
 
@@ -1016,7 +1025,7 @@ export class Session {
     this.endAllEffects();
     this.stopSounds();
     this.clearClocks();
-    this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, campaign: s.campaign && { ...s.campaign, current: "" }, pending: null, effects: [], playing: [], ...extra, localKeys: s.localKeys, streamKey: s.streamKey };
+    this.state = { ...defaultGame(this.keys), sounds: s.sounds, builder: s.builder, campaign: s.campaign && { ...s.campaign, current: "" }, pending: null, effects: [], playing: [], ...extra, localKeys: s.localKeys, siteKeys: s.siteKeys, streamKey: s.streamKey };
   }
 
   holdForWarden(raw, note) {
@@ -1287,12 +1296,14 @@ export class Session {
         if (!p || p.serverKeyOnly) { rememberSecret(msg.key); break; }
         const key = String(msg.key || "").trim();
         rememberSecret(key);
+        const site = key && !looksLikeKey(p.id, key) ? sitePassword(p.id, key, ws?.clientIp || "") : "";
         if (!key) delete this.keys[p.id];
         else if (looksLikeKey(p.id, key)) this.keys[p.id] = key;
-        else {
-          this.send("dm", { t: "toast", level: "error", text: `Not a valid ${p.label} key (expected ${p.keyHint}).` });
+        else if (site !== "ok") {
+          this.send("dm", { t: "toast", level: "error", text: site === "limited" ? "Too many tries. Wait a few minutes." : `Not a valid ${p.label} key (expected ${p.keyHint}).` });
           return;
-        }
+        } else delete this.keys[p.id];
+        if (p.id === "claude") this.useSiteKey(site === "ok");
         if (key && !keyFor(s.config.provider, this.keys)) Object.assign(s.config, defaultSelection(this.keys));
         break;
       }
@@ -3511,7 +3522,7 @@ export class Session {
         break;
       }
       case "pilotKey":
-        this.handleDm({ t: "apiKey", provider: msg.provider, key: msg.key });
+        this.handleDm({ t: "apiKey", provider: msg.provider, key: msg.key }, ws);
         break;
       case "pilotPitches":
         this.soloPitches();

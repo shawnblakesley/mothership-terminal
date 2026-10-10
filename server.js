@@ -12,13 +12,13 @@ import { synthesize, setCacheDir, warmNeural } from "./tts.js";
 import { sanitizeVoices, speechParts, voiceFor } from "./voices.js";
 import { speakingVoice } from "./cast.js";
 import { setPortraitsDir, savePortrait, portraitPath, portraitType, deleteSessionPortraits, MAX_PORTRAIT_BYTES } from "./portraits.js";
-import { getProvider, looksLikeKey, catalog, offered, fixSelection, LOCAL_KEYS } from "./providers/index.js";
+import { getProvider, looksLikeKey, catalog, offered, fixSelection, LOCAL_KEYS, SITE_KEYS, sitePassword } from "./providers/index.js";
 import { Session, SPOKEN_KINDS, defaultGame, hashToken } from "./session.js";
 import { setSoundsDir, saveSound, soundPath, deleteSoundFile, deleteSessionSounds, MAX_SOUND_BYTES } from "./sounds.js";
 import { track, gauge } from "./telemetry.js";
 import { startDiscord } from "./discordbot.js";
 import { CAMPAIGNS, ACTS, mapFor } from "./campaign.js";
-for (const p of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "DISCORD_BOT_TOKEN"]) rememberSecret(process.env[p]);
+for (const p of ["DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "DISCORD_BOT_TOKEN", "CLAUDE_KEY_PASSWORD"]) rememberSecret(process.env[p]);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
@@ -204,15 +204,19 @@ router.post("/api/sessions", express.json({ limit: "4kb" }), (req, res) => {
   rememberSecret(key);
   if (!provider || !offered(provider)) return res.status(400).json({ error: "Pick a provider." });
   const localKey = !key && !provider.serverKeyOnly && isLocalRequest(req) && !!process.env[provider.envKey];
-  if (!provider.serverKeyOnly && !localKey && !looksLikeKey(provider.id, key)) return res.status(400).json({ error: `That doesn't look like a ${provider.label} API key (expected ${provider.keyHint}).` });
+  const site = !provider.serverKeyOnly && !localKey ? sitePassword(provider.id, key, clientIp(req)) : "";
+  if (site === "limited") return res.status(429).json({ error: "Too many tries. Wait a few minutes." });
+  if (!provider.serverKeyOnly && !localKey && site !== "ok" && !looksLikeKey(provider.id, key)) return res.status(400).json({ error: `That doesn't look like a ${provider.label} API key (expected ${provider.keyHint}).` });
   sweep();
   if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: "The server is full right now. Try again later." });
   const { session, token } = provider.serverKeyOnly ? createSession({}, provider.id)
     : localKey ? createSession({ [LOCAL_KEYS]: true }, provider.id)
+    : site === "ok" ? createSession({ [SITE_KEYS]: true }, provider.id)
     : createSession({ [provider.id]: key });
   if (localKey) session.useLocalKeys();
+  if (site === "ok") session.useSiteKey();
   if (req.body?.solo === true) session.startSolo();
-  console.log(`  + session ${session.code} created (${provider.id}${localKey ? ", this computer's key" : ""}${req.body?.solo === true ? ", no Warden" : ""})`);
+  console.log(`  + session ${session.code} created (${provider.id}${localKey ? ", this computer's key" : site === "ok" ? ", site key" : ""}${req.body?.solo === true ? ", no Warden" : ""})`);
   res.json({ code: session.code, token });
 });
 
@@ -375,6 +379,7 @@ wss.on("connection", (ws, req) => {
   const url = new URL(req.url, "http://x");
   const ip = clientIp(req);
   if (limited(`ws:${ip}`, 60, 60_000)) return ws.close(4029, "too many connections");
+  ws.clientIp = ip;
   const session = sessions.get(normCode(url.searchParams.get("s")));
   if (!session) return ws.close(4004, "no such session");
   const wantsDm = url.searchParams.get("role") === "dm";

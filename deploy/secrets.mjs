@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { REGION, credentials, signedFetch } from "./aws.mjs";
 
-const PARAMS = { OPENROUTER_API_KEY: "/mothership/openrouter-api-key", DISCORD_BOT_TOKEN: "/mothership/discord-bot-token" };
+const PARAMS = { OPENROUTER_API_KEY: "/mothership/openrouter-api-key", DISCORD_BOT_TOKEN: "/mothership/discord-bot-token", ANTHROPIC_API_KEY: "/mothership/anthropic-api-key", CLAUDE_KEY_PASSWORD: "/mothership/claude-key-password" };
 
 async function ssm(target, payload, creds) {
   const res = await signedFetch({ service: "ssm", host: `ssm.${REGION}.amazonaws.com`, method: "POST", headers: { "content-type": "application/x-amz-json-1.1", "x-amz-target": `AmazonSSM.${target}` }, body: JSON.stringify(payload) }, creds);
