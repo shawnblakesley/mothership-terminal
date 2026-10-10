@@ -930,34 +930,6 @@
   $("crewfile-new").onclick = () => Chargen.start(mine()?.id);
   $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
   $("watchpick").onclick = () => toPicker();
-  function mdInline(s) {
-    return s
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
-      .replace(/__(.+?)__/g, "<u>$1</u>")
-      .replace(/~~(.+?)~~/g, "<s>$1</s>")
-      .replace(/(^|[^*\w])\*(?!\s)(.+?)\*(?!\w)/g, "$1<i>$2</i>")
-      .replace(/(^|[^_\w])_(?!\s)(.+?)_(?!\w)/g, "$1<i>$2</i>");
-  }
-  function renderMd(text) {
-    const out = [];
-    let list = null;
-    const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
-    for (const raw of escH(text).split("\n")) {
-      const line = raw.trimEnd();
-      let m;
-      if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { close(); out.push(`<div class="md-h md-h${m[1].length}">${mdInline(m[2])}</div>`); }
-      else if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { close(); out.push('<div class="md-hr"></div>'); }
-      else if ((m = line.match(/^\s*[-*+]\s+(.*)$/))) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push(`<li>${mdInline(m[1])}</li>`); }
-      else if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) { if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; } out.push(`<li>${mdInline(m[1])}</li>`); }
-      else if ((m = line.match(/^\s*&gt;\s?(.*)$/))) { close(); out.push(`<div class="md-q">${mdInline(m[1])}</div>`); }
-      else if (!line.trim()) { close(); out.push('<div class="md-gap"></div>'); }
-      else { close(); out.push(`<div>${mdInline(line)}</div>`); }
-    }
-    close();
-    return out.join("");
-  }
-
   function docsButton() {
     $("hdr-docs").hidden = $("hdr-docs-sep").hidden = !docs.length || (spectate && !stream) || !!mine();
     $("hdr-docs").textContent = docs.length ? `DOCS (${docs.length})` : "DOCS";
@@ -998,7 +970,9 @@
     $("docs-list").hidden = true;
     $("docs-body").hidden = false;
     stopLog();
-    $("docs-body").innerHTML = d.audio ? logHtml(d) : renderMd(d.text);
+    $("docs-title").dataset.doc = id;
+    if (d.audio) $("docs-body").innerHTML = logHtml(d);
+    else { $("docs-body").textContent = ""; import("./mdrender.js").then((md) => { if ($("docs-title").dataset.doc === id && !$("docs-body").hidden) $("docs-body").innerHTML = md.renderMd(d.text); }); }
     $("docs-back").hidden = docs.length < 2;
     openPanel("docs");
   }

@@ -688,3 +688,25 @@ details.sec > summary:hover h2 { color: var(--fg); }
   .tray { max-height: 34vh; }
   .log { min-height: 110px; }
 }
+
+/* gfx-polish: crew-message hold row, phone send row, campaign dialog on phones, downtime names */
+#msgCard .row.wrap label { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+#msgHoldSecs { width: 5em; flex: none; }
+.cmpside .bcard > .row.wrap > b.grow { flex: 1 1 9em; }
+@media (max-width: 760px) {
+  .compose .sendas { flex-wrap: wrap; gap: 6px; }
+  .compose .sendas select, .compose .sendas select + select { flex: 1 1 100%; border: 1px solid var(--line); border-radius: 6px; }
+  .compose .sendas select.on { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+  .compose .sendas button { flex: 1 1 100%; border-radius: 6px; }
+}
+@media (max-width: 600px) {
+  .campaigndlg > .row > h2 { flex: 1 1 0; min-width: 0; }
+  #campaignClose { order: 1; }
+  #cmpStatus { order: 2; flex: 1 1 100%; }
+  #cmpLeave { order: 3; flex: 1 1 100%; }
+  .cmplast { max-height: 2.7em; }
+  .cmpmapcol { overflow-x: auto; }
+  .sector { min-width: 700px; }
+  .sector .loc .name { font-size: 17px; stroke-width: 5px; }
+  .sector .loc .stand, .sector .story text { font-size: 15px; }
+}

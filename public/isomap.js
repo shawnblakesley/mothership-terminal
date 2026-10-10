@@ -236,6 +236,7 @@ export function mount(el, data, opts = {}) {
   function frame() {
     const bb = new THREE.Box3().setFromObject(built.group);
     bb.min.x -= 12;
+    bb.max.x += 8;
     const c = bb.getCenter(new THREE.Vector3());
     controls.target.copy(c);
     camera.position.copy(c).add(new THREE.Vector3(Math.sin(TURN) * Math.cos(TILT), Math.sin(TILT), Math.cos(TURN) * Math.cos(TILT)).multiplyScalar(200));
