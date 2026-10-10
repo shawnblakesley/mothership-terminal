@@ -221,12 +221,18 @@ export function treat(p, pc, id, { choice = "", pay = "", rng = randInt } = {}) 
   return { ok: true, name: t.name, cost: t.cost, lines, days, entries: s.entries };
 }
 
+// Short-term recovery is once per day (RULES.md); the Rest Save once per day too (house rule). The day is recorded when the Save is rolled.
+export function markRested(p, id, kind) {
+  p.downtime.last ||= {};
+  p.downtime.last[id] = { ...p.downtime.last[id], [kind]: p.downtime.day };
+}
+
 // ---- Time and the campaign's downtime state.
 export function sanitizeDowntime(d, crew = []) {
   const ids = new Set(crew.map((x) => x.id));
   const pend = {}, last = {};
   for (const [id, v] of Object.entries(d?.pending && typeof d.pending === "object" ? d.pending : {})) if (ids.has(id) && v?.points > 0) pend[id] = { points: clampInt(v.points, 1, 99, 1), port: String(v.port || "").slice(0, 60) };
-  for (const [id, v] of Object.entries(d?.last && typeof d.last === "object" ? d.last : {})) if (ids.has(id) && v && typeof v === "object") last[id] = Object.fromEntries(Object.entries(v).filter(([k]) => TREATMENTS[k]).map(([k, n]) => [k, clampInt(n, 0, 99999, 0)]));
+  for (const [id, v] of Object.entries(d?.last && typeof d.last === "object" ? d.last : {})) if (ids.has(id) && v && typeof v === "object") last[id] = Object.fromEntries(Object.entries(v).filter(([k]) => TREATMENTS[k] || k === "recovery" || k === "rest").map(([k, n]) => [k, clampInt(n, 0, 99999, 0)]));
   return { downtime: { day: clampInt(d?.day, 0, 99999, 0), pending: pend, last } };
 }
 
@@ -257,6 +263,10 @@ export const downtimeReady = (p, config) => !!p && !p.current && p.done.length >
 // kind "recovery" | "rest" | "shore". Returns { error } or { ok, request, dt, lines, entries }.
 export function planRoll(p, c, pc, kind, o = {}, rng = randInt) {
   if (!playable(pc)) return { ok: false, error: `${pc.name} is not playable.` };
+  if (kind === "recovery" || kind === "rest") {
+    const day = p.downtime?.day || 0, last = p.downtime?.last?.[pc.id]?.[kind];
+    if (last === day) return { ok: false, error: `${pc.name} has already had a ${kind === "rest" ? "Rest Save" : "short-term recovery"} today (day ${day}): pass a day first.` };
+  }
   if (kind === "recovery") {
     if (pc.health.current >= pc.health.max) return { ok: false, error: `${pc.name} is already at full Health.` };
     return { ok: true, request: { pc: pc.id, check: "body", reason: "Short-term recovery" }, dt: { kind }, lines: [], entries: [] };
@@ -283,6 +293,7 @@ export function planRoll(p, c, pc, kind, o = {}, rng = randInt) {
 
 // The result of the roll: changes the character and says what happened. { lines, over, ownStress, panicCheck }.
 export function settleRoll(p, pc, dt, result, rng = randInt) {
+  if (dt.kind === "recovery" || dt.kind === "rest") markRested(p, pc.id, dt.kind);
   const roll = two(result.used), word = result.outcome;
   if (dt.kind === "recovery") {
     const r = applyRecovery(pc, result);
