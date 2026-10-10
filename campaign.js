@@ -1,6 +1,6 @@
 import { RIM_HAULERS } from "./campaigns/rim-haulers.js";
 import { APP_BRIEF, DRAFT_SCHEMA, SPEAKER_LIST } from "./builder.js";
-import { sanitizeCrew, newCond } from "./crew.js";
+import { sanitizeCrew, newCond, crewWithFate } from "./crew.js";
 import { HAZARDS, hazardTag } from "./hazards.js";
 import { sanitizeCast, findCast, PORTRAIT_FILE } from "./cast.js";
 import { SPEAKERS, fromPreset } from "./voices.js";
@@ -171,7 +171,7 @@ function campaignContext(c, story, p) {
   const lines = [
     `CAMPAIGN: ${c.title}. ${c.pitch}`,
     `THE CREW'S RIG: ${c.ship.name}. ${c.ship.description}`,
-    `THE PLAYERS' CHARACTERS (fixed; don't write them): ${p.crew.map((pc) => `${pc.name} (${pc.className}, ${pc.role})`).join("; ")}.`,
+    `THE PLAYERS' CHARACTERS (fixed; don't write them). Anyone marked DECEASED or RETIRED is gone from the crew: the lore, personas and any ending must treat them as dead or departed, never as present: ${crewWithFate(p.crew, (pc) => `${pc.name} (${pc.className}, ${pc.role})`).join("; ")}.`,
     `FACTIONS OF THE RIM:\n${c.factions.map((f) => `- ${f.name}: ${f.about}`).join("\n")}`,
     place
       ? `WHERE: ${place.name}, ${place.kind}. ${place.description}\nIts computer is ${place.computer}. ${c.ship.name} is docked at ${place.dock} (added automatically, with its own terminal and its computer MARY on its own system).`

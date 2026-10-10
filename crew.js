@@ -402,6 +402,14 @@ export const closeCrew = (pc, crew, roomOf) => {
 };
 
 const ammoNote = (pc) => { const a = ammoLine(pc, weaponsOf(pc.items)); return a ? `. Ammunition: ${a}` : ""; };
+// For the story builder and the cold open: who is gone and who took their place, so a new story does not treat the dead as alive.
+export function fateNote(pc, crew = []) {
+  const by = pc.replacedBy && crew.find((c) => c.id === pc.replacedBy);
+  const gone = pc.cond?.dead ? `DECEASED: ${pc.cond.dead === "Warden" ? "marked deceased" : pc.cond.dead}${pc.endedIn ? `, in ${pc.endedIn}` : ""}` : pc.retired ? `RETIRED${pc.endedIn ? ` after ${pc.endedIn}` : ""}` : "";
+  return gone ? `${gone}${by ? `; replaced by ${by.name}` : ""}` : "";
+}
+export const crewWithFate = (crew, line) => crew.map((pc) => { const f = fateNote(pc, crew); return `${line(pc)}${f ? ` [${f}]` : ""}`; });
+
 export function crewStatus(crew) {
   return crew.map((c) => {
     const extra = [c.armor && `Armor ${armorText(c.armor)}`, c.cond?.bleeding && `BLEEDING ${c.cond.bleeding} per round`, c.cond?.dead && `DECEASED (${c.cond.dead})`, c.retired && "RETIRED (no longer played)", c.cond?.dying && `DYING: dead in ${c.cond.dying} rounds without intervention`, c.status && `${c.status.toUpperCase()}${c.statusNote ? ` (${c.statusNote})` : ""}`, c.deathSaveIn && `a Death Save is due in ${c.deathSaveIn} rounds unless they are treated`].filter(Boolean);

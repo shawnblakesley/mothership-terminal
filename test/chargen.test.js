@@ -232,6 +232,7 @@ function fakeSession(crew, extra = {}) {
     sockets: new Set(), logs: [],
     addLog(kind, text) { this.logs.push([kind, text]); },
     touch() {}, syncDm() {}, crewChanged() { this.changed = (this.changed || 0) + 1; },
+    moneySync() { for (const pc of this.state.config.crew) { const q = this.state.campaign.crew.find((x) => x.id === pc.id); if (q) pc.credits = q.credits; } },
     crewById(id) { return this.state.config.crew.find((c) => c.id === id); },
   };
   const ws = { role: "player", readyState: 1, character: null, send: (m) => sent.push(JSON.parse(m)) };
@@ -351,4 +352,28 @@ test("a player can take a submitted character back while it waits, and edit it",
   assert.ok(ws.cg, "the draft is theirs again");
   assert.ok(sent.at(-1).view.sheet, "and it is still complete");
   assert.ok(sess.logs.some(([, t]) => /withdrawn by the player/.test(t)));
+});
+
+test("a replacement's starting credits are booked in the campaign ledger, not just put on the sheet", () => {
+  const { sess, ws } = fakeSession(DEFAULT_CREW.slice(0, 2), { campaign: { crew: sanitizeCrew(structuredClone(DEFAULT_CREW.slice(0, 2))) } });
+  sess.state.config.crew[1].cond.dead = "Death Save";
+  sess.state.campaign.crew[1].cond.dead = "Death Save";
+  submitOne(sess, ws, sess.state.config.crew[1].id);
+  const rolled = sess.state.newChars[0].sheet.credits;
+  assert.ok(rolled >= 20 && rolled <= 200);
+  assert.equal(decideCharacter(sess, true, sess.state.newChars[0].id), "");
+  const p = sess.state.campaign, pc = p.crew.find((c) => c.id === ws.character);
+  assert.equal(pc.credits, rolled, "once, not doubled");
+  assert.equal(sess.state.config.crew.find((c) => c.id === ws.character).credits, rolled);
+  assert.equal(p.ledger.length, 1);
+  assert.deepEqual([p.ledger[0].acct, p.ledger[0].amount, p.ledger[0].bal], [pc.id, rolled, rolled]);
+  assert.match(p.ledger[0].what, /starting credits, 2d10x10/);
+  assert.ok(sess.logs.some(([k, t]) => k === "note" && /Ledger:.*starting credits/.test(t)));
+});
+
+test("a one-off game's replacement has no ledger to write to", () => {
+  const { sess, ws } = fakeSession(DEFAULT_CREW.slice(0, 1));
+  submitOne(sess, ws);
+  assert.equal(decideCharacter(sess, true, sess.state.newChars[0].id), "");
+  assert.ok(sess.state.config.crew[1].credits > 0);
 });

@@ -2031,7 +2031,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   $("mapDialog").addEventListener("close", () => dropIso($("mapBig")));
   let isoLib = null;
   const isoViews = new Map();
-  const nick = (name) => (String(name).match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || String(name).split(" ")[0]).toUpperCase();
+  const nick = (name) => crewShort(name, S.config.crew.map((c) => c.name));
   const isoData = (people) => ({ station: withCast(S.station), layout: S.config.map, rooms: S.config.rooms, editable: true, people: Object.fromEntries(Object.entries(people).map(([room, names]) => [room, names.map(nick)])) });
   function fitIso(el) {
     const box = el.querySelector(":scope > .iso");
