@@ -243,6 +243,16 @@
         ${out.bands.join("")}${shaft}${out.lift.join("")}${out.links.join("")}${out.fg.join("")}
       </svg>${elsewhere}`;
     fitRooms(el);
+    keepLinkLabels(el, W);
+  }
+
+  function keepLinkLabels(el, W) {
+    el.querySelectorAll(".sv-link text").forEach((t) => {
+      const b = t.getBBox?.();
+      if (!b || b.x + b.width <= W - 6) return;
+      t.setAttribute("text-anchor", "end");
+      t.setAttribute("x", W - 6);
+    });
   }
 
   function fitRooms(el) {

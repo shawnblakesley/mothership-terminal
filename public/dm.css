@@ -340,6 +340,18 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .bcard + .bcard { margin-top: 6px; }
 .mono { font-family: var(--mono); }
 @media (max-width: 900px) { .bgrid { grid-template-columns: 1fr; overflow-y: auto; } .bmsgs { min-height: 300px; } }
+@media (max-width: 700px) {
+  .builderdlg[open] > .row { flex-wrap: wrap; }
+  .builderdlg[open] > .row .muted { order: 3; flex: 1 1 100%; }
+  .bgrid { display: flex; flex-direction: column; gap: 14px; }
+  .bchat, .bdraft { flex: none; min-height: auto; }
+  .bmsgs { flex: none; min-height: 160px; max-height: 38vh; }
+  #bInput { min-height: 5.5em; flex: none; }
+  .bchat > .row { flex: none; }
+  .bdraft { overflow: visible; padding-right: 0; }
+  .bdraft #bApply { position: sticky; bottom: 0; }
+  .bdraft > .row { flex-wrap: wrap; }
+}
 
 .panictable { margin: 4px 0 10px; padding-left: 26px; font-size: 12.5px; }
 .panictable li { margin: 3px 0; }
@@ -516,6 +528,12 @@ summary .muted { font-weight: 400; font-size: 12px; }
   .mnav button.on { color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
   .mnav .tabdot { position: absolute; top: 5px; right: 8px; }
   .tray { max-height: 45vh; }
+}
+@media (pointer: coarse) and (max-width: 760px) {
+  header.top .code, header.top #settingsBtn, header.top #mode button, header.top button[data-short], #micBtn, #retcon { min-height: 44px; min-width: 44px; }
+  .entry .del { opacity: 1; min-width: 44px; min-height: 44px; font-size: 16px; top: 0; right: 0; }
+  .entry { padding-right: 44px; }
+  .entry.note { min-height: 44px; align-items: center; }
 }
 
 #lore, #secrets, #standingOrders { overflow-y: hidden; resize: none; min-height: 4em; }

@@ -2533,9 +2533,9 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   if (micUnavailable) $("micBtn").title = micUnavailable;
   $("micBtn").onclick = () => (discordReady() ? (S.discord.listening ? send({ t: "discordStop" }) : copyDiscordCommand()) : micUnavailable ? toast(micUnavailable, "error") : setListening(!listening));
 
-  $("log").addEventListener("click", (e) => {
+  $("log").addEventListener("click", async (e) => {
     const id = e.target.closest("[data-del]")?.dataset.del;
-    if (id) send({ t: "deleteEntry", id: Number(id) });
+    if (id && await sure("Delete this line?", "It leaves the log and the agent's memory, and cannot be brought back.", "Delete line")) send({ t: "deleteEntry", id: Number(id) });
     if (e.target.closest("[data-jump]")) jumpToNewChars();
   });
   function jumpToNewChars() {
