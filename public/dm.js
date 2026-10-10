@@ -1330,9 +1330,11 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     return `<svg class="sector" viewBox="0 0 1100 560" role="img" aria-label="Sector map"><g class="stars">${stars}</g>${lanes}${transit}${nodes}${ship}</svg>`;
   }
 
+  const cmpAbandoned = (p, s, d) => !d && p.current !== s.id && (p.abandoned || []).some((x) => x.id === s.id) ? ' <span class="muted" title="Abandoned unfinished: no fee, no faction change (house rule)">ABANDONED</span>' : "";
+
   function cmpStoryLink(c, s, p) {
     const d = p.done.find((x) => x.id === s.id);
-    return `<button class="cmplink${p.current === s.id ? " current" : ""}" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b> <span class="muted">${esc(s.event)}${d ? " · played" : p.current === s.id ? " · now playing" : ""}</span></button>`;
+    return `<button class="cmplink${p.current === s.id ? " current" : ""}" data-story="${s.id}"><b>${s.n}. ${esc(s.title)}</b> <span class="muted">${esc(s.event)}${d ? " · played" : p.current === s.id ? " · now playing" : ""}</span>${cmpAbandoned(p, s, d)}</button>`;
   }
 
   const BUY = { fuel: ["Fuel (units)", null], ammo: ["Ammo (magazines)", 50], aid: ["First aid kit", 75], stimpak: ["Stimpak", 1000], mre: ["MREs (pack of 7)", 70], tank: ["Oxygen tank", 50] };
@@ -1483,7 +1485,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const on = (p.offered || []).includes(s.id), votes = S.sectorVotes?.[s.id] || [];
     const offer = `<button data-offer="${s.id}" aria-pressed="${on}" title="${on ? "On the players' job board. Click to take it off" : "Put this job on the players' job board (title, hook and job only)"}">${on ? "Offered: take it off" : "Offer"}</button>${votes.length ? `<span class="small">${votes.length} vote${votes.length > 1 ? "s" : ""}: ${esc(votes.join(", "))}</span>` : ""}`;
     return `<div class="row"><div class="grow"><div class="btitle">${s.n}. ${esc(s.title)}</div>
-        <div class="muted">${esc(cmpPlace(c, s))} · ${esc(TIERS[s.tier] || "")}</div></div></div>
+        <div class="muted">${esc(cmpPlace(c, s))} · ${esc(TIERS[s.tier] || "")}${cmpAbandoned(p, s, d)}</div></div></div>
       <div class="row wrap">${action}${offer}</div>
       ${d ? `<div class="bcard"><b>Played</b><div class="small">${esc(d.outcome || "No notes.")}</div></div>` : ""}
       <p>${esc(s.hook)}</p>

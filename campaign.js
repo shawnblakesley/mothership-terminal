@@ -353,6 +353,7 @@ export function finishInto(p, c, config, outcome, ticked = [], station = null, s
   p.done = [...p.done.filter((d) => d.id !== story.id), { id: story.id, outcome: String(outcome || "").trim().slice(0, 1500), at: Date.now(), ...(snapshot ? { recap: snapshot } : {}) }];
   p.at = endsAt(story);
   p.current = "";
+  p.abandoned = (p.abandoned || []).filter((d) => d.id !== story.id);
   if (config.crew?.length) p.crew = sanitizeCrew(structuredClone(config.crew));
   for (const m of presentIn(c, config)) {
     const member = config.cast.find((x) => x.name === m.name);
