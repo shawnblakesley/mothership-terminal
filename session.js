@@ -3207,7 +3207,7 @@ export class Session {
 
   soloView() {
     const x = this.state.solo;
-    return x ? { phase: x.phase, pitches: x.pitches, busy: x.busy || "", error: x.error || "", title: x.title || "", ending: x.ending || "", recap: x.recap || null, after: x.after || null, ...(x.campaign ? { jobs: this.soloJobs() } : {}) } : null;
+    return x ? { phase: x.phase, pitches: x.pitches, busy: x.busy || "", error: x.error || "", notice: x.notice || "", title: x.title || "", ending: x.ending || "", recap: x.recap || null, after: x.after || null, ...(x.campaign ? { jobs: this.soloJobs() } : {}) } : null;
   }
   soloChanged() {
     this.toPlayers({ t: "solo", solo: this.soloView() });
@@ -3252,7 +3252,7 @@ export class Session {
       this.soloChanged();
       return this.syncDm();
     }
-    Object.assign(x, { phase: "building", busy: "build" });
+    Object.assign(x, { phase: "building", busy: "build", notice: "" });
     this.soloChanged();
     try {
       const build = async () => {
@@ -3307,7 +3307,7 @@ export class Session {
       x.error = "NOT ENOUGH FUEL for that lane. Refuel first, or take another job.";
       return this.soloChanged();
     }
-    Object.assign(x, { phase: "building", busy: "build", title: story.title, error: "", opened: false, after: null });
+    Object.assign(x, { phase: "building", busy: "build", title: story.title, error: "", notice: "", opened: false, after: null });
     this.soloChanged();
     try {
       await this.buildCampaignStory(c, story, p);
@@ -3341,10 +3341,21 @@ export class Session {
     for (const e of paid.entries) this.addLog("note", ledgerLine(p, e));
     if (paid.handout) this.giveHandout(paid.handout);
     this.moneySync();
-    const rest = downtimeLines(restAndRecover(p.crew));
+    const results = restAndRecover(p.crew), rest = downtimeLines(results);
     crewFromCampaign(p, s.config.crew);
     this.addLog("note", `Downtime between stories (short-term recovery and a Rest Save for each, rolled for them):\n${rest.join("\n")}`);
+    for (const r of results) for (const why of r.panics) this.soloPanic(this.crewById(r.id), why);
     x.after = { factions, rest, pay: paid.lines };
+  }
+
+  // A Critical Failure in the downtime rolls needs a Panic Check (PSG 14): nobody is at a roll prompt on the ending screen, so the dice roll it for them.
+  soloPanic(pc, why) {
+    if (!pc || !playable(pc)) return;
+    const base = { check: PANIC, advantage: "none" }, req = { ...base, advantage: effectiveAdvantage(base, pc, this.advOpts(pc, base, false)) };
+    const result = resolve(req, pc.stress, diceFor(req));
+    const fx = result.success ? null : panicEntry(result.used);
+    this.addLog("roll", `${pc.name} (downtime, ${why}): ${resultText(req, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
+    if (fx) this.panicEffects(pc, fx);
   }
 
   // undo: the agent reply's Retcon entry when the agent ended the story, so its log notes, handouts and campaign changes are taken back with it.
@@ -3453,7 +3464,7 @@ export class Session {
         if (!c || x.phase !== "pick" || x.busy) break;
         const r = msg.t === "pilotTravel" ? travelTo(p, c, String(msg.to || "")) : msg.t === "pilotDispatch" ? callDispatch(p, c) : refuel(p, c);
         if (!r) break;
-        if (!r.ok) x.error = r.error;
+        if (!r.ok) Object.assign(x, { error: r.error, notice: "" });
         else {
           x.error = "";
           const at = (id) => c.locations.find((l) => l.id === id).name;
@@ -3468,6 +3479,11 @@ export class Session {
             : `${c.ship.name} takes on ${r.added} units of fuel at ${r.at} (house rule: 500cr a unit, times the port's multiplier). Total ${exact(r.total)}.`);
           for (const e of r.entries || []) this.addLog("note", ledgerLine(p, e));
           if (r.entries) this.moneySync();
+          x.notice = r.lane
+            ? `Travelled to ${at(p.at)}: ${r.lane.days} days, ${r.cost} fuel. ${r.left} left.`
+            : msg.t === "pilotDispatch"
+            ? `Dispatch advanced ${r.units} unit${r.units === 1 ? "" : "s"} of fuel: ${exact(r.cost)} added to the note. The note is ${exact(p.debt)}. Fuel ${p.resources.fuel}.`
+            : `Refuelled ${r.added} unit${r.added === 1 ? "" : "s"} for ${exact(r.total)}. Rig account ${exact(p.money)}. Fuel ${p.resources.fuel}.`;
         }
         this.soloChanged();
         this.syncDm();
@@ -3487,7 +3503,7 @@ export class Session {
         break;
       case "pilotNewStory":
         this.dropReply();
-        Object.assign(x, { phase: "pick", busy: "", error: "", opened: false, ending: "", recap: null });
+        Object.assign(x, { phase: "pick", busy: "", error: "", notice: "", opened: false, ending: "", recap: null });
         this.soloChanged();
         if (x.pitches.length < 3 && !x.campaign) this.soloPitches();
         break;
