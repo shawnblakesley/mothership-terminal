@@ -3,27 +3,30 @@
 // state, calls the model, and checks the structured reply with a precise rule. Each scenario runs N times and passes on a majority.
 // No server, nothing written except the baseline or --out file. The key comes from the environment and is never printed.
 //
-//   node --env-file=C:/Users/shawn/code/mothership-terminal/.env scripts/regress.mjs [--runs=3] [--only=a,b] [--save] [--out=file.json] [--raw]
-//   npm run regress
+// OPT-IN, it costs tokens: it only calls the model with DEEPSEEK_API_KEY set AND --live (or INTEG=1); otherwise it prints how and exits 0.
 //
-// --save writes the results as scripts/regress-baseline.json. Without it, the run exits non-zero when a scenario that passed in the
+//   npm run test:integ -- [--runs=3] [--only=a,b] [--save] [--out=file.json] [--raw]
+//   node --env-file=.env test/integ/regress.mjs --live [same options]
+//   node test/integ/regress.mjs --dry     builds every scenario's request and calls nothing (no key needed; test/integ-dry.test.js runs it)
+//
+// --save writes the results as test/integ/regress-baseline.json. Without it, the run exits non-zero when a scenario that passed in the
 // baseline fails now (a regression). Roughly 45 calls per run of the whole suite at --runs=1.
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
-import { buildRequest, buildPrecheck, parseReply, limitLines } from "../agent.js";
-import deepseek from "../providers/deepseek.js";
-import { CAMPAIGNS } from "../campaign.js";
-import { sanitizeShip, newFight } from "../ships.js";
-import { weaponsOf } from "../weapons.js";
-import { wkey } from "../resources.js";
-import { kestrelState, haulersState } from "./fixtures.mjs";
+import { buildRequest, buildPrecheck, parseReply, limitLines } from "../../agent.js";
+import deepseek from "../../providers/deepseek.js";
+import { CAMPAIGNS } from "../../campaign.js";
+import { sanitizeShip, newFight } from "../../ships.js";
+import { weaponsOf } from "../../weapons.js";
+import { wkey } from "../../resources.js";
+import { kestrelState, haulersState } from "../../scripts/fixtures.mjs";
 
 const BASELINE = fileURLToPath(new URL("./regress-baseline.json", import.meta.url));
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const flag = (name) => process.argv.includes(`--${name}`);
 
 const apiKey = process.env.DEEPSEEK_API_KEY;
-if (!apiKey && !flag("dry")) { console.error("Set DEEPSEEK_API_KEY (node --env-file=<path to .env> scripts/regress.mjs)."); process.exit(1); }
+if (!flag("dry") && !(apiKey && (flag("live") || process.env.INTEG === "1"))) { console.log("Live model tests are opt-in and cost tokens. To run them on purpose: put DEEPSEEK_API_KEY in .env (or the environment) and run npm run test:integ."); process.exit(0); }
 const MODEL = { model: "deepseek-flash", effort: "off" };
 
 // ---- States

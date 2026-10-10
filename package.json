@@ -6,8 +6,11 @@
   "main": "server.js",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
-    "test": "node --test",
-    "regress": "node --env-file-if-exists=.env scripts/regress.mjs"
+    "test": "node --test --import ./test/setup.mjs \"test/*.test.js\"",
+    "test:integ": "node --env-file-if-exists=.env test/integ/regress.mjs --live",
+    "test:integ:eval": "node --env-file-if-exists=.env test/integ/eval-steering.mjs --live",
+    "mock-llm": "node scripts/mock-llm.mjs",
+    "dev:mock": "node scripts/dev-mock.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",

@@ -84,6 +84,12 @@ Providers live in `providers/`. Each one is a module exposing `{ id, label, envK
 
 For anything that speaks the OpenAI chat-completions format (OpenRouter, Groq, Together, a local Ollama or LM Studio), copy `providers/deepseek.js`. Change the `baseURL`, key details and model list, then add it to `PROVIDERS` in `providers/index.js`. The console picks it up automatically.
 
+## Testing
+
+- `npm test`: the unit tests. Fully offline and guarded (`test/setup.mjs` removes the API keys and refuses any request that is not to this machine), so it never spends tokens.
+- `npm run dev:mock`: the app (port 3000, or `PORT`) on a mock model (`scripts/mock-llm.mjs`, port 3011) instead of DeepSeek, with its data in `./.tmp-mock`. Every reply is a canned `MOCK: the station hums.` and the Story Builder, pitches, synopsis and so on get minimal valid answers. For trying the app out, no tokens. `npm run mock-llm` runs just the mock; set `DEEPSEEK_BASE_URL` to point any server at it.
+- `npm run test:integ`: the live regression suite against DeepSeek (`test/integ/regress.mjs`; `npm run test:integ:eval` for `eval-steering.mjs`). It costs tokens, so run it only on purpose: it needs `DEEPSEEK_API_KEY` and refuses without `--live` (the script adds it) or `INTEG=1`. Options go after `--`, e.g. `npm run test:integ -- --runs=1 --only=secret-guarded`. `node test/integ/regress.mjs --dry` builds every scenario's request without calling anything.
+
 ## The default story: KESTREL-9
 
 A rimward ice-mining platform where the drill team broke into a "pressurised void" 19 days ago. The players are a **convict maintenance crew** sent by Hollis-Vane on the prison tug SECOND CHANCE to service the station's reactor. Everything went wrong while they were in transit, so nobody briefed them and they brought tools, not weapons. They start aboard their tug, at the **SECOND CHANCE**'s own terminal, just docked at **Airlock A**. Through the docking collar the airlock's inner door is sealed: opening it (their work order has the override code) is the first thing they do, and the rest of the station opens up from there.
