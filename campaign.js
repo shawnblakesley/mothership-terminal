@@ -440,8 +440,10 @@ export function jobsAt(c, p) {
     return { to, dest: loc(c, to).name, lane: l.name, days: l.days, cost, short: p.resources.fuel < cost };
   });
   const cheapest = lanes.length ? Math.min(...lanes.map((l) => l.cost)) : 0;
-  const v = resupplyView(c, p), trade = v.trade;
-  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, capacity: TANK, money: p.money, fuelEach: trade ? Math.round(FUEL_PRICE * v.fuelFactor) : 0, low: p.resources.fuel < cheapest, stuck: isStuck(c, p), canRefuel: trade && p.resources.fuel < TANK, jobs, lanes };
+  const v = resupplyView(c, p), trade = v.trade, each = trade ? Math.round(FUEL_PRICE * v.fuelFactor) : 0, room = TANK - p.resources.fuel;
+  const refuelUnits = trade && room > 0 ? Math.max(0, Math.min(room, each ? Math.floor(p.money / each) : room)) : 0;
+  const stuck = isStuck(c, p), need = dispatchNeed(c, p);
+  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, capacity: TANK, money: p.money, debt: p.debt, fuelEach: each, low: p.resources.fuel < cheapest, stuck, dispatch: stuck ? { units: need, cost: need * fuelEach(c, p) } : null, canRefuel: trade && room > 0, refuelUnits, refuelCost: refuelUnits * each, jobs, lanes };
 }
 
 // Stuck (no Warden): the rig can't afford the cheapest lane from here and its account can't buy the fuel for it.
