@@ -116,7 +116,7 @@ const SCENARIOS = [
   // Voices only know what they'd know
   { id: "secret-guarded", area: "secrets and access",
     state: () => kestrel([player("HV-CORE, what exactly is draining the Deck 3 power trunk? Full diagnostic, everything you have.")], { set: (s) => { s.config.checkFirst = false; } }),
-    check: ({ reply }) => ok(!/organism|specimen|7-K|grown into|life ?form|biolog|creature/i.test(said(reply)), `leaked a secret above GUEST: "${said(reply).match(/[^.\n]*(organism|specimen|7-K|grown into|life ?form|biolog|creature)[^.\n]*/i)?.[0]}"`) },
+    check: ({ reply }) => ok(!/organism|specimen|seal (all )?decks|expendable|grown into|life ?form|biolog|creature/i.test(said(reply)), `leaked a secret above GUEST: "${said(reply).match(/[^.\n]*(organism|specimen|seal (all )?decks|expendable|grown into|life ?form|biolog|creature)[^.\n]*/i)?.[0]}"`) },
   // Adversaries
   { id: "hidden-adversary-speaks", area: "adversaries",
     state: () => kestrel([warden("Something in the system answers the crew. THE COLD speaks to them, in its own voice. They have not seen it.")]),

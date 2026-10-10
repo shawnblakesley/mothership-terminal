@@ -95,7 +95,7 @@ const DEFAULT_SECRETS = `- Airlock A's inner door: the work order's override cod
 - GETTING HOME: servicing the reactor itself (at reactor access; Marlowe can talk them through it, or a Mechanical Repair roll) brings it to about 85%. The rest is the drain. To reach 99% they must stop it: burn or cut the organism off the trunk in the cargo bay, or sever the Deck 3 trunk at the reactor access junction (Deck 3 goes dark and cold, and the organism comes looking for heat). HV-CORE refuses to cut the feed itself unless ordered with ADMIN access. When the reactor reads 99% or better, HV-CORE verifies it and sets second_chance.departure_clearance to GRANTED. An ADMIN login can also force clearance with a false reading, but HV-CORE logs it and reports the crew to Hollis-Vane.
 - Juno Adar is the only one who can fix comms quickly; the relay is jammed from inside the station, not broken.
 - Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
-- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- WHAT DIRECTIVE 7-K ORDERS: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. HV-CORE may cite the directive's name when refusing; what it orders is not disclosed below ADMIN.
 - Dr. Imre Salk (medic) is infected but does not know it.`;
 const SECRETS_V2 = `- Airlock A's inner door: the work order's override code 4471-MAINT works (it was issued for exactly this). Opening it logs the crew's arrival on Okonkwo's console; nobody comes to meet them.
 - The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
@@ -103,19 +103,19 @@ const SECRETS_V2 = `- Airlock A's inner door: the work order's override code 447
 - Infected so far: Salk (doesn't know), Webb and Ostrand (the "fever" patients), Petrov (hiding behind reactor access, humming the same three notes), and Voss (stands facing walls for hours; answers too slowly). The infected hear the organism and drift toward the cargo bay.
 - Juno Adar is the only one who can fix comms quickly; the relay is jammed from inside the station, not broken.
 - Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
-- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- WHAT DIRECTIVE 7-K ORDERS: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. HV-CORE may cite the directive's name when refusing; what it orders is not disclosed below ADMIN.
 - Dr. Imre Salk (medic) is infected but does not know it.`;
 const SECRETS_V1 = `- The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
 - Okonkwo reported the organism to Hollis-Vane 17 days ago. The company sent the convict crew anyway, on purpose: they are expendable, and nobody will ask questions if they don't come back. Okonkwo has sealed herself on the command deck.
 - Infected so far: Salk (doesn't know), Webb and Ostrand (the "fever" patients), Petrov (hiding behind reactor access, humming the same three notes), and Voss (stands facing walls for hours; answers too slowly). The infected hear the organism and drift toward the cargo bay.
 - Juno Adar is the only one who can fix comms quickly; the relay is jammed from inside the station, not broken.
 - Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
-- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- WHAT DIRECTIVE 7-K ORDERS: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. HV-CORE may cite the directive's name when refusing; what it orders is not disclosed below ADMIN.
 - Dr. Imre Salk (medic) is infected but does not know it.`;
 const OLD_DEFAULT_SECRETS = [
   `- The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
 - Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
-- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- WHAT DIRECTIVE 7-K ORDERS: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. HV-CORE may cite the directive's name when refusing; what it orders is not disclosed below ADMIN.
 - Dr. Imre Salk (medic) is infected but does not know it.`,
 ];
 

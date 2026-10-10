@@ -29,7 +29,7 @@ test("a roll of 90-99 that is under the target is told to the agent as the failu
 
 test("secrets the access level can't reach are named as locked, and open up with the access", () => {
   const state = kestrelState();
-  assert.match(buildRequest(state, "").context, /LOCKED AT GUEST ACCESS: THE DRAIN; Company directive 7-K\./);
+  assert.match(buildRequest(state, "").context, /LOCKED AT GUEST ACCESS: THE DRAIN; WHAT DIRECTIVE 7-K ORDERS\./);
   state.station.access_level = "ADMIN";
   assert.doesNotMatch(buildRequest(state, "").context, /LOCKED AT/);
 });
