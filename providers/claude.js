@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 const MODELS = [
-  { id: "claude-haiku-4-5", label: "Haiku 4.5 · $1 / $5 per MTok", efforts: [] },
+  { id: "claude-haiku-5-5", label: "Haiku 5.5 · $0.10 / $0.50 per MTok", efforts: ["low", "medium", "high"] },
+  { id: "claude-haiku-4-5", label: "Haiku 4.5 · $1 / $5", efforts: [] },
   { id: "claude-sonnet-5-5", label: "Sonnet 5.5 · $2 / $10", efforts: ["low", "medium", "high"], fallbacks: true },
   { id: "claude-opus-5-5", label: "Opus 5.5 · $4 / $20", efforts: ["low", "medium", "high"], fallbacks: true },
 ];
