@@ -73,6 +73,7 @@ export function sanitizeProgress(p) {
     sessions: Math.max(0, Math.min(9999, Math.round(Number(p.sessions) || 0))),
     offered: [...new Set(Array.isArray(p.offered) ? p.offered : [])].filter(has).slice(0, 9),
     done: (Array.isArray(p.done) ? p.done : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, outcome: String(d.outcome || "").slice(0, 1500), at: Number(d.at) || 0, ...(sanitizeSnapshot(d.recap) ? { recap: sanitizeSnapshot(d.recap) } : {}) })).slice(-100),
+    abandoned: (Array.isArray(p.abandoned) ? p.abandoned : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, at: Number(d.at) || 0 })).slice(-50),
     crew,
     recap: sanitizeColdOpen(p.recap),
     cast,
