@@ -39,7 +39,7 @@ test("a player's line carries only what players see, never the agent's action li
   for (const d of lines) for (const bad of BAD) assert.ok(!d.includes(bad), `${bad} leaked in a line`);
   const entry = JSON.parse(lines[0]).entry;
   assert.equal(entry.text, "The dock is quiet.");
-  assert.deepEqual(entry.changes, [{ path: "doors.mary", value: "OPEN" }]);
+  assert.equal(entry.changes, undefined, "players never get the station changes");
 });
 
 test("the init log, for players and stream sockets, never carries the agent's action list", async () => {

@@ -78,7 +78,7 @@ test("a line sent to a player socket, live or in the history on connect, has no 
   const live = got.join("");
   assert.ok(live.includes("ACCESS NOTED."), "the line reached the player socket");
   for (const text of [history, live]) assert.ok(!/VAULT BREACH|secret\.vault|hidden_trigger/.test(text));
-  assert.ok(history.includes("doors.med_bay"));
+  assert.ok(!history.includes("doors.med_bay"), "players get no station changes at all");
 });
 
 test("the agent is told where to put secrets", () => {

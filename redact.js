@@ -17,14 +17,12 @@ export function redact(text) {
 // What the players' map may show: not the roster, and nothing the agent keeps under a secret or hidden key.
 const HIDDEN_KEY = /^(secrets?|hidden)([_.-].*)?$/i;
 export const hiddenPath = (path) => String(path).split(".").some((k) => HIDDEN_KEY.test(k));
-// A log entry as players get it: a whitelist (never the agent's action list of cast, hazards, moves, items and time), with the secret station changes dropped.
+// A log entry as players get it: a whitelist (never the agent's action list of cast, hazards, moves, items, time or station changes).
 const ENTRY_FIELDS = ["id", "kind", "text", "ts", "net", "source", "entity", "character", "inPerson", "room", "variants", "reveal", "cues", "timing", "by", "at", "outcome", "shownAs", "speaker", "playing", "dir", "peer"];
 export const playerEntry = (e) => {
   if (!e) return e;
   const out = {};
   for (const k of ENTRY_FIELDS) if (e[k] !== undefined) out[k] = e[k];
-  const changes = (e.changes || []).filter((c) => !hiddenPath(c.path));
-  if (changes.length) out.changes = changes;
   return out;
 };
 
