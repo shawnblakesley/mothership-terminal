@@ -25,7 +25,7 @@ import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOP
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { sendCrewMessage, releaseMessage, discardMessage, holdNext, alterMessage, forgeMessage, applyCrewMessage, restoreAltered, resumeMessages, rememberTerminal, msgView } from "./crewmsg.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
-import { shipDm, shipPlayer, shipRollDone, shipClockRan, shipSnapshot, restoreShip, shipDmView, shipPlayerView, applyShipFight } from "./shipfight.js";
+import { shipDm, shipPlayer, shipRollDone, shipClockRan, shipSnapshot, restoreShip, UNDO_CAP, shipDmView, shipPlayerView, applyShipFight } from "./shipfight.js";
 import { track } from "./telemetry.js";
 import { roomId, keyOf } from "./clean.js";
 import { rememberSecret, playerStation, playerEntry } from "./redact.js";
@@ -517,6 +517,11 @@ function setPath(obj, dotted, value) {
   cur[keys.at(-1)] = /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v;
 }
 
+const savedList = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === "object") : []);
+const UNDO_ARRAYS = ["entries", "effects", "crew", "cast", "revealed", "adversaries", "offers", "clocks", "handouts", "found", "moved", "altered", "hazardUnits", "hazardNeeds"];
+const validUndo = (u) => u && typeof u === "object" && UNDO_ARRAYS.every((k) => Array.isArray(u[k])) && [u.station, u.deathSaves, u.ship].every((o) => o && typeof o === "object") && Array.isArray(u.ship.offers) && (u.rooms == null || typeof u.rooms === "object");
+const restoreUndo = (v) => (Array.isArray(v) && v.length && v.length <= UNDO_CAP && v.every(validUndo) ? structuredClone(v) : []);
+
 export class Session {
   constructor(saved, { onChange, onEnd }) {
     this.code = saved.code;
@@ -552,12 +557,16 @@ export class Session {
     this.genCounter = 0;
     this.playhead = 0;
     this.lineChain = Promise.resolve();
-    this.undoStack = [];
+    this.undoStack = restoreUndo(saved.undoStack);
     this.delivering = null;
     this.rerun = false;
-    this.hazardUnits = [];
-    this.hazardNeeds = [];
+    this.hazardUnits = savedList(saved.hazardUnits);
+    this.hazardNeeds = savedList(saved.hazardNeeds);
     this.syncHazards();
+    if (saved.dropped?.effects || saved.dropped?.votes) {
+      const what = [saved.dropped.effects && "screen effects ended", saved.dropped.votes && "the sector vote was cleared"].filter(Boolean).join(" and ");
+      this.state.log.push({ id: this.nextId++, kind: "note", text: `The server restarted: ${what}.`, ts: Date.now() });
+    }
     this.effectTimers = new Map();
     this.onChange = onChange;
     this.onEnd = onEnd;
@@ -566,7 +575,8 @@ export class Session {
 
   toJSON() {
     const { pending, effects, playing, ...game } = this.state;
-    return { code: this.code, tokenHash: this.tokenHash, createdAt: this.createdAt, lastActive: this.lastActive, game };
+    const dropped = { effects: this.state.effects.length > 0, votes: this.sectorVotes.size > 0 };
+    return { code: this.code, tokenHash: this.tokenHash, createdAt: this.createdAt, lastActive: this.lastActive, game, undoStack: this.undoStack, hazardUnits: this.hazardUnits, hazardNeeds: this.hazardNeeds, ...(dropped.effects || dropped.votes ? { dropped } : {}) };
   }
 
   useLocalKeys() {
@@ -2990,7 +3000,7 @@ export class Session {
     } finally {
       const undo = this.delivering;
       this.delivering = null;
-      if (source === "agent" && (undo.entries.length || undo.altered.length)) this.undoStack = [...this.undoStack, undo].slice(-5);
+      if (source === "agent" && (undo.entries.length || undo.altered.length)) this.undoStack = [...this.undoStack, undo].slice(-UNDO_CAP);
     }
   }
 

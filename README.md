@@ -271,6 +271,8 @@ Every password attempt, and anything else the players try that could go either w
 
 If a player types while lines are still playing, the comms cut off on every screen. Lines that hadn't started were never said: they vanish from the players' screens and from the agent's memory (your log keeps them, struck through). A line cut off mid-way keeps only what was spoken. The agent carries on from exactly what the players heard.
 
+Retcon history and queued hazard rolls (with the hours waiting behind them) survive a server restart; screen effects and the sector vote do not, and the log notes when a restart dropped them.
+
 ## Restart story
 
 The story is saved the moment it's first played: a player types, rolls or changes their sheet; you give a Direction, Speak, write a Note, speak with Listen on, call a roll, hand something out or start a clock; or the agent replies. Until then, set it up as you like.

@@ -64,6 +64,7 @@ export function restoreShip(s, snap) {
   s.shipSnap = null;
   if (had) s.sendHeader();
 }
+export const UNDO_CAP = 5;
 function step(s, fn) {
   if (s.delivering) return fn();
   const top = s.undoStack.at(-1);
@@ -72,7 +73,7 @@ function step(s, fn) {
   s.delivering = own;
   try { return fn(); } finally {
     s.delivering = null;
-    if (fresh && own.entries.length) s.undoStack = [...s.undoStack, own].slice(-5);
+    if (fresh && own.entries.length) s.undoStack = [...s.undoStack, own].slice(-UNDO_CAP);
     s.shipSnap = own;
   }
 }
