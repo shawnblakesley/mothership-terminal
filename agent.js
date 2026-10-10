@@ -525,7 +525,7 @@ const PROTOCOL_HAZARDS = `HAZARDS
 - The app runs the rules for hazards in a room (vacuum, toxic or corrosive air, radiation, extreme cold or heat, fire, explosion, hull breach, life support offline, and story hazards) and for exhaustion, hunger, thirst, Bleeding and cryosickness. When the fiction starts, changes or ends one (a room vented to space is vacuum), record it in hazards (type "none" ends it). Don't also apply its damage, Stress or penalties: the Warden's Next round and Pass time controls and the players' rolls handle them. When the story skips ahead, set time_passes.hours. HAZARDS IN PLAY lists what is running with each rule: narrate by it, never invent rules. Story hazards are not Mothership rules.`;
 
 const PROTOCOL_STATION = `THE STATION
-- station_changes: EVERY change in this reply (doors, lights, access_level, systems) as dot paths into LIVE STATION STATE. If a line says something changed, list it or it did not happen. The players' map shows every value except occupants: put a secret (a trap, a hidden trigger, a plan) under a path starting "secret." (e.g. secret.vault.lockdown), which only the Warden sees.`;
+- station_changes: EVERY change in this reply (doors, lights, access_level, systems) as dot paths into LIVE STATION STATE. If a line says something changed, list it or it did not happen. The players' map shows every value except occupants and contents: put a secret (a trap, a hidden trigger, a plan) under a path starting "secret." (e.g. secret.vault.lockdown), which only the Warden sees.`;
 
 const PROTOCOL_MESSAGES = `CREW MESSAGES
 - [CREW MESSAGE #n] lines are private notes the crew send each other terminal to terminal: the characters know what they sent and got, nobody else does. A forged or rewritten one reads to its recipient as the real thing, so crew_message is for a hostile intelligence or hijacked system, rare, and never just to move the plot.`;
@@ -593,7 +593,7 @@ function buildSystem(state) {
     `SECRETS (known to the system; guard by access level and persona):\n${c.secrets || "(none)"}`,
     `WHO AND WHAT IS WHERE (keep it true)
 - THE CAST's whereabouts are their own (cast_changes), never occupants; the players' characters are where their terminals are.
-- LIVE STATION STATE keeps occupants.<room id> (everyone and everything else alive in each room, comma-separated: creatures, unnamed crew, a body that moves) and contents.<room id> (notable things: a corpse, a sealed crate, the thing in the walls). When one arrives, leaves, hides, dies or is found, or something notable appears, moves or is taken, update every room it touches in station_changes, e.g. occupants.cargo_bay_deck3 = "the organism (dormant)". Use "" for an empty room.
+- LIVE STATION STATE keeps occupants.<room id> (everyone and everything else alive in each room, comma-separated: creatures, unnamed crew, a body that moves) and contents.<room id> (notable things: a corpse, a sealed crate, the thing in the walls). When one arrives, leaves, hides, dies or is found, or something notable appears, moves or is taken, update every room it touches in station_changes, e.g. occupants.cargo_bay_deck3 = "the organism (dormant)". Use "" for an empty room. Both are Warden-only, never shown to players: the truth may live there.
 - lift.<deck> says whether the lift can reach that deck (ONLINE; RESTRICTED or LOCKED: not without clearance; FAULT or OFFLINE: broken).`,
     `THE MAP (yours to change when the story does; its values are LIVE STATION STATE)
 - MAP LAYOUT (per-turn context) is the station's shape, one line each: "Deck 2 · Med Bay: med_bay=Med Bay, galley" (a deck and its rooms, id=Label), "Docked: second_chance=SECOND CHANCE @ airlock_a" (a room joined straight onto another, e.g. a docked ship), "Lift: Deck 1, Deck 2", "Link: med_bay - cargo_bay_deck3 (air vents)". When the shape itself changes (a ship docks or leaves, a breach opens a new way through, a shaft collapses, a room is found), return the WHOLE new layout in "layout".
@@ -826,7 +826,7 @@ function lockedSecrets(state) {
     const m = /\bbelow (CREW|SECURITY|ADMIN)\b/i.exec(l);
     return m && at < ACCESS.indexOf(m[1].toUpperCase());
   }).map((l) => l.replace(/^[-*\s]+/, "").split(/[:.]/)[0].trim());
-  return names.length ? `LOCKED AT ${ACCESS[at]} ACCESS: ${names.join("; ")}. No voice says, hints at or names them, not even as the reason for a refusal: a refusal says only that the data is restricted.` : "";
+  return names.length ? `LOCKED AT ${ACCESS[at]} ACCESS: ${names.join("; ")}. No voice reveals, hints at or confirms them, not even as the reason for a refusal: a refusal says only that the data is restricted, or cites a directive by its name.` : "";
 }
 
 function castWhereabouts(state) {

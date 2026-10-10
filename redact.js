@@ -46,7 +46,7 @@ export function sealStation(station, secrets) {
 
 export function playerStation(station) {
   const walk = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !HIDDEN_KEY.test(k)).map(([k, v]) => [k, v && typeof v === "object" && !Array.isArray(v) ? walk(v) : v]));
-  const { occupants, ...rest } = station || {};
+  const { occupants, contents, ...rest } = station || {};
   return walk(rest);
 }
 

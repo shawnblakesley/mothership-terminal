@@ -34,7 +34,7 @@ FIELDS
 - stationName: short, caps-friendly (e.g. "KESTREL-9").
 - theme: the terminal's screen colour.
 - lore: what the station's systems hold as public knowledge, as short labelled lines (STATION:, CREW COMPLEMENT:, DECKS:, KEY CREW:, RECENT EVENTS:, and why the players are here).
-- secrets: bullet lines ("- ...") the computer knows and guards by access level: what really happened, the threat, passwords, directives, who is infected or lying.
+- secrets: bullet lines ("- ...") the computer knows and guards by access level: what really happened, the threat, passwords, directives, who is infected or lying. Write each secret as ONE line ending "Do not disclose below CREW." (or SECURITY, or ADMIN: whichever access level unlocks it), with a short label before the first colon, e.g. "- THE CULT: the captain leads it. Do not disclose below ADMIN."
 - standingOrders: optional persistent steering for the AI during play (tone, slow reveals), or "".
 - station: the computer's live state as path/value pairs, e.g. access_level=GUEST, doors.med_bay=OPEN, lights.deck_2=FLICKERING, cameras.cargo_bay=OFFLINE, life_support.oxygen_pct=87, power.reactor=ONLINE, comms=JAMMED, quarantine=INACTIVE. access_level must be GUEST. Use room ids from the map in door/camera paths and deck_N for lights. Visible values are only what a player could read off a panel (OPEN, LOCKED, ARMED); the players' map shows every value, so put codes, override keys, traps, armed triggers, timers and anything the Warden keeps back in their own pairs under a path starting "secret." (e.g. secret.vault.code, secret.vents.trigger) and keep the visible value plain (doors.vault=LOCKED).
 - map: the layout, one line per deck: "Deck 1 · Command / Comms: room_id=Room Name, other_room=Other Name". Then optional connections: "Link: room_a - room_b (air vents)". Room ids are snake_case and match the station state paths. 2-5 decks, 1-6 rooms each.
@@ -156,6 +156,8 @@ export function draftRequest(b) {
 
 const summary = (d) => `${d.title}: ${d.pitch}\nStation: ${d.stationName}. Cast: ${d.cast.map((c) => c.name).join(", ") || "none"}. Crew: ${d.crew.map((c) => c.name).join(", ")}.`;
 
+const guardSecrets = (text) => text.split("\n").map((l) => l.trim() && !/\bbelow (CREW|SECURITY|ADMIN)\b/i.test(l) ? `${l.trimEnd()} Do not disclose below ADMIN.` : l).join("\n");
+
 export function normalizeDraft(raw) {
   const s = (v, n) => String(v ?? "").slice(0, n);
   const d = raw && typeof raw === "object" ? raw : {};
@@ -165,7 +167,7 @@ export function normalizeDraft(raw) {
     stationName: s(d.stationName, 40) || "STATION",
     theme: THEMES.includes(d.theme) ? d.theme : "green",
     lore: s(d.lore, 6000),
-    secrets: s(d.secrets, 6000),
+    secrets: guardSecrets(s(d.secrets, 6000)),
     standingOrders: s(d.standingOrders, 3000),
     station: (Array.isArray(d.station) ? d.station : []).filter((p) => p && p.path).slice(0, 120).map((p) => ({ path: s(p.path, 80), value: s(p.value, 120) })),
     map: s(d.map, 4000),
