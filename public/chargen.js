@@ -10,7 +10,8 @@ window.Chargen = (() => {
     health: "ROLL 1D10+10 FOR MAXIMUM HEALTH.",
     credits: "ROLL 2D10 AND MULTIPLY BY 10 FOR YOUR STARTING CREDITS.",
   };
-  const INTRO = "THE WARDEN APPROVES YOUR CHARACTER AT THE END: THEY ACCEPT IT, OR SEND IT BACK WITH A NOTE. DICE: 2D10+25 MEANS ROLL TWO TEN-SIDED DICE, ADD THEM, THEN ADD 25. 2D10X10 MEANS ADD TWO D10, THEN MULTIPLY BY 10.";
+  const keeper = () => (api?.solo?.() ? "PILOT" : "WARDEN");
+  const INTRO = () => `THE ${keeper()} APPROVES YOUR CHARACTER AT THE END: THEY ACCEPT IT, OR SEND IT BACK WITH A NOTE. DICE: 2D10+25 MEANS ROLL TWO TEN-SIDED DICE, ADD THEM, THEN ADD 25. 2D10X10 MEANS ADD TWO D10, THEN MULTIPLY BY 10.`;
   let rolling = "";
   let shown = "", api, view = null, step = 0, cursor = 0, typing = "", err = "", waiting = false, pending = [], fresh = "", faces = null, showFaces = false, isPilot = false;
   const esc = (s) => api.escH(s);
@@ -34,7 +35,7 @@ window.Chargen = (() => {
       err = msg.error;
       if (!view && !open()) return api.notice(msg.error);
     }
-    if (msg.rejected) { waiting = false; err = `THE WARDEN SENT IT BACK: ${msg.rejected}`; step = STEPS.length - 1; }
+    if (msg.rejected) { waiting = false; err = `THE ${keeper()} SENT IT BACK: ${msg.rejected}`; step = STEPS.length - 1; }
     if (msg.submitted) waiting = true;
     if (msg.withdrawn) { waiting = false; step = STEPS.length - 1; }
     view = msg.view;
@@ -104,8 +105,8 @@ window.Chargen = (() => {
 
   function rollBox(what, extra = "") {
     const r = view.rolls[what];
-    if (r) return `${extra}${view.rerolls ? `<div class="cg-acts"><button type="button" class="p-btn" data-act="roll" data-what="${what}">[R] REROLL</button> <button type="button" class="p-btn" data-act="type" data-what="${what}">[T] TYPE MY OWN DICE</button></div>` : '<div class="p-dim">ROLLED. THE WARDEN HAS NOT ALLOWED REROLLS: PRESS ENTER OR [ NEXT ] TO GO ON.</div>'}${typeBox(what)}`;
-    return `<div class="p-dim">${ROLL_TEXT[what]}</div>${step === 0 ? `<div class="p-dim">${INTRO}</div>` : ""}<div class="cg-acts"><button type="button" class="p-btn" data-act="roll" data-what="${what}">[R] ROLL</button> <span class="p-dim">OR</span> <button type="button" class="p-btn" data-act="type" data-what="${what}">[T] TYPE MY OWN DICE (IF YOU ROLLED REAL ONES)</button></div>${typeBox(what)}`;
+    if (r) return `${extra}${view.rerolls ? `<div class="cg-acts"><button type="button" class="p-btn" data-act="roll" data-what="${what}">[R] REROLL</button> <button type="button" class="p-btn" data-act="type" data-what="${what}">[T] TYPE MY OWN DICE</button></div>` : `<div class="p-dim">ROLLED. THE ${keeper()} HAS NOT ALLOWED REROLLS: PRESS ENTER OR [ NEXT ] TO GO ON.</div>`}${typeBox(what)}`;
+    return `<div class="p-dim">${ROLL_TEXT[what]}</div>${step === 0 ? `<div class="p-dim">${INTRO()}</div>` : ""}<div class="cg-acts"><button type="button" class="p-btn" data-act="roll" data-what="${what}">[R] ROLL</button> <span class="p-dim">OR</span> <button type="button" class="p-btn" data-act="type" data-what="${what}">[T] TYPE MY OWN DICE (IF YOU ROLLED REAL ONES)</button></div>${typeBox(what)}`;
   }
   const NEED = { stats: [8, "EIGHT D10 (TWO PER STAT, IN ORDER STRENGTH, SPEED, INTELLECT, COMBAT)"], saves: [6, "SIX D10 (TWO PER SAVE, IN ORDER SANITY, FEAR, BODY)"], health: [1, "ONE D10"], credits: [2, "TWO D10"], loadout: [1, "ONE D10 (0-9)"], trinket: [1, "ONE D100 (00-99)"], patch: [1, "ONE D100 (00-99)"] };
   const typeBox = (what) => (typing === what
@@ -122,7 +123,7 @@ window.Chargen = (() => {
     if (waiting) {
       $("cg-step").textContent = "SUBMITTED";
       $("cg-keys").textContent = "ESC TO CLOSE THIS AND KEEP PLAYING";
-      body.innerHTML = '<div class="p-text">YOUR CHARACTER IS WAITING FOR THE WARDEN TO APPROVE IT. IF THEY ACCEPT IT, YOU PLAY IT. IF THEY TURN IT DOWN, IT COMES BACK HERE WITH THEIR NOTE AND YOU CAN CHANGE IT AND SUBMIT AGAIN.</div><div class="cg-acts"><button type="button" class="p-btn" data-act="withdraw">[ TAKE IT BACK AND KEEP EDITING ]</button></div>';
+      body.innerHTML = `<div class="p-text">YOUR CHARACTER IS WAITING FOR THE ${keeper()} TO APPROVE IT. IF THEY ACCEPT IT, YOU PLAY IT. IF THEY TURN IT DOWN, IT COMES BACK HERE WITH THEIR NOTE AND YOU CAN CHANGE IT AND SUBMIT AGAIN.</div><div class="cg-acts"><button type="button" class="p-btn" data-act="withdraw">[ TAKE IT BACK AND KEEP EDITING ]</button></div>`;
       return;
     }
     if (!view) { body.innerHTML = ""; return; }
@@ -203,7 +204,7 @@ window.Chargen = (() => {
         ${r ? `${book}<input data-field="${what}" value="${esc(view[what])}" maxlength="${what === "loadout" ? 400 : what === "trinket" ? 160 : 80}" aria-label="${title}">` : ""}</div>`;
     };
     const blank = ["loadout", "trinket", "patch"].filter((w) => view.rolls[w] && !view[w].trim()), many = blank.length > 1;
-    return `${row("loadout", "LOADOUT", 1)}${row("trinket", "TRINKET", 2)}${row("patch", "PATCH", 3)}<div class="p-dim">PRESS 1, 2, 3 TO ROLL. TAB TO A TEXT FIELD TO TYPE IN IT.</div>${blank.length ? `<div class="p-dim cg-warn">${blank.map((w) => w.toUpperCase()).join(", ")} ${many ? "ARE" : "IS"} BLANK. LEAVE ${many ? "THEM" : "IT"} BLANK AND THE WARDEN WILL HAVE TO FILL ${many ? "THEM" : "IT"} IN.</div>` : ""}`;
+    return `${row("loadout", "LOADOUT", 1)}${row("trinket", "TRINKET", 2)}${row("patch", "PATCH", 3)}<div class="p-dim">PRESS 1, 2, 3 TO ROLL. TAB TO A TEXT FIELD TO TYPE IN IT.</div>${blank.length ? `<div class="p-dim cg-warn">${blank.map((w) => w.toUpperCase()).join(", ")} ${many ? "ARE" : "IS"} BLANK. LEAVE ${many ? "THEM" : "IT"} BLANK AND THE ${keeper()} WILL HAVE TO FILL ${many ? "THEM" : "IT"} IN.</div>` : ""}`;
   }
 
   const creditsStep = () => rollBox("credits", view.rolls.credits
@@ -352,5 +353,5 @@ window.Chargen = (() => {
     $("cg-next").onclick = () => { if (view) saveFields($("cg-body")); go(1); };
   }
 
-  return { init, start, onMessage, onAccepted, setPending, render, isOpen: open };
+  return { keeper, init, start, onMessage, onAccepted, setPending, render, isOpen: open };
 })();

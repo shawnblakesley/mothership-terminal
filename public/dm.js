@@ -370,6 +370,7 @@
     renderDiscordButton();
     renderVoicesOn();
     $("retcon").disabled = !S.canRetcon;
+    $("retconWhy").hidden = !!S.canRetcon;
     $("retcon").textContent = S.canRetcon > 1 ? `↶ Undo last reply (Retcon, ${S.canRetcon} available)` : "↶ Undo last reply (Retcon)";
   }
 
@@ -942,6 +943,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     for (const sel of [by, target]) if (sel.selectedIndex < 0 && sel.options.length) sel.selectedIndex = 0;
     attackChoices();
     $("atkGo").disabled = !by.options.length || !target.options.length;
+    $("atkWhy").hidden = !$("atkGo").disabled;
+    $("atkWhy").textContent = !by.options.length ? (side === "crew" ? "No living crew member to attack with." : "No adversary with combat numbers to attack with.") : "No target to hit.";
     $("atkNote").textContent = !advs.length ? "No adversary has combat numbers yet: add them on the Crew tab, under Adversaries." : side === "crew" ? "Use it after the character's Combat check has succeeded. Its damage is rolled and taken off the adversary; give the range, since a Combat Shotgun does 1d10 at Long Range or further. A character in a Rage (Panic Table 16) has [+] on Damage rolls for 1d10 hours: pick [+] below." : "";
     const saves = crew.filter((c) => S.deathSaves?.[c.id]);
     $("deathSaveList").innerHTML = saves.map((c) => `<li>Death Save rolled (hidden): ${esc(c.name)} <button data-cmb="reveal" data-pc="${esc(c.id)}" class="ghost" title="Someone spent a turn checking their vitals">Reveal</button></li>`).join("");
@@ -1069,7 +1072,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     if (c.deathSaveIn) bits.push(`<b class="bad">Death Save due in ${c.deathSaveIn} rounds</b>`);
     if (S.deathSaves?.[c.id]) bits.push("<b>Death Save rolled (hidden)</b>", btn("reveal", "Reveal", "Someone spent a turn checking their vitals: reveal and apply the result"));
     if (c.deathSaveIn || c.cond?.dying || c.status) bits.push(btn("dealt", "Dealt with", "Clear the countdown and the status"));
-    for (const w of S.ammo?.[c.id] || []) bits.push(`<span><span class="k">${esc(w.name)}:</span> <b class="${w.loaded ? "" : "bad"}">${w.loaded}/${w.shots}</b> shots, ${w.spare} spare</span> <button type="button" class="small" data-cmb="reload" data-pc="${esc(c.id)}" data-weapon="${esc(w.name)}" title="Reloading is an action: swap in a spare magazine (Ammo is 50cr a magazine)" ${w.spare && w.loaded < w.shots ? "" : "disabled"}>Reload</button>`);
+    for (const w of S.ammo?.[c.id] || []) bits.push(`<span><span class="k">${esc(w.name)}:</span> <b class="${w.loaded ? "" : "bad"}">${w.loaded}/${w.shots}</b> shots, ${w.spare} spare</span> <button type="button" class="small" data-cmb="reload" data-pc="${esc(c.id)}" data-weapon="${esc(w.name)}" title="Reloading is an action: swap in a spare magazine (Ammo is 50cr a magazine)" ${w.spare && w.loaded < w.shots ? "" : "disabled"}>Reload</button>${w.spare && w.loaded < w.shots ? "" : why(w.spare ? "Already full." : "No spare magazine.")}`);
     return `<div class="combatline">${bits.join(" ")}</div>`;
   };
   const COND_ACTIONS = [["puncture", "Puncture suit"], ["patch", "Patch suit"], ["air", "Breathing again"], ["putout", "Put out fire"], ["bleed", "+1 Bleeding"], ["stopbleed", "Stop bleeding (First Aid Kit)"], ["ate", "Has eaten"], ["thirst", "Water at the minimum (toggle)"], ["strenuouscheck", "Strenuous activity on minimum water"], ["strenuous", "Strenuous activity (toggle)"], ["rest", "Rested 8 hours"], ["cryosleep", "Into cryosleep"], ["wake", "Wake from cryosleep"], ["stimpak", "Use a stimpak (PSG effect, overdose roll)"], ["tankout", "Oxygen tank used up"],["pills", "Radiation Pills"], ["clearrad", "Clear radiation penalty"], ["cleartags", "Clear story conditions"]];

@@ -922,7 +922,7 @@
     if (c && !(gone(c) && c.id !== myId)) { e.preventDefault(); showPicked(c.id); $("crewfile-change").focus(); }
   });
   Chargen.init({
-    send, escH, fit: fitChips, portrait: (f) => portraitHtml(f, "cs-face"), notice: (t) => notice(t),
+    solo: () => !!solo, send, escH, fit: fitChips, portrait: (f) => portraitHtml(f, "cs-face"), notice: (t) => notice(t),
     sheet: (c) => `<div class="cs cs-full">${sheetCards(c, true)}</div>`,
     open: () => openPanel("chargen"), close: () => openPanel(null), claim: (id) => claim(id),
     accepted: (id) => { const c = crew.find((x) => x.id === id); if (!c) return; notice(`${solo ? "The pilot" : "The Warden"} accepted your character. You are now ${c.name}`); welcome(c); if (!input.disabled) input.focus(); },
@@ -1163,7 +1163,10 @@
       : jobs ? `RIM HAULERS: THE RIG IS AT ${jobs.port}, ${jobs.fuel} FUEL. ${jobs.jobs.length ? (isPilot ? "PICK A JOB (PRESS 1-9)." : "THE PILOT IS PICKING A JOB. TALK IT OVER.") : "NO JOBS LEFT HERE."}`
       : `NO WARDEN TONIGHT: THE AI RUNS THE GAME. ${isPilot ? "PICK A STORY (PRESS 1-9)." : "THE PILOT IS PICKING A STORY. TALK IT OVER."}`;
     const cr = (n) => `${Number(n).toLocaleString("en-US")}CR`;
-    const board = () => `<li class="p-dim">RIG ACCOUNT&#58; ${cr(jobs.money)} · THE NOTE TO GALLOW-MERCER FINANCE&#58; ${cr(jobs.debt)}</li>` + jobs.jobs.map((j, i) => {
+    const names = () => (jobs.crewCredits || []).map((x) => x.name);
+    const board = () => `<li class="p-dim">RIG ACCOUNT&#58; ${cr(jobs.money)} · THE NOTE TO GALLOW-MERCER FINANCE&#58; ${cr(jobs.debt)}</li>`
+      + (jobs.money > 0 ? "" : `<li class="p-dim">RIG ACCOUNT EMPTY&#58; REFUELLING NEEDS CREDITS. IF THE RIG CAN'T MOVE, CALL DISPATCH.</li>`)
+      + (jobs.crewCredits?.length ? `<li class="p-dim">CREW CREDITS&#58; ${jobs.crewCredits.map((x) => `${escH(crewShort(x.name, names()))} ${cr(x.credits)}`).join(" · ")}</li>` : "") + jobs.jobs.map((j, i) => {
       const name = `[${i + 1}] ${escH(j.title)}`;
       return `<li>${isPilot ? `<button type="button" class="p-btn pick" data-job="${escH(j.id)}">${name}</button>` : name}<span class="p-dim tags"> · ${escH(j.where.toUpperCase())}${j.lane ? ` · ${escH(j.lane.toUpperCase())}, ${j.days} DAYS, ${j.cost} FUEL${j.short ? " · NOT ENOUGH FUEL" : ""}` : ""}</span>
         <div class="p-dim p-crime">${escH(j.hook)}</div><div class="p-dim p-crime">${escH(j.job)}</div></li>`;

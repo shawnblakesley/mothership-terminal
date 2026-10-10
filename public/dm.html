@@ -343,6 +343,7 @@
           <button id="micBtn" class="ghost small" aria-pressed="false" title="Transcribe table talk for the agent, not shown to players">Listen</button>
           <span class="muted small keyhint grow">Tab switches · Enter sends · Shift+Enter new line · Ctrl+Enter note</span>
           <button id="retcon" class="ghost small" title="Takes the agent's last reply off the players' screens and out of its memory, and undoes the changes that reply made. It does not undo dice rolls or Roll attack damage already applied.">↶ Undo last reply (Retcon)</button>
+          <span id="retconWhy" class="why muted small" hidden>Nothing to undo: the agent has not replied yet.</span>
         </div>
       </div>
     </section>
@@ -431,7 +432,7 @@
             </label>
           </div>
           <div id="atkNote" class="muted small"></div>
-          <div class="row"><button id="atkGo" class="primary" title="An adversary rolls its Combat (d100 under it, 90-99 always fails) and, on a hit, the attack's damage, which is taken off the target at once. A crew member's weapon damage is rolled and applied to the adversary.">Roll attack and apply damage</button></div>
+          <div class="row"><button id="atkGo" class="primary" title="An adversary rolls its Combat (d100 under it, 90-99 always fails) and, on a hit, the attack's damage, which is taken off the target at once. A crew member's weapon damage is rolled and applied to the adversary.">Roll attack and apply damage</button> <span id="atkWhy" class="why muted small" hidden></span></div>
           <ul id="deathSaveList" class="fxlist"></ul>
         </div>
 
