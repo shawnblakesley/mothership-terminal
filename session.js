@@ -69,7 +69,11 @@ const PREV_DEFAULT_LORE = LORE_V3.replace(
   "They have just docked and are standing in Airlock A, at its terminal, with tools for a routine reactor service. The inner airlock door to the station is SEALED:",
   "They have just docked at Airlock A and are still aboard the tug, at its own terminal (the SECOND CHANCE's flight computer, not on the station network), with tools for a routine reactor service. Through the docking collar, Airlock A's inner door to the station is SEALED:",
 );
-const DEFAULT_LORE = PREV_DEFAULT_LORE.replace("SECOND CHANCE is slaved to station control", "SECOND CHANCE is locked-down to station control");
+const LORE_V4 = PREV_DEFAULT_LORE.replace("SECOND CHANCE is slaved to station control", "SECOND CHANCE is locked-down to station control");
+const DEFAULT_LORE = LORE_V4.replace(
+  "Until then the crew is not going home.",
+  "Until then the crew is not going home. Once clearance is GRANTED (second_chance.departure_clearance), the tug undocks and flies on the crew's word at any access level: nothing else stands in the way.",
+);
 const LORE_V2 = `STATION: KESTREL-9, a rimward ice-mining platform owned by Hollis-Vane Extraction Co.
 CREW COMPLEMENT: 14. Last scheduled supply run: 41 days overdue.
 DECKS: 1 Command/Comms, 2 Habitation/Med Bay, 3 Cargo/Refinery, 4 Reactor.
@@ -303,7 +307,7 @@ function migrateGame(saved) {
     if (!/\bsecond_chance\s*=/.test(config.map)) config.map = `${SHIP_DOCKED}\n${config.map}`;
     config.upgrades.push("ship");
   }
-  if (config.lore === LORE_V3 || config.lore === PREV_DEFAULT_LORE) config.lore = DEFAULT_LORE;
+  if (config.lore === LORE_V3 || config.lore === PREV_DEFAULT_LORE || config.lore === LORE_V4) config.lore = DEFAULT_LORE;
   if (!config.upgrades.includes("start-ship")) {
     if (config.lore === DEFAULT_LORE) config.terminals = startAboardShip(config.terminals);
     config.upgrades.push("start-ship");
@@ -423,7 +427,7 @@ function migrateGame(saved) {
     config.upgrades.push("room-docs");
   }
   const ss = saved.storyStart?.config;
-  if (ss && (ss.lore === PREV_DEFAULT_LORE || ss.lore === LORE_V3)) ss.lore = DEFAULT_LORE;
+  if (ss && (ss.lore === PREV_DEFAULT_LORE || ss.lore === LORE_V3 || ss.lore === LORE_V4)) ss.lore = DEFAULT_LORE;
   for (const d of [...(saved.config?.startDocs || []), ...(saved.handouts || []), ...(ss?.startDocs || [])]) {
     if (d?.id === WORK_ORDER.id && typeof d.text === "string") d.text = d.text.replace("SECOND CHANCE is slaved to station control", "SECOND CHANCE is locked-down to station control");
   }

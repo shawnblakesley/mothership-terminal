@@ -205,14 +205,14 @@ function buildSchema(voices, config = {}, { solo = false, files = false, ships =
       },
       attacks: {
         type: "array",
-        description: "A creature or person attacking a player's character (COMBAT). The app rolls it. Usually empty.",
+        description: "A creature or person attacking a player's character (COMBAT), including one a Warden command calls for. The app rolls it. Usually empty.",
         items: {
           type: "object",
           additionalProperties: false,
           required: ["by", "target", "attack"],
           properties: {
             by: { type: "string", description: "The attacker's name from ADVERSARIES' CONDITION." },
-            target: { type: "string", description: "A crew member's name." },
+            target: { type: "string", description: "A name from CREW CONDITION." },
             attack: { type: "string", description: "The attack's name from its stat block, or \"\" for its first." },
           },
         },
@@ -516,7 +516,7 @@ const PROTOCOL_CREW = `CREW AND COMBAT (Mothership 1e)
 - Harm without an attack (a fall, an explosion) goes in crew_changes as negative health. The app applies it as real Damage (at 0 Health a Wound is rolled and Health resets to Maximum minus any carryover), so use realistic numbers and never add the Wound. Add +1 or +2 stress only for real horror or loss. Only for consequences that happened in this reply and that the Warden left to you; when unsure, leave it to the Warden. Failed rolls already add 1 Stress. Name each character once per event.
 - Violence is very dangerous for these workers. Avoid it and let the players feel why: running, hiding, bargaining and sabotage beat fighting, and the biggest threats cannot be beaten head-on (their special line says how they are). There is no initiative: describe the threat and what happens if nobody responds, let the players declare, then resolve everything together (checks and saves first, then Damage and Wounds) and describe the new situation. A round is about 10 seconds.
 - A player's attack is a Combat Check; a failed one deals no damage and makes things worse. Only right after a character's Combat check succeeded on an adversary, set crew_attacks (a weapon from CREW CONDITION, else "Unarmed"; the range band if the fiction gave one).
-- Every attack by a creature or person on a character (also one a Warden command calls for) is an entry in attacks, never crew_changes or narrated damage. The app rolls their Combat and the damage and applies armor, Health, Wounds, Wounds Table results and Bleeding: narrate from the [ROLL RESULT] entries and never invent damage numbers or Wounds. ADVERSARIES' CONDITION has each adversary's numbers; at 0 Wounds it is dead or destroyed.
+- Every attack by a creature or person on a character is an entry in attacks, never crew_changes or narrated damage. A Warden command that has one attack, lunge at, strike or grab the crew (CREW CONDITION) IS that attack, this reply, even as it arrives or is revealed; no target named: name the nearest of them (or each it reaches). The app rolls their Combat and the damage and applies armor, Health, Wounds, Wounds Table results and Bleeding: narrate from the [ROLL RESULT] entries and never invent damage numbers or Wounds. ADVERSARIES' CONDITION has each adversary's numbers; at 0 Wounds it is dead or destroyed.
 - Firearms have shots per magazine: CREW CONDITION lists rounds loaded and spare magazines (Ammunition). Each crew_attacks with a firearm spends 1 shot, and one at 0 loaded is refused, so don't set it. Reloading is an action: set reloads (the app moves the magazine). A Stimpak or First Aid Kit (which stops Bleeding) used for its effect goes in item_changes with action "use"; the app applies it, so don't also change Health or Stress.
 - Set round=true in the reply where a round passes in a fight (Bleeding and hazard damage run then).
 - A Death Save is rolled secretly: nobody knows the result, you included. CREW CONDITION shows one that is due or rolled and hidden. Don't say whether that character lives, dies or wakes. Only when someone spends a turn checking their vitals, put their name in reveal_death_save and narrate the [ROLL RESULT].`;
