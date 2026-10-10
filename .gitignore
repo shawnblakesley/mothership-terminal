@@ -5,3 +5,4 @@ data/
 
 # The built-in sound pack comes from S3 (see deploy/README.md), not git.
 public/sounds/*.mp3
+.tmp-mock/

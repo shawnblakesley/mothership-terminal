@@ -1,4 +1,4 @@
-// Fixed game states for measuring and checking the agent's prompts (test/steering.test.js, scripts/measure-prompt.mjs, scripts/eval-steering.mjs).
+// Fixed game states for measuring and checking the agent's prompts (test/steering.test.js, scripts/measure-prompt.mjs, test/integ/eval-steering.mjs).
 // Nothing here calls a model.
 import { defaultGame } from "../session.js";
 import { CAMPAIGNS, newProgress, composeDraft, carryInto } from "../campaign.js";

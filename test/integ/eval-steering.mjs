@@ -2,16 +2,19 @@
 // It builds the same request the app builds for a reply (and the check-first precheck for a player's input) and sends it to DeepSeek.
 // It needs no server and writes nothing. The key comes from the environment and is never printed.
 //
-//   node --env-file=C:/Users/shawn/code/mothership-terminal/.env scripts/eval-steering.mjs [--json]
+// OPT-IN: it only calls the model with DEEPSEEK_API_KEY set AND --live (or INTEG=1); otherwise it prints how and exits 0.
+//
+//   npm run test:integ:eval -- [--json] [--only=part] [--runs=N] [--raw]
+//   node --env-file=.env test/integ/eval-steering.mjs --live
 //
 // About a cent for the 8 turns. Run it before and after a change to the steering and compare the table.
-import { buildRequest, buildPrecheck, parseReply } from "../agent.js";
-import deepseek from "../providers/deepseek.js";
-import { CAMPAIGNS } from "../campaign.js";
-import { kestrelState, haulersState } from "./fixtures.mjs";
+import { buildRequest, buildPrecheck, parseReply } from "../../agent.js";
+import deepseek from "../../providers/deepseek.js";
+import { CAMPAIGNS } from "../../campaign.js";
+import { kestrelState, haulersState } from "../../scripts/fixtures.mjs";
 
 const apiKey = process.env.DEEPSEEK_API_KEY;
-if (!apiKey) { console.error("Set DEEPSEEK_API_KEY (use --env-file)."); process.exit(1); }
+if (!(apiKey && (process.argv.includes("--live") || process.env.INTEG === "1"))) { console.log("Live model tests are opt-in and cost tokens. To run them on purpose: put DEEPSEEK_API_KEY in .env (or the environment) and run npm run test:integ:eval."); process.exit(0); }
 const MODEL = { model: "deepseek-flash", effort: "off" };
 
 let n = 0;
