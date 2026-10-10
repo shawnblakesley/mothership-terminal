@@ -78,7 +78,7 @@ The picker in the console's top bar sets the **provider**, **model** and **think
 |---|---|---|
 | DeepSeek | `deepseek-flash`, `deepseek-v4-pro` | Cheapest option. Default effort is "thinking off" (fastest). Uses JSON mode; replies are checked and cleaned up on the server. |
 | Free (shared) | `openrouter/free`, `nvidia/nemotron-3-super-120b-a12b:free`, `google/gemma-4-31b-it:free` | Only when the server sets `OPENROUTER_API_KEY`. Costs nothing; slower and less sharp, and shares OpenRouter's free rate limit. `openrouter/free` picks whichever free model is up. The free lineup changes often, so update `providers/free.js` when one disappears. |
-| Claude | `claude-haiku-5-5` (the cheapest: $0.10 / $0.50 per MTok), `claude-haiku-4-5`, `claude-sonnet-5-5`, `claude-opus-5-5` | Uses structured outputs, so replies always match the schema. Sonnet and Opus fall back to another model automatically if they decline a request. |
+| Claude | `claude-haiku-5-5` (the cheapest: $0.10 / $0.50 per MTok), `claude-haiku-4-5`, `claude-sonnet-5-5`, `claude-opus-5-5` | Uses structured outputs, so replies match the schema; a schema too large for strict output (the game reply is) goes as JSON text with the schema in the prompt instead, as for DeepSeek. Sonnet and Opus fall back to another model automatically if they decline a request. |
 
 ### Adding a provider
 

@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { jsonInstructions } from "./openai-compatible.js";
 
 const MODELS = [
   { id: "claude-haiku-5-5", label: "Haiku 5.5 · $0.10 / $0.50 per MTok", efforts: ["low", "medium", "high"] },
@@ -6,6 +7,12 @@ const MODELS = [
   { id: "claude-sonnet-5-5", label: "Sonnet 5.5 · $2 / $10", efforts: ["low", "medium", "high"], fallbacks: true },
   { id: "claude-opus-5-5", label: "Opus 5.5 · $4 / $20", efforts: ["low", "medium", "high"], fallbacks: true },
 ];
+
+// Schemas Anthropic refused to compile as a strict grammar (too large): those requests go as JSON text with the schema in the prompt, as for DeepSeek.
+const tooLarge = new Set();
+const grammarTooLarge = (err) => err instanceof Anthropic.BadRequestError && /grammar is too large|schema is too (large|complex)/i.test(err.message || "");
+// The JSON object in a text reply, without code fences or words around it.
+const jsonOnly = (text) => { const a = text.indexOf("{"), b = text.lastIndexOf("}"); return a >= 0 && b > a ? text.slice(a, b + 1) : text; };
 
 const clients = new Map();
 function clientFor(apiKey) {
@@ -25,30 +32,40 @@ export default {
   keyPattern: /^sk-ant-/,
   models: MODELS,
 
-  async generate({ apiKey, model, effort, system, context, messages, schema }) {
+  async generate({ apiKey, model, effort, system, context, messages, schema, example }) {
     if (!apiKey) throw new Error("No LLM API key. Add one under ⚙ Settings → LLM.");
     const client = clientFor(apiKey);
     const spec = MODELS.find((m) => m.id === model) ?? MODELS[0];
 
-    const params = {
+    const key = schema ? JSON.stringify(schema) : "";
+    const request = (strict) => ({
       model: spec.id,
       max_tokens: 16000,
       system: [
         { type: "text", text: system, cache_control: { type: "ephemeral" } },
         { type: "text", text: context },
+        ...(schema && !strict ? [{ type: "text", text: jsonInstructions(schema, example) }] : []),
       ],
       messages,
       output_config: {
-        format: { type: "json_schema", schema },
+        ...(strict ? { format: { type: "json_schema", schema } } : {}),
         ...(spec.efforts.includes(effort) ? { effort } : {}),
       },
-    };
+    });
+    const send = (params) => spec.fallbacks
+      ? client.beta.messages.create({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" })
+      : client.messages.create(params);
 
-    let response;
+    let strict = !!schema && !tooLarge.has(key), response;
     try {
-      response = spec.fallbacks
-        ? await client.beta.messages.create({ ...params, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" })
-        : await client.messages.create(params);
+      try {
+        response = await send(request(strict));
+      } catch (err) {
+        if (!strict || !grammarTooLarge(err)) throw err;
+        tooLarge.add(key);
+        strict = false;
+        response = await send(request(false));
+      }
     } catch (err) {
       throw new Error(describeError(err));
     }
@@ -58,7 +75,7 @@ export default {
     }
     const text = response.content.filter((b) => b.type === "text").map((b) => b.text).join("");
     if (response.stop_reason === "max_tokens") throw new Error("Reply was cut off (max_tokens). Regenerate.");
-    return text;
+    return schema && !strict ? jsonOnly(text) : text;
   },
 };
 
