@@ -626,6 +626,14 @@ button.cs-num:focus-visible { outline: none; }
   .shipbar:not(.open) .shipline:first-of-type { max-height: 2.6em; overflow: hidden; }
 }
 
+@media (max-width: 480px) {
+  #hdr.menu-open { row-gap: 0; }
+  #hdr.menu-open::before { content: ""; order: 1; flex: 0 0 100%; height: 0; }
+  #hdr.menu-open .hdr-btn:not([hidden]):not(#hdr-menu), #hdr.menu-open .vol { order: 2; flex: 1 1 calc(50% - 0.4em); max-width: calc(50% - 0.4em); box-sizing: border-box; justify-content: flex-start; }
+  #hdr.menu-open .vol { align-items: center; min-height: 44px; }
+  #hdr.menu-open .hdr-btn:not([hidden]):not(#hdr-menu) { min-height: 44px; display: inline-flex; align-items: center; }
+}
+
 .rulesdlg { width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid #3a3f44; border-radius: 12px;
   background: #15181b; color: #e9ecef; font: 16px/1.55 system-ui, "Segoe UI", sans-serif; text-shadow: none; letter-spacing: normal; text-transform: none;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; }

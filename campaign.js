@@ -443,7 +443,7 @@ export function jobsAt(c, p) {
   const v = resupplyView(c, p), trade = v.trade, each = trade ? Math.round(FUEL_PRICE * v.fuelFactor) : 0, room = TANK - p.resources.fuel;
   const refuelUnits = trade && room > 0 ? Math.max(0, Math.min(room, each ? Math.floor(p.money / each) : room)) : 0;
   const stuck = isStuck(c, p), need = dispatchNeed(c, p);
-  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, capacity: TANK, money: p.money, debt: p.debt, fuelEach: each, low: p.resources.fuel < cheapest, stuck, dispatch: stuck ? { units: need, cost: need * fuelEach(c, p) } : null, canRefuel: trade && room > 0, refuelUnits, refuelCost: refuelUnits * each, jobs, lanes };
+  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, capacity: TANK, money: p.money, debt: p.debt, fuelEach: each, low: p.resources.fuel < cheapest, stuck, dispatch: stuck ? { units: need, cost: need * fuelEach(c, p) } : null, canRefuel: trade && room > 0, refuelUnits, refuelCost: refuelUnits * each, crew: p.crew.filter((x) => !x.cond?.dead && !x.retired).map((x) => ({ name: x.name, credits: x.credits || 0 })), jobs, lanes };
 }
 
 // Stuck (no Warden): the rig can't afford the cheapest lane from here and its account can't buy the fuel for it.

@@ -233,10 +233,12 @@ function describe(what, dice) {
   return `${what[0].toUpperCase()}${what.slice(1)} (${what === "loadout" ? "d10" : "d100"}): ${String(dice[0]).padStart(2, "0")}`;
 }
 
-export function rollFor(draft, what, { typed = null, rerolls = false, rng = crypto.randomInt, tables = null } = {}) {
+export const keeperOf = (solo) => (solo ? "pilot" : "Warden");
+
+export function rollFor(draft, what, { typed = null, rerolls = false, rng = crypto.randomInt, tables = null, solo = false } = {}) {
   if (!ROLLS[what]) return { error: "Unknown roll." };
   if (what === "loadout" && !draft.className) return { error: "Choose a class first: the loadout table is by class." };
-  if (draft.dice[what] && !rerolls) return { error: "That one is already rolled, and the Warden has not allowed rerolls. Press Enter to go on." };
+  if (draft.dice[what] && !rerolls) return { error: `That one is already rolled, and the ${keeperOf(solo)} has not allowed rerolls. Press Enter to go on.` };
   const dice = typed ? typed : rollDice(what, rng);
   if (typed) {
     const bad = checkDice(what, typed);
@@ -320,7 +322,7 @@ export function handleChargen(sess, ws, msg) {
     const replaces = str(msg.replaces, 30), old = replaces && sess.crewById(replaces);
     if (replaces) {
       if (!old || playable(old) || old.replacedBy || s.newChars.some((n) => n.replaces === replaces)) return fail("That character has no replacement to make.");
-    } else if (!cfg.playerCreate) return fail("The Warden has not allowed new characters.");
+    } else if (!cfg.playerCreate) return fail(`The ${keeperOf(s.solo)} has not allowed new characters.`);
     else if (active(cfg.crew) + s.newChars.filter((n) => !n.replaces).length >= MAX_CREW) return fail("The crew is full.");
     ws.cg = newDraft(replaces);
     return reply();
@@ -341,7 +343,7 @@ export function handleChargen(sess, ws, msg) {
   const draft = ws.cg;
   switch (msg.t) {
     case "cgRoll": {
-      const r = rollFor(draft, String(msg.what), { typed: Array.isArray(msg.dice) ? msg.dice.map(Number) : null, rerolls: cfg.createRerolls, tables: loadTables() });
+      const r = rollFor(draft, String(msg.what), { typed: Array.isArray(msg.dice) ? msg.dice.map(Number) : null, rerolls: cfg.createRerolls, tables: loadTables(), solo: !!s.solo });
       if (r.error) return fail(r.error);
       sess.addLog("note", `New character (${draft.name || "unnamed"}) rolled: ${r.line}`);
       return reply({ rolled: String(msg.what) });
@@ -393,7 +395,7 @@ export function decideCharacter(sess, accept, id, note = "") {
     const why = str(note, 300);
     if (owner?.ws.readyState === 1) {
       owner.ws.cg = owner.draft;
-      owner.ws.send(JSON.stringify({ t: "cg", view: viewOf(owner.draft, ctx(sess)), rejected: why || "The Warden turned the character down." }));
+      owner.ws.send(JSON.stringify({ t: "cg", view: viewOf(owner.draft, ctx(sess)), rejected: why || `The ${keeperOf(s.solo)} turned the character down.` }));
     }
     sess.addLog("note", `New character rejected: ${pending.sheet.name}${why ? ` (${why})` : ""}.`);
     done();
