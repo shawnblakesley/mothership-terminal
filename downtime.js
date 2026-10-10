@@ -62,9 +62,7 @@ export function shoreCost(cls, rng = randInt) {
   const s = SHORE[cls];
   if (!s) return null;
   const r = rollDice(s.cost.dice, rng);
-  // A d100 that's multiplied reads 00 as 100, not nothing (as the dice note reads summed d10s 1-10).
-  const total = /d100$/.test(s.cost.dice) && r.total === 0 ? 100 : r.total;
-  return { dice: r.rolls, total: total * s.cost.unit };
+  return { dice: r.rolls, total: r.total * s.cost.unit };
 }
 export const shoreDays = (rng = randInt) => rollDice("2d10", rng);
 // The amount a success may convert, rolled per the table (X: 2d10 with [+]). `all` for class S.
@@ -150,7 +148,7 @@ function check(p, pc, id, choice) {
     const kind = choice === "intellect" ? "stats" : "saves";
     if (pc[kind][choice] >= base[kind][choice]) return { error: `${upper(choice)} is already at its original value.` };
   }
-  if (id === "psychosurgery" && choice === "minstress" && (pc.minStress ?? 2) === 2) return { error: "Minimum Stress is already 2." };
+  if (id === "psychosurgery" && choice === "minstress" && (pc.minStress ?? 2) <= 2) return { error: "Psychosurgery restores Minimum Stress to 2, and it is not above 2." };
   return { ok: true };
 }
 
@@ -221,12 +219,18 @@ export function treat(p, pc, id, { choice = "", pay = "", rng = randInt } = {}) 
   return { ok: true, name: t.name, cost: t.cost, lines, days, entries: s.entries };
 }
 
+// Short-term recovery is once per day (RULES.md); the Rest Save once per day too (house rule). The day is recorded when the Save is rolled.
+export function markRested(p, id, kind) {
+  p.downtime.last ||= {};
+  p.downtime.last[id] = { ...p.downtime.last[id], [kind]: p.downtime.day };
+}
+
 // ---- Time and the campaign's downtime state.
 export function sanitizeDowntime(d, crew = []) {
   const ids = new Set(crew.map((x) => x.id));
   const pend = {}, last = {};
   for (const [id, v] of Object.entries(d?.pending && typeof d.pending === "object" ? d.pending : {})) if (ids.has(id) && v?.points > 0) pend[id] = { points: clampInt(v.points, 1, 99, 1), port: String(v.port || "").slice(0, 60) };
-  for (const [id, v] of Object.entries(d?.last && typeof d.last === "object" ? d.last : {})) if (ids.has(id) && v && typeof v === "object") last[id] = Object.fromEntries(Object.entries(v).filter(([k]) => TREATMENTS[k]).map(([k, n]) => [k, clampInt(n, 0, 99999, 0)]));
+  for (const [id, v] of Object.entries(d?.last && typeof d.last === "object" ? d.last : {})) if (ids.has(id) && v && typeof v === "object") last[id] = Object.fromEntries(Object.entries(v).filter(([k]) => TREATMENTS[k] || k === "recovery" || k === "rest").map(([k, n]) => [k, clampInt(n, 0, 99999, 0)]));
   return { downtime: { day: clampInt(d?.day, 0, 99999, 0), pending: pend, last } };
 }
 
@@ -257,6 +261,10 @@ export const downtimeReady = (p, config) => !!p && !p.current && p.done.length >
 // kind "recovery" | "rest" | "shore". Returns { error } or { ok, request, dt, lines, entries }.
 export function planRoll(p, c, pc, kind, o = {}, rng = randInt) {
   if (!playable(pc)) return { ok: false, error: `${pc.name} is not playable.` };
+  if (kind === "recovery" || kind === "rest") {
+    const day = p.downtime?.day || 0, last = p.downtime?.last?.[pc.id]?.[kind];
+    if (last === day) return { ok: false, error: `${pc.name} has already had a ${kind === "rest" ? "Rest Save" : "short-term recovery"} today (day ${day}): pass a day first.` };
+  }
   if (kind === "recovery") {
     if (pc.health.current >= pc.health.max) return { ok: false, error: `${pc.name} is already at full Health.` };
     return { ok: true, request: { pc: pc.id, check: "body", reason: "Short-term recovery" }, dt: { kind }, lines: [], entries: [] };
@@ -272,10 +280,10 @@ export function planRoll(p, c, pc, kind, o = {}, rng = randInt) {
     if (!o.safe) return { ok: false, error: `Shore Leave needs a relatively safe port: tick that ${loc.name} is safe.` };
     if (p.downtime.pending[pc.id]) return { ok: false, error: `${pc.name} still has Save points to spread.` };
     const cost = shoreCost(cls, rng), have = p.crew.find((x) => x.id === pc.id)?.credits || 0;
-    if (cost.total > have) return { ok: false, error: `Shore Leave at ${loc.name} (class ${cls}) costs ${exact(cost.total)} (${cost.dice.join("+")} x ${exact(SHORE[cls].cost.unit)}); ${pc.name} has ${exact(have)}.` };
+    if (cost.total > have) return { ok: false, error: `Shore Leave at ${loc.name} (class ${cls}) costs ${exact(cost.total)} (${cost.dice.join("+")} x ${exact(SHORE[cls].cost.unit)}${cost.dice[0] === 0 && /d100$/.test(SHORE[cls].cost.dice) ? ", 00 reads as zero" : ""}); ${pc.name} has ${exact(have)}.` };
     const s = spend(p, pc.id, cost.total, `Shore Leave at ${loc.name} (class ${cls})`);
     const days = shoreDays(rng);
-    const lines = [`${pc.name} takes Shore Leave at ${loc.name} (class ${cls}, PSG 39): pays ${exact(cost.total)} (${shoreText(cls).cost}: ${cost.dice.join(", ")}), ${days.total} days (2d10: ${days.rolls.join("+")}).`];
+    const lines = [`${pc.name} takes Shore Leave at ${loc.name} (class ${cls}, PSG 39): pays ${exact(cost.total)} (${shoreText(cls).cost}: ${cost.dice.join(", ")}${cost.total === 0 ? "; a d100 of 00 reads as zero, so it is free" : ""}), ${days.total} days (2d10: ${days.rolls.join("+")}).`];
     return { ok: true, request: { pc: pc.id, check: "sanity", reason: `Shore Leave at ${loc.name} (class ${cls})` }, dt: { kind, cls, port: loc.name }, lines, entries: s.entries, days: days.total };
   }
   return { ok: false, error: "Unknown downtime step." };
@@ -283,6 +291,7 @@ export function planRoll(p, c, pc, kind, o = {}, rng = randInt) {
 
 // The result of the roll: changes the character and says what happened. { lines, over, ownStress, panicCheck }.
 export function settleRoll(p, pc, dt, result, rng = randInt) {
+  if (dt.kind === "recovery" || dt.kind === "rest") markRested(p, pc.id, dt.kind);
   const roll = two(result.used), word = result.outcome;
   if (dt.kind === "recovery") {
     const r = applyRecovery(pc, result);

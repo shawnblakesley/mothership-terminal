@@ -1156,12 +1156,23 @@
   });
 
   let solo = null, isPilot = false, pilot = null, pilotKeySent = false;
+  let seenNotice = null;
   function applySolo(x) {
+    const was = solo?.phase;
     solo = x || null;
+    if (seenNotice !== null && solo?.notice && solo.notice !== seenNotice) notice(solo.notice);
+    seenNotice = solo?.notice || "";
     if (solo?.phase === "ended") return showEnding();
     if (!$("ending").hidden) openPanel(null);
     if (!solo || solo.phase === "play") {
       if (!$("solopick").hidden) openPanel(null);
+      if (was === "building" && solo && !spectate && crew.length && !mine()) {
+        const name = String(solo.title || header.title || header.stationName).toUpperCase();
+        pickNote = `NEW STORY: ${name}. CHOOSE YOUR CREW FILE.`;
+        notice(`New story: ${name}. The AI is setting the scene. Choose your crew file.`);
+        renderPicker();
+        openPanel("crewpick");
+      }
       return;
     }
     renderSolo();
@@ -1176,21 +1187,22 @@
       ? "THE AI IS BUILDING THE WORLD AND EVERYONE IN IT. THIS CAN TAKE A FEW MINUTES."
       : jobs ? `RIM HAULERS: THE RIG IS AT ${jobs.port}, ${jobs.fuel} FUEL. ${jobs.jobs.length ? (isPilot ? "PICK A JOB (PRESS 1-9)." : "THE PILOT IS PICKING A JOB. TALK IT OVER.") : "NO JOBS LEFT HERE."}`
       : `NO WARDEN TONIGHT: THE AI RUNS THE GAME. ${isPilot ? "PICK A STORY (PRESS 1-9)." : "THE PILOT IS PICKING A STORY. TALK IT OVER."}`;
-    const board = () => jobs.jobs.map((j, i) => {
+    const cr = (n) => `${Number(n).toLocaleString("en-US")}CR`;
+    const board = () => `<li class="p-dim">RIG ACCOUNT&#58; ${cr(jobs.money)} · THE NOTE TO GALLOW-MERCER FINANCE&#58; ${cr(jobs.debt)}</li>` + jobs.jobs.map((j, i) => {
       const name = `[${i + 1}] ${escH(j.title)}`;
       return `<li>${isPilot ? `<button type="button" class="p-btn pick" data-job="${escH(j.id)}">${name}</button>` : name}<span class="p-dim tags"> · ${escH(j.where.toUpperCase())}${j.lane ? ` · ${escH(j.lane.toUpperCase())}, ${j.days} DAYS, ${j.cost} FUEL${j.short ? " · NOT ENOUGH FUEL" : ""}` : ""}</span>
         <div class="p-dim p-crime">${escH(j.hook)}</div><div class="p-dim p-crime">${escH(j.job)}</div></li>`;
     }).join("") + `<li class="p-dim">TRAVEL (HOUSE RULE: 1 FUEL PER STARTED 3 DAYS)${jobs.low ? " · FUEL IS BELOW THE CHEAPEST LANE: REFUEL" : ""}</li>` + jobs.lanes.map((l) =>
       `<li>${isPilot ? `<button type="button" class="p-btn" data-travel="${escH(l.to)}">[ TRAVEL: ${escH(l.dest)} ]</button>` : `TRAVEL: ${escH(l.dest)}`}<span class="p-dim tags"> · ${escH(l.lane.toUpperCase())}, ${l.days} DAYS, ${l.cost} FUEL${l.short ? " · NOT ENOUGH FUEL" : ""}</span></li>`).join("")
-      + (isPilot && jobs.stuck ? `<li><button type="button" class="p-btn" data-dispatch="1">[ CALL DISPATCH ]</button><span class="p-dim tags"> · LOCAL 1312 ADVANCES THE FUEL FOR THE CHEAPEST LANE; ITS PRICE IS ADDED TO THE NOTE (HOUSE RULE)</span></li>` : "")
-      + (isPilot && jobs.canRefuel ? `<li><button type="button" class="p-btn" data-refuel="1">[ REFUEL ${jobs.fuel}/${jobs.capacity} ]</button><span class="p-dim tags"> · ${jobs.fuelEach.toLocaleString("en-US")}CR A UNIT (HOUSE RULE), FROM THE RIG ACCOUNT&#58; ${jobs.money.toLocaleString("en-US")}CR</span></li>` : "");
+      + (isPilot && jobs.stuck ? `<li><button type="button" class="p-btn" data-dispatch="1">[ CALL DISPATCH ]</button><span class="p-dim tags"> · LOCAL 1312 ADVANCES ${jobs.dispatch.units} UNIT${jobs.dispatch.units === 1 ? "" : "S"} OF FUEL FOR THE CHEAPEST LANE; ${cr(jobs.dispatch.cost)} IS ADDED TO THE NOTE (HOUSE RULE)</span></li>` : "")
+      + (isPilot && jobs.canRefuel ? `<li><button type="button" class="p-btn" data-refuel="1"${jobs.refuelUnits ? "" : " disabled"}>[ REFUEL ${jobs.fuel}/${jobs.capacity} ]</button><span class="p-dim tags"> · ${cr(jobs.fuelEach)} A UNIT (HOUSE RULE)${jobs.refuelUnits ? `, ${jobs.refuelUnits} UNIT${jobs.refuelUnits === 1 ? "" : "S"} FOR ${cr(jobs.refuelCost)}` : ", NOT ENOUGH CREDITS FOR A UNIT"}</span></li>` : "");
     $("solopick-list").innerHTML = building ? "" : jobs ? board() : solo.pitches.map((p, i) => {
       const name = `[${i + 1}] ${escH(p.title.toUpperCase())}`;
       return `<li>${isPilot ? `<button type="button" class="p-btn pick" data-pick="${i}">${name}</button>` : name}<span class="p-dim tags"> · ${escH(p.tags.toUpperCase())}</span>
         <div class="p-dim p-crime">${escH(p.hook)}</div></li>`;
     }).join("");
     $("solopick-status").innerHTML = solo.busy === "pitches" ? 'GENERATING STORIES<span class="dots"></span>'
-      : building ? 'BUILDING<span class="dots"></span>' : escH(solo.error.toUpperCase());
+      : building ? 'BUILDING<span class="dots"></span>' : escH((solo.error || solo.notice || "").toUpperCase());
     $("solopick-more").hidden = !isPilot || building;
     $("solopick-more").disabled = !!solo.busy;
     $("solopick-more").textContent = jobs ? "[ LEAVE THE CAMPAIGN ]" : "[ OTHER STORIES ]";
@@ -1216,9 +1228,15 @@
   $("solopick-list").addEventListener("click", (e) => {
     const i = e.target.closest("[data-pick]")?.dataset.pick, job = e.target.closest("[data-job]")?.dataset.job;
     const to = e.target.closest("[data-travel]")?.dataset.travel;
-    if (to) ws?.send(JSON.stringify({ t: "pilotTravel", to }));
-    else if (e.target.closest("[data-dispatch]")) ws?.send(JSON.stringify({ t: "pilotDispatch" }));
-    else if (e.target.closest("[data-refuel]")) ws?.send(JSON.stringify({ t: "pilotRefuel" }));
+    const jobs = solo?.jobs, cr = (n) => `${Number(n).toLocaleString("en-US")}cr`, go = (text, msg) => confirm(text) && ws?.send(JSON.stringify(msg));
+    if (to) {
+      const l = jobs?.lanes.find((x) => x.to === to);
+      if (l) go(`Travel to ${l.dest}? ${l.lane}: ${l.days} days and ${l.cost} fuel (house rule). The rig moves now and the fuel and days are spent. ${jobs.fuel - l.cost} fuel left${jobs.fuel - l.cost ? "." : ": refuel or call dispatch before the next lane."}`, { t: "pilotTravel", to });
+    } else if (e.target.closest("[data-dispatch]")) {
+      if (jobs?.dispatch) go(`Call dispatch? Local 1312 advances ${jobs.dispatch.units} unit${jobs.dispatch.units === 1 ? "" : "s"} of fuel and adds ${cr(jobs.dispatch.cost)} to the Gallow-Mercer note (house rule). The note goes from ${cr(jobs.debt)} to ${cr(jobs.debt + jobs.dispatch.cost)}.`, { t: "pilotDispatch" });
+    } else if (e.target.closest("[data-refuel]")) {
+      if (jobs?.refuelUnits) go(`Refuel ${jobs.refuelUnits} unit${jobs.refuelUnits === 1 ? "" : "s"} for ${cr(jobs.refuelCost)} (${cr(jobs.fuelEach)} a unit, house rule)? The rig account goes from ${cr(jobs.money)} to ${cr(jobs.money - jobs.refuelCost)}.`, { t: "pilotRefuel" });
+    }
     else if (i !== undefined) pickStory(Number(i));
     else if (job) pickJob(job);
   });
@@ -1666,6 +1684,8 @@
       : `<div class="sf-none">NO JOBS ON THE BOARD YET.</div>`;
     fx.querySelector(".sf-side").innerHTML = `<div class="sf-head">JOB BOARD</div><div class="sf-hint">PRESS A JOB'S NUMBER OR CLICK IT TO VOTE. [*] IS ONE VOTE. ESC TO CLOSE.</div>${board}${msg.played.length ? `<div class="sf-head">DONE</div><div class="sf-played">${msg.played.map((p) => escH(p.title)).join("<br>")}</div>` : ""}`;
     if (fresh) { fx.hidden = false; chirp(); }
+    const map = fx.querySelector(".sf-map"), svg = map.querySelector("svg");
+    if (fresh) import("./phonefit.js").then((f) => { map.scrollLeft = f.sectorScrollLeft(msg.rig, msg.offered, svg.clientWidth, map.clientWidth); });
   }
   const voteJob = (id) => id && send({ t: "sectorVote", story: id });
   $("sectorfx").addEventListener("click", (e) => {
@@ -1767,6 +1787,7 @@
     at(m.end, endColdOpen);
   }
   $("coldopen").querySelector(".co-skip").onclick = endColdOpen;
+  if (matchMedia("(pointer: coarse)").matches) $("coldopen").querySelector(".co-skip").textContent = "[ TAP TO SKIP ]";
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("coldopen").hidden) { e.stopImmediatePropagation(); endColdOpen(); } }, true);
 
   // Death: the vitals line goes flat with a held tone, then the player may send one last line, spoken on every screen in their voice.

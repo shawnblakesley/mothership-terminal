@@ -180,7 +180,8 @@
   // The players' compact readout and station controls.
   function player(root, ship, me, send) {
     root.hidden = !ship;
-    if (!ship) { root.innerHTML = ""; return; }
+    root.__ship = ship; root.__me = me;
+    if (!ship) { root.innerHTML = ""; ui.pOpen = undefined; return; }
     const r = ship.rig, e = ship.enemy;
     const mineStation = me ? ship.stations[me.id] || "" : "";
     const enemy = !e ? "" : e.name
@@ -188,7 +189,9 @@
       : e.class !== undefined ? `UNIDENTIFIED SHIP CLASS ${CLS[e.class]}${e.kind ? ` ${esc(e.kind.toUpperCase())}` : ""}` : "UNIDENTIFIED CONTACT: TRAJECTORY AND ROUGH SIZE ONLY";
     const canSteer = me && !ship.ended && (!ship.pilot || ship.pilot === me.id);
     const mv = ship.move;
-    root.innerHTML = `<div class="shipline"><span><b>SHIP ${ship.ended ? "FIGHT OVER" : `ROUND ${ship.round}`}</b> · RANGE ${ship.range.toUpperCase()} · ${esc(r.name.toUpperCase())} HULL ${r.hull}/${r.hullMax} MDMG ${r.mdmg}${r.effect ? ` (${esc(r.effect.toUpperCase())})` : ""} · FUEL ${r.fuel}</span></div>
+    const open = ui.pOpen ?? !!mineStation;
+    root.classList.toggle("open", open);
+    root.innerHTML = `${me && !ship.ended ? `<button type="button" class="shiptoggle" data-ship-toggle aria-expanded="${open}">${open ? "[ HIDE SHIP CONTROLS ]" : "[ SHIP CONTROLS ]"}</button>` : ""}<div class="shipline"><span><b>SHIP ${ship.ended ? "FIGHT OVER" : `ROUND ${ship.round}`}</b> · RANGE ${ship.range.toUpperCase()} · ${esc(r.name.toUpperCase())} HULL ${r.hull}/${r.hullMax} MDMG ${r.mdmg}${r.effect ? ` (${esc(r.effect.toUpperCase())})` : ""} · FUEL ${r.fuel}</span></div>
       ${enemy ? `<div class="shipline">CONTACT: ${enemy}</div>` : ""}
       ${ship.unwinnable ? '<div class="shipline shipbad">THEY CAN\'T BE BEATEN HEAD-ON: FLIGHT, SURRENDER OR A TRICK</div>' : ""}
       ${ship.hailed ? '<div class="shipline shipbad">INCOMING HAIL: THE OTHER SHIP OFFERS A CEASEFIRE OR TO TALK</div>' : ""}
@@ -200,6 +203,7 @@
     if (!root.__wired) {
       root.__wired = true;
       root.addEventListener("click", (ev) => {
+        if (ev.target.closest("[data-ship-toggle]")) { ui.pOpen = !root.classList.contains("open"); return player(root, root.__ship, root.__me, send); }
         const fb = ev.target.closest("[data-ship-fire]");
         if (fb) return send({ t: "shipFire", on: fb.getAttribute("aria-pressed") !== "true" });
         const st = ev.target.closest("[data-ship-st]");

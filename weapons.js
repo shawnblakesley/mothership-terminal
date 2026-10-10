@@ -1,26 +1,26 @@
-// PSG 14-15 as printed. wound: Wounds Table column; woundAdv: "+" / "-" printed next to it; alt: a second column the weapon can use; shots: per magazine.
-const w = (name, damage, wound, extra = {}) => ({ name, damage, wound, woundAdv: "", alt: "", shots: 0, aa: false, special: "", ...extra });
+// PSG 14-15 as printed. effect: a printed rider the Warden applies by hand (the log prints it under every hit). wound: Wounds Table column; woundAdv: "+" / "-" printed next to it; alt: a second column the weapon can use; shots: per magazine.
+const w = (name, damage, wound, extra = {}) => ({ name, damage, wound, woundAdv: "", alt: "", shots: 0, aa: false, special: "", effect: "", ...extra });
 
 export const WEAPONS = [
   w("Boarding Axe", "2d10", "gore", { woundAdv: "+" }),
   w("Combat Shotgun", "4d10", "gunshot", { shots: 4, longDamage: "1d10", special: "1d10 Damage at Long Range or further." }),
   w("Crowbar", "1d5", "blunt", { woundAdv: "+" }),
-  w("Flamethrower", "2d10", "fire", { woundAdv: "+", shots: 4, special: "Body Save [-] or set on fire (2d10 Damage per round)." }),
+  w("Flamethrower", "2d10", "fire", { woundAdv: "+", shots: 4, special: "Body Save [-] or set on fire (2d10 Damage per round).", effect: "Body Save [-] or set on fire (2d10 Damage per round)." }),
   w("Flare Gun", "1d5", "fire", { woundAdv: "-", shots: 2 }),
-  w("Foam Gun", "1", "blunt", { shots: 3, special: "Body Save or stuck." }),
-  w("Frag Grenade", "3d10", "fire", { shots: 1, special: "Hits everything Adjacent to the target." }),
+  w("Foam Gun", "1", "blunt", { shots: 3, special: "Body Save or stuck.", effect: "Body Save or stuck." }),
+  w("Frag Grenade", "3d10", "fire", { shots: 1, special: "Hits everything Adjacent to the target.", effect: "Hits everything Adjacent to the target." }),
   w("General-Purpose Machine Gun", "4d10", "gunshot", { woundAdv: "+", shots: 5 }),
   w("Hand Welder", "1d10", "bleeding"),
-  w("Laser Cutter", "1d100", "bleeding", { woundAdv: "+", alt: "gore", shots: 6, special: "Bleeding [+] or Gore [+]. 1 round to recharge." }),
+  w("Laser Cutter", "1d100", "bleeding", { woundAdv: "+", alt: "gore", shots: 6, special: "Bleeding [+] or Gore [+]. 1 round to recharge.", effect: "1 round to recharge." }),
   w("Nail Gun", "1d5", "bleeding", { shots: 32 }),
   w("Pulse Rifle", "3d10", "gunshot", { shots: 5 }),
   w("Revolver", "1d10+1", "gunshot", { shots: 6 }),
-  w("Rigging Gun", "1d10", "bleeding", { woundAdv: "+", shots: 1, special: "Another 2d10 Damage when the bolt is removed." }),
+  w("Rigging Gun", "1d10", "bleeding", { woundAdv: "+", shots: 1, special: "Another 2d10 Damage when the bolt is removed.", effect: "Another 2d10 Damage when the bolt is removed." }),
   w("Scalpel", "1d5", "bleeding", { woundAdv: "+" }),
   w("Smart Rifle", "4d10", "gunshot", { woundAdv: "+", shots: 3, aa: true, closeCheck: "-", special: "Anti-Armor. [-] at Close range." }),
   w("SMG", "2d10", "gunshot", { shots: 5 }),
-  w("Stun Baton", "1d5", "blunt", { special: "Body Save or stunned for 1 round." }),
-  w("Tranq Pistol", "1d5", "blunt", { shots: 6, special: "Body Save or unconscious for 1d10 rounds." }),
+  w("Stun Baton", "1d5", "blunt", { special: "Body Save or stunned for 1 round.", effect: "Body Save or stunned for 1 round." }),
+  w("Tranq Pistol", "1d5", "blunt", { shots: 6, special: "Body Save or unconscious for 1d10 rounds.", effect: "Body Save or unconscious for 1d10 rounds." }),
   w("Vibechete", "3d10", "bleeding", { alt: "gore", aa: true, special: "Anti-Armor. Bleeding + Gore." }),
 ];
 
