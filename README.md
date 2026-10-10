@@ -58,6 +58,8 @@ Optional settings go in `.env` (see `.env.example`): `BASE_PATH` to serve under 
 
 For a private LAN game you can set `ALLOW_SERVER_KEYS=1` plus `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY`, so sessions use the server's keys. Never do that on a public server.
 
+**On a hosted server**, setting `ANTHROPIC_API_KEY` and `CLAUDE_KEY_PASSWORD` lets anyone who types that password where a Claude key goes (the start screens or the key dialog) run their session on the server's Claude key. It works in production without `ALLOW_SERVER_KEYS`, only for Claude, and is light protection only (10 wrong tries per address per 10 minutes): share the password only with people you trust with the bill.
+
 If a session has no key, the agent stays quiet and you reply yourself with **Speak**.
 
 To host it publicly, see [deploy/README.md](deploy/README.md). The hosted copy at [shawnofthe.dev/mothership](https://shawnofthe.dev/mothership/) deploys automatically on every push to `main`.

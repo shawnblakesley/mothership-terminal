@@ -289,11 +289,13 @@
     const sync = () => {
       const p = S.providers.find((x) => x.id === sel.value);
       $("keyValue").value = "";
-      $("keyValue").placeholder = p.configured ? "•••••••• set, paste to replace" : p.keyHint;
+      $("keyValue").placeholder = p.siteKey ? "Using the site's Claude key" : p.configured ? "•••••••• set, paste to replace" : p.keyHint;
       $("keyLink2").href = p.keyUrl || "#";
       $("keyRemember").checked = !!store.get(`wardenKey:${p.id}`);
       $("keyRemove").hidden = !p.configured;
-      $("keyStatus").textContent = p.configured
+      $("keyStatus").textContent = p.siteKey
+        ? "Using the site's Claude key. Paste your own key to switch."
+        : p.configured
         ? "Key set."
         : "No key. The agent can't reply without one.";
     };

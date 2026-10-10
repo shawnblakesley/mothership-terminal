@@ -1251,8 +1251,8 @@
     fill($("pl-effort"), m.efforts.map((e) => [e, e === "off" ? "off (fastest)" : e]), config.effort);
     $("pl-effortrow").hidden = !m.efforts.length;
     $("pl-keyrow").hidden = $("pl-keyactions").hidden = !!p.free;
-    $("pl-key").placeholder = p.configured ? "•••••••• (paste to replace)" : p.keyHint;
-    $("pl-keystatus").textContent = p.configured ? "A key is set for this game." : "No key yet. Add one so the AI can answer.";
+    $("pl-key").placeholder = p.siteKey ? "Using the site's Claude key" : p.configured ? "•••••••• (paste to replace)" : p.keyHint;
+    $("pl-keystatus").textContent = p.siteKey ? "Using the site's Claude key. Paste your own key to switch." : p.configured ? "A key is set for this game." : "No key yet. Add one so the AI can answer.";
   }
   $("hdr-pilot").onclick = () => { renderPilot(); $("pilotDlg").showModal(); };
 
