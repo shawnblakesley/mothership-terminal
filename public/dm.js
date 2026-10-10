@@ -170,6 +170,8 @@
   }
   const sure = async (title, text, label, cls = "danger") => (await ask(title, text, [["yes", label, cls]])) === "yes";
 
+  const why = (text) => `<span class="why muted small">${esc(text)}</span>`;
+
   async function copy(text, what) {
     try { await navigator.clipboard.writeText(text); toast(`${what} copied.`); }
     catch { ask(`Copy the ${what.toLowerCase()}`, "Copying was blocked. Copy it from below.", [], text); }
@@ -474,6 +476,14 @@
   const netKey = (name) => String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const systemName = (net) => (net === "*" ? "All" : S.config.terminals.find((t) => t.system && netKey(t.system) === net)?.system || net);
 
+  const firstRun = () => `<div class="card firstrun">
+      <div class="label">Nothing yet. Waiting for the crew.</div>
+      <div><b>Players:</b> open <code>${esc(playerLink())}</code> or enter the code <b class="mono">${esc(code)}</b> at the site's front page, then pick a crew file.</div>
+      <div class="row wrap"><button data-copy="link">Copy player link</button><button data-copy="code" class="ghost">Copy code</button></div>
+      <div><b>You:</b> type a Direction, or Speak a line as someone, in the box below. In Auto mode the agent answers on its own; in Review mode you approve each reply first.</div>
+      <div class="muted small">The story loaded is ${esc(S.config.title || S.config.stationName)}. Campaign and Story Builder in the top bar change it.</div>
+    </div>`;
+
   function renderLog() {
     const log = $("log");
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
@@ -492,7 +502,7 @@
         <div class="who"><span class="tag">${esc(sp.name)}</span>${sp.by ? `<span class="by">${sp.by}</span>` : ""}${e.net ? `<span class="by" title="${e.net === "*" ? "Sent to every system" : "Shown only on this system"}">${e.net === "*" ? "to All" : `on ${esc(systemName(e.net))}`}</span>` : ""}${e.hidden ? '<span class="by">cleared from screen</span>' : ""}${e.cut ? `<span class="by">${e.retcon ? "retconned" : "cut off"}</span>` : ""}${when}</div>
         <div class="txt">${e.text ? esc(e.text) : e.variants?.length ? '<span class="muted">(everyone else sees nothing)</span>' : ""}${variantsHtml(e)}${e.kind === "msg" && e.edited && e.sent ? `<div class="chg">Sender typed: ${esc(e.sent)}</div>` : ""}${e.kind === "aside_reply" && e.changes?.length ? `<div class="chg">${e.changes.map((c) => `${esc(c.path)} → ${esc(c.value)}`).join(" · ")}</div>` : ""}</div>${del}
       </div>`;
-    }).join("") || `<div class="muted small">Nothing yet. Waiting for the crew.</div>`;
+    }).join("") || firstRun();
     if (atBottom || S.log.length !== lastLogLen) log.scrollTop = log.scrollHeight;
     lastLogLen = S.log.length;
   }
@@ -1217,7 +1227,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     $("bInput").value = "";
   };
   $("bSend").onclick = builderSend;
-  $("bInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); builderSend(); } });
+  $("bInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); builderSend(); } });
   $("bDraft").onclick = () => send({ t: "builderDraft" });
   $("bReset").onclick = async () => (await sure("Start over?", "Clears the builder chat and draft. Your story stays.", "Start over")) && send({ t: "builderReset" });
   $("bdraft").addEventListener("click", async (e) => {
@@ -1339,7 +1349,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const stores = Object.entries({ parts: "Parts", explosives: "Explosives", flares: "Flares", rations: "Rations (MREs)" }).map(([k, n]) => `${n} ${r.stores[k]}`).join(" · ");
     const travel = lanes.map((l) => {
       const to = cmpLoc(c, l.a === p.at ? l.b : l.a), cost = fuelCostOf(l.days);
-      return `<div class="row"><span class="grow small">${esc(l.name)} to ${esc(to.name)}: ${l.days} days, ${cost} fuel${l.dark ? " (uncharted)" : ""}</span><button class="small" data-travel="${to.id}" ${!idle || r.fuel < cost ? "disabled" : ""} title="${!idle ? "Finish the story being played first" : r.fuel < cost ? "Not enough fuel" : "Move the rig; no story"}">Travel</button></div>`;
+      return `<div class="row"><span class="grow small">${esc(l.name)} to ${esc(to.name)}: ${l.days} days, ${cost} fuel${l.dark ? " (uncharted)" : ""}</span><button class="small" data-travel="${to.id}" ${!idle || r.fuel < cost ? "disabled" : ""} title="${!idle ? "Finish the story being played first" : r.fuel < cost ? "Not enough fuel" : "Move the rig; no story"}">Travel</button>${!idle ? why("Finish the story being played first.") : r.fuel < cost ? why("Not enough fuel.") : ""}</div>`;
     }).join("");
     const row = ([k, [label, base]]) => {
       const unit = k === "fuel" ? Math.round((Number(cmpBuy.fuelPrice) || 0) * (rs.fuelFactor || 0)) : rs.prices[k];
@@ -1352,7 +1362,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       <div class="row"><label class="small grow">Ammo for <select data-buy-ammofor aria-label="Ammo for which weapon">${rs.firearms.map((w) => `<option ${cmpBuy.ammoFor === w ? "selected" : ""}>${esc(w)}</option>`).join("")}</select></label>
         <label class="small grow">Carried by <select data-buy-to aria-label="Ammo carried by">${p.crew.filter((x) => !x.cond?.dead && !x.retired).map((pc) => `<option value="${esc(pc.id)}" ${cmpBuy.to === pc.id ? "selected" : ""}>${esc(pc.name)}</option>`).join("")}</select></label>
         <label class="small grow">Paid from <select data-buy-pay aria-label="Pay for supplies from"><option value="rig" ${cmpBuy.pay === "rig" ? "selected" : ""}>Rig account (${cr(p.money)})</option>${p.crew.filter((x) => !x.cond?.dead && !x.retired).map((pc) => `<option value="${esc(pc.id)}" ${cmpBuy.pay === pc.id ? "selected" : ""}>${esc(pc.name)} (${cr(pc.credits || 0)})</option>`).join("")}</select></label></div>
-      <div class="row"><b class="grow" id="cmpBuyTotal">Total ${cr(buyTotal())}</b><button class="primary" data-buy-go ${idle ? "" : "disabled"} title="${idle ? "Adds the goods to the rig and the crew's sheets" : "Finish the story being played first"}">Buy</button></div>`;
+      <div class="row"><b class="grow" id="cmpBuyTotal">Total ${cr(buyTotal())}</b><button class="primary" data-buy-go ${idle ? "" : "disabled"} title="${idle ? "Adds the goods to the rig and the crew's sheets" : "Finish the story being played first"}">Buy</button>${idle ? "" : why("Finish the story being played first.")}</div>`;
     return `<details open><summary>The rig: fuel and supplies <span class="muted small">(house rules, except the PSG gear prices)</span></summary>
       <div class="bcard"><div class="row wrap"><b>Fuel ${r.fuel} of ${TANK_UNITS}</b><span class="small muted">house rule: a lane costs 1 unit per started 3 days (3 days = 1, 9 days = 3)</span></div>
         ${r.fuel <= 0 ? '<div class="small bad">Out of fuel: the rig is stranded until it is refuelled.</div>' : ""}
@@ -1466,7 +1476,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const stakes = (s.affinity || []).map((a) => `<li><span style="color:${cmpFaction(c, a.faction)?.color}">${esc(cmpFaction(c, a.faction)?.short)}</span> ${a.change > 0 ? "+" : ""}${a.change} if ${esc(a.when)}</li>`).join("");
     const action = busy === s.id
       ? `<span class="small"><span class="spinner"></span>Building ${esc(s.title)} around its arc… (a minute or two)</span>`
-      : p.current === s.id ? `<span class="pill ok">Now playing</span><button data-replay="${s.id}" ${busy ? "disabled" : ""} title="Build it again from scratch">Rebuild</button>`
+      : p.current === s.id ? `<span class="pill ok">Now playing</span><button data-replay="${s.id}" ${busy ? "disabled" : ""} title="${busy ? "A story is being built" : "Build it again from scratch"}">Rebuild</button>${busy ? why("A story is being built.") : ""}`
         : `<button class="primary" data-play="${s.id}" ${busy ? "disabled" : ""}>${d ? "Play it again" : "Play this story"}</button>`;
     const on = (p.offered || []).includes(s.id), votes = S.sectorVotes?.[s.id] || [];
     const offer = `<button data-offer="${s.id}" aria-pressed="${on}" title="${on ? "On the players' job board. Click to take it off" : "Put this job on the players' job board (title, hook and job only)"}">${on ? "Offered: take it off" : "Offer"}</button>${votes.length ? `<span class="small">${votes.length} vote${votes.length > 1 ? "s" : ""}: ${esc(votes.join(", "))}</span>` : ""}`;
@@ -1511,7 +1521,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
           <textarea id="cmpOutcome" rows="2" placeholder="How did it end? Who lived, what they did, what they owe. Later stories are built on it."></textarea>
           ${now.affinity?.length ? `<div class="small"><b>Faction standing</b> <span class="muted">(house rule; tick what happened)</span>${now.affinity.map((a, i) => `<label class="cmpfx"><input type="checkbox" data-aff="${i}" ${cmpTicks.has(i) ? "checked" : ""}> <span style="color:${cmpFaction(c, a.faction)?.color}">${esc(cmpFaction(c, a.faction)?.short)}</span> ${signed(a.change)}: ${esc(a.when)}</label>`).join("")}</div>` : ""}
           ${cmpFinishBox(c, now, p)}
-          <div class="row"><span class="small muted grow">Finishing keeps the crew's sheets and the recurring characters' attitudes, and moves the rig.</span><button id="cmpRecap" ${p.recap?.for === now.id ? "" : "disabled"} title="Play the 'Previously on' cold open on every player screen">Previously on</button><button id="cmpFinish" class="primary">Finish story</button></div></div>`
+          <div class="row"><span class="small muted grow">Finishing keeps the crew's sheets and the recurring characters' attitudes, and moves the rig.</span><button id="cmpRecap" ${p.recap?.for === now.id ? "" : "disabled"} title="Play the 'Previously on' cold open on every player screen">Previously on</button>${p.recap?.for === now.id ? "" : why("No recap has been written for this story yet.")}<button id="cmpFinish" class="primary">Finish story</button></div></div>`
       : `<div class="small muted">${S.campaignBusy ? `<span class="spinner"></span>Building a story…` : "No campaign story is being played. Pick a job on the map."}</div>`;
     const side = cmpSel.kind === "story" ? cmpStory(c, c.stories.find((s) => s.id === cmpSel.id), p)
       : cmpSel.kind === "loc" ? cmpLocation(c, cmpLoc(c, cmpSel.id), p) : cmpOverview(c, p);
@@ -1656,7 +1666,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       const s = c?.stories.find((x) => x.id === (play.dataset.play || play.dataset.replay));
       if (!s) return;
       const left = c.stories.find((x) => x.id === S.campaign.current);
-      const text = `The agent builds it around its written arc (a minute or two, on the session's model and key). It replaces the story being played and clears the log; the crew carry over, and players pick their crew files again.${left && left !== s ? ` ${left.title} hasn't been finished: finish it first to keep how it ended.` : ""}`;
+      const text = `The agent builds it around its written arc (a minute or two, on the session's model and key). It replaces the story being played and clears the log; the crew carry over, and players keep their crew files (anyone without one is asked to pick).${left && left !== s ? ` ${left.title} hasn't been finished: finish it first to keep how it ended.` : ""}`;
       if (await sure(`Play ${s.title}?`, text, "Play story", "primary")) {
         send({ t: "campaignPlay", story: s.id });
         cmpStarting = s.id;
@@ -1882,7 +1892,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
 
   function setMview(v) {
     document.body.dataset.mview = v;
-    for (const b of $("mnav").querySelectorAll("[data-mview]")) b.classList.toggle("on", b.dataset.mview === v);
+    for (const b of $("mnav").querySelectorAll("[data-mview]")) { b.classList.toggle("on", b.dataset.mview === v); b.setAttribute("aria-pressed", String(b.dataset.mview === v)); }
     if (v !== "comms") document.querySelector(`.tabs[data-tabs="side"] [data-tab="${v}"]`)?.click();
     store.set("mview", v);
     renderMnavDot();
@@ -1932,10 +1942,13 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       bar.style.setProperty("--w", `${on.offsetWidth}px`);
     };
     new ResizeObserver(place).observe(bar);
+    bar.setAttribute("aria-label", { side: "Console views", settings: "Settings sections" }[group] || group);
+    for (const b of bar.querySelectorAll("[data-tab]")) b.setAttribute("role", "tab");
     let current = null;
     const show = (tab) => {
-      for (const b of bar.querySelectorAll("[data-tab]")) b.classList.toggle("on", b.dataset.tab === tab);
+      for (const b of bar.querySelectorAll("[data-tab]")) { b.classList.toggle("on", b.dataset.tab === tab); b.setAttribute("aria-selected", String(b.dataset.tab === tab)); }
       for (const p of document.querySelectorAll(`.tabpanel[data-tabs="${group}"]`)) {
+        p.setAttribute("role", "tabpanel");
         p.hidden = p.dataset.panel !== tab;
         p.classList.remove("enter");
         if (!p.hidden && current !== null && current !== tab) { void p.offsetWidth; p.classList.add("enter"); }
@@ -2537,6 +2550,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const id = e.target.closest("[data-del]")?.dataset.del;
     if (id) send({ t: "deleteEntry", id: Number(id) });
     if (e.target.closest("[data-jump]")) jumpToNewChars();
+    const cp = e.target.closest("[data-copy]")?.dataset.copy;
+    if (cp) copy(cp === "code" ? code : playerLink(), cp === "code" ? "Code" : "Player link");
   });
   function jumpToNewChars() {
     setMview("crew");
@@ -2627,6 +2642,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   const fxBanner = () => {
     const b = $("fxButtons").querySelector('[data-fx="banner"]'), empty = !$("fxText").value.trim();
     if (b) { b.disabled = empty; b.title = empty ? "Type a caption first: the banner shows only that text" : ""; }
+    $("fxWhy").textContent = empty ? "The banner effect needs a caption: type one in Caption first." : "";
   };
   fxBanner();
   $("fxText").addEventListener("input", fxBanner);
@@ -3042,7 +3058,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const box = $("rollOffers"), offers = S.offers || [];
     const busy = S.roll?.status === "waiting";
     box.hidden = !offers.length;
-    box.innerHTML = offers.map((o) => `<div class="row wrap"><span class="grow">${esc(o.label)}</span><button data-offer="${esc(o.id)}" data-act="call" ${busy ? 'disabled title="Finish the roll in progress first"' : ""}>${o.roll.check === "panic" ? "Panic check" : "Fear Save"}</button><button data-offer="${esc(o.id)}" data-act="dismiss" class="ghost">Dismiss</button></div>`).join("");
+    box.innerHTML = offers.map((o) => `<div class="row wrap"><span class="grow">${esc(o.label)}</span><button data-offer="${esc(o.id)}" data-act="call" ${busy ? 'disabled title="Finish the roll in progress first"' : ""}>${o.roll.check === "panic" ? "Panic check" : "Fear Save"}</button>${busy ? why("Finish the roll in progress first.") : ""}<button data-offer="${esc(o.id)}" data-act="dismiss" class="ghost">Dismiss</button></div>`).join("");
   }
   $("rollStatus").addEventListener("click", (e) => {
     const b = e.target.closest("[data-roll]");
@@ -3097,7 +3113,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   $("docList").addEventListener("click", (e) => {
     const again = e.target.closest("[data-doc-again]")?.dataset.docAgain, del = e.target.closest("[data-doc-del]")?.dataset.docDel;
     if (again) send({ t: "handoutAgain", id: again });
-    if (del) send({ t: "handoutDelete", id: del });
+    if (del) { send({ t: "handoutDelete", id: del }); toast("Document taken back. It closes on every screen that has it open."); }
   });
 
   function renderClocks() {

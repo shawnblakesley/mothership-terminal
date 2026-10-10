@@ -660,3 +660,5 @@ details.sec > summary:hover h2 { color: var(--fg); }
 .buildchip { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--warn); order: 1; }
 .tabs [data-tab].waiting, .mnav [data-mview].waiting { color: var(--warn); font-weight: 700; }
 #settingsBtn svg { display: block; }
+.firstrun { font-size: 13px; }
+.firstrun code { word-break: break-all; }

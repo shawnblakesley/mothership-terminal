@@ -53,12 +53,12 @@ export function sendCrewMessage(s, ws, toName, rawText) {
   const text = clean(rawText);
   if (!from) return fail("NO CREW FILE");
   const to = crewNamed(s.state.config.crew, toName);
-  if (!to || to.id === from.id) return fail("NO SUCH CREWMEMBER");
+  if (!to || to.id === from.id) return fail("NO SUCH CREWMEMBER (USE A FIRST NAME OR NICKNAME FROM THE CREW LIST)");
   if (!text) return fail("NOTHING TO SEND");
   if (!ws.terminal || s.isLockedOut()) return fail("TERMINAL UNAVAILABLE");
   const dest = playable(to) && screenOf(s, to.id);
-  if (!dest) return fail("NO SIGNAL");
-  if (s.netOfSocket(dest) !== s.netOfSocket(ws)) return fail("NO ROUTE");
+  if (!dest) return fail("NO SIGNAL (THEY ARE NOT AT A TERMINAL ON THIS SYSTEM)");
+  if (s.netOfSocket(dest) !== s.netOfSocket(ws)) return fail("NO ROUTE (THEY ARE AT A TERMINAL ON ANOTHER SYSTEM)");
   const holds = (s.state.msgHolds ||= {});
   const hold = holds[from.id];
   delete holds[from.id];
