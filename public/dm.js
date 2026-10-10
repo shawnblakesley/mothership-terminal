@@ -623,8 +623,9 @@
   }
 
   const CREW_CLASSES = ["Teamster", "Android", "Scientist", "Marine"];
-  let crewDraft = null, crewTimer = null, crewSentAt = 0;
-  const sendCrewNow = () => { crewSentAt = 0; send({ t: "crew", crew: crewDraft }); };
+  let crewDraft = null, crewBase = null, crewTimer = null, crewSentAt = 0;
+  const postCrew = () => { send({ t: "crew", crew: crewDraft, base: crewBase }); crewBase = structuredClone(crewDraft); };
+  const sendCrewNow = () => { crewSentAt = 0; postCrew(); };
 
   function renderCrew(fromDraft = false) {
     const panel = $("crew");
@@ -634,6 +635,7 @@
       if ((crewDraft && editing) || panel.dataset.json === json) return;
       panel.dataset.json = json;
       crewDraft = structuredClone(S.config.crew);
+      crewBase = structuredClone(S.config.crew);
     }
     const num = (k, v, label) => `<label>${label}<input type="number" data-c="${k}" value="${v}" min="0" max="99"></label>`;
     const txt = (k, v, label, rows = 0) => rows
@@ -1109,7 +1111,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     crewTimer = setTimeout(() => {
       crewTimer = null;
       crewSentAt = Date.now();
-      send({ t: "crew", crew: crewDraft });
+      postCrew();
       setTimeout(() => S && renderCrew(), 1600);
     }, 500);
   }
@@ -1656,9 +1658,10 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
       const s = c?.stories.find((x) => x.id === (play.dataset.play || play.dataset.replay));
       if (!s) return;
       const left = c.stories.find((x) => x.id === S.campaign.current);
-      const text = `The agent builds it around its written arc (a minute or two, on the session's model and key). It replaces the story being played and clears the log; the crew carry over, and players pick their crew files again.${left && left !== s ? ` ${left.title} hasn't been finished: finish it first to keep how it ended.` : ""}`;
-      if (await sure(`Play ${s.title}?`, text, "Play story", "primary")) {
-        send({ t: "campaignPlay", story: s.id });
+      const lost = left && left !== s;
+      const text = `The agent builds it around its written arc (a minute or two, on the session's model and key). It replaces the story being played and clears the log; the crew carry over, and players pick their crew files again.${lost ? ` ${left.title} has not been finished. Playing this abandons it: no fee, no faction change, and it does not count as finished. Cancel and use Finish story to keep how it ended.` : ""}`;
+      if (await sure(lost ? `Abandon ${left.title} and play ${s.title}?` : `Play ${s.title}?`, text, lost ? "Abandon and play" : "Play story", lost ? "danger" : "primary")) {
+        send({ t: "campaignPlay", story: s.id, ...(lost ? { abandon: true } : {}) });
         cmpStarting = s.id;
         campaignKey = "";
         renderBuildChip();
@@ -2533,9 +2536,9 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   if (micUnavailable) $("micBtn").title = micUnavailable;
   $("micBtn").onclick = () => (discordReady() ? (S.discord.listening ? send({ t: "discordStop" }) : copyDiscordCommand()) : micUnavailable ? toast(micUnavailable, "error") : setListening(!listening));
 
-  $("log").addEventListener("click", (e) => {
+  $("log").addEventListener("click", async (e) => {
     const id = e.target.closest("[data-del]")?.dataset.del;
-    if (id) send({ t: "deleteEntry", id: Number(id) });
+    if (id && await sure("Delete this line?", "It leaves the log and the agent's memory, and cannot be brought back.", "Delete line")) send({ t: "deleteEntry", id: Number(id) });
     if (e.target.closest("[data-jump]")) jumpToNewChars();
   });
   function jumpToNewChars() {

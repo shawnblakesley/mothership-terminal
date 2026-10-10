@@ -67,7 +67,7 @@ export const DEFAULT_CREW = [
     role: "Rigger and welder",
     crime: "Hijacked a Hollis-Vane ore hauler. 11 years' contract labour.",
     backstory: "A third-generation belt rigger who knows ships by their noises. When the company repossessed her brother's habitat module with his kids inside, she took a hauler and towed it out of the repo yard. She got them out; the company got her. She is quietly furious, good with her hands, and the closest thing this crew has to a foreman.",
-    stats: { strength: 42, speed: 31, intellect: 29, combat: 30 },
+    stats: { strength: 42, speed: 32, intellect: 32, combat: 32 },
     saves: { sanity: 26, fear: 34, body: 33 },
     health: { current: 15, max: 15 },
     wounds: { current: 0, max: 2 },
@@ -86,12 +86,12 @@ export const DEFAULT_CREW = [
     role: "Chemist and systems tech",
     crime: "Cooked combat stims for a mine-gang. 6 years.",
     backstory: "Once a promising pharmaceutical chemist, until his research grant ran out and a mining crew's foreman offered him ten times the pay. Twitchy, brilliant, talks to himself when he works. He has been clean for two years and counts every day of it under his breath.",
-    stats: { strength: 24, speed: 33, intellect: 46, combat: 22 },
-    saves: { sanity: 38, fear: 24, body: 25 },
+    stats: { strength: 27, speed: 33, intellect: 46, combat: 27 },
+    saves: { sanity: 42, fear: 24, body: 25 },
     health: { current: 11, max: 11 },
     wounds: { current: 0, max: 2 },
     stress: 2,
-    skills: ["Chemistry", "Computers", "Pharmacology", "Hacking"],
+    skills: ["Chemistry", "Computers", "Hacking", "Artificial Intelligence"],
     loadout: "Standard crew attire, med scanner, field chem kit, hand terminal, stimpak (1).",
     trinket: "Two-year sobriety chip, worn smooth.",
     patch: "\"I ♥ CARBON\"",
@@ -105,12 +105,12 @@ export const DEFAULT_CREW = [
     role: "Utility android",
     crime: "\"Malfunction\": refused a shutdown order and walked off a job site. Leased to the penal labour program instead of being scrapped.",
     backstory: "A company utility android built for hull work. When its supervisor ordered it to seal a section with two workers still inside, it opened the door instead and walked off the job. Its memory was partially wiped, but not entirely: it remembers faces it can't place. Calm, literal, unsettlingly polite. Humans tend to forget it is in the room.",
-    stats: { strength: 36, speed: 34, intellect: 41, combat: 25 },
-    saves: { sanity: 20, fear: 60, body: 30 },
+    stats: { strength: 36, speed: 34, intellect: 47, combat: 25 },
+    saves: { sanity: 20, fear: 72, body: 30 },
     health: { current: 14, max: 14 },
     wounds: { current: 0, max: 3 },
     stress: 2,
-    skills: ["Computers", "Mechanical Repair", "Linguistics", "Mathematics"],
+    skills: ["Computers", "Linguistics", "Mathematics", "Industrial Equipment", "Jury-Rigging"],
     loadout: "Integrated diagnostic port, cutting torch, 30 m cable, company ID tag (scratched off).",
     trinket: "A child's plastic star it can't remember receiving.",
     patch: "\"OBEY\" (with the O scratched out)",
@@ -124,12 +124,12 @@ export const DEFAULT_CREW = [
     role: "Ex-colonial marine, hauler",
     crime: "Struck a commanding officer during an evacuation. Dishonourable discharge, 8 years.",
     backstory: "Served nine years with the Colonial Marines. On his last tour his lieutenant ordered the evac shuttle to leave without the civilians still boarding; Dax knocked him out and held the ramp. The tribunal agreed the order was wrong and convicted him anyway. Steady, protective, and the only one of them who has seen something truly bad before.",
-    stats: { strength: 38, speed: 30, intellect: 26, combat: 44 },
-    saves: { sanity: 27, fear: 30, body: 36 },
+    stats: { strength: 38, speed: 30, intellect: 27, combat: 44 },
+    saves: { sanity: 27, fear: 32, body: 36 },
     health: { current: 17, max: 17 },
-    wounds: { current: 0, max: 2 },
+    wounds: { current: 0, max: 3 },
     stress: 2,
-    skills: ["Military Training", "Firearms", "Athletics", "Hand-to-Hand Combat"],
+    skills: ["Military Training", "Athletics", "Firearms"],
     loadout: "Work fatigues, heavy crowbar, rigging gun (nail driver), first aid kit. No firearm: convicts aren't issued them.",
     trinket: "His old dog tags, one of them someone else's.",
     patch: "\"SEMPER FI\" (faded)",
@@ -147,6 +147,42 @@ function creditsOf(c) {
   const note = str(c.notes, 1000), found = NOTE_CREDITS.exec(note);
   const have = Number.isFinite(Number(c.credits)) && c.credits !== "" && c.credits !== null;
   return { credits: have ? int(c.credits, 0, 999999999, 0) : found ? int(found[1].replace(/,/g, ""), 0, 999999999, 0) : 0, notes: (found ? note.replace(NOTE_CREDITS, "") : note).trim() };
+}
+
+const LIVE_ONLY = new Set(["cond", "endedIn", "finalWords", "epitaph"]);
+const plain = (v) => v && typeof v === "object" && !Array.isArray(v);
+const same = (a, b) => (plain(a) && plain(b) ? [...new Set([...Object.keys(a), ...Object.keys(b)])].every((k) => same(a[k], b[k])) : JSON.stringify(a) === JSON.stringify(b));
+
+// Applies an editor's changes (draft against the base it started from) onto the live crew field by field.
+// A field the editor changed is skipped when the live value moved on since the base; those come back in stale.
+export function patchCrew(live, base, draft) {
+  const stale = [];
+  const merge = (l, b, d, who, path) => {
+    if (plain(l) && plain(b) && plain(d)) {
+      const out = { ...l };
+      for (const k of new Set([...Object.keys(b), ...Object.keys(d)])) {
+        if (!path && LIVE_ONLY.has(k)) continue;
+        const v = merge(l[k], b[k], d[k], who, `${path}${path ? "." : ""}${k}`);
+        if (v === undefined) delete out[k]; else out[k] = v;
+      }
+      return out;
+    }
+    if (same(b, d) || same(l, d)) return l;
+    if (!same(l, b)) { stale.push(`${who} ${path}`); return l; }
+    return d;
+  };
+  const drafts = new Map((Array.isArray(draft) ? draft : []).filter((c) => c && typeof c === "object").map((c) => [c.id, c]));
+  const bases = new Map(base.filter((c) => c && typeof c === "object").map((c) => [c.id, c]));
+  const out = [];
+  for (const l of live) {
+    const b = bases.get(l.id), d = drafts.get(l.id);
+    if (!b) out.push(l);
+    else if (!d) { if (same(l, b)) continue; stale.push(`${l.name} removal`); out.push(l); }
+    else out.push(merge(l, b, d, l.name, ""));
+  }
+  const have = new Set(live.map((c) => c.id));
+  for (const [id, d] of drafts) if (!bases.has(id) && !have.has(id)) out.push(d);
+  return { crew: sanitizeCrew(out), stale };
 }
 
 export function sanitizeCrew(list) {

@@ -6,7 +6,7 @@ import { restAndRecover, downtimeLines } from "../downtime-lite.js";
 import { sanitizeCrew } from "../crew.js";
 
 const BANNED = ["acts", "adversary", "secrets", "affinity", "cast", "description", "persona", "factions", "faction", "crew", "notes", "outcome", "event", "horror", "tier"];
-const ALLOWED = ["port", "rig", "fuel", "capacity", "low", "canRefuel", "jobs", "lanes", "id", "title", "hook", "job", "where", "lane", "days", "cost", "short", "to", "dest", "money", "fuelEach", "stuck"];
+const ALLOWED = ["port", "rig", "fuel", "capacity", "low", "canRefuel", "jobs", "lanes", "id", "title", "hook", "job", "where", "lane", "days", "cost", "short", "to", "dest", "money", "fuelEach", "stuck", "debt", "dispatch", "units", "refuelUnits", "refuelCost"];
 const keys = (v, out = new Set()) => {
   if (Array.isArray(v)) v.forEach((x) => keys(x, out));
   else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { out.add(k); keys(x, out); }

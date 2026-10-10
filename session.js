@@ -7,20 +7,20 @@ import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, 
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
-import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings, renameSkill } from "./crew.js";
+import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, patchCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings, renameSkill } from "./crew.js";
 import { combatCheck, damageAdversary, rollDeathSave, deathSaveText, sanitizeStats, statsLine } from "./combat.js";
 import { rollDice, rollWithAdv, cancelAdv } from "./dice.js";
 import { woundText } from "./wounds.js";
 import { weaponsOf, weaponByName, weaponDamage, rangeOf, checkAdvantage, RANGE_LABELS } from "./weapons.js";
-import { HAZARDS, hazardTag, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, oxygenNeed, settle, hazardDamage, hazardWound, normalizeHazards, oxygenStart, oxygenDay, oxygenState, breathing, protection, penalties, conditionText, puncture, patch, airRestored, takePills, wake, stimpak, rest, useStimpak } from "./hazards.js";
+import { HAZARDS, hazardTag, WOUND_COLUMN, roundTick, hourTick, eventNeeds, strenuousNeed, oxygenNeed, settle, hazardDamage, hazardWound, normalizeHazards, oxygenStart, oxygenDay, oxygenState, breathing, protection, ROUND_SECONDS, penalties, conditionText, puncture, patch, airRestored, takePills, wake, stimpak, rest, useStimpak } from "./hazards.js";
 import { loaded, magazines, spendShot, reload, TANK, STORES } from "./resources.js";
 import { chatRequest, draftRequest, normalizeDraft, applyDraft, pitchesRequest, normalizePitches, pitchBuilder } from "./builder.js";
 import { handleChargen, decideCharacter, setCrewState } from "./chargen.js";
 import { restAndRecover, downtimeLines } from "./downtime-lite.js";
 import { snapshotStory, coldOpenRequest, normalizeColdOpen, introRecap } from "./coldopen.js";
-import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, crewIntoCampaign, crewFromCampaign, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, travelTo, resupply, resupplyView, payUpfront, settleStory, stripFactionBrief } from "./campaign.js";
+import { jobsAt, refuel, callDispatch, campaignById, newProgress, sanitizeProgress, buildRequest as campaignRequest, composeDraft, carryInto, finishInto, crewIntoCampaign, crewFromCampaign, placeOf, sectorPayload, shiftStanding, toggleFavour, standingLabel, isTransit, laneBetween, travelTo, resupply, resupplyView, payUpfront, settleStory, stripFactionBrief } from "./campaign.js";
 import { transfer, ledgerLine, exact, DEBT_PAYMENT, DEBT_EVERY } from "./money.js";
-import { downtimeReady, planRoll, settleRoll, mirror, passDays, treat, treatmentList, shoreText, applyConversion } from "./downtime.js";
+import { downtimeReady, planRoll, settleRoll, markRested, mirror, passDays, treat, treatmentList, shoreText, applyConversion } from "./downtime.js";
 import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOPSIS_KINDS } from "./synopsis.js";
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { sendCrewMessage, releaseMessage, discardMessage, holdNext, alterMessage, forgeMessage, applyCrewMessage, restoreAltered, resumeMessages, rememberTerminal, msgView } from "./crewmsg.js";
@@ -538,6 +538,11 @@ export class Session {
     this.freeCalls = { day: "", count: 0 };
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
+    for (const e of this.state.log) delete e.queued;
+    const tail = this.state.log.findLast((e) => e.kind !== "note" && e.kind !== "msg");
+    if (tail?.kind === "player" && !this.state.log.some((e) => e.orphan && e.id > tail.id)) {
+      this.state.log.push({ id: this.nextId++, kind: "note", text: `The server restarted before the agent answered ${tail.by || "a player"}'s last line ("${tail.text.slice(0, 60)}${tail.text.length > 60 ? "..." : ""}"). Press Generate to answer it.`, ts: Date.now(), orphan: true });
+    }
     this.lastNet = this.state.log.findLast((e) => e.net !== "*")?.net || "";
     this.clockTimers = new Map();
     this.talkers = new Map();
@@ -1142,6 +1147,7 @@ export class Session {
     this.syncCampaignCrew();
     const up = endSession(s.config.crew);
     if (s.campaign) { endSession(s.campaign.crew); s.campaign.sessions = (s.campaign.sessions || 0) + 1; }
+    s.panicPlus = {};
     this.addLog("note", `Game night ended. High Score +1: ${up.map((c) => `${c.name} (${c.highScore})`).join(", ") || "nobody is alive"}. (PSG 18.3: it counts sessions survived and changes no roll.)`);
     this.crewChanged();
   }
@@ -1702,9 +1708,13 @@ export class Session {
         this.moneySync();
         break;
       }
-      case "campaignPlay":
-        if (s.campaign && !this.campaignBusy) this.campaignPlay(String(msg.story || ""));
+      case "campaignPlay": {
+        const left = s.campaign?.current;
+        if (!s.campaign || this.campaignBusy) return;
+        if (left && left !== String(msg.story) && !msg.abandon) this.send("dm", { t: "toast", level: "error", text: "A story is still being played. Finish it first, or confirm abandoning it." });
+        else this.campaignPlay(String(msg.story || ""));
         return;
+      }
       case "campaignRecap":
         if (!s.campaign?.recap) this.send("dm", { t: "toast", level: "error", text: "There is no cold open to play yet: it's written when a campaign story is built." });
         else this.playRecap(s.campaign.recap);
@@ -1720,6 +1730,7 @@ export class Session {
           for (const e of paid.entries) this.addLog("note", ledgerLine(s.campaign, e));
           if (paid.handout) this.giveHandout(paid.handout);
           this.moneySync();
+          this.transitDays(c, story);
           this.addLog("note", `Campaign story finished: ${story.title}.${s.campaign.done.at(-1).outcome ? ` ${s.campaign.done.at(-1).outcome}` : ""}`);
           for (const ch of changes) this.addLog("note", `Faction standing (house rule): ${ch.name} ${standingLabel(ch.from)} to ${standingLabel(ch.to)}${ch.why ? ` (${ch.why})` : ""}.`);
         }
@@ -1821,6 +1832,14 @@ export class Session {
         break;
       }
       case "crew": {
+        if (Array.isArray(msg.base)) {
+          const r = patchCrew(s.config.crew, msg.base, msg.crew);
+          s.config.crew = r.crew;
+          if (s.campaign) for (const pc of s.config.crew) pc.credits = s.campaign.crew.find((x) => x.id === pc.id)?.credits ?? pc.credits;
+          if (r.stale.length) this.send("dm", { t: "toast", level: "error", text: `The crew changed since this tab loaded, so ${r.stale.length === 1 ? "one edit was" : `${r.stale.length} edits were`} not applied (${[...new Set(r.stale)].slice(0, 4).join(", ")}). Showing the current values.` });
+          this.crewChanged();
+          break;
+        }
         const was = new Map(s.config.crew.map((c) => [c.id, c]));
         s.config.crew = sanitizeCrew(msg.crew);
         for (const pc of s.config.crew) if (was.has(pc.id)) Object.assign(pc, { cond: was.get(pc.id).cond, endedIn: was.get(pc.id).endedIn, finalWords: was.get(pc.id).finalWords, epitaph: was.get(pc.id).epitaph });
@@ -2196,7 +2215,10 @@ export class Session {
     if (this.state.campaign !== p) throw new Error("the campaign was left while the story was being built");
     let carried;
     this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config, station) => { carried = carryInto(config, c, story, p, station); }, true);
+    const left = p.current && p.current !== story.id && c.stories.find((x) => x.id === p.current);
+    if (left) p.abandoned = [...(p.abandoned || []), { id: left.id, at: Date.now() }].slice(-50);
     p.current = story.id;
+    if (left) this.addLog("note", `${left.title} was abandoned unfinished: no fee, no faction change, and it does not count as finished (house rule).`);
     const up = payUpfront(p, c, story);
     p.offered = (p.offered || []).filter((x) => x !== story.id);
     this.sectorVotes.clear();
@@ -2222,7 +2244,7 @@ export class Session {
     Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] });
     patch?.(s.config, station);
     s.config.roomDocs = sanitizeRoomDocs(config.roomDocs);
-    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, synopses: {}, shipFight: null });
+    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], synopses: {}, shipFight: null });
     this.endAllEffects();
     this.stopSounds();
     this.hazardUnits = [];
@@ -2589,6 +2611,7 @@ export class Session {
     if (m.armorIgnored) lines.push(`ITS ARMOR ABSORBS IT`);
     if (m.armorDestroyed) lines.push(`ITS ARMOR IS DESTROYED${w.aa ? " (ANTI-ARMOR)" : ""}`);
     lines.push(m.dead ? `${who} IS DEAD OR DESTROYED` : m.woundsLost ? `${who} LOSES ${m.woundsLost === 1 ? "A WOUND" : `${m.woundsLost} WOUNDS`}` : `${m.dealt} THROUGH`);
+    if (w.effect) lines.push(`${w.name.toUpperCase()} (PSG): ${w.effect.toUpperCase()}`);
     if (w.shots) lines.push(`${w.name.toUpperCase()}: ${loaded(pc, w)} OF ${w.shots} SHOTS LEFT${loaded(pc, w) ? "" : ", RELOAD NEEDED"}`);
     this.addLog("roll", lines.join("\n"), { combat: true, by: pc.name });
     this.addLog("note", `${adv.name}: ${statsLine(st)} (was ${was} Wounds).`);
@@ -2730,7 +2753,8 @@ export class Session {
       for (const e of res.events) note(pc, e);
       for (const t of res.skipped || []) note(pc, `${HAZARDS[t].name} is a per-round hazard and wasn't run for the hour: use Next round, or rule it`);
       for (const d of res.damage) this.hazardDamage(pc, d.n, d.type, d.why, d.armor ? { direct: false } : {});
-      if (!hour && deathSaveCountdown(pc)) this.callDeathSave(pc, "a Lethal Injury was not dealt with");
+      if (hour) this.hourOfRounds(pc);
+      else if (deathSaveCountdown(pc)) this.callDeathSave(pc, "a Lethal Injury was not dealt with");
       this.hazardNeeds.push(...res.needs);
     }
     for (const [room, h] of Object.entries(hz)) {
@@ -2740,6 +2764,17 @@ export class Session {
       } else h.rounds++;
     }
     if (hour) this.sendHeader();
+  }
+
+  // An hour is 360 rounds: Bleeding and burning run until stopped (RULES.md Bleeding, Wounds Table), and a Lethal Injury's Death Save (1d10 rounds) falls due.
+  hourOfRounds(pc) {
+    const c = pc.cond;
+    if (c.bleeding > 0 || c.fire) this.addLog("note", `${pc.name}: ${[c.bleeding > 0 && `Bleeding ${c.bleeding}`, c.fire && "on fire"].filter(Boolean).join(" and ")} for a whole hour, round by round.`);
+    for (let r = 0; r < 3600 / ROUND_SECONDS && !isDead(pc) && this.state.deathSaves?.[pc.id] === undefined && (c.bleeding > 0 || c.fire); r++) {
+      if (c.bleeding > 0) this.hazardDamage(pc, c.bleeding, "bleeding", `Bleeding ${c.bleeding}`);
+      if (c.fire && !isDead(pc) && this.state.deathSaves?.[pc.id] === undefined) this.hazardDamage(pc, rollDice(`${c.burn || 2}d10`).total, "fire", "on fire", { direct: false });
+    }
+    if (pc.deathSaveIn > 0 && !isDead(pc)) { delete pc.deathSaveIn; this.callDeathSave(pc, "a Lethal Injury was not dealt with"); }
   }
 
   oxygenDay(room, h) {
@@ -2944,7 +2979,7 @@ export class Session {
   }
 
   undoSnapshot() {
-    return { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll), clocks: structuredClone(this.state.clocks || []), handouts: [], found: [], moved: [], altered: [], ship: shipSnapshot(this) };
+    return { entries: [], effects: [], station: structuredClone(this.state.station), crew: structuredClone(this.state.config.crew), cast: structuredClone(this.state.config.cast), revealed: this.state.config.voices.filter(isAdversary).map((v) => [v.id, v.adversary.revealed]), outcome: this.state.outcomeCheck, map: this.state.config.map, rooms: structuredClone(this.state.config.rooms), deathSaves: structuredClone(this.state.deathSaves || {}), adversaries: this.state.config.voices.filter((v) => v.adversary?.stats).map((v) => [v.id, structuredClone(v.adversary.stats)]), roll: this.state.roll && structuredClone(this.state.roll), hazardUnits: structuredClone(this.hazardUnits), hazardNeeds: structuredClone(this.hazardNeeds), offers: structuredClone(this.state.offers || []), clocks: structuredClone(this.state.clocks || []), handouts: [], found: [], moved: [], altered: [], ship: shipSnapshot(this) };
   }
 
   deliver(reply, source) {
@@ -2978,6 +3013,10 @@ export class Session {
     s.deathSaves = undo.deathSaves;
     for (const [id, stats] of undo.adversaries || []) { const v = s.config.voices.find((x) => x.id === id); if (v?.adversary) v.adversary.stats = stats; }
     if (s.roll && undo.roll && s.roll.id === undo.roll.id) s.roll.results = undo.roll.results;
+    else if ((s.roll?.id ?? null) !== (undo.roll?.id ?? null)) { s.roll = undo.roll || null; this.toPlayers({ t: "roll", roll: s.roll ? this.publicRoll() : null }); }
+    this.hazardUnits = undo.hazardUnits || [];
+    this.hazardNeeds = undo.hazardNeeds || [];
+    s.offers = undo.offers || [];
     s.outcomeCheck = undo.outcome;
     this.undoDelivered(undo);
     restoreShip(this, undo.ship);
@@ -3207,7 +3246,7 @@ export class Session {
 
   soloView() {
     const x = this.state.solo;
-    return x ? { phase: x.phase, pitches: x.pitches, busy: x.busy || "", error: x.error || "", title: x.title || "", ending: x.ending || "", recap: x.recap || null, after: x.after || null, ...(x.campaign ? { jobs: this.soloJobs() } : {}) } : null;
+    return x ? { phase: x.phase, pitches: x.pitches, busy: x.busy || "", error: x.error || "", notice: x.notice || "", title: x.title || "", ending: x.ending || "", recap: x.recap || null, after: x.after || null, ...(x.campaign ? { jobs: this.soloJobs() } : {}) } : null;
   }
   soloChanged() {
     this.toPlayers({ t: "solo", solo: this.soloView() });
@@ -3252,7 +3291,7 @@ export class Session {
       this.soloChanged();
       return this.syncDm();
     }
-    Object.assign(x, { phase: "building", busy: "build" });
+    Object.assign(x, { phase: "building", busy: "build", notice: "" });
     this.soloChanged();
     try {
       const build = async () => {
@@ -3307,7 +3346,7 @@ export class Session {
       x.error = "NOT ENOUGH FUEL for that lane. Refuel first, or take another job.";
       return this.soloChanged();
     }
-    Object.assign(x, { phase: "building", busy: "build", title: story.title, error: "", opened: false, after: null });
+    Object.assign(x, { phase: "building", busy: "build", title: story.title, error: "", notice: "", opened: false, after: null });
     this.soloChanged();
     try {
       await this.buildCampaignStory(c, story, p);
@@ -3324,6 +3363,14 @@ export class Session {
   }
 
   // The story is over: record it in the campaign (the recap's verdict is the outcome; only the faction stakes the AI judged clearly earned count), then the crew's downtime.
+  // A lane story is the trip itself: finishing it passes the lane's days, as campaignTravel does (once: finishInto only runs for the current story).
+  transitDays(c, story) {
+    const lane = isTransit(story) && laneBetween(c, story.from, story.to);
+    if (!lane) return;
+    const p = this.state.campaign;
+    for (const l of passDays(p, [this.state.config.crew, p.crew], lane.days).concat(`${lane.days} days pass on ${lane.name} (day ${p.downtime.day}).`)) this.addLog("note", l);
+  }
+
   soloFinish() {
     const x = this.state.solo, s = this.state, p = s.campaign, c = campaignById(p?.id);
     const story = c?.stories.find((t) => t.id === p.current);
@@ -3341,10 +3388,24 @@ export class Session {
     for (const e of paid.entries) this.addLog("note", ledgerLine(p, e));
     if (paid.handout) this.giveHandout(paid.handout);
     this.moneySync();
-    const rest = downtimeLines(restAndRecover(p.crew));
+    this.transitDays(c, story);
+    const results = restAndRecover(p.crew);
+    for (const r of results) { if (r.recovery) markRested(p, r.id, "recovery"); if (r.rest) markRested(p, r.id, "rest"); }
+    const rest = downtimeLines(results);
     crewFromCampaign(p, s.config.crew);
     this.addLog("note", `Downtime between stories (short-term recovery and a Rest Save for each, rolled for them):\n${rest.join("\n")}`);
+    for (const r of results) for (const why of r.panics) this.soloPanic(this.crewById(r.id), why);
     x.after = { factions, rest, pay: paid.lines };
+  }
+
+  // A Critical Failure in the downtime rolls needs a Panic Check (PSG 14): nobody is at a roll prompt on the ending screen, so the dice roll it for them.
+  soloPanic(pc, why) {
+    if (!pc || !playable(pc)) return;
+    const base = { check: PANIC, advantage: "none" }, req = { ...base, advantage: effectiveAdvantage(base, pc, this.advOpts(pc, base, false)) };
+    const result = resolve(req, pc.stress, diceFor(req));
+    const fx = result.success ? null : panicEntry(result.used);
+    this.addLog("roll", `${pc.name} (downtime, ${why}): ${resultText(req, result)}${fx ? `: ${fx.name.toUpperCase()}` : ""}`, { outcome: result.outcome, by: pc.name, ...(fx ? { panicEffect: `${fx.name}: ${fx.effect}` } : {}) });
+    if (fx) this.panicEffects(pc, fx);
   }
 
   // undo: the agent reply's Retcon entry when the agent ended the story, so its log notes, handouts and campaign changes are taken back with it.
@@ -3453,7 +3514,7 @@ export class Session {
         if (!c || x.phase !== "pick" || x.busy) break;
         const r = msg.t === "pilotTravel" ? travelTo(p, c, String(msg.to || "")) : msg.t === "pilotDispatch" ? callDispatch(p, c) : refuel(p, c);
         if (!r) break;
-        if (!r.ok) x.error = r.error;
+        if (!r.ok) Object.assign(x, { error: r.error, notice: "" });
         else {
           x.error = "";
           const at = (id) => c.locations.find((l) => l.id === id).name;
@@ -3468,6 +3529,11 @@ export class Session {
             : `${c.ship.name} takes on ${r.added} units of fuel at ${r.at} (house rule: 500cr a unit, times the port's multiplier). Total ${exact(r.total)}.`);
           for (const e of r.entries || []) this.addLog("note", ledgerLine(p, e));
           if (r.entries) this.moneySync();
+          x.notice = r.lane
+            ? `Travelled to ${at(p.at)}: ${r.lane.days} days, ${r.cost} fuel. ${r.left} left.`
+            : msg.t === "pilotDispatch"
+            ? `Dispatch advanced ${r.units} unit${r.units === 1 ? "" : "s"} of fuel: ${exact(r.cost)} added to the note. The note is ${exact(p.debt)}. Fuel ${p.resources.fuel}.`
+            : `Refuelled ${r.added} unit${r.added === 1 ? "" : "s"} for ${exact(r.total)}. Rig account ${exact(p.money)}. Fuel ${p.resources.fuel}.`;
         }
         this.soloChanged();
         this.syncDm();
@@ -3487,7 +3553,7 @@ export class Session {
         break;
       case "pilotNewStory":
         this.dropReply();
-        Object.assign(x, { phase: "pick", busy: "", error: "", opened: false, ending: "", recap: null });
+        Object.assign(x, { phase: "pick", busy: "", error: "", notice: "", opened: false, ending: "", recap: null });
         this.soloChanged();
         if (x.pitches.length < 3 && !x.campaign) this.soloPitches();
         break;
@@ -3511,7 +3577,7 @@ export class Session {
     const s = this.state;
     if (s.storyStart || s.solo && s.solo.phase !== "play") return;
     const config = Object.fromEntries(Object.entries(s.config).filter(([k]) => !SESSION_SETTINGS.has(k)));
-    s.storyStart = structuredClone({ config, station: s.station, synopses: { prebrief: s.synopses?.prebrief }, at: Date.now() });
+    s.storyStart = structuredClone({ config, station: s.station, synopses: { prebrief: s.synopses?.prebrief }, panicPlus: { ...s.panicPlus }, at: Date.now() });
     this.touch();
   }
 
@@ -3590,7 +3656,7 @@ export class Session {
     s.station.access_level = DEFAULT_STATION.access_level;
     delete s.station.hazards;
     if (s.campaign) for (const pc of s.config.crew) pc.credits = s.campaign.crew.find((x) => x.id === pc.id)?.credits ?? pc.credits;
-    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, storyStart: null, deathSaves: {}, shipFight: null });
+    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: snap ? { ...(snap.panicPlus || {}) } : s.panicPlus, storyStart: null, deathSaves: {}, shipFight: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);
     this.toPlayers({ t: "roomPlan", rows: null });

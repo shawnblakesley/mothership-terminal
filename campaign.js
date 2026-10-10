@@ -73,6 +73,7 @@ export function sanitizeProgress(p) {
     sessions: Math.max(0, Math.min(9999, Math.round(Number(p.sessions) || 0))),
     offered: [...new Set(Array.isArray(p.offered) ? p.offered : [])].filter(has).slice(0, 9),
     done: (Array.isArray(p.done) ? p.done : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, outcome: String(d.outcome || "").slice(0, 1500), at: Number(d.at) || 0, ...(sanitizeSnapshot(d.recap) ? { recap: sanitizeSnapshot(d.recap) } : {}) })).slice(-100),
+    abandoned: (Array.isArray(p.abandoned) ? p.abandoned : []).filter((d) => has(d?.id)).map((d) => ({ id: d.id, at: Number(d.at) || 0 })).slice(-50),
     crew,
     recap: sanitizeColdOpen(p.recap),
     cast,
@@ -439,8 +440,10 @@ export function jobsAt(c, p) {
     return { to, dest: loc(c, to).name, lane: l.name, days: l.days, cost, short: p.resources.fuel < cost };
   });
   const cheapest = lanes.length ? Math.min(...lanes.map((l) => l.cost)) : 0;
-  const v = resupplyView(c, p), trade = v.trade;
-  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, capacity: TANK, money: p.money, fuelEach: trade ? Math.round(FUEL_PRICE * v.fuelFactor) : 0, low: p.resources.fuel < cheapest, stuck: isStuck(c, p), canRefuel: trade && p.resources.fuel < TANK, jobs, lanes };
+  const v = resupplyView(c, p), trade = v.trade, each = trade ? Math.round(FUEL_PRICE * v.fuelFactor) : 0, room = TANK - p.resources.fuel;
+  const refuelUnits = trade && room > 0 ? Math.max(0, Math.min(room, each ? Math.floor(p.money / each) : room)) : 0;
+  const stuck = isStuck(c, p), need = dispatchNeed(c, p);
+  return { port: loc(c, p.at)?.name || "", rig: c.ship.name, fuel: p.resources.fuel, capacity: TANK, money: p.money, debt: p.debt, fuelEach: each, low: p.resources.fuel < cheapest, stuck, dispatch: stuck ? { units: need, cost: need * fuelEach(c, p) } : null, canRefuel: trade && room > 0, refuelUnits, refuelCost: refuelUnits * each, jobs, lanes };
 }
 
 // Stuck (no Warden): the rig can't afford the cheapest lane from here and its account can't buy the fuel for it.
