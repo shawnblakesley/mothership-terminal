@@ -1142,6 +1142,7 @@ export class Session {
     this.syncCampaignCrew();
     const up = endSession(s.config.crew);
     if (s.campaign) { endSession(s.campaign.crew); s.campaign.sessions = (s.campaign.sessions || 0) + 1; }
+    s.panicPlus = {};
     this.addLog("note", `Game night ended. High Score +1: ${up.map((c) => `${c.name} (${c.highScore})`).join(", ") || "nobody is alive"}. (PSG 18.3: it counts sessions survived and changes no roll.)`);
     this.crewChanged();
   }
@@ -2223,7 +2224,7 @@ export class Session {
     Object.assign(s.config, config, { rooms: {}, startDocs: config.startDocs || [] });
     patch?.(s.config, station);
     s.config.roomDocs = sanitizeRoomDocs(config.roomDocs);
-    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, synopses: {}, shipFight: null });
+    Object.assign(s, { station, storyStart: null, log: [], handouts: structuredClone(s.config.startDocs), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], synopses: {}, shipFight: null });
     this.endAllEffects();
     this.stopSounds();
     this.hazardUnits = [];
@@ -2590,6 +2591,7 @@ export class Session {
     if (m.armorIgnored) lines.push(`ITS ARMOR ABSORBS IT`);
     if (m.armorDestroyed) lines.push(`ITS ARMOR IS DESTROYED${w.aa ? " (ANTI-ARMOR)" : ""}`);
     lines.push(m.dead ? `${who} IS DEAD OR DESTROYED` : m.woundsLost ? `${who} LOSES ${m.woundsLost === 1 ? "A WOUND" : `${m.woundsLost} WOUNDS`}` : `${m.dealt} THROUGH`);
+    if (w.effect) lines.push(`${w.name.toUpperCase()} (PSG): ${w.effect.toUpperCase()}`);
     if (w.shots) lines.push(`${w.name.toUpperCase()}: ${loaded(pc, w)} OF ${w.shots} SHOTS LEFT${loaded(pc, w) ? "" : ", RELOAD NEEDED"}`);
     this.addLog("roll", lines.join("\n"), { combat: true, by: pc.name });
     this.addLog("note", `${adv.name}: ${statsLine(st)} (was ${was} Wounds).`);
@@ -3539,7 +3541,7 @@ export class Session {
     const s = this.state;
     if (s.storyStart || s.solo && s.solo.phase !== "play") return;
     const config = Object.fromEntries(Object.entries(s.config).filter(([k]) => !SESSION_SETTINGS.has(k)));
-    s.storyStart = structuredClone({ config, station: s.station, synopses: { prebrief: s.synopses?.prebrief }, at: Date.now() });
+    s.storyStart = structuredClone({ config, station: s.station, synopses: { prebrief: s.synopses?.prebrief }, panicPlus: { ...s.panicPlus }, at: Date.now() });
     this.touch();
   }
 
@@ -3618,7 +3620,7 @@ export class Session {
     s.station.access_level = DEFAULT_STATION.access_level;
     delete s.station.hazards;
     if (s.campaign) for (const pc of s.config.crew) pc.credits = s.campaign.crew.find((x) => x.id === pc.id)?.credits ?? pc.credits;
-    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: {}, storyStart: null, deathSaves: {}, shipFight: null });
+    Object.assign(s, { log: [], introduced: [], handouts: structuredClone(s.config.startDocs || []), found: [], pending: null, whisper: "", roll: null, outcomeCheck: null, offers: [], panicPlus: snap ? { ...(snap.panicPlus || {}) } : s.panicPlus, storyStart: null, deathSaves: {}, shipFight: null });
     if (s.solo) Object.assign(s.solo, { phase: s.solo.phase === "ended" ? "play" : s.solo.phase, opened: false, ending: "", recap: null, busy: "", error: "" });
     this.setBusy(false);
     this.toPlayers({ t: "roomPlan", rows: null });

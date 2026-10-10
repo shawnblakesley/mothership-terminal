@@ -62,9 +62,7 @@ export function shoreCost(cls, rng = randInt) {
   const s = SHORE[cls];
   if (!s) return null;
   const r = rollDice(s.cost.dice, rng);
-  // A d100 that's multiplied reads 00 as 100, not nothing (as the dice note reads summed d10s 1-10).
-  const total = /d100$/.test(s.cost.dice) && r.total === 0 ? 100 : r.total;
-  return { dice: r.rolls, total: total * s.cost.unit };
+  return { dice: r.rolls, total: r.total * s.cost.unit };
 }
 export const shoreDays = (rng = randInt) => rollDice("2d10", rng);
 // The amount a success may convert, rolled per the table (X: 2d10 with [+]). `all` for class S.
@@ -150,7 +148,7 @@ function check(p, pc, id, choice) {
     const kind = choice === "intellect" ? "stats" : "saves";
     if (pc[kind][choice] >= base[kind][choice]) return { error: `${upper(choice)} is already at its original value.` };
   }
-  if (id === "psychosurgery" && choice === "minstress" && (pc.minStress ?? 2) === 2) return { error: "Minimum Stress is already 2." };
+  if (id === "psychosurgery" && choice === "minstress" && (pc.minStress ?? 2) <= 2) return { error: "Psychosurgery restores Minimum Stress to 2, and it is not above 2." };
   return { ok: true };
 }
 
@@ -282,10 +280,10 @@ export function planRoll(p, c, pc, kind, o = {}, rng = randInt) {
     if (!o.safe) return { ok: false, error: `Shore Leave needs a relatively safe port: tick that ${loc.name} is safe.` };
     if (p.downtime.pending[pc.id]) return { ok: false, error: `${pc.name} still has Save points to spread.` };
     const cost = shoreCost(cls, rng), have = p.crew.find((x) => x.id === pc.id)?.credits || 0;
-    if (cost.total > have) return { ok: false, error: `Shore Leave at ${loc.name} (class ${cls}) costs ${exact(cost.total)} (${cost.dice.join("+")} x ${exact(SHORE[cls].cost.unit)}); ${pc.name} has ${exact(have)}.` };
+    if (cost.total > have) return { ok: false, error: `Shore Leave at ${loc.name} (class ${cls}) costs ${exact(cost.total)} (${cost.dice.join("+")} x ${exact(SHORE[cls].cost.unit)}${cost.dice[0] === 0 && /d100$/.test(SHORE[cls].cost.dice) ? ", 00 reads as zero" : ""}); ${pc.name} has ${exact(have)}.` };
     const s = spend(p, pc.id, cost.total, `Shore Leave at ${loc.name} (class ${cls})`);
     const days = shoreDays(rng);
-    const lines = [`${pc.name} takes Shore Leave at ${loc.name} (class ${cls}, PSG 39): pays ${exact(cost.total)} (${shoreText(cls).cost}: ${cost.dice.join(", ")}), ${days.total} days (2d10: ${days.rolls.join("+")}).`];
+    const lines = [`${pc.name} takes Shore Leave at ${loc.name} (class ${cls}, PSG 39): pays ${exact(cost.total)} (${shoreText(cls).cost}: ${cost.dice.join(", ")}${cost.total === 0 ? "; a d100 of 00 reads as zero, so it is free" : ""}), ${days.total} days (2d10: ${days.rolls.join("+")}).`];
     return { ok: true, request: { pc: pc.id, check: "sanity", reason: `Shore Leave at ${loc.name} (class ${cls})` }, dt: { kind, cls, port: loc.name }, lines, entries: s.entries, days: days.total };
   }
   return { ok: false, error: "Unknown downtime step." };
