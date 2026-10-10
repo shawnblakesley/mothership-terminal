@@ -741,7 +741,7 @@ export class Session {
         else if (was !== e.text) update.push({ id: e.id, text: e.text });
         ws.sent.set(e.id, e.text);
       }
-      if (add.length || update.length) ws.send(JSON.stringify({ t: "wardenLog", add, update }));
+      if (add.length || update.length) ws.send(JSON.stringify({ t: "wardenLog", add: add.map(playerEntry), update }));
       const map = JSON.stringify(this.streamMap());
       if (map !== ws.mapSent) { ws.mapSent = map; ws.send(`{"t":"streamMap","map":${map}}`); }
     }
@@ -763,7 +763,7 @@ export class Session {
   playerView(ws) {
     const net = ws ? this.netOfSocket(ws) : "";
     const log = ws?.stream
-      ? this.state.log.filter((e) => !e.queued && !e.cut && e.kind !== "msg")
+      ? this.state.log.filter((e) => !e.queued && !e.cut && e.kind !== "msg").map(playerEntry)
       : this.state.log.flatMap((e) => e.kind === "msg" ? msgView(e, ws) || [] : !PRIVATE_KINDS.has(e.kind) && !e.hidden && !e.queued && !e.cut && (ws ? this.sees(ws, e) : shownOn(e.net, net)) ? [playerEntry(e)] : []);
     if (ws?.stream) {
       ws.sent = new Map(log.filter((e) => PRIVATE_KINDS.has(e.kind)).map((e) => [e.id, e.text]));
@@ -974,7 +974,7 @@ export class Session {
     this.delivering?.entries.push(entry.id);
     if (this.state.log.length > MAX_LOG) this.state.log.splice(0, this.state.log.length - MAX_LOG);
     if (SPOKEN_KINDS.has(kind)) this.pregenerate([entry]);
-    if (kind === "player") this.toNet(entry.net || "", { t: "line", entry });
+    if (kind === "player") this.toNet(entry.net || "", { t: "line", entry: playerEntry(entry) });
     else if (PRIVATE_KINDS.has(kind)) this.queueStreamSync();
     else if (kind !== "msg") {
       entry.queued = true;

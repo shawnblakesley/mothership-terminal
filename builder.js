@@ -1,5 +1,6 @@
 import { BUILTIN, PRESETS, SPEAKERS, defaultVoices, fromPreset, sanitizeVoices } from "./voices.js";
 import { sanitizeCast, addCast } from "./cast.js";
+import { sealStation } from "./redact.js";
 import { CLASSES, STATS, SAVES, sanitizeCrew, maxWoundsFor } from "./crew.js";
 import { sanitizeStats } from "./combat.js";
 import { WOUND_TYPES } from "./wounds.js";
@@ -35,7 +36,7 @@ FIELDS
 - lore: what the station's systems hold as public knowledge, as short labelled lines (STATION:, CREW COMPLEMENT:, DECKS:, KEY CREW:, RECENT EVENTS:, and why the players are here).
 - secrets: bullet lines ("- ...") the computer knows and guards by access level: what really happened, the threat, passwords, directives, who is infected or lying.
 - standingOrders: optional persistent steering for the AI during play (tone, slow reveals), or "".
-- station: the computer's live state as path/value pairs, e.g. access_level=GUEST, doors.med_bay=OPEN, lights.deck_2=FLICKERING, cameras.cargo_bay=OFFLINE, life_support.oxygen_pct=87, power.reactor=ONLINE, comms=JAMMED, quarantine=INACTIVE. access_level must be GUEST. Use room ids from the map in door/camera paths and deck_N for lights.
+- station: the computer's live state as path/value pairs, e.g. access_level=GUEST, doors.med_bay=OPEN, lights.deck_2=FLICKERING, cameras.cargo_bay=OFFLINE, life_support.oxygen_pct=87, power.reactor=ONLINE, comms=JAMMED, quarantine=INACTIVE. access_level must be GUEST. Use room ids from the map in door/camera paths and deck_N for lights. Visible values are only what a player could read off a panel (OPEN, LOCKED, ARMED); the players' map shows every value, so put codes, override keys, traps, armed triggers, timers and anything the Warden keeps back in their own pairs under a path starting "secret." (e.g. secret.vault.code, secret.vents.trigger) and keep the visible value plain (doors.vault=LOCKED).
 - map: the layout, one line per deck: "Deck 1 · Command / Comms: room_id=Room Name, other_room=Other Name". Then optional connections: "Link: room_a - room_b (air vents)". Room ids are snake_case and match the station state paths. 2-5 decks, 1-6 rooms each.
 - computer: the station computer's display name (e.g. "HV-CORE") and persona: who it is and how it writes (it prints on a monochrome CRT terminal; casing, tone, length), what it knows, how it treats access levels and hacking attempts. Write the persona as instructions addressed to it ("You are ...").
 - broadcastPersona: the automated public-address voice's persona (announces, never converses).
@@ -212,6 +213,7 @@ export function applyDraft(d) {
     o[keys.at(-1)] = /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value;
   }
   station.access_level = "GUEST";
+  sealStation(station, d.secrets);
   const crew = sanitizeCrew(d.crew.map((c) => ({
     ...c,
     startStress: c.stress,

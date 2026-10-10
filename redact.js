@@ -15,10 +15,36 @@ export function redact(text) {
 }
 
 // What the players' map may show: not the roster, and nothing the agent keeps under a secret or hidden key.
-const HIDDEN_KEY = /^(secret|hidden)([_.-].*)?$/i;
+const HIDDEN_KEY = /^(secrets?|hidden)([_.-].*)?$/i;
 export const hiddenPath = (path) => String(path).split(".").some((k) => HIDDEN_KEY.test(k));
-// A log entry as players get it: its station changes without the secret ones.
-export const playerEntry = (e) => (e?.changes?.some((c) => hiddenPath(c.path)) ? { ...e, changes: e.changes.filter((c) => !hiddenPath(c.path)) } : e);
+// A log entry as players get it: a whitelist (never the agent's action list of cast, hazards, moves, items and time), with the secret station changes dropped.
+const ENTRY_FIELDS = ["id", "kind", "text", "ts", "net", "source", "entity", "character", "inPerson", "room", "variants", "reveal", "cues", "timing", "by", "at", "outcome", "shownAs", "speaker", "playing", "dir", "peer"];
+export const playerEntry = (e) => {
+  if (!e) return e;
+  const out = {};
+  for (const k of ENTRY_FIELDS) if (e[k] !== undefined) out[k] = e[k];
+  const changes = (e.changes || []).filter((c) => !hiddenPath(c.path));
+  if (changes.length) out.changes = changes;
+  return out;
+};
+
+// Build-time pass: a station value that holds a code from the story's secrets moves under secret.
+const CODE = /\b(?:codes?|passwords?|passcodes?|passphrases?|keys?|overrides?|pin|sequence)\b[^\n]{0,25}?\b([A-Z0-9]+(?:-[A-Z0-9]+)+)/gi;
+export function sealStation(station, secrets) {
+  const codes = [...new Set([...String(secrets || "").matchAll(CODE)].map((m) => m[1]).filter((c) => c === c.toUpperCase() && c.length >= 6))];
+  if (!codes.length) return station;
+  const moved = {};
+  const walk = (o, path) => {
+    for (const [k, v] of Object.entries(o)) {
+      if (HIDDEN_KEY.test(k)) continue;
+      if (v && typeof v === "object") walk(v, [...path, k]);
+      else if (typeof v === "string" && codes.some((c) => v.toUpperCase().includes(c))) { moved[[...path, k].join("_")] = v; delete o[k]; }
+    }
+  };
+  walk(station, []);
+  if (Object.keys(moved).length) station.secret = { ...station.secret, ...moved };
+  return station;
+}
 
 export function playerStation(station) {
   const walk = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !HIDDEN_KEY.test(k)).map(([k, v]) => [k, v && typeof v === "object" && !Array.isArray(v) ? walk(v) : v]));
