@@ -810,3 +810,6 @@ body.stream #crt.glitch-3 #hdr, body.stream #crt.glitch-3 #clocks, body.stream #
 .pilotform button.primary { background: var(--fg); color: var(--bg); text-shadow: none; }
 .pilotform button.dangerbtn { color: #ff4a3d; border-color: #ff4a3d; }
 .pilotform .err { color: #ff4a3d; font-size: 0.9em; }
+
+.touchtip { position: fixed; z-index: 60; max-width: min(320px, calc(100vw - 16px)); padding: 0.4em 0.7em; background: var(--bg); color: var(--fg); border: 1px solid var(--fg); box-shadow: 0 0 10px var(--glow); font-size: 1em; white-space: pre-line; pointer-events: none; }
+.touchtip[hidden] { display: none; }
