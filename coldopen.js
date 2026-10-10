@@ -1,4 +1,5 @@
 import { shownName, PICTURE_LINK } from "./voices.js";
+import { crewWithFate } from "./crew.js";
 import { PORTRAIT_FILE } from "./cast.js";
 
 // The "Previously on..." cold open. A finished story leaves a snapshot on its campaign entry (what the players saw, who they met);
@@ -88,7 +89,7 @@ export function coldOpenRequest(c, last, story, p) {
     snap.key?.length && `KEY LINES OF PLAY:\n${snap.key.join("\n")}`,
     `FIGURES: ${(snap.figures || []).map((f) => f.name).join(", ") || "none"}`,
     hidden.length && `NEVER NAME: ${hidden.join(", ")}`,
-    `THE CREW: ${p.crew.map((pc) => pc.name).join(", ")}`,
+    `THE CREW (anyone marked DECEASED or RETIRED is gone; do not show them alive): ${crewWithFate(p.crew, (pc) => pc.name).join(", ")}`,
     `NEW STORY: ${story.title}. ${story.hook}`,
   ];
   return { system: SYSTEM, context: parts.filter(Boolean).join("\n\n"), messages: [{ role: "user", content: "Write the cold open." }], schema: RECAP_SCHEMA, example: { beats: [{ line: "The crew took the job.", who: "" }], hook: "A new contract." }, maxTokens: 900 };

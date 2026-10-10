@@ -702,7 +702,7 @@
     }
   }
 
-  const shortName = (c) => (c.name.match(/["'“‘]([^"'”’]+)["'”’]/)?.[1] || c.name.split(" ")[0]).toUpperCase();
+  const shortName = (c) => crewShort(c.name, crew.map((x) => x.name));
   const nameOf = (id) => shortName(crew.find((c) => c.id === id) || { name: id });
   const peopleNames = (people) => Object.fromEntries(Object.entries(people).map(([room, ids]) => [room, ids.map((id) => nameOf(id))]));
 
@@ -762,7 +762,7 @@
   const field = (label, value, always = false) => value || always ? `<div class="cs-field"><span class="cs-k">${label}</span><b>${escH(value.toUpperCase())}</b></div>` : "";
   const sheetHead = (c) => `<div class="cs-card cs-head">
       <div class="cs-facebox">${portraitHtml(c.portrait, "cs-face") || `<span class="cs-noface">NO PHOTO</span>`}</div>
-      <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns, true)}${field("CLASS", c.className)}${c.role?.toLowerCase() === c.className.toLowerCase() ? "" : field("ROLE", c.role)}${field("HIGH SCORE", String(c.highScore || 0), true)}${field("STATUS", c.retired ? "retired" : "")}</div>
+      <div>${field("CHARACTER NAME", c.name)}${field("PRONOUNS", c.pronouns, true)}${field("CLASS", c.className)}${c.role?.toLowerCase() === c.className.toLowerCase() ? "" : field("ROLE", c.role)}${field("HIGH SCORE", `${c.highScore || 0}${solo ? " (WARDEN GAME NIGHTS ONLY)" : ""}`, true)}${field("STATUS", c.retired ? "retired" : "")}</div>
     </div>`;
   const combatRow = (c) => {
     const a = c.armor;
@@ -1690,7 +1690,7 @@
     const list = crew.filter(gone);
     $("memorialfx").querySelector(".mm-body").innerHTML = list.map((c) => `<div class="mm-row">${portraitHtml(c.portrait, "mm-face")}<div>
       <div class="mm-who">${escH(c.name.toUpperCase())}</div>
-      <div>${escH(c.className.toUpperCase())} · HIGH SCORE ${c.highScore || 0}</div>
+      <div>${escH(c.className.toUpperCase())} · HIGH SCORE ${c.highScore || 0}${solo ? " (COUNTED ON WARDEN GAME NIGHTS ONLY)" : ""}</div>
       <div>${escH((c.cond?.dead ? (c.cond.dead === "Warden" ? "MARKED DECEASED BY THE WARDEN" : `DIED: ${c.cond.dead}`) : "RETIRED FROM PLAY").toUpperCase())}${c.endedIn ? ` · ${escH(c.endedIn.toUpperCase())}` : ""}</div>
       ${c.finalWords ? `<div class="mm-final">FINAL TRANSMISSION: "${escH(c.finalWords.toUpperCase())}"</div>` : ""}
       ${c.epitaph ? `<div class="mm-epitaph">${escH(c.epitaph.toUpperCase())}</div>` : ""}</div></div>`).join("") || '<div class="sf-none">NOBODY YET.</div>';

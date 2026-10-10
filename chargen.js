@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { CLASSES, STATS, SAVES, MAX_CREW, playable, goneWord, newCond, maxWoundsFor, traumaResponse, sanitizeCrew, skillOf } from "./crew.js";
 import { slug } from "./clean.js";
+import { book, ledgerLine } from "./money.js";
 import { PORTRAIT_FILE } from "./cast.js";
 
 // Mothership 1e character creation, PSG v1.2 pages 4-5 (see _out/tickets/RULES.md, "Classes"). Each d10 in a sum reads 1-10.
@@ -416,6 +417,13 @@ export function decideCharacter(sess, accept, id, note = "") {
   };
   s.config.crew = join(crew);
   if (s.campaign) s.campaign.crew = join(s.campaign.crew || []);
+  const camp = s.campaign, mine = camp?.crew.find((c) => c.id === n);
+  if (mine && mine.credits > 0) {
+    const start = mine.credits;
+    mine.credits = 0;
+    sess.addLog("note", ledgerLine(camp, book(camp, n, start, `starting credits, 2d10x10: ${start / 10} x10`)));
+    sess.moneySync();
+  }
   if (owner?.ws.readyState === 1) {
     owner.ws.character = n;
   }

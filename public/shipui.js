@@ -34,7 +34,7 @@
     const rig = f.ships.find((x) => x.side === "crew"), foe = f.ships.find((x) => x.side === "enemy");
     const crew = S.config.crew.filter((pc) => !pc.cond?.dead && !pc.retired);
     const st = (id) => f.stations[id] || "";
-    const stationRow = crew.map((pc) => `<label class="small grow">${esc(pc.name.split(" ")[0])} <select data-ship-station="${esc(pc.id)}">${["", "pilot", "gunner", "engineer"].map((s) => `<option value="${s}" ${st(pc.id) === s ? "selected" : ""}>${s ? cap(s) : "No station"}</option>`).join("")}</select></label>`).join("");
+    const stationRow = crew.map((pc) => `<label class="small grow">${esc(crewShort(pc.name, crew.map((x) => x.name)))} <select data-ship-station="${esc(pc.id)}">${["", "pilot", "gunner", "engineer"].map((s) => `<option value="${s}" ${st(pc.id) === s ? "selected" : ""}>${s ? cap(s) : "No station"}</option>`).join("")}</select></label>`).join("");
     const skillFor = (station, who) => {
       const pc = crew.find((c) => c.name === who);
       const list = pc ? f.crewSkills[pc.id] || [] : [];
