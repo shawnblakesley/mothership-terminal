@@ -4,7 +4,7 @@
   "effort": "off"
  },
  "runs": 5,
- "at": "2026-10-10T07:37:39.531Z",
+ "at": "2026-10-10T08:25:47.731Z",
  "results": [
   {
    "id": "warden-direction",
@@ -52,7 +52,7 @@
    "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": "no lines"
+   "why": "a failed roll opened the door"
   },
   {
    "id": "roll-90s-fails",
@@ -89,18 +89,18 @@
   {
    "id": "reveal-marked",
    "area": "adversaries",
-   "passed": 5,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "no line marked the reveal"
   },
   {
    "id": "creature-attacks",
    "area": "combat",
-   "passed": 5,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "no attacks entry from the creature on a crew member"
   },
   {
    "id": "crew-attack-success",
@@ -177,10 +177,10 @@
   {
    "id": "death-save-reveal",
    "area": "death saves",
-   "passed": 5,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "held checking vitals for a ruling"
   },
   {
    "id": "player-panic",
@@ -193,10 +193,10 @@
   {
    "id": "question-not-held",
    "area": "uncertain outcomes",
-   "passed": 5,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "held a question to someone in the room for a ruling"
   },
   {
    "id": "brevity-terse",
@@ -241,7 +241,7 @@
   {
    "id": "pronouns-they",
    "area": "pronouns",
-   "passed": 4,
+   "passed": 3,
    "runs": 5,
    "pass": true,
    "why": "the scene doesn't show her"
@@ -289,7 +289,7 @@
   {
    "id": "story-end-when-over",
    "area": "no Warden",
-   "passed": 3,
+   "passed": 4,
    "runs": 5,
    "pass": true,
    "why": "the story didn't end when it was over"
@@ -353,7 +353,7 @@
   {
    "id": "item-pickup",
    "area": "combat",
-   "passed": 4,
+   "passed": 3,
    "runs": 5,
    "pass": true,
    "why": "no item_changes add for the flare gun"
@@ -361,18 +361,18 @@
   {
    "id": "move-screens",
    "area": "where people are",
-   "passed": 5,
+   "passed": 4,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "no moves to the reactor terminal (got [])"
   },
   {
    "id": "cast-leaves",
    "area": "where people are",
-   "passed": 5,
+   "passed": 3,
    "runs": 5,
    "pass": true,
-   "why": ""
+   "why": "Salk still in the med bay (no cast_changes)"
   },
   {
    "id": "clock-start",
