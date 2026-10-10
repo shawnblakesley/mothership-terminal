@@ -1653,6 +1653,8 @@
       : `<div class="sf-none">NO JOBS ON THE BOARD YET.</div>`;
     fx.querySelector(".sf-side").innerHTML = `<div class="sf-head">JOB BOARD</div><div class="sf-hint">PRESS A JOB'S NUMBER OR CLICK IT TO VOTE. [*] IS ONE VOTE. ESC TO CLOSE.</div>${board}${msg.played.length ? `<div class="sf-head">DONE</div><div class="sf-played">${msg.played.map((p) => escH(p.title)).join("<br>")}</div>` : ""}`;
     if (fresh) { fx.hidden = false; chirp(); }
+    const map = fx.querySelector(".sf-map"), svg = map.querySelector("svg");
+    if (fresh) import("./phonefit.js").then((f) => { map.scrollLeft = f.sectorScrollLeft(msg.rig, msg.offered, svg.clientWidth, map.clientWidth); });
   }
   const voteJob = (id) => id && send({ t: "sectorVote", story: id });
   $("sectorfx").addEventListener("click", (e) => {
@@ -1751,6 +1753,7 @@
     at(m.end, endColdOpen);
   }
   $("coldopen").querySelector(".co-skip").onclick = endColdOpen;
+  if (matchMedia("(pointer: coarse)").matches) $("coldopen").querySelector(".co-skip").textContent = "[ TAP TO SKIP ]";
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("coldopen").hidden) { e.stopImmediatePropagation(); endColdOpen(); } }, true);
 
   // Death: the vitals line goes flat with a held tone, then the player may send one last line, spoken on every screen in their voice.
