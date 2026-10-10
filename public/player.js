@@ -7,6 +7,7 @@
   let code = normCode(params.get("s"));
 
   const $ = (id) => document.getElementById(id);
+  import("./touchtips.js").then((m) => m.install());
   const ls = {
     get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },

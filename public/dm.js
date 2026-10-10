@@ -2989,11 +2989,15 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   }
   for (const id of ["rollWho", "rollCheck", "rollSkill"]) $(id).addEventListener("change", rollFormChanged);
 
+  let rollOpened = 0, RollCard = null;
+  import("./rollcard.js").then((m) => { RollCard = m; if (S) renderRollStatus(); });
+  import("./touchtips.js").then((m) => m.install());
   function renderRollStatus() {
     const r = S.roll;
     const box = $("rollStatus");
     box.hidden = !r;
-    if (!r) return;
+    if (!r || !RollCard) return;
+    const folded = RollCard.rollFolded(r, S.log, rollOpened);
     const label = `${checkName(r.check)}${advMark(r.advantage)}${r.bonus ? ` · ${r.skill || "skill"} +${r.bonus}` : ""}${r.reason ? ` · ${r.reason}` : ""}`;
     const show = (d) => (r.check === "panic" ? String(d) : String(d).padStart(2, "0"));
     const rows = r.pcs.map((p) => {
@@ -3014,6 +3018,12 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const narrate = hasKey()
       ? `<span class="muted small">The agent narrates the result.</span>`
       : `<span class="muted small">No AI key. Narrate with Speak.</span>`;
+    if (folded) {
+      box.className = "card rollstatus folded";
+      box.innerHTML = `<div class="row"><span class="grow"><b>${esc(checkName(r.check))}</b> <span class="muted small">${esc(RollCard.rollBrief(r))}</span></span><button data-roll="show" class="ghost">Show</button><button data-roll="clear" class="ghost">Clear</button></div>`;
+      return;
+    }
+    box.className = "card rollstatus";
     box.innerHTML = `<div><b>${esc(label)}</b></div><ul class="rollres">${rows}</ul>
       <div class="row">${r.status === "waiting"
         ? `<span class="grow"></span><button data-roll="cancel" class="ghost">${Object.keys(r.results).length ? "Stop waiting" : "Cancel roll"}</button>`
@@ -3052,6 +3062,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const act = b?.dataset.roll;
     if (act === "cancel" || act === "clear") send({ t: "rollCancel" });
     else if (act === "for") send({ t: "rollFor", pc: b.dataset.pc });
+    else if (act === "show") { rollOpened = S.roll.createdAt; renderRollStatus(); }
   });
 
   function renderHandouts() {
