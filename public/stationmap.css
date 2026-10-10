@@ -84,7 +84,7 @@
 .iso-l .mchips { justify-content: center; margin-top: 3px; flex-wrap: nowrap; }
 .iso-l .mchip { background: rgba(5, 8, 5, 0.85); font-size: calc(var(--iso-px) * 0.72); padding: 1px 5px; white-space: nowrap; cursor: pointer; }
 .iso-l .mchip:disabled { cursor: default; }
-.iso-room .iso-name { max-width: calc(var(--u, 8) * var(--ppu, 12) * 1.3px); min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
+.iso-room .iso-name { max-width: calc(var(--u, 8) * var(--ppu, 12) * 1.3px); min-width: 3em; white-space: normal; overflow-wrap: anywhere; text-wrap: balance; line-height: 1.05; }
 .iso-view.far .mchips, .iso-view.far .iso-dsub, .iso-view.far .iso-link { display: none; }
 .iso-name { font: var(--iso-px)/1 VT323, Consolas, monospace; letter-spacing: 0.06em; color: var(--iso-fg); text-shadow: 0 0 4px #000, 0 0 2px #000; white-space: nowrap; }
 .iso-name[data-room] { cursor: pointer; }
