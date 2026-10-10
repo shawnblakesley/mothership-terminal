@@ -271,6 +271,8 @@ Every password attempt, and anything else the players try that could go either w
 
 If a player types while lines are still playing, the comms cut off on every screen. Lines that hadn't started were never said: they vanish from the players' screens and from the agent's memory (your log keeps them, struck through). A line cut off mid-way keeps only what was spoken. The agent carries on from exactly what the players heard.
 
+Retcon history and queued hazard rolls (with the hours waiting behind them) survive a server restart; screen effects and the sector vote do not, and the log notes when a restart dropped them.
+
 ## Restart story
 
 The story is saved the moment it's first played: a player types, rolls or changes their sheet; you give a Direction, Speak, write a Note, speak with Listen on, call a roll, hand something out or start a clock; or the agent replies. Until then, set it up as you like.
@@ -380,7 +382,7 @@ Click a room on the map to open it:
 
 - **Floor plan:** a top-down grid of walls, doors, hatches, windows, consoles, beds, tables, seats, lockers, crates, vents, machinery, reactor cores, pipes and debris. The default story's rooms come drawn; any other room is drawn by the agent the first time you open it (or press **↻ Redraw with agent**). **Unlocking the padlock** lets you paint tiles (click or drag) and add or remove rows and columns; it saves as you go.
 - **Show this room to players:** puts the floor plan on every player's screen, or one player's, as a blueprint in their screen colour. It shows the layout only, never who or what is in the room. They close it with Esc or a click; **Hide room** takes it off their screens.
-- **Here now:** the player characters at this room's terminals, who else is there (`occupants.<room>`) and what's there (`contents.<room>`). You can edit both; the agent keeps them current as people move and things happen.
+- **Here now:** the player characters at this room's terminals, who else is there (`occupants.<room>`) and what's there (`contents.<room>`), for your eyes only: players' maps never show either. You can edit both; the agent keeps them current as people move and things happen.
 - **Hazard:** set or clear an environmental hazard in the room, with its level (see Hazards, below).
 - **Room state:** every value for the room (door, camera, anything else), click to change; and the room's terminals.
 
@@ -563,7 +565,7 @@ The story's people (Salk, Okonkwo, Marlowe...) are listed under **Characters** o
 - **How they feel about the players:** each character has an attitude (this app's scale, not a Mothership rule), from **Hostile (−3)** through **Wary**, **Neutral (0)** and **Friendly** to **Loyal (+3)**, with a short reason. Everyone starts Neutral. The agent reads it every turn and plays them by it (what they'll share, whether they help, stall or lie), and moves it, usually a step at a time, when the players clearly earn or lose their trust. You can set it too, on the card, even locked. Players never see it. Each change is noted in your log, and **Retcon** undoes it. You can change the room any time, even locked; the rest when unlocked.
 - **Pictures:** click the square at the left of a card to choose one: pick any of the 102 portraits from the pack that comes with the app, **Upload your own…** (cropped to a small square), or **No picture**. It's shown to the left of what they say on the players' screens, about two lines tall: line art in the line's colour, with the screen showing through the paper. Uploads are turned into the same kind of line art (the dark parts drawn, the light parts see-through), so line drawings suit best. Face to face it's clean; over the intercom it gets static, a rolling bar and flicker. **Remove picture** takes it off. Pictures are kept under `data/portraits/<CODE>/` and deleted with their session. KESTREL-9's people and crew come with pictures from that pack (older saved KESTREL-9 stories get them too, for anyone who has none). The pack lives in `public/portraits/` (listed in `pack.json`), from the [Sci-fi character portraits project](https://ashen-victor.itch.io/sci-fi-character-portraits-poject) by Victor J Merino, under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/), so the players' screens credit it in the bottom-right corner of the start-up screen (not during play, and not when the story uses none of them). That licence rules out commercial use.
 - **Player characters** can have a picture too: the small square at the left of their card on the Crew tab. It shows on their crew file (the picker, the full file and the side sheet), tinted like everything else on the screen.
-- The map shows each character in their room, along with whoever else the station state lists there.
+- The Warden's map shows each character in their room, along with whoever else the station state lists there. The players' map shows no occupants or contents.
 - You can **Speak** as any character (pick them in the comms box): face to face or over the intercom, by where they are.
 
 Other voices (the tug's computer, a radio) speak with one voice each.

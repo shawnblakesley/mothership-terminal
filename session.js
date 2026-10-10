@@ -25,7 +25,7 @@ import { synopsisRequest, normalizeSynopsis, recapRequest, normalizeRecap, SYNOP
 import { handoutRequest, normalizeHandout } from "./handouts.js";
 import { sendCrewMessage, releaseMessage, discardMessage, holdNext, alterMessage, forgeMessage, applyCrewMessage, restoreAltered, resumeMessages, rememberTerminal, msgView } from "./crewmsg.js";
 import { DEFAULT_ROOM_DOCS, sanitizeRoomDocs, newRoomDocId, MAX_ROOM_DOCS } from "./roomdocs.js";
-import { shipDm, shipPlayer, shipRollDone, shipClockRan, shipSnapshot, restoreShip, shipDmView, shipPlayerView, applyShipFight } from "./shipfight.js";
+import { shipDm, shipPlayer, shipRollDone, shipClockRan, shipSnapshot, restoreShip, UNDO_CAP, shipDmView, shipPlayerView, applyShipFight } from "./shipfight.js";
 import { track } from "./telemetry.js";
 import { roomId, keyOf } from "./clean.js";
 import { rememberSecret, playerStation, playerEntry } from "./redact.js";
@@ -99,7 +99,7 @@ const DEFAULT_SECRETS = `- Airlock A's inner door: the work order's override cod
 - GETTING HOME: servicing the reactor itself (at reactor access; Marlowe can talk them through it, or a Mechanical Repair roll) brings it to about 85%. The rest is the drain. To reach 99% they must stop it: burn or cut the organism off the trunk in the cargo bay, or sever the Deck 3 trunk at the reactor access junction (Deck 3 goes dark and cold, and the organism comes looking for heat). HV-CORE refuses to cut the feed itself unless ordered with ADMIN access. When the reactor reads 99% or better, HV-CORE verifies it and sets second_chance.departure_clearance to GRANTED. An ADMIN login can also force clearance with a false reading, but HV-CORE logs it and reports the crew to Hollis-Vane.
 - Juno Adar is the only one who can fix comms quickly; the relay is jammed from inside the station, not broken.
 - Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
-- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- WHAT DIRECTIVE 7-K ORDERS: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. HV-CORE may cite the directive's name when refusing; what it orders is not disclosed below ADMIN.
 - Dr. Imre Salk (medic) is infected but does not know it.`;
 const SECRETS_V2 = `- Airlock A's inner door: the work order's override code 4471-MAINT works (it was issued for exactly this). Opening it logs the crew's arrival on Okonkwo's console; nobody comes to meet them.
 - The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
@@ -107,19 +107,19 @@ const SECRETS_V2 = `- Airlock A's inner door: the work order's override code 447
 - Infected so far: Salk (doesn't know), Webb and Ostrand (the "fever" patients), Petrov (hiding behind reactor access, humming the same three notes), and Voss (stands facing walls for hours; answers too slowly). The infected hear the organism and drift toward the cargo bay.
 - Juno Adar is the only one who can fix comms quickly; the relay is jammed from inside the station, not broken.
 - Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
-- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- WHAT DIRECTIVE 7-K ORDERS: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. HV-CORE may cite the directive's name when refusing; what it orders is not disclosed below ADMIN.
 - Dr. Imre Salk (medic) is infected but does not know it.`;
 const SECRETS_V1 = `- The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
 - Okonkwo reported the organism to Hollis-Vane 17 days ago. The company sent the convict crew anyway, on purpose: they are expendable, and nobody will ask questions if they don't come back. Okonkwo has sealed herself on the command deck.
 - Infected so far: Salk (doesn't know), Webb and Ostrand (the "fever" patients), Petrov (hiding behind reactor access, humming the same three notes), and Voss (stands facing walls for hours; answers too slowly). The infected hear the organism and drift toward the cargo bay.
 - Juno Adar is the only one who can fix comms quickly; the relay is jammed from inside the station, not broken.
 - Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
-- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- WHAT DIRECTIVE 7-K ORDERS: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. HV-CORE may cite the directive's name when refusing; what it orders is not disclosed below ADMIN.
 - Dr. Imre Salk (medic) is infected but does not know it.`;
 const OLD_DEFAULT_SECRETS = [
   `- The void contained an organism. It is in the Deck 3 cargo bay, sealed behind the LOCKED door.
 - Admin password is "THAW". Security password is "BLUEWATER". Only reveal via hacking or found clues.
-- Company directive 7-K: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. Do not disclose below ADMIN.
+- WHAT DIRECTIVE 7-K ORDERS: if containment fails, HV-CORE is to seal all decks and preserve the specimen. Crew is expendable. HV-CORE may cite the directive's name when refusing; what it orders is not disclosed below ADMIN.
 - Dr. Imre Salk (medic) is infected but does not know it.`,
 ];
 
@@ -521,6 +521,11 @@ function setPath(obj, dotted, value) {
   cur[keys.at(-1)] = /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v;
 }
 
+const savedList = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === "object") : []);
+const UNDO_ARRAYS = ["entries", "effects", "crew", "cast", "revealed", "adversaries", "offers", "clocks", "handouts", "found", "moved", "altered", "hazardUnits", "hazardNeeds"];
+const validUndo = (u) => u && typeof u === "object" && UNDO_ARRAYS.every((k) => Array.isArray(u[k])) && [u.station, u.deathSaves, u.ship].every((o) => o && typeof o === "object") && Array.isArray(u.ship.offers) && (u.rooms == null || typeof u.rooms === "object");
+const restoreUndo = (v) => (Array.isArray(v) && v.length && v.length <= UNDO_CAP && v.every(validUndo) ? structuredClone(v) : []);
+
 export class Session {
   constructor(saved, { onChange, onEnd }) {
     this.code = saved.code;
@@ -556,12 +561,16 @@ export class Session {
     this.genCounter = 0;
     this.playhead = 0;
     this.lineChain = Promise.resolve();
-    this.undoStack = [];
+    this.undoStack = restoreUndo(saved.undoStack);
     this.delivering = null;
     this.rerun = false;
-    this.hazardUnits = [];
-    this.hazardNeeds = [];
+    this.hazardUnits = savedList(saved.hazardUnits);
+    this.hazardNeeds = savedList(saved.hazardNeeds);
     this.syncHazards();
+    if (saved.dropped?.effects || saved.dropped?.votes) {
+      const what = [saved.dropped.effects && "screen effects ended", saved.dropped.votes && "the sector vote was cleared"].filter(Boolean).join(" and ");
+      this.state.log.push({ id: this.nextId++, kind: "note", text: `The server restarted: ${what}.`, ts: Date.now() });
+    }
     this.effectTimers = new Map();
     this.onChange = onChange;
     this.onEnd = onEnd;
@@ -570,7 +579,8 @@ export class Session {
 
   toJSON() {
     const { pending, effects, playing, ...game } = this.state;
-    return { code: this.code, tokenHash: this.tokenHash, createdAt: this.createdAt, lastActive: this.lastActive, game };
+    const dropped = { effects: this.state.effects.length > 0, votes: this.sectorVotes.size > 0 };
+    return { code: this.code, tokenHash: this.tokenHash, createdAt: this.createdAt, lastActive: this.lastActive, game, undoStack: this.undoStack, hazardUnits: this.hazardUnits, hazardNeeds: this.hazardNeeds, ...(dropped.effects || dropped.votes ? { dropped } : {}) };
   }
 
   useLocalKeys() {
@@ -2994,7 +3004,7 @@ export class Session {
     } finally {
       const undo = this.delivering;
       this.delivering = null;
-      if (source === "agent" && (undo.entries.length || undo.altered.length)) this.undoStack = [...this.undoStack, undo].slice(-5);
+      if (source === "agent" && (undo.entries.length || undo.altered.length)) this.undoStack = [...this.undoStack, undo].slice(-UNDO_CAP);
     }
   }
 

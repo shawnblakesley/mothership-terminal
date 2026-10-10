@@ -93,3 +93,36 @@ test("both builder prompts tell the model to keep codes and triggers under secre
   const c = CAMPAIGNS[0];
   assert.match(buildRequest(c, c.stories[0], newProgress(c)).system, /path starting "secret\."/);
 });
+
+test("room contents are Warden-side: no player payload carries them, the Warden still does", () => {
+  const s = session();
+  s.state.station.contents = { cargo_bay_deck3: "the organism" };
+  s.state.mapShown = "iso";
+  const ws = socket(s);
+  s.sockets.add(ws);
+  s.syncIso();
+  s.state.station.contents.cargo_bay_deck3 = "the organism, grown";
+  s.syncIso();
+  assert.ok(ws.sent.some((d) => d.includes('"isoMap"')), "the iso map was sent");
+  for (const d of ws.sent) assert.ok(!d.includes("organism"), "iso map leaked contents");
+  for (const p of [ws, socket(s, { stream: true })]) assert.ok(!JSON.stringify(s.playerView(p)).includes("organism"), "init leaked contents");
+  assert.ok(!JSON.stringify(playerStation(s.state.station)).includes("organism"));
+  assert.ok(JSON.stringify(s.dmView()).includes("organism"), "the Warden still sees it");
+});
+
+test("built secrets keep the access level they were written with; only marked ones are locked", async () => {
+  const { buildRequest: agentRequest } = await import("../agent.js");
+  const raw = { title: "T", lore: "l", secrets: "- KIP: hiding in Row K.\n- THE CODE: 4471. Do not disclose below CREW.\n\n- THE SHIP: bugged below security", computer: { name: "C", persona: "p" }, map: "Deck 1 · Main: mary=Mary" };
+  const d = normalizeDraft(raw);
+  assert.equal(d.secrets, raw.secrets, "no marker is added to a clue meant to be found in play");
+  const state = session().state;
+  state.config.secrets = d.secrets;
+  state.station.access_level = "GUEST";
+  assert.match(agentRequest(state, "").context, /LOCKED AT GUEST ACCESS: THE CODE; THE SHIP\./);
+});
+
+test("both builder prompts say when a secret ends in a below-access marker", () => {
+  assert.match(draftRequest({ messages: [] }).system, /end it with "Do not disclose below CREW\."/);
+  const c = CAMPAIGNS[0];
+  assert.match(buildRequest(c, c.stories[0], newProgress(c)).system, /end it with "Do not disclose below CREW\."/);
+});
