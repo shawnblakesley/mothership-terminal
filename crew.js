@@ -149,6 +149,42 @@ function creditsOf(c) {
   return { credits: have ? int(c.credits, 0, 999999999, 0) : found ? int(found[1].replace(/,/g, ""), 0, 999999999, 0) : 0, notes: (found ? note.replace(NOTE_CREDITS, "") : note).trim() };
 }
 
+const LIVE_ONLY = new Set(["cond", "endedIn", "finalWords", "epitaph"]);
+const plain = (v) => v && typeof v === "object" && !Array.isArray(v);
+const same = (a, b) => (plain(a) && plain(b) ? [...new Set([...Object.keys(a), ...Object.keys(b)])].every((k) => same(a[k], b[k])) : JSON.stringify(a) === JSON.stringify(b));
+
+// Applies an editor's changes (draft against the base it started from) onto the live crew field by field.
+// A field the editor changed is skipped when the live value moved on since the base; those come back in stale.
+export function patchCrew(live, base, draft) {
+  const stale = [];
+  const merge = (l, b, d, who, path) => {
+    if (plain(l) && plain(b) && plain(d)) {
+      const out = { ...l };
+      for (const k of new Set([...Object.keys(b), ...Object.keys(d)])) {
+        if (!path && LIVE_ONLY.has(k)) continue;
+        const v = merge(l[k], b[k], d[k], who, `${path}${path ? "." : ""}${k}`);
+        if (v === undefined) delete out[k]; else out[k] = v;
+      }
+      return out;
+    }
+    if (same(b, d) || same(l, d)) return l;
+    if (!same(l, b)) { stale.push(`${who} ${path}`); return l; }
+    return d;
+  };
+  const drafts = new Map((Array.isArray(draft) ? draft : []).filter((c) => c && typeof c === "object").map((c) => [c.id, c]));
+  const bases = new Map(base.filter((c) => c && typeof c === "object").map((c) => [c.id, c]));
+  const out = [];
+  for (const l of live) {
+    const b = bases.get(l.id), d = drafts.get(l.id);
+    if (!b) out.push(l);
+    else if (!d) { if (same(l, b)) continue; stale.push(`${l.name} removal`); out.push(l); }
+    else out.push(merge(l, b, d, l.name, ""));
+  }
+  const have = new Set(live.map((c) => c.id));
+  for (const [id, d] of drafts) if (!bases.has(id) && !have.has(id)) out.push(d);
+  return { crew: sanitizeCrew(out), stale };
+}
+
 export function sanitizeCrew(list) {
   const out = [];
   const seen = new Set();

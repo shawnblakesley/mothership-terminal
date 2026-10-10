@@ -7,7 +7,7 @@ import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, 
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
-import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings, renameSkill } from "./crew.js";
+import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, patchCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings, renameSkill } from "./crew.js";
 import { combatCheck, damageAdversary, rollDeathSave, deathSaveText, sanitizeStats, statsLine } from "./combat.js";
 import { rollDice, rollWithAdv, cancelAdv } from "./dice.js";
 import { woundText } from "./wounds.js";
@@ -538,6 +538,11 @@ export class Session {
     this.freeCalls = { day: "", count: 0 };
     this.sockets = new Set();
     this.nextId = this.state.log.reduce((m, e) => Math.max(m, e.id), 0) + 1;
+    for (const e of this.state.log) delete e.queued;
+    const tail = this.state.log.findLast((e) => e.kind !== "note" && e.kind !== "msg");
+    if (tail?.kind === "player" && !this.state.log.some((e) => e.orphan && e.id > tail.id)) {
+      this.state.log.push({ id: this.nextId++, kind: "note", text: `The server restarted before the agent answered ${tail.by || "a player"}'s last line ("${tail.text.slice(0, 60)}${tail.text.length > 60 ? "..." : ""}"). Press Generate to answer it.`, ts: Date.now(), orphan: true });
+    }
     this.lastNet = this.state.log.findLast((e) => e.net !== "*")?.net || "";
     this.clockTimers = new Map();
     this.talkers = new Map();
@@ -1702,9 +1707,13 @@ export class Session {
         this.moneySync();
         break;
       }
-      case "campaignPlay":
-        if (s.campaign && !this.campaignBusy) this.campaignPlay(String(msg.story || ""));
+      case "campaignPlay": {
+        const left = s.campaign?.current;
+        if (!s.campaign || this.campaignBusy) return;
+        if (left && left !== String(msg.story) && !msg.abandon) this.send("dm", { t: "toast", level: "error", text: "A story is still being played. Finish it first, or confirm abandoning it." });
+        else this.campaignPlay(String(msg.story || ""));
         return;
+      }
       case "campaignRecap":
         if (!s.campaign?.recap) this.send("dm", { t: "toast", level: "error", text: "There is no cold open to play yet: it's written when a campaign story is built." });
         else this.playRecap(s.campaign.recap);
@@ -1821,6 +1830,14 @@ export class Session {
         break;
       }
       case "crew": {
+        if (Array.isArray(msg.base)) {
+          const r = patchCrew(s.config.crew, msg.base, msg.crew);
+          s.config.crew = r.crew;
+          if (s.campaign) for (const pc of s.config.crew) pc.credits = s.campaign.crew.find((x) => x.id === pc.id)?.credits ?? pc.credits;
+          if (r.stale.length) this.send("dm", { t: "toast", level: "error", text: `The crew changed since this tab loaded, so ${r.stale.length === 1 ? "one edit was" : `${r.stale.length} edits were`} not applied (${[...new Set(r.stale)].slice(0, 4).join(", ")}). Showing the current values.` });
+          this.crewChanged();
+          break;
+        }
         const was = new Map(s.config.crew.map((c) => [c.id, c]));
         s.config.crew = sanitizeCrew(msg.crew);
         for (const pc of s.config.crew) if (was.has(pc.id)) Object.assign(pc, { cond: was.get(pc.id).cond, endedIn: was.get(pc.id).endedIn, finalWords: was.get(pc.id).finalWords, epitaph: was.get(pc.id).epitaph });
@@ -2196,7 +2213,10 @@ export class Session {
     if (this.state.campaign !== p) throw new Error("the campaign was left while the story was being built");
     let carried;
     this.applyStory(normalizeDraft(composeDraft(c, story, p, raw)), (config, station) => { carried = carryInto(config, c, story, p, station); }, true);
+    const left = p.current && p.current !== story.id && c.stories.find((x) => x.id === p.current);
+    if (left) p.abandoned = [...(p.abandoned || []), { id: left.id, at: Date.now() }].slice(-50);
     p.current = story.id;
+    if (left) this.addLog("note", `${left.title} was abandoned unfinished: no fee, no faction change, and it does not count as finished (house rule).`);
     const up = payUpfront(p, c, story);
     p.offered = (p.offered || []).filter((x) => x !== story.id);
     this.sectorVotes.clear();
