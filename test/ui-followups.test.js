@@ -58,10 +58,10 @@ test("the pilot's board carries each living crew member's credits", () => {
   p.crew[1].cond = { ...p.crew[1].cond, dead: "Hull breach" };
   p.crew[2].retired = true;
   const b = jobsAt(c, p);
-  assert.deepEqual(b.crew, p.crew.filter((x) => !x.cond?.dead && !x.retired).map((x) => ({ name: x.name, credits: x.credits || 0 })));
-  assert.equal(b.crew[0].credits, 340);
-  assert.ok(!b.crew.some((x) => x.name === p.crew[1].name || x.name === p.crew[2].name));
-  assert.deepEqual(Object.keys(b.crew[0]).sort(), ["credits", "name"]);
+  assert.deepEqual(b.crewCredits, p.crew.filter((x) => !x.cond?.dead && !x.retired).map((x) => ({ name: x.name, credits: x.credits || 0 })));
+  assert.equal(b.crewCredits[0].credits, 340);
+  assert.ok(!b.crewCredits.some((x) => x.name === p.crew[1].name || x.name === p.crew[2].name));
+  assert.deepEqual(Object.keys(b.crewCredits[0]).sort(), ["credits", "name"]);
   p.money = 0;
   assert.equal(jobsAt(c, p).money, 0);
 });
