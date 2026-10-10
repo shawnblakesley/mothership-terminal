@@ -110,23 +110,19 @@ test("room contents are Warden-side: no player payload carries them, the Warden 
   assert.ok(JSON.stringify(s.dmView()).includes("organism"), "the Warden still sees it");
 });
 
-test("every built secret is guarded and listed as locked at GUEST access", async () => {
+test("built secrets keep the access level they were written with; only marked ones are locked", async () => {
   const { buildRequest: agentRequest } = await import("../agent.js");
-  const raw = { title: "T", lore: "l", secrets: "- THE CULT: the captain leads it.\n- THE CODE: 4471. Do not disclose below CREW.\n\n- THE SHIP: bugged below security", computer: { name: "C", persona: "p" }, map: "Deck 1 · Main: mary=Mary" };
+  const raw = { title: "T", lore: "l", secrets: "- KIP: hiding in Row K.\n- THE CODE: 4471. Do not disclose below CREW.\n\n- THE SHIP: bugged below security", computer: { name: "C", persona: "p" }, map: "Deck 1 · Main: mary=Mary" };
   const d = normalizeDraft(raw);
-  const lines = d.secrets.split("\n").filter(Boolean);
-  assert.equal(lines.length, 3);
-  for (const l of lines) assert.match(l, /below (CREW|SECURITY|ADMIN)/i);
-  assert.match(lines[0], /Do not disclose below ADMIN\.$/);
-  assert.equal(lines[1], "- THE CODE: 4471. Do not disclose below CREW.");
+  assert.equal(d.secrets, raw.secrets, "no marker is added to a clue meant to be found in play");
   const state = session().state;
   state.config.secrets = d.secrets;
   state.station.access_level = "GUEST";
-  assert.match(agentRequest(state, "").context, /LOCKED AT GUEST ACCESS: THE CULT; THE CODE; THE SHIP\./);
+  assert.match(agentRequest(state, "").context, /LOCKED AT GUEST ACCESS: THE CODE; THE SHIP\./);
 });
 
-test("both builder prompts ask for secrets that end in a below-access marker", () => {
-  assert.match(draftRequest({ messages: [] }).system, /ending "Do not disclose below CREW\."/);
+test("both builder prompts say when a secret ends in a below-access marker", () => {
+  assert.match(draftRequest({ messages: [] }).system, /end it with "Do not disclose below CREW\."/);
   const c = CAMPAIGNS[0];
-  assert.match(buildRequest(c, c.stories[0], newProgress(c)).system, /ending "Do not disclose below CREW\."/);
+  assert.match(buildRequest(c, c.stories[0], newProgress(c)).system, /end it with "Do not disclose below CREW\."/);
 });
