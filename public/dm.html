@@ -39,23 +39,23 @@
     <section class="card">
       <h2>Open from another device</h2>
       <form id="linkForm" class="row">
-        <input id="wardenLink" placeholder="Paste Warden link" autocomplete="off">
+        <input id="wardenLink" aria-label="Warden link" placeholder="Paste Warden link" autocomplete="off">
         <button>Open</button>
       </form>
     </section>
   </main>
 
-  <dialog id="askDialog">
+  <dialog id="askDialog" aria-labelledby="askTitle">
     <form method="dialog" class="stack">
       <h2 id="askTitle"></h2>
       <p id="askText"></p>
-      <input id="askCopy" readonly hidden>
+      <input id="askCopy" aria-label="Text to copy" readonly hidden>
       <div class="row" id="askButtons"></div>
     </form>
   </dialog>
 
-  <dialog id="settingsDialog" class="settingsdlg">
-    <div class="row"><h2 class="grow">Settings</h2><button id="settingsClose" class="ghost" aria-label="Close">✕</button></div>
+  <dialog id="settingsDialog" class="settingsdlg" aria-labelledby="settingsTitle">
+    <div class="row"><h2 class="grow" id="settingsTitle">Settings</h2><button id="settingsClose" class="ghost" aria-label="Close">✕</button></div>
     <div class="tabs seg" data-tabs="settings" role="tablist">
       <button data-tab="session">Session</button><button data-tab="agent">Agent</button><button data-tab="players">Players</button><button data-tab="discord">Discord</button>
     </div>
@@ -94,7 +94,7 @@
         <button id="keyBtn" title="Session API key">API key…</button>
       </div>
       <label class="field talkrow"><span>Talk length</span>
-        <select id="talk">
+        <select id="talk" aria-label="Who talks">
           <option value="terse">Terse: a line or two</option>
           <option value="brief">Brief: 2-3 sentences</option>
           <option value="normal">Normal: a few sentences</option>
@@ -160,16 +160,17 @@
     </div>
   </dialog>
 
-  <dialog id="builderDialog" class="builderdlg">
+  <dialog id="builderDialog" class="builderdlg" aria-labelledby="builderTitle">
     <div class="row">
-      <h2 class="grow">Story builder</h2>
+      <h2 class="grow" id="builderTitle">Story builder</h2>
       <span class="muted small">Talk it through, press <b>Draft it</b>, review, apply.</span>
       <button id="builderClose" class="ghost" aria-label="Close">✕</button>
     </div>
     <div class="bgrid">
       <section class="bchat">
         <div id="bmsgs" class="bmsgs"></div>
-        <textarea id="bInput" rows="3" placeholder="Describe the scenario"></textarea>
+        <textarea id="bInput" rows="3" placeholder="Describe the scenario" aria-label="Describe the scenario" aria-describedby="bHint"></textarea>
+        <div id="bHint" class="muted small">Enter sends · Shift+Enter new line</div>
         <div class="row wrap">
           <button id="bSend" class="primary">Send</button>
           <button id="bDraft" title="Write the scenario from this chat">Draft it</button>
@@ -181,7 +182,7 @@
     </div>
   </dialog>
 
-  <dialog id="campaignDialog" class="campaigndlg">
+  <dialog id="campaignDialog" class="campaigndlg" aria-labelledby="cmpTitle">
     <div class="row wrap">
       <h2 class="grow" id="cmpTitle">Campaigns</h2>
       <span id="cmpStatus" class="muted small"></span>
@@ -191,7 +192,7 @@
     <div id="cmpBody" class="cmpbody"></div>
   </dialog>
 
-  <dialog id="portraitDialog" class="portraitdlg">
+  <dialog id="portraitDialog" class="portraitdlg" aria-labelledby="portraitTitle">
     <div class="row wrap">
       <h2 class="grow" id="portraitTitle">Picture</h2>
       <button id="portraitUpload" title="Cropped to a square">Upload your own…</button>
@@ -202,11 +203,11 @@
     <div id="portraitGrid" class="portraitgrid"></div>
   </dialog>
 
-  <dialog id="synopsisDialog" class="synopsisdlg">
+  <dialog id="synopsisDialog" class="synopsisdlg" aria-labelledby="synTitle">
     <div class="row wrap">
-      <h2>Synopsis</h2>
+      <h2 id="synTitle">Synopsis</h2>
       <div class="seg" id="synKinds" role="tablist" aria-label="Which synopsis">
-        <button data-kind="prebrief" role="tab" title="Before play: who, where, and the job">Prebrief</button><button data-kind="sofar" role="tab" title="During play: events and what's next">Story so far</button><button data-kind="wrapup" role="tab" title="After play: what became of everyone">Wrap-up</button>
+        <button data-kind="prebrief" role="tab" aria-selected="false" title="Before play: who, where, and the job">Prebrief</button><button data-kind="sofar" role="tab" aria-selected="false" title="During play: events and what's next">Story so far</button><button data-kind="wrapup" role="tab" aria-selected="false" title="After play: what became of everyone">Wrap-up</button>
       </div>
       <span id="synStatus" class="muted small grow"></span>
       <button id="synWrite" title="Agent writes it from the story so far">↻ Write it</button>
@@ -216,7 +217,7 @@
     <div id="synBody" class="synbody"></div>
   </dialog>
 
-  <dialog id="mapDialog" class="mapdlg">
+  <dialog id="mapDialog" class="mapdlg" aria-labelledby="mapTitle">
     <div class="row">
       <h2 class="grow" id="mapTitle">Station map</h2>
       <span class="muted small">Click a door, light, camera or value to change it.</span>
@@ -228,12 +229,12 @@
     <details class="maplayout">
       <summary>Layout <span class="muted">(decks and rooms)</span></summary>
       <p class="muted small">One line per deck: <code>Deck 2 · Med Bay: med_bay=Med Bay, galley</code>. Extra connections between rooms (drawn as pipes): <code>Link: med_bay - cargo_bay_deck3 (air vents)</code>. A room joined straight onto another, with no corridor (a docked ship): <code>Docked: second_chance=SECOND CHANCE @ airlock_a</code>. The decks the lift reaches: <code>Lift: Deck 1, Deck 2</code> (<code>lift.deck_2</code> in the state: RESTRICTED shows yellow stripes, FAULT red). The agent can change all of it. Room ids match keys in the station state (<code>doors.med_bay</code>, <code>cameras.med_bay</code>); "Deck 2" matches deck-wide keys like <code>lights.deck_2</code>. Anything not placed still shows up, under systems or "Not on the map yet".</p>
-      <textarea id="mapLayout" class="code" rows="7" spellcheck="false"></textarea>
+      <textarea id="mapLayout" aria-label="Map layout" class="code" rows="7" spellcheck="false"></textarea>
       <div class="row"><span class="grow"></span><button id="mapLayoutSave">Save layout</button></div>
     </details>
   </dialog>
 
-  <dialog id="roomDialog" class="roomdlg">
+  <dialog id="roomDialog" class="roomdlg" aria-labelledby="roomTitle">
     <div class="row wrap">
       <h2 class="grow"><span id="roomTitle">Room</span> <span id="roomDeck" class="muted small"></span></h2>
       <button id="roomClose" class="ghost" aria-label="Close">✕</button>
@@ -280,9 +281,9 @@
     </div>
   </dialog>
 
-  <dialog id="keyDialog">
+  <dialog id="keyDialog" aria-labelledby="keyTitle">
     <form method="dialog" class="stack" id="keyForm">
-      <h2>Agent API key</h2>
+      <h2 id="keyTitle">Agent API key</h2>
       <label class="field"><span>Provider</span><select id="keyProvider"></select></label>
       <label class="field"><span>API key <a id="keyLink2" target="_blank" rel="noopener">get one ↗</a></span>
         <input id="keyValue" type="password" autocomplete="off" spellcheck="false"></label>
@@ -326,7 +327,7 @@
         <div id="rollOffers" class="card rollstatus" hidden></div>
       </div>
       <div class="compose">
-        <textarea id="compose" rows="3"></textarea>
+        <textarea id="compose" rows="3" aria-label="Message to the agent or the players"></textarea>
         <div id="castLists" hidden></div>
         <div class="row wrap">
           <button id="sendCommand" title="Drive agent, not shown to players">Direction</button>
@@ -381,29 +382,29 @@
           <div id="rollForm" class="stack">
           <div class="rollgrid">
             <label>Who rolls
-              <select id="rollWho" title="Rolls against their own sheet"></select>
+              <select id="rollWho" aria-label="Who rolls" title="Rolls against their own sheet"></select>
             </label>
             <label>Check
-              <select id="rollCheck"></select>
+              <select id="rollCheck" aria-label="Which check"></select>
             </label>
             <label class="rollskill">Skill
-              <select id="rollSkill" title="Bonus only for those who have it"></select>
+              <select id="rollSkill" aria-label="Skill" title="Bonus only for those who have it"></select>
             </label>
             <label>[+] / [−]
-              <select id="rollAdv">
+              <select id="rollAdv" aria-label="Advantage or disadvantage">
                 <option value="none">Normal</option>
                 <option value="advantage">[+] Advantage</option>
                 <option value="disadvantage">[−] Disadvantage</option>
               </select>
             </label>
             <label id="rollWeaponWrap" hidden>Weapon
-              <select id="rollWeapon" title="Only for a Combat check by one character"></select>
+              <select id="rollWeapon" aria-label="Weapon" title="Only for a Combat check by one character"></select>
             </label>
             <label id="rollRangeWrap" hidden>Range
-              <select id="rollRange" title="A Smart Rifle has [-] on the Combat check at Close Range"><option value="">Not stated</option><option value="adjacent">Adjacent</option><option value="close">Close</option><option value="long">Long</option><option value="extreme">Extreme</option></select>
+              <select id="rollRange" aria-label="Range" title="A Smart Rifle has [-] on the Combat check at Close Range"><option value="">Not stated</option><option value="adjacent">Adjacent</option><option value="close">Close</option><option value="long">Long</option><option value="extreme">Extreme</option></select>
             </label>
             <label>What for (players see this)
-              <input id="rollReason" placeholder="bypass a lock">
+              <input id="rollReason" placeholder="bypass a lock" aria-label="What the roll is for">
             </label>
           </div>
           <div id="rollTarget" class="muted small"></div>
@@ -417,16 +418,16 @@
         <div class="card stack" id="combatCard">
           <div class="rollgrid">
             <label>Who attacks
-              <select id="atkSide"><option value="creature">An adversary</option><option value="crew">A crew member (Combat check already made)</option></select>
+              <select id="atkSide" aria-label="Who attacks"><option value="creature">An adversary</option><option value="crew">A crew member (Combat check already made)</option></select>
             </label>
             <label>Attacker <select id="atkBy"></select></label>
             <label><span id="atkWithLabel">Attack</span> <select id="atkWith"></select></label>
             <label>Target <select id="atkTarget"></select></label>
             <label id="atkRangeWrap" hidden>Range
-              <select id="atkRange" title="A Combat Shotgun does 1d10 at Long Range or further"><option value="">Not stated</option><option value="adjacent">Adjacent</option><option value="close">Close</option><option value="long">Long</option><option value="extreme">Extreme</option></select>
+              <select id="atkRange" aria-label="Range" title="A Combat Shotgun does 1d10 at Long Range or further"><option value="">Not stated</option><option value="adjacent">Adjacent</option><option value="close">Close</option><option value="long">Long</option><option value="extreme">Extreme</option></select>
             </label>
             <label id="atkAdvWrap" hidden>Damage [+] / [−]
-              <select id="atkAdv"><option value="">Normal</option><option value="+">[+] Advantage</option><option value="-">[−] Disadvantage</option></select>
+              <select id="atkAdv" aria-label="Advantage or disadvantage"><option value="">Normal</option><option value="+">[+] Advantage</option><option value="-">[−] Disadvantage</option></select>
             </label>
           </div>
           <div id="atkNote" class="muted small"></div>
@@ -436,8 +437,8 @@
 
         <h2>Handouts <span class="hint" title="Documents that pop up on player screens and stay under DOCS. With a voice, it's an audio log: they play it, and read along.">?</span></h2>
         <div class="card stack">
-          <input id="docTitle" placeholder="Title" maxlength="120">
-          <textarea id="docText" rows="4" placeholder="Text, or describe it and press Write it"></textarea>
+          <input id="docTitle" aria-label="Document title" placeholder="Title" maxlength="120">
+          <textarea id="docText" aria-label="Document text" rows="4" placeholder="Text, or describe it and press Write it"></textarea>
           <div class="row wrap"><label class="small muted">To <select id="docTo"></select></label><label class="small muted" title="An audio log: who speaks it. The text is then what's said, a line at a time; NAME: at the start of a line switches speaker.">Voice <select id="docVoice"></select></label><label class="small muted" title="Leave it in a room, to be found there (FILES on a terminal in that room, or when the players search it)">Where <select id="docRoom"></select></label><span class="grow"></span>
             <button id="docWrite" title="Agent writes it from your description">Write it</button>
             <button id="docSend">Hand it out</button></div>
@@ -474,12 +475,13 @@
         <div class="stack">
         <div class="fxopts">
           <label>Caption <input id="fxText" placeholder="Optional text"></label>
-          <label>Seconds <input id="fxSecs" type="number" min="0" placeholder="until cleared" title="Blank or 0 lasts until cleared"></label>
+          <label>Seconds <input id="fxSecs" aria-label="Seconds" type="number" min="0" placeholder="until cleared" title="Blank or 0 lasts until cleared"></label>
           <label>Intensity
             <select id="fxIntensity"><option value="1">Low</option><option value="2" selected>Med</option><option value="3">High</option></select>
           </label>
         </div>
         <div id="fxButtons" class="fxgrid"></div>
+        <div id="fxWhy" class="muted small" role="status"></div>
         <div class="row">
           <h3 class="grow">Active</h3>
           <button id="fxClear" class="danger">Clear all</button>
@@ -490,7 +492,7 @@
         <h2>Sounds <span class="hint" title="Your own audio, played on every player's screen.">?</span></h2>
         <div class="stack">
         <div id="soundDrop" class="drop">
-          <input type="file" id="soundFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.webm" multiple hidden>
+          <input type="file" id="soundFile" aria-label="Sound files to add" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.webm" multiple hidden>
           <button id="soundUpload">Upload sounds</button>
           <span class="muted small">or drop audio files, 10 MB max</span>
         </div>
@@ -516,7 +518,7 @@
         <div id="map" class="smap compact"></div>
       <details class="edit-only">
         <summary>Station state <span class="muted">(agent-editable)</span></summary>
-        <textarea id="station" class="code" rows="14" spellcheck="false"></textarea>
+        <textarea id="station" aria-label="Station data" class="code" rows="14" spellcheck="false"></textarea>
         <div class="row"><span id="stationErr" class="err"></span><span class="grow"></span><button id="stationSave">Save state</button></div>
       </details>
       </div>
@@ -532,11 +534,11 @@
         <div class="row wrap edit-only"><label class="small muted">Heard elsewhere over <select id="castChannel" title="Voice used outside the players' room"></select></label></div>
         <div id="cast"></div>
         <div class="row edit-only"><button id="addCast" class="ghost">+ Add character</button></div>
-        <input type="file" id="portraitFile" accept="image/*" hidden>
+        <input type="file" id="portraitFile" aria-label="Picture file" accept="image/*" hidden>
         <h2>Adversaries <span class="hint" title="The story's threats. Shown as ??? until revealed.">?</span></h2>
         <div id="adversaries"></div>
         <div class="row edit-only"><button id="addAdversary" class="ghost">+ Add adversary</button></div>
-        <input type="file" id="advFile" accept="image/*" hidden>
+        <input type="file" id="advFile" aria-label="Adversary picture file" accept="image/*" hidden>
         <h2>Terminals <span class="hint" title="Where each player's screen is. Players switch with TERM if allowed.">?</span></h2>
         <div class="row wrap stationrow">
           <label class="small muted">Station name <input id="stationName"></label>
@@ -556,14 +558,14 @@
         </details>
         <details id="voicesPanel" class="sec edit-only" open>
           <summary><h2>Voices &amp; personas <span class="hint" title="Each persona tells the agent who it is and how it talks.">?</span></h2></summary>
-          <input id="testText" placeholder="Test line" value="Attention. This is a test of the station voice system.">
+          <input id="testText" aria-label="Test line for the station voice" placeholder="Test line" value="Attention. This is a test of the station voice system.">
           <div id="voices"></div>
           <div class="row"><button id="addVoice" class="ghost">+ Add voice</button></div>
         </details>
 
       <details class="sec" open>
         <summary><h2>Standing orders <span class="hint" title="The agent follows these on every reply.">?</span></h2></summary>
-        <textarea id="standingOrders" rows="4" placeholder="Orders for every reply"></textarea>
+        <textarea id="standingOrders" aria-label="Standing orders" rows="4" placeholder="Orders for every reply"></textarea>
       </details>
 
       <details class="sec" open>

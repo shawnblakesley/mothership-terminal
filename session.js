@@ -2196,7 +2196,8 @@ export class Session {
     const end = title.at + title.dur + 1500;
     this.toPlayers({ t: "coldopen", id: newId("co", 4), campaign: camp.title.toUpperCase(), cards, title, end, fx: nv.fx || {} });
     this.playhead = Math.max(this.playhead, end + 500);
-    this.addLog("note", `Cold open: "Previously on ${camp.title}" plays on every screen (${Math.round((end - Date.now()) / 1000)} seconds).`);
+    const secs = Math.round((end - Date.now()) / 1000);
+    this.addLog("note", cards.length ? `Cold open: "Previously on ${camp.title}" plays on every screen (${secs} seconds).` : `Cold open: the title card plays on every screen (${secs} seconds). There is nothing to recap before the first story.`);
   }
 
   async buildCampaignStory(c, story, p) {

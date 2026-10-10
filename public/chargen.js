@@ -48,6 +48,7 @@ window.Chargen = (() => {
     view = null;
     api.close();
     api.claim(id);
+    api.accepted(id);
   }
 
   function setPending(list, pilot) {
@@ -68,6 +69,28 @@ window.Chargen = (() => {
     return !!view.sheet;
   };
 
+  const KEYS = {
+    stats: "R TO ROLL · T TO TYPE YOUR OWN DICE · ENTER TO GO ON · ESC TO LEAVE",
+    saves: "R TO ROLL · T TO TYPE YOUR OWN DICE · ENTER TO GO ON · ESC TO GO BACK",
+    health: "R TO ROLL · T TO TYPE YOUR OWN DICE · ENTER TO GO ON · ESC TO GO BACK",
+    credits: "R TO ROLL · T TO TYPE YOUR OWN DICE · ENTER TO GO ON · ESC TO GO BACK",
+    class: "UP/DOWN OR 1-4 TO CHOOSE · ENTER TO GO ON · ESC TO GO BACK",
+    skills: "UP/DOWN TO MOVE · SPACE TO TAKE OR DROP · ENTER TO GO ON · ESC TO GO BACK",
+    gear: "1, 2, 3 TO ROLL · TAB TO A BOX TO TYPE IN IT · ENTER TO GO ON · ESC TO GO BACK",
+    name: "TYPE A NAME · ENTER FOR THE NEXT BOX, THEN TO GO ON · ESC TO GO BACK",
+    review: "ENTER TO SUBMIT · ESC TO GO BACK AND CHANGE SOMETHING",
+  };
+  function why() {
+    if (!view || stepDone()) return "";
+    const name = STEPS[step], info = view.classes[view.className];
+    if (name === "class") return view.className ? `CHOOSE THE STAT FOR THE ${up(view.className)}'S ${info.minus ? `-${info.minus}` : `+${info.plus}`} TO CONTINUE` : "CHOOSE A CLASS TO CONTINUE";
+    if (name === "skills") return "CHOOSE YOUR SKILLS TO CONTINUE";
+    if (name === "gear") return `ROLL THE ${["loadout", "trinket", "patch"].filter((w) => !view.rolls[w]).map((w) => w.toUpperCase()).join(", ")} TO CONTINUE`;
+    if (name === "name") return "TYPE A NAME TO CONTINUE";
+    if (name === "review") return "THE SHEET IS NOT COMPLETE: GO BACK AND FIX WHAT IS LISTED";
+    return "ROLL (OR TYPE YOUR OWN DICE) TO CONTINUE";
+  }
+
   const dice = (what, labels) => {
     if (!view.rolls[what]) return "";
     const d = view.rolls[what].dice;
@@ -75,7 +98,7 @@ window.Chargen = (() => {
     return `<div class="cg-rows">${labels.map((k, i) => {
       const part = d.slice(i * per, (i + 1) * per);
       const base = { stats: 25, saves: 10 }[what];
-      return `<div class="cg-row"><span class="cg-k">${up(k)}</span> ${part.map((x) => `<span class="cg-die" data-v="${x}">${x}</span>`).join(" + ")} + ${base} = <b class="cg-num">${(view.rolls[what].values || {})[k]}</b></div>`;
+      return `<div class="cg-row"><span class="cg-k">${up(k)}</span> ${part.map((x) => `<span class="cg-die" data-w="${what}" data-v="${x}">${x}</span>`).join(" + ")} + ${base} = <b class="cg-num">${(view.rolls[what].values || {})[k]}</b></div>`;
     }).join("")}</div>`;
   };
 
@@ -93,18 +116,22 @@ window.Chargen = (() => {
     const body = $("cg-body");
     if (pending.length && isPilot) return renderPending(body);
     $("cg-err").textContent = err.toUpperCase();
+    $("cg-why").textContent = "";
     $("cg-back").hidden = waiting;
     $("cg-next").hidden = waiting;
     if (waiting) {
       $("cg-step").textContent = "SUBMITTED";
+      $("cg-keys").textContent = "ESC TO CLOSE THIS AND KEEP PLAYING";
       body.innerHTML = '<div class="p-text">YOUR CHARACTER IS WAITING FOR THE WARDEN TO APPROVE IT. IF THEY ACCEPT IT, YOU PLAY IT. IF THEY TURN IT DOWN, IT COMES BACK HERE WITH THEIR NOTE AND YOU CAN CHANGE IT AND SUBMIT AGAIN.</div><div class="cg-acts"><button type="button" class="p-btn" data-act="withdraw">[ TAKE IT BACK AND KEEP EDITING ]</button></div>';
       return;
     }
     if (!view) { body.innerHTML = ""; return; }
+    $("cg-keys").textContent = KEYS[STEPS[step]];
     const name = STEPS[step], n = step + 1;
     $("cg-step").textContent = `STEP ${n} OF ${STEPS.length}: ${TITLE[name]}${view.replaces ? " (REPLACEMENT)" : ""}`;
     setLabelText($("cg-next"), name === "review" ? "[ SUBMIT ]" : "[ NEXT ]");
     $("cg-next").disabled = !stepDone();
+    $("cg-why").textContent = why();
     const keep = document.activeElement?.dataset?.field || "", moved = shown !== name;
     shown = name;
     body.innerHTML = ({ stats: statsStep, saves: savesStep, class: classStep, health: healthStep, skills: skillsStep, gear: gearStep, credits: creditsStep, name: nameStep, review })[name]();
@@ -121,11 +148,12 @@ window.Chargen = (() => {
   const setLabelText = (el, t) => { el.textContent = t; };
 
   function tumble(root) {
-    const dies = [...root.querySelectorAll(".cg-die")];
+    const what = fresh, dies = [...root.querySelectorAll(`.cg-die[data-w="${what}"]`)];
+    const faceOf = () => (what === "trinket" || what === "patch" ? pad(Math.floor(Math.random() * 100)) : what === "loadout" ? Math.floor(Math.random() * 10) : 1 + Math.floor(Math.random() * 10));
     let n = 0;
     const iv = setInterval(() => {
       n++;
-      dies.forEach((d, i) => { d.textContent = n < 6 + i ? 1 + Math.floor(Math.random() * 10) : d.dataset.v; });
+      dies.forEach((d, i) => { d.textContent = n < 6 + i ? faceOf() : d.dataset.v; });
       if (n > 6 + dies.length) { clearInterval(iv); dies.forEach((d) => (d.textContent = d.dataset.v)); }
     }, 70);
     fresh = "";
@@ -147,7 +175,7 @@ window.Chargen = (() => {
   }
 
   const healthStep = () => rollBox("health", view.rolls.health
-    ? `<div class="cg-rows"><div class="cg-row"><span class="cg-k">MAXIMUM HEALTH</span> <span class="cg-die" data-v="${view.rolls.health.dice[0]}">${view.rolls.health.dice[0]}</span> + 10 = <b class="cg-num">${view.rolls.health.value}</b></div><div class="cg-row"><span class="cg-k">WOUNDS</span> 0 / ${view.wounds ?? "?"}</div><div class="cg-row"><span class="cg-k">STRESS</span> 2 (MINIMUM STRESS 2)</div></div>` : "");
+    ? `<div class="cg-rows"><div class="cg-row"><span class="cg-k">MAXIMUM HEALTH</span> <span class="cg-die" data-w="health" data-v="${view.rolls.health.dice[0]}">${view.rolls.health.dice[0]}</span> + 10 = <b class="cg-num">${view.rolls.health.value}</b></div><div class="cg-row"><span class="cg-k">WOUNDS</span> 0 / ${view.wounds ?? "?"}</div><div class="cg-row"><span class="cg-k">STRESS</span> 2 (MINIMUM STRESS 2)</div></div>` : "");
 
   function skillsStep() {
     const s = view.skills, rows = [];
@@ -169,16 +197,17 @@ window.Chargen = (() => {
     const row = (what, title, n) => {
       const r = view.rolls[what];
       const book = view.tables ? "" : `<div class="p-dim">LOOK IT UP IN YOUR PLAYER'S SURVIVAL GUIDE, PAGE ${view.pages[what]}, AND TYPE THE RESULT. NO BOOK? TYPE YOUR OWN.</div>`;
-      return `<div class="cg-gear"><div><span class="cg-k">${title}</span> ${r ? `<span class="cg-die" data-v="${pad(r.dice[0])}">${pad(r.dice[0])}</span>` : ""}
+      return `<div class="cg-gear"><div><span class="cg-k">${title}</span> ${r ? `<span class="cg-die" data-w="${what}" data-v="${pad(r.dice[0])}">${pad(r.dice[0])}</span>` : ""}
         ${!r || view.rerolls ? `<button type="button" class="p-btn" data-act="roll" data-what="${what}">[${n}] ${r ? "REROLL" : `ROLL ${what === "loadout" ? "D10" : "D100"}`}</button> <span class="p-dim">OR</span> <button type="button" class="p-btn" data-act="type" data-what="${what}">TYPE MY OWN DICE</button>` : ""}</div>
         ${typeBox(what)}
         ${r ? `${book}<input data-field="${what}" value="${esc(view[what])}" maxlength="${what === "loadout" ? 400 : what === "trinket" ? 160 : 80}" aria-label="${title}">` : ""}</div>`;
     };
-    return `${row("loadout", "LOADOUT", 1)}${row("trinket", "TRINKET", 2)}${row("patch", "PATCH", 3)}<div class="p-dim">PRESS 1, 2, 3 TO ROLL. TAB TO A TEXT FIELD TO TYPE IN IT.</div>`;
+    const blank = ["loadout", "trinket", "patch"].filter((w) => view.rolls[w] && !view[w].trim()), many = blank.length > 1;
+    return `${row("loadout", "LOADOUT", 1)}${row("trinket", "TRINKET", 2)}${row("patch", "PATCH", 3)}<div class="p-dim">PRESS 1, 2, 3 TO ROLL. TAB TO A TEXT FIELD TO TYPE IN IT.</div>${blank.length ? `<div class="p-dim cg-warn">${blank.map((w) => w.toUpperCase()).join(", ")} ${many ? "ARE" : "IS"} BLANK. LEAVE ${many ? "THEM" : "IT"} BLANK AND THE WARDEN WILL HAVE TO FILL ${many ? "THEM" : "IT"} IN.</div>` : ""}`;
   }
 
   const creditsStep = () => rollBox("credits", view.rolls.credits
-    ? `<div class="cg-rows"><div class="cg-row"><span class="cg-k">CREDITS</span> (<span class="cg-die" data-v="${view.rolls.credits.dice[0]}">${view.rolls.credits.dice[0]}</span> + <span class="cg-die" data-v="${view.rolls.credits.dice[1]}">${view.rolls.credits.dice[1]}</span>) x 10 = <b class="cg-num">${view.rolls.credits.value}</b> CR</div></div>` : "");
+    ? `<div class="cg-rows"><div class="cg-row"><span class="cg-k">CREDITS</span> (<span class="cg-die" data-w="credits" data-v="${view.rolls.credits.dice[0]}">${view.rolls.credits.dice[0]}</span> + <span class="cg-die" data-w="credits" data-v="${view.rolls.credits.dice[1]}">${view.rolls.credits.dice[1]}</span>) x 10 = <b class="cg-num">${view.rolls.credits.value}</b> CR</div></div>` : "");
 
   function nameStep() {
     const faceBtn = view.portrait ? `<span class="cg-facepreview">${api.portrait(view.portrait)}</span>` : "";

@@ -161,6 +161,8 @@
     if (entry.kind === "msg") {
       div.classList.add("style-label", entry.dir);
       div.dataset.label = entry.dir === "in" ? `FROM ${shortName({ name: entry.peer })} @ ${entry.at}: ` : `TO ${shortName({ name: entry.peer })}: `;
+      div.setAttribute("role", "group");
+      div.setAttribute("aria-label", `Crew message ${div.dataset.label.replace(/:\s*$/, "").toLowerCase()}`);
       return div;
     }
     if (entry.kind === "player") {
@@ -334,7 +336,7 @@
     const full = names.find((n) => low.startsWith(`${n.toLowerCase()} `));
     const to = full || text.split(/\s+/)[0] || "";
     const body = text.slice(to.length).trim();
-    if (!to || !body) return msgNote("USAGE: /MSG NAME TEXT", "fail");
+    if (!to || !body) return msgNote("USAGE: /MSG NAME TEXT (NAME IS A FIRST NAME OR NICKNAME, E.G. /MSG ROOK MEET ME AT THE CARGO BAY)", "fail");
     send({ t: "msg", to, text: body });
   }
 
@@ -707,11 +709,13 @@
   const peopleNames = (people) => Object.fromEntries(Object.entries(people).map(([room, ids]) => [room, ids.map((id) => nameOf(id))]));
 
   let pickNote = "";
-  const welcome = (c) => c && !gone(c) && notice(`You are ${shortName(c)} aboard ${header.title || header.stationName}. Type what you do and press Enter: the Warden answers. RULES in the header explains rolls.`);
+  const cap = (t) => t[0].toUpperCase() + t.slice(1);
+  const keeper = () => (solo ? "the AI" : "the Warden");
+  const welcome = (c) => c && !gone(c) && notice(`You are ${shortName(c)} aboard ${header.title || header.stationName}. Type what you do and press Enter: ${keeper()} answers. RULES in the header explains rolls.`);
   function storyChanged(title) {
     const name = String(title || header.stationName).toUpperCase(), pick = !spectate && crew.length && !mine() && (!solo || solo.phase === "play");
     pickNote = pick ? `NEW STORY: ${name}. CHOOSE YOUR CREW FILE.` : "";
-    notice(`New story: ${name}. The Warden is setting the scene.${pick ? " Choose your crew file." : ""}`);
+    notice(`New story: ${name}. ${cap(keeper())} is setting the scene.${pick ? " Choose your crew file." : ""}`);
     if (pick) { renderPicker(); openPanel("crewpick"); } else if (mine()) welcome(mine());
   }
 
@@ -806,11 +810,11 @@
       }
     });
   }
-  const sheetCards = (c) => `
+  const sheetCards = (c, preview = false) => `
       ${sheetHead(c)}
       ${statusCard(c)}
       ${conds[c.id]?.length ? `<div class="cs-card cs-conds-card"><div class="cs-title">CONDITIONS</div><div class="cs-conds">${conds[c.id].map((x) => `<span>${escH(x.toUpperCase())}</span>`).join("")}</div></div>` : ""}
-      ${numbersCard("STATS", c.stats, rollHint())}
+      ${numbersCard("STATS", c.stats, preview ? "" : rollHint())}
       ${numbersCard("SAVES", c.saves)}
       <div class="cs-card cs-skills"><div class="cs-title">SKILLS</div>${c.skills.length ? `<div class="cs-list">${c.skills.map((s) => `<div><span>${escH(s.name)}</span><span class="cs-bonus">+${s.bonus}</span></div>`).join("")}</div>` : '<div class="cs-hint">NONE</div>'}</div>
       <div class="cs-card cs-items"><div class="cs-title">ITEMS</div>${c.items.length || docs.some((d) => d.to) ? `<div class="cs-chips">${c.items.map((x) => `<span>${chipText(x)}</span>`).join("")}${docs.filter((d) => d.to).map(docChip).join("")}</div>` : '<div class="cs-hint">NOTHING</div>'}</div>
@@ -918,8 +922,9 @@
   });
   Chargen.init({
     send, escH, fit: fitChips, portrait: (f) => portraitHtml(f, "cs-face"), notice: (t) => notice(t),
-    sheet: (c) => `<div class="cs cs-full">${sheetCards(c)}</div>`,
+    sheet: (c) => `<div class="cs cs-full">${sheetCards(c, true)}</div>`,
     open: () => openPanel("chargen"), close: () => openPanel(null), claim: (id) => claim(id),
+    accepted: (id) => { const c = crew.find((x) => x.id === id); if (!c) return; notice(`${solo ? "The pilot" : "The Warden"} accepted your character. You are now ${c.name}`); welcome(c); if (!input.disabled) input.focus(); },
   });
   $("crewfile-new").onclick = () => Chargen.start(mine()?.id);
   $("crewpick-none").onclick = () => { claim(null); openPanel(null); };
@@ -956,8 +961,14 @@
     $("hdr-docs").hidden = $("hdr-docs-sep").hidden = !docs.length || (spectate && !stream) || !!mine();
     $("hdr-docs").textContent = docs.length ? `DOCS (${docs.length})` : "DOCS";
   }
+  let shownDoc = null;
   function setDocs(list) {
     docs = list || [];
+    if (shownDoc && !docs.some((d) => d.id === shownDoc)) {
+      const open = !$("docs").hidden;
+      shownDoc = null;
+      if (open) { openPanel(null); notice("Document withdrawn"); }
+    }
     docsButton();
     renderSide();
     if (!$("crewfile").hidden) renderFile();
@@ -970,6 +981,7 @@
     showDoc(h.id);
   }
   function showDocList() {
+    shownDoc = null;
     $("docs-title").innerHTML = sq("DOCUMENTS");
     $("docs-list").hidden = false;
     $("docs-body").hidden = $("docs-back").hidden = true;
@@ -980,6 +992,7 @@
   function showDoc(id) {
     const d = docs.find((x) => x.id === id);
     if (!d) return showDocList();
+    shownDoc = id;
     $("docs-title").innerHTML = sq(escH(d.title.toUpperCase()));
     $("docs-list").hidden = true;
     $("docs-body").hidden = false;
@@ -1340,7 +1353,7 @@
   $("crewfile-close").onclick = () => (confirming ? toPicker() : openPanel(null));
   $("crewfile-change").onclick = () => { if (confirming) { openPanel(null); welcome(mine()); } else toPicker(); };
   addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && document.body.classList.contains("panel-open") && !$("crewfile").hidden) openPanel(null);
+    if (e.key === "Escape" && document.body.classList.contains("panel-open") && !$("crewfile").hidden) (confirming ? toPicker() : openPanel(null));
   });
 
   const LOOK_FX = { blood: "blood", goo: "goo", crack: "crack" };
@@ -1709,6 +1722,9 @@
     if ($("coldopen").hidden) return;
     Voice.interrupt();
     $("coldopen").hidden = true;
+    if (spectate) return;
+    if (!$("crewpick").hidden) focusPick();
+    else if (!document.body.classList.contains("panel-open") && !input.disabled) input.focus();
   }
   function playColdOpen(m) {
     endColdOpen();
