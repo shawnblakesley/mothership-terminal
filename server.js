@@ -176,8 +176,6 @@ router.get("/stream", (_req, res) => { track("PageView", { Page: "stream" }); no
 router.get("/healthz", (req, res) => res.json({ ok: true, sessions: sessions.size, you: clientIp(req) }));
 router.use("/vendor/three/addons", express.static(path.join(here, "node_modules", "three", "examples", "jsm"), { index: false, maxAge: "7d" }));
 router.use("/vendor/three", express.static(path.join(here, "node_modules", "three", "build"), { index: false, maxAge: "7d" }));
-router.use("/vendor/kokoro", express.static(path.join(here, "node_modules", "kokoro-js", "dist"), { index: false, maxAge: "7d" }));
-router.use("/vendor/mespeak", express.static(path.join(here, "node_modules", "mespeak"), { index: false, maxAge: "7d" }));
 router.use(express.static(pub, { index: false, maxAge: 0 }));
 
 function isLocalRequest(req) {
@@ -231,7 +229,6 @@ async function sendWav(res, job, empty, what) {
     const clip = await job();
     const wav = Buffer.isBuffer(clip) ? clip : clip?.wav;
     if (!wav) return res.status(empty).end();
-    if (clip.composed) res.set({ "X-Voice-Composed": "1", "X-Speech-Seconds": String(clip.seconds) });
     res.set("Content-Type", "audio/wav").send(wav);
   } catch (err) {
     console.error(`${what} failed:`, err?.message || err);
@@ -269,14 +266,6 @@ router.get("/api/sessions/:code/tts/:id", async (req, res) => {
   if (text === undefined) return res.status(404).end();
   const c = s.state.config;
   await sendWav(res, () => s.speech.speak(text, speakingVoice(c, entry), entry.inPerson ? {} : voiceFor(c.voices, entry)?.fx || {}), 204, "tts");
-});
-
-router.post("/api/sessions/:code/spoken/:id", express.raw({ type: () => true, limit: 16 * 1024 * 1024 }), (req, res) => {
-  noStore(res);
-  const s = wardenOf(req);
-  if (!s) return res.status(403).end();
-  const wav = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-  res.status(s.speech.receive(req.params.id, wav, Number(req.get("x-speech-seconds"))) ? 204 : 404).end();
 });
 
 router.get("/api/sessions/:code/handouts/:id/audio/:part", async (req, res) => {

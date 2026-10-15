@@ -385,7 +385,7 @@
     }
     const text = (part.i ? "\n" : "") + (play.pieces[part.i] ?? "");
     const late = serverNow() - part.at;
-    if (audio) audio.then((buf) => play.gen === lineGen && !play.cut && (buf?.composed || part.composed ? Voice.playNow(buf, null, part.dur / 1000) : Voice.playNow(buf, play.entry.inPerson ? {} : voiceOf(play.entry)?.fx)));
+    if (audio) audio.then((buf) => play.gen === lineGen && !play.cut && Voice.playNow(buf, play.entry.inPerson ? {} : voiceOf(play.entry)?.fx));
     if (late > part.dur * 0.6) { textOf(play.div).textContent += text; scrollDown(); }
     else typeInto(textOf(play.div), text, part.dur - Math.max(0, late));
     if (part.last) setTimeout(() => finishLine(play), Math.max(0, part.dur - Math.max(0, late)));
@@ -1024,7 +1024,7 @@
       lines[i].scrollIntoView({ block: "nearest" });
       state(`PLAYING ${i + 1}/${lines.length}`);
       if (buf) {
-        log.clip = buf.composed ? Voice.playClip(buf, null, buf.seconds) : Voice.playClip(buf, d.audio.lines[i].fx);
+        log.clip = Voice.playClip(buf, d.audio.lines[i].fx);
         skewWave(box);
         box.classList.add("talking");
         const finished = await log.clip.done;
@@ -1709,7 +1709,7 @@
     const gen = coldGen, box = $("coldopen"), pic = box.querySelector(".co-pic"), who = box.querySelector(".co-who"), text = box.querySelector(".co-text"), title = box.querySelector(".co-title"), stage = box.querySelector(".co-stage");
     const at = (t, fn) => coldTimers.push(setTimeout(() => gen === coldGen && fn(), untilServer(t)));
     const hear = (c) => (c.wav && canHear() ? Voice.decode(c.wav) : null);
-    const say = (c, audio) => audio?.then((buf) => gen === coldGen && buf && (c.composed ? Voice.playNow(buf, null, c.dur / 1000) : Voice.playNow(buf, m.fx)));
+    const say = (c, audio) => audio?.then((buf) => gen === coldGen && buf && Voice.playNow(buf, m.fx));
     const noise = () => {
       pic.replaceChildren();
       const cv = document.createElement("canvas");

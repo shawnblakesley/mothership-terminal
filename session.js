@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, sitePassword, LOCAL_KEYS, SITE_KEYS } from "./providers/index.js";
-import { warmNeural, warmKitten } from "./tts.js";
-import { VoiceRelay } from "./voicerelay.js";
+import { warmNeural, warmKitten, synthesize, wavSeconds } from "./tts.js";
 import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, isHuman, hasExpression, splitExpression, PICTURE_LINK, DEFAULT_COLD, COLD_STATS, OLD_COLD_PICTURES } from "./voices.js";
 import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, isCrew, placeByOccupants, speakingVoice, finalVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
 import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, KITTEN_SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
@@ -540,7 +539,7 @@ export class Session {
     this.sectorShown = false;
     this.synopsisBusy = "";
     this.handoutBusy = false;
-    this.speech = new VoiceRelay();
+    this.speech = { speak: (text, voice, fx = {}) => synthesize(text, voice).then((wav) => (wav ? { wav, seconds: wavSeconds(wav) / (fx.rate || 1) } : null)) };
     this.roomBusy = "";
     this.keys = {};
     if (this.state.localKeys) this.keys[LOCAL_KEYS] = true;
@@ -642,7 +641,6 @@ export class Session {
     if (t && reachable(t, this.state.station)) ws.terminal = t.id;
     ws.on("close", () => {
       this.sockets.delete(ws);
-      this.speech.detach(ws);
       if (this.sectorVotes.delete(ws)) this.sectorSync();
       if (ws.character) this.crewChanged();
     });
@@ -1124,8 +1122,8 @@ export class Session {
         const clip = await jobs[v][i];
         if (clip && screens) wavs[v][i] = clip.wav.toString("base64");
         const dur = clip ? Math.round(clip.seconds * 1000) : Math.min(6000, 400 + pieces[v][i].length * 18);
-        const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!clip && screens, last: i === pieces[v].length - 1, ...(clip?.composed ? { composed: true } : {}) };
-        if (talk && v === 0 && clip && live()) discordSay(this.code, clip.wav, clip.composed ? null : fx, part.at);
+        const part = { i, at: Math.max(cursors[v], Date.now() + LEAD), dur, audio: !!clip && screens, last: i === pieces[v].length - 1 };
+        if (talk && v === 0 && clip && live()) discordSay(this.code, clip.wav, fx, part.at);
         cursors[v] = part.at + dur + PIECE_GAP;
         timing.versions[v].push(part);
         if (sent && live()) this.toEntry(entry, { t: "part", id: entry.id, v, part: { ...part, wav: wavs[v][i] } });
@@ -1439,13 +1437,6 @@ export class Session {
       }
       case "heard":
         return this.hearTable({ text: msg.text, warden: true });
-      case "voiceEngine":
-        if (msg.on) this.speech.attach(ws, { neural: msg.neural });
-        else this.speech.detach(ws);
-        return;
-      case "spokenFailed":
-        this.speech.failed(msg.id);
-        return;
       case "sttKey": {
         const key = String(msg.key || "").trim();
         rememberSecret(key);
@@ -2231,7 +2222,7 @@ export class Session {
     let at = Date.now() + 1500;
     const slot = (text, clip, min = 0) => {
       const dur = Math.max(min, clip ? Math.round(clip.seconds * 1000) : Math.min(7000, 800 + text.length * 40));
-      const out = { at, dur, ...(clip ? { wav: clip.wav.toString("base64"), ...(clip.composed ? { composed: true } : {}) } : {}) };
+      const out = { at, dur, ...(clip ? { wav: clip.wav.toString("base64") } : {}) };
       at += dur + GAP;
       return out;
     };
