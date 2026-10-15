@@ -2774,7 +2774,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
           <label>Speaker
             <select data-k="voice.kitten">${Object.entries(o.kittenSpeakers).map(([id, label]) => `<option value="${id}" ${id === v.voice.kitten ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
           </label>
-          <p class="small muted">The agent acts these lines with emotion, sighs and emphasis. Try it: [nervous] It's (((here))). &lt;gasp&gt;</p>` : v.voice.engine === "neural" ? `
+          <p class="small muted" style="grid-column: 1 / -1; margin: 0">The agent acts these lines with emotion, sighs and emphasis. Try it: [nervous] It's (((here))). &lt;gasp&gt;</p>` : v.voice.engine === "neural" ? `
           <label>Speaker
             <select data-k="voice.speaker">${Object.entries(o.speakers).map(([id, label]) => `<option value="${id}" ${id === v.voice.speaker ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
           </label>
