@@ -3,6 +3,9 @@ const status = { espeak: false, neural: false };
 let espeak = null, kokoro = null, queue = Promise.resolve();
 
 const report = () => postMessage({ status: { ...status } });
+// onnxruntime prints harmless node-placement warnings through console.error; kokoro-js offers no log level to quiet them
+const logError = console.error;
+console.error = (...args) => String(args[0]).includes("W:onnxruntime") || logError(...args);
 
 async function loadCommonJs(url, require) {
   const src = await (await fetch(url)).text();

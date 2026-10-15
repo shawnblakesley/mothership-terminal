@@ -120,7 +120,7 @@ function kittenSidecar() {
     if (kitten !== k) return;
     kitten = null;
     kittenRetryAt = Date.now() + KITTEN_RETRY_MS;
-    console.warn(`  ! Kitten TTS 2 stopped (${err.message}); its voices use eSpeak until it restarts.`);
+    console.warn(`  ! Kitten TTS 2 stopped (${err.message}); its voices use eSpeak until it restarts. It needs a Python with kittenml and soundfile: set KITTEN_PYTHON to it (now "${KITTEN_PYTHON}").`);
     for (const job of k.jobs.values()) { clearTimeout(job.timer); job.reject(err); }
   };
   proc.on("error", down);
