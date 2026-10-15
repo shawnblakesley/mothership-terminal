@@ -769,7 +769,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     fillSelect($("castChannel"), S.config.voices.filter((v) => !["terminal", "narrator"].includes(v.id)).map((v) => [v.id, v.name]), S.config.castChannel);
     const rooms = roomLabels();
     const withPlayers = new Set((S.screens || []).map((sc) => S.config.terminals.find((t) => t.id === sc.terminal)?.room).filter(Boolean));
-    const speakers = Object.entries(S.voiceOptions.speakers);
+    const CAST_ENGINES = [["neural", "Human (neural)"], ["kitten", "Expressive (Kitten TTS 2)"], ["espeak", "Synthetic (eSpeak)"]];
+    const speakersOf = (engine) => Object.entries(engine === "kitten" ? S.voiceOptions.kittenSpeakers : S.voiceOptions.speakers);
     panel.innerHTML = castDraft.map((m, i) => `<div class="castm" data-i="${i}">
         ${pickButton(m, `class="pick" data-mact="pic"`)}
         <div class="castbody">
@@ -786,7 +787,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
             ${withPlayers.has(m.room) ? '<span class="pill ok" title="Face to face with players">in person</span>' : '<span class="pill" title="Heard over the intercom">intercom</span>'}
           </div>
           <div class="row wrap edit-only small">
-            <select data-m="voice" aria-label="Their voice"><option value="">(a voice of their own)</option>${speakers.map(([id, label]) => `<option value="${id}" ${id === m.voice ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
+            <select data-m="engine" aria-label="Their voice engine">${optionsHtml(CAST_ENGINES, m.engine || "neural")}</select>
+            ${m.engine === "espeak" ? "" : `<select data-m="voice" aria-label="Their voice"><option value="">(a voice of their own)</option>${speakersOf(m.engine).map(([id, label]) => `<option value="${id}" ${id === m.voice ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>`}
             <button data-mact="test" title="Preview voice here">▶</button>
             <span class="grow"></span><button data-mact="del" class="ghost" title="Remove ${esc(m.name)}">✕</button>
           </div>
@@ -810,7 +812,9 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const key = e.target.dataset.m;
     const card = e.target.closest(".castm");
     if (!key || !card) return;
-    castDraft[Number(card.dataset.i)][key] = "num" in e.target.dataset ? Number(e.target.value) : e.target.value;
+    const m = castDraft[Number(card.dataset.i)];
+    m[key] = "num" in e.target.dataset ? Number(e.target.value) : e.target.value;
+    if (key === "engine") { m.voice = ""; renderCast(true); } // each engine has its own speakers
     saveCast(e.target.tagName === "SELECT");
   });
   $("cast").addEventListener("focusout", () => setTimeout(() => S && renderCast(), 1600));
@@ -823,7 +827,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const i = Number(card.dataset.i), m = castDraft[i];
     if (act === "pic") openPortraits({ cast: i });
     else if (act === "panic") send({ t: "castPanic", id: m.id });
-    else if (act === "test") Voice.test({ name: "test", voice: { engine: "neural", speaker: m.voice || "am_michael", pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
+    else if (act === "test") Voice.test({ name: "test", voice: { engine: m.engine || "neural", speaker: m.voice, kitten: m.voice, pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     else if (act === "del") {
       if (!(await sure(`Remove ${m.name || "this character"}?`, "The agent forgets them.", "Remove"))) return;
       castDraft.splice(castDraft.indexOf(m), 1);

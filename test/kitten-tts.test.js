@@ -4,6 +4,7 @@ import { splitExpression, stripExpression, hasExpression, sanitizeVoices } from 
 import { prepare } from "../tts.js";
 import { Session } from "../session.js";
 import { playerEntry } from "../redact.js";
+import { sanitizeCast, castVoice } from "../cast.js";
 
 test("the agent's markup is spoken by a Kitten voice and stripped everywhere it is shown", () => {
   Session.prototype.usesNeural = () => false;
@@ -45,4 +46,29 @@ test("a Kitten voice is sanitized and prepared with its tags kept", () => {
   assert.equal(job.kitten, true);
   assert.equal(job.say, "[sad] The door is sealed. <sigh>");
   assert.equal(prepare("<sigh>", v.voice), null);
+});
+
+test("each character picks its own engine: a Kitten character speaks its markup, a neural one on the same channel does not", () => {
+  const cast = sanitizeCast([
+    { name: "Juno", engine: "kitten", voice: "Saoirse" },
+    { name: "Imre", voice: "am_onyx" },
+    { name: "Voss", engine: "espeak", voice: "am_onyx" },
+    { name: "Pell", engine: "kitten", voice: "am_onyx" },
+  ]);
+  assert.deepEqual(cast.map((m) => [m.engine, m.voice]), [["kitten", "Saoirse"], ["neural", "am_onyx"], ["espeak", "am_onyx"], ["kitten", ""]]);
+  assert.deepEqual(castVoice(cast[0]), { engine: "kitten", kitten: "Saoirse" });
+  assert.equal(castVoice(cast[2]).engine, "espeak");
+  assert.equal(castVoice(cast[3]).kitten, "Bruno");
+
+  const s = new Session({ code: "KITC", tokenHash: "x", game: {} }, { onChange() {}, onEnd() {} });
+  s.touch = () => {};
+  s.syncDm = () => {};
+  s.speech.speak = async () => null;
+  s.state.config.cast = cast;
+  const juno = s.addLog("entity", "[nervous] It's (((here))).", { entity: s.state.config.castChannel, character: "Juno" });
+  const imre = s.addLog("entity", "[nervous] It's (((here))).", { entity: s.state.config.castChannel, character: "Imre" });
+  assert.equal(juno.text, "It's here.");
+  assert.equal(juno.say, "[nervous] It's (((here))).");
+  assert.equal(imre.text, "It's here.");
+  assert.equal(imre.say, undefined);
 });

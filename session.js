@@ -624,7 +624,8 @@ export class Session {
 
   warmVoices() {
     if (this.usesNeural()) warmNeural();
-    if (this.state.config.voices.some((v) => v.voice.engine === "kitten")) warmKitten();
+    const c = this.state.config;
+    if (c.voices.some((v) => v.voice.engine === "kitten") || c.cast?.some((m) => m.engine === "kitten")) warmKitten();
   }
 
   attach(ws, role, hint = {}) {
@@ -1382,6 +1383,7 @@ export class Session {
       case "cast":
         s.config.cast = sanitizeCast(msg.cast);
         if (s.config.voices.some((v) => v.id === msg.channel)) s.config.castChannel = msg.channel;
+        this.warmVoices();
         this.sendHeader();
         break;
       case "station":

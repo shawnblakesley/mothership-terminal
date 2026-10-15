@@ -1,4 +1,4 @@
-import { SPEAKERS, COMMS_PRESETS, voiceFor } from "./voices.js";
+import { SPEAKERS, KITTEN_SPEAKERS, COMMS_PRESETS, voiceFor } from "./voices.js";
 import { slug as keySlug, roomId } from "./clean.js";
 
 export const MAX_CAST = 40;
@@ -85,7 +85,8 @@ export function sanitizeCast(list) {
     out.push({
       id,
       name,
-      voice: SPEAKERS[c.voice] ? c.voice : "",
+      engine: CAST_ENGINES.includes(c.engine) ? c.engine : "neural",
+      voice: (c.engine === "kitten" ? KITTEN_SPEAKERS : SPEAKERS)[c.voice] ? c.voice : "",
       notes: String(c?.notes || "").slice(0, 1500),
       room: roomId(c?.room),
       portrait: PORTRAIT_FILE.test(c?.portrait || "") ? c.portrait : "",
@@ -130,7 +131,13 @@ export function addCast(cast, raw, { room = "", notes = "", crew = [] } = {}) {
   return { member, created: true };
 }
 
-export const castVoice = (member) => ({ engine: "neural", speaker: member?.voice || "am_michael", pace: 1 });
+// Each character picks its own engine; "voice" is that engine's speaker (eSpeak has none, so it uses the defaults).
+export const CAST_ENGINES = ["neural", "kitten", "espeak"];
+export function castVoice(member) {
+  if (member?.engine === "kitten") return { engine: "kitten", kitten: KITTEN_SPEAKERS[member.voice] ? member.voice : "Bruno" };
+  if (member?.engine === "espeak") return { engine: "espeak", variant: "", pitch: 50, speed: 170, wordgap: 0 };
+  return { engine: "neural", speaker: SPEAKERS[member?.voice] ? member.voice : "am_michael", pace: 1 };
+}
 
 export function shiftStress(member, change) {
   const before = member.stress ?? 2;
