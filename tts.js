@@ -99,7 +99,8 @@ let kittenRetryAt = 0;
 function kittenSidecar() {
   if (kitten || Date.now() < kittenRetryAt) return kitten;
   const t = Date.now();
-  const proc = spawn(KITTEN_PYTHON, [KITTEN_SCRIPT], { stdio: ["pipe", "pipe", "inherit"], windowsHide: true });
+  // -X utf8: kittenml opens its JSON files without an encoding, which fails on Windows code pages
+  const proc = spawn(KITTEN_PYTHON, ["-X", "utf8", KITTEN_SCRIPT], { stdio: ["pipe", "pipe", "inherit"], windowsHide: true });
   const k = (kitten = { proc, jobs: new Map(), next: 0, ready: false });
   readline.createInterface({ input: proc.stdout }).on("line", (line) => {
     let msg;
