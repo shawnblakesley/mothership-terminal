@@ -590,13 +590,12 @@ The story's threats (the creature, the thing in the walls) are under **Adversari
 Speech is generated on the server, with no API key and no per-use cost:
 
 - **Human voices** use [Kokoro](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX) (the `kokoro-js` package). Its model (about 330 MB at full precision) downloads once and is cached in `node_modules`. Generation begins the moment a line is sent, while the text types out, and the model loads at server start whenever a human voice exists. If the model can't load, those voices fall back to eSpeak.
+- **Expressive voices** use [Kitten TTS 2](https://github.com/KittenML/KittenTTS) (pick **Expressive (Kitten TTS 2)** as a voice's engine). The agent acts their lines with delivery cues: a leading emotion (`[nervous]`, `[stern]`, `[sad]`...), vocal events (`<sigh>`, `<gasp>`, `<laugh>`...) and emphasis (`(((never)))`). The cues are spoken, never shown; a line the Warden types can use them too. Kitten is Python, so it runs on the server only, in a sidecar (`scripts/kitten_tts.py`): install it with `pip install kittenml soundfile`, and set `KITTEN_PYTHON` to that Python if it isn't `python` on the PATH (`KITTEN_WEIGHTS=emb4` for the smaller 506 MB download). The model (about 1 GB, 6 GB RAM, or a CUDA GPU) downloads on first use; until it's loaded, or if it can't start, those voices use eSpeak. Cast members keep their Kokoro voices.
 - **Synthetic voices** use eSpeak (the `mespeak` package) and are instant. The player's browser applies the effects. Speech starts once a player presses a key on the boot screen, because browsers block sound until then. The DM preview is always silent.
 
 Spoken text is revealed in step with the voice: each line appears as it starts being said, and the next waits until the voice has finished. Terminals that are muted, or have sound off, just type the text out.
 
 A **blackout** cuts off the voice that's speaking instantly. Queued lines wait for the lights to come back, then carry on.
-
-**Voices made on the Warden's computer:** while the Warden's console is open, it makes the voices itself (eSpeak, and the human voices with Kokoro, on WebGPU where the browser has it) and adds each voice's effects, then sends the finished clips through the server to the players and Discord. The server does no speech or effects work for those lines. The human-voice model downloads into the Warden's browser once (about 90 MB, or 300 MB on WebGPU) and is cached after that. The server still makes the voices itself when there's no Warden (games without one), while the human voices are still loading, if a clip takes too long (it then leaves the Warden's computer alone for a minute), or if the Warden turns **make the voices on this computer** off under Settings, Session. Finished clips are bigger than plain speech for voices with reverb, since the ring-out is part of the clip.
 
 **Speed:**
 

@@ -3,6 +3,10 @@ import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import readline from "readline";
+import { spawn } from "child_process";
+import { fileURLToPath } from "url";
+import { EMOTIONS, VOCAL_EVENTS } from "./voices.js";
 
 const require = createRequire(import.meta.url);
 let meSpeak = null;
@@ -84,6 +88,73 @@ function runNeural(say, { speaker, pace }) {
   return job;
 }
 
+// Kitten TTS 2 (Python, github.com/KittenML/KittenTTS) runs in a sidecar: scripts/kitten_tts.py, one JSON line each way.
+const KITTEN_PYTHON = process.env.KITTEN_PYTHON || "python";
+const KITTEN_SCRIPT = fileURLToPath(new URL("./scripts/kitten_tts.py", import.meta.url));
+const KITTEN_TIMEOUT_MS = 90000;
+const KITTEN_RETRY_MS = 60000;
+let kitten = null;
+let kittenRetryAt = 0;
+
+function kittenSidecar() {
+  if (kitten || Date.now() < kittenRetryAt) return kitten;
+  const t = Date.now();
+  // -X utf8: kittenml opens its JSON files without an encoding, which fails on Windows code pages
+  const proc = spawn(KITTEN_PYTHON, ["-X", "utf8", KITTEN_SCRIPT], { stdio: ["pipe", "pipe", "inherit"], windowsHide: true });
+  const k = (kitten = { proc, jobs: new Map(), next: 0, ready: false });
+  readline.createInterface({ input: proc.stdout }).on("line", (line) => {
+    let msg;
+    try { msg = JSON.parse(line); } catch { return; }
+    if (msg.ready) {
+      k.ready = true;
+      return console.log(`  Kitten TTS 2 ready (${((Date.now() - t) / 1000).toFixed(1)}s)`);
+    }
+    const job = k.jobs.get(msg.id);
+    if (!job) return;
+    k.jobs.delete(msg.id);
+    clearTimeout(job.timer);
+    if (msg.wav) job.resolve(Buffer.from(msg.wav, "base64"));
+    else job.reject(new Error(msg.error || "no audio"));
+  });
+  const down = (err) => {
+    if (kitten !== k) return;
+    kitten = null;
+    kittenRetryAt = Date.now() + KITTEN_RETRY_MS;
+    console.warn(`  ! Kitten TTS 2 stopped (${err.message}); its voices use eSpeak until it restarts. It needs a Python with kittenml and soundfile: set KITTEN_PYTHON to it (now "${KITTEN_PYTHON}").`);
+    for (const job of k.jobs.values()) { clearTimeout(job.timer); job.reject(err); }
+  };
+  proc.on("error", down);
+  proc.on("exit", (code) => down(new Error(`exit code ${code}`)));
+  proc.stdin.on("error", () => {});
+  return k;
+}
+
+export function warmKitten() {
+  kittenSidecar();
+}
+
+// Fails at once while the model is still loading (the first run downloads it), so lines fall back to eSpeak instead of waiting.
+function runKitten(say, { voice }) {
+  const k = kittenSidecar();
+  if (!k?.ready) return Promise.reject(new Error(k ? "still loading" : "not running"));
+  const id = ++k.next;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { k.jobs.delete(id); reject(new Error("timed out")); }, KITTEN_TIMEOUT_MS);
+    k.jobs.set(id, { resolve, reject, timer });
+    k.proc.stdin.write(`${JSON.stringify({ id, text: say, voice })}\n`);
+  });
+}
+
+// speakable() strips brackets and lowercases; Kitten's tags are kept through it, and sentences get their capitals back.
+const KITTEN_TAG = new RegExp(`\\[(?:${EMOTIONS.join("|")})\\]|<(?:${VOCAL_EVENTS.join("|")})>`, "gi");
+export function kittenSpeakable(text) {
+  const tags = [];
+  const hidden = String(text).replace(KITTEN_TAG, (t) => ` \u0001${tags.push(t.toLowerCase()) - 1}\u0002 `);
+  return speakable(hidden)
+    .replace(/(^|[.!?]\s+)((?:\u0001\d+\u0002\s*)*)([a-z])/g, (_, a, t, b) => a + t + b.toUpperCase())
+    .replace(/\u0001(\d+)\u0002/g, (_, i) => tags[i]);
+}
+
 const MEM_CACHE_BYTES = 64 * 1024 * 1024;
 const DISK_CACHE_BYTES = (Number(process.env.TTS_CACHE_MB) || 200) * 1024 * 1024;
 const cache = new Map();
@@ -163,26 +234,27 @@ export function wavSeconds(buf) {
 }
 
 export function prepare(text, voice) {
-  const say = speakable(text);
-  if (!say) return null;
+  const kittenVoice = voice.engine === "kitten";
+  const say = kittenVoice ? kittenSpeakable(text) : speakable(text);
+  if (!say.replace(KITTEN_TAG, "").trim()) return null;
   const neural = voice.engine === "neural";
-  const opts = neural
-    ? { engine: "neural", speaker: voice.speaker, pace: voice.pace }
+  const opts = kittenVoice ? { engine: "kitten", voice: voice.kitten || "Bruno" }
+    : neural ? { engine: "neural", speaker: voice.speaker, pace: voice.pace }
     : { pitch: voice.pitch, speed: voice.speed, wordgap: voice.wordgap, ...(voice.variant ? { variant: voice.variant } : {}) };
-  return { say, neural, opts, text: neural ? sentenceCase(say) : say, key: `${JSON.stringify(opts)}|${say}` };
+  return { say, neural, kitten: kittenVoice, opts, text: neural ? sentenceCase(say) : say, key: `${JSON.stringify(opts)}|${say}` };
 }
 
 export function synthesize(text, voice) {
   const prep = prepare(text, voice);
   if (!prep) return Promise.resolve(null);
-  const { say, opts, key } = prep, isNeural = prep.neural;
+  const { say, opts, key } = prep, isNeural = prep.neural || prep.kitten;
   const hit = cache.get(key);
   if (hit) {
     cache.delete(key);
     cache.set(key, hit);
     return hit.job;
   }
-  const espeak = () => engine().speak(say, { ...(isNeural ? {} : opts), rawdata: "buffer" }) || null;
+  const espeak = () => engine().speak(prep.kitten ? speakable(say.replace(KITTEN_TAG, " ")) : say, { ...(isNeural ? {} : opts), rawdata: "buffer" }) || null;
   let job;
   if (!isNeural) {
     job = Promise.resolve().then(espeak);
@@ -190,10 +262,11 @@ export function synthesize(text, voice) {
     const fromDisk = readDisk(key);
     job = fromDisk
       ? Promise.resolve(fromDisk)
-      : runNeural(say, opts).then(
+      : (prep.kitten ? runKitten(say, opts) : runNeural(say, opts)).then(
           (buf) => { writeDisk(key, buf); return buf; },
           (err) => {
-            console.warn(`human voice failed (${err.message}); falling back to eSpeak`);
+            console.warn(`${prep.kitten ? "Kitten" : "human"} voice failed (${err.message}); falling back to eSpeak`);
+            if (prep.kitten) queueMicrotask(() => cache.delete(key)); // try Kitten again next time; it may have finished loading
             return espeak();
           },
         );

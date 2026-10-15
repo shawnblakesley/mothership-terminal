@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { BUILTIN, SPEAKERS, shownName, ABBREVIATION, SENTENCE, HIDDEN_DOT } from "./voices.js";
+import { BUILTIN, SPEAKERS, KITTEN_SPEAKERS, shownName, ABBREVIATION, SENTENCE, HIDDEN_DOT, EMOTIONS, VOCAL_EVENTS } from "./voices.js";
 import { channelOf, attitudeLabel } from "./cast.js";
 import { CHECKS, PANIC, ADVANTAGE } from "./rolls.js";
 import { crewBrief, crewStatus } from "./crew.js";
@@ -551,7 +551,11 @@ const xmlAttr = (s) => String(s).replace(/[&"<>]/g, (c) => ({ "&": "&amp;", '"':
 
 function buildCast(config) {
   const channel = config.voices.find((v) => v.id === channelOf(config));
-  const people = (config.cast || []).map((m) => `- ${m.name}${m.voice ? ` [${SPEAKERS[m.voice] || m.voice}]` : ""}${m.notes ? `: ${m.notes}` : ""}`);
+  const people = (config.cast || []).map((m) => {
+    const kitten = m.engine === "kitten";
+    const speaker = m.voice ? (kitten ? KITTEN_SPEAKERS : SPEAKERS)[m.voice] || m.voice : "";
+    return `- ${m.name}${speaker ? ` [${speaker}]` : ""}${kitten ? " (expressive)" : ""}${m.notes ? `: ${m.notes}` : ""}`;
+  });
   return `THE CAST (the story's people; "voice" is "${channel?.id || "intercom"}" for their lines, ${channel?.name || "INTERCOM"} when they aren't in the players' room)\n${people.join("\n") || "- (nobody yet: bring people in as the story needs them)"}`;
 }
 
@@ -571,13 +575,23 @@ function buildVoices(voices, config) {
     const persona = v.persona.trim() || "(No persona set: use your judgment from the name and the lore.)";
     const body = persona.replace(/<\/?voice\b[^>]*>/gi, "");
     const where = systems.length > 1 ? ` heard_on="${xmlAttr(heardOn(v))}"` : "";
-    return `<voice id="${xmlAttr(v.id)}" name="${xmlAttr(v.name)}" role="${xmlAttr(role)}" display="${xmlAttr(display)}"${where}>\n${body}\n</voice>`;
+    const expressive = v.voice?.engine === "kitten" ? ' expressive="yes"' : "";
+    return `<voice id="${xmlAttr(v.id)}" name="${xmlAttr(v.name)}" role="${xmlAttr(role)}" display="${xmlAttr(display)}"${where}${expressive}>\n${body}\n</voice>`;
   });
+  const expression = voices.some((v) => v.voice?.engine === "kitten") || config?.cast?.some((m) => m.engine === "kitten") ? `\n\n${EXPRESSIVE_SPEECH}` : "";
   return `VOICES YOU CONTROL
 Every line is said by exactly one of these voices; put its id in "voice". Each <voice> block briefs that one voice: its personality, casing, length and line breaks apply ONLY to its own lines, never to another voice's. Unless its block says otherwise, write a voice's turn as ONE line entry, with line breaks inside the text for multi-line output (a terminal printout is one entry).
 
-${blocks.join("\n\n")}`;
+${blocks.join("\n\n")}${expression}`;
 }
+
+// Kitten TTS 2 reads this markup as delivery; the app strips it from what the players see.
+const EXPRESSIVE_SPEECH = `EXPRESSIVE SPEECH (only lines spoken by an expressive speaker: a line with "character" set is expressive only if that cast member is marked (expressive); any other line only if its voice is marked expressive="yes")
+Their text is spoken by a voice model that takes delivery cues. Use them to act the line, sparingly (most lines need one emotion at most):
+- Start a line with ONE emotion tag: ${EMOTIONS.map((e) => `[${e}]`).join(" ")}. It lasts for that line's sentences.
+- Put a vocal event where it happens: ${VOCAL_EVENTS.map((e) => `<${e}>`).join(" ")}.
+- Stress a word or short phrase with triple parentheses: (((never))).
+- Only these exact tags; nothing else in brackets. Never use them in anyone else's lines. The players never see them.`;
 
 function buildSystem(state) {
   const c = state.config;

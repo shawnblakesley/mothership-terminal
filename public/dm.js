@@ -80,9 +80,7 @@
         }
         const groq = S.discord?.enabled && !S.discord.sttKey && store.get("wardenKey:groq");
         if (groq && !autoSttSent) { autoSttSent = true; send({ t: "sttKey", key: groq }); }
-        if (!ws.voicesAnnounced) { ws.voicesAnnounced = true; announceVoices(); }
-      } else if (msg.t === "speak") speakHere(msg);
-      else if (msg.t === "toast") toast(msg.text, msg.level);
+      } else if (msg.t === "toast") toast(msg.text, msg.level);
       else if (msg.t === "handoutWriting") handoutWriting(msg.busy);
       else if (msg.t === "handoutDraft") {
         $("docTitle").value = msg.title;
@@ -101,31 +99,6 @@
     clearTimeout(toast.t);
     toast.t = setTimeout(() => ($("toast").hidden = true), 12000);
   });
-
-  const localVoices = () => store.get("localVoices") !== "0";
-  function announceVoices() {
-    const r = Speech.ready, on = localVoices();
-    $("localVoices").checked = on;
-    $("localVoicesNote").textContent = !on ? "off: the server makes them"
-      : `${r.espeak ? "ready" : "starting"}; human voices ${r.neural ? "ready" : r.neuralFailed ? "made by the server (they didn't sound right in this browser)" : "loading (a one-time download)"}`;
-    if (!on) return send({ t: "voiceEngine", on: false });
-    Speech.start(announceVoices);
-    send({ t: "voiceEngine", on: r.espeak, neural: r.neural });
-  }
-  $("localVoices").onchange = (e) => {
-    store.set("localVoices", e.target.checked ? "1" : "0");
-    if (!e.target.checked) Speech.stop();
-    announceVoices();
-  };
-  async function speakHere({ id, engine, text, opts, fx }) {
-    try {
-      const { wav, seconds } = await Speech.make(engine, text, opts, fx);
-      const r = await fetch(`api/sessions/${code}/spoken/${id}`, { method: "POST", headers: { "X-Warden-Token": key, "X-Speech-Seconds": String(seconds), "Content-Type": "application/octet-stream" }, body: wav });
-      if (!r.ok) throw new Error(r.status);
-    } catch {
-      send({ t: "spokenFailed", id });
-    }
-  }
 
   function toast(text, level = "info") {
     const el = $("toast");
@@ -769,7 +742,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     fillSelect($("castChannel"), S.config.voices.filter((v) => !["terminal", "narrator"].includes(v.id)).map((v) => [v.id, v.name]), S.config.castChannel);
     const rooms = roomLabels();
     const withPlayers = new Set((S.screens || []).map((sc) => S.config.terminals.find((t) => t.id === sc.terminal)?.room).filter(Boolean));
-    const speakers = Object.entries(S.voiceOptions.speakers);
+    const CAST_ENGINES = [["neural", "Human (neural)"], ["kitten", "Expressive (Kitten TTS 2)"], ["espeak", "Synthetic (eSpeak)"]];
+    const speakersOf = (engine) => Object.entries(engine === "kitten" ? S.voiceOptions.kittenSpeakers : S.voiceOptions.speakers);
     panel.innerHTML = castDraft.map((m, i) => `<div class="castm" data-i="${i}">
         ${pickButton(m, `class="pick" data-mact="pic"`)}
         <div class="castbody">
@@ -786,7 +760,8 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
             ${withPlayers.has(m.room) ? '<span class="pill ok" title="Face to face with players">in person</span>' : '<span class="pill" title="Heard over the intercom">intercom</span>'}
           </div>
           <div class="row wrap edit-only small">
-            <select data-m="voice" aria-label="Their voice"><option value="">(a voice of their own)</option>${speakers.map(([id, label]) => `<option value="${id}" ${id === m.voice ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
+            <select data-m="engine" aria-label="Their voice engine">${optionsHtml(CAST_ENGINES, m.engine || "neural")}</select>
+            ${m.engine === "espeak" ? "" : `<select data-m="voice" aria-label="Their voice"><option value="">(a voice of their own)</option>${speakersOf(m.engine).map(([id, label]) => `<option value="${id}" ${id === m.voice ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>`}
             <button data-mact="test" title="Preview voice here">▶</button>
             <span class="grow"></span><button data-mact="del" class="ghost" title="Remove ${esc(m.name)}">✕</button>
           </div>
@@ -810,7 +785,9 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const key = e.target.dataset.m;
     const card = e.target.closest(".castm");
     if (!key || !card) return;
-    castDraft[Number(card.dataset.i)][key] = "num" in e.target.dataset ? Number(e.target.value) : e.target.value;
+    const m = castDraft[Number(card.dataset.i)];
+    m[key] = "num" in e.target.dataset ? Number(e.target.value) : e.target.value;
+    if (key === "engine") { m.voice = ""; renderCast(true); } // each engine has its own speakers
     saveCast(e.target.tagName === "SELECT");
   });
   $("cast").addEventListener("focusout", () => setTimeout(() => S && renderCast(), 1600));
@@ -823,7 +800,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
     const i = Number(card.dataset.i), m = castDraft[i];
     if (act === "pic") openPortraits({ cast: i });
     else if (act === "panic") send({ t: "castPanic", id: m.id });
-    else if (act === "test") Voice.test({ name: "test", voice: { engine: "neural", speaker: m.voice || "am_michael", pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
+    else if (act === "test") Voice.test({ name: "test", voice: { engine: m.engine || "neural", speaker: m.voice, kitten: m.voice, pace: 1 }, fx: {} }, $("testText").value || "Testing.", `api/sessions/${code}/tts-test`, key);
     else if (act === "del") {
       if (!(await sure(`Remove ${m.name || "this character"}?`, "The agent forgets them.", "Remove"))) return;
       castDraft.splice(castDraft.indexOf(m), 1);
@@ -2681,7 +2658,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   $("resetAll").onclick = async () => (await sure("Factory reset?", "Resets the whole story to the defaults.", "Factory reset")) && send({ t: "resetAll" });
 
   const BUILTIN_IDS = ["terminal", "broadcast", "narrator"];
-  const BASE_VOICE = { engine: "espeak", speaker: "am_michael", pace: 1, variant: "", pitch: 50, speed: 170, wordgap: 0 };
+  const BASE_VOICE = { engine: "espeak", speaker: "am_michael", pace: 1, kitten: "Bruno", variant: "", pitch: 50, speed: 170, wordgap: 0 };
   const presetSound = (p) => ({ voice: { ...BASE_VOICE, ...p.voice }, fx: Object.fromEntries(Object.entries(S.voiceOptions.fxParams).map(([k, [, , def]]) => [k, p.fx[k] ?? def])) });
   const FX_LABELS = {
     rate: "Speed / pitch", highpass: "Low cut (Hz)", lowpass: "High cut (Hz)", drive: "Distortion",
@@ -2766,10 +2743,15 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
           <label>Engine
             <select data-k="voice.engine">
               <option value="neural" ${v.voice.engine === "neural" ? "selected" : ""}>Human (neural)</option>
-              <option value="espeak" ${v.voice.engine !== "neural" ? "selected" : ""}>Synthetic (eSpeak)</option>
+              <option value="kitten" ${v.voice.engine === "kitten" ? "selected" : ""}>Expressive (Kitten TTS 2)</option>
+              <option value="espeak" ${v.voice.engine === "espeak" ? "selected" : ""}>Synthetic (eSpeak)</option>
             </select>
           </label>
-          ${v.voice.engine === "neural" ? `
+          ${v.voice.engine === "kitten" ? `
+          <label>Speaker
+            <select data-k="voice.kitten">${Object.entries(o.kittenSpeakers).map(([id, label]) => `<option value="${id}" ${id === v.voice.kitten ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
+          </label>
+          <p class="small muted" style="grid-column: 1 / -1; margin: 0">The agent acts these lines with emotion, sighs and emphasis. Try it: [nervous] It's (((here))). &lt;gasp&gt;</p>` : v.voice.engine === "neural" ? `
           <label>Speaker
             <select data-k="voice.speaker">${Object.entries(o.speakers).map(([id, label]) => `<option value="${id}" ${id === v.voice.speaker ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
           </label>

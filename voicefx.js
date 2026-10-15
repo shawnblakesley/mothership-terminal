@@ -3,7 +3,7 @@ import { FX_PARAMS } from "./voices.js";
 
 const SR = 24000;
 
-function readWav(buf, rate = 1, stereo = false) {
+function readWav(buf, rate = 1) {
   if (buf.length < 44 || buf.toString("latin1", 0, 4) !== "RIFF") return null;
   let p = 12, fmt = null, data = null;
   while (p + 8 <= buf.length) {
@@ -29,7 +29,6 @@ function readWav(buf, rate = 1, stereo = false) {
     }
     return out;
   };
-  if (stereo) return [resample((i) => sample(i, 0)), resample((i) => sample(i, fmt.channels - 1))];
   return resample((i) => {
     let sum = 0;
     for (let ch = 0; ch < fmt.channels; ch++) sum += sample(i, ch);
@@ -145,10 +144,6 @@ function convolve(input, n) {
 
 const FX_DEFAULTS = Object.fromEntries(Object.entries(FX_PARAMS).map(([k, [, , def]]) => [k, def]));
 function render(wav, fx = {}) {
-  if (fx === null) {
-    const [left, right] = readWav(wav, 1, true) || [];
-    return left?.length ? pcm48(left, right, left.length) : null;
-  }
   const p = { ...FX_DEFAULTS, ...fx };
   const src = readWav(wav, p.rate || 1);
   if (!src || !src.length) return null;

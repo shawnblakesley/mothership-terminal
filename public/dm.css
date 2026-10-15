@@ -254,6 +254,7 @@ summary .muted { font-weight: 400; font-size: 12px; }
 .advm .advinfo { white-space: pre-wrap; overflow-wrap: anywhere; color: color-mix(in srgb, var(--fg) 82%, var(--muted)); line-height: 1.45; }
 .castbody .mood { display: inline-flex; align-items: baseline; gap: 4px; }
 .castbody .mood select { width: auto; padding: 1px 4px; }
+.castbody select[data-m="engine"], .castbody select[data-m="voice"] { width: auto; flex: 1 1 10em; min-width: 0; }
 .castbody .mood select.up { color: var(--accent); }
 .castbody .mood select.down { color: #e07a72; }
 .castbody .why { font-size: 12.5px; padding: 3px 6px; }
