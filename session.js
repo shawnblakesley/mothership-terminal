@@ -1,10 +1,10 @@
 import crypto from "crypto";
 import { getProvider, defaultSelection, fixSelection, catalog, keyFor, looksLikeKey, sitePassword, LOCAL_KEYS, SITE_KEYS } from "./providers/index.js";
-import { warmNeural } from "./tts.js";
+import { warmNeural, warmKitten } from "./tts.js";
 import { VoiceRelay } from "./voicerelay.js";
-import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, PICTURE_LINK, DEFAULT_COLD, COLD_STATS, OLD_COLD_PICTURES } from "./voices.js";
+import { speechParts, voiceFor, shipVoice, narratorVoice, NARRATOR_WHITE, sentenceLines, COMMS_PRESETS, shownName, isAdversary, newAdversary, fromPreset, isHuman, hasExpression, splitExpression, PICTURE_LINK, DEFAULT_COLD, COLD_STATS, OLD_COLD_PICTURES } from "./voices.js";
 import { defaultCast, DEFAULT_CAST, sanitizeCast, findCast, castVoice, addCast, shiftAttitude, attitudeLabel, shiftStress, PANIC_TABLE, panicEntry, castFromVoices, isCrew, placeByOccupants, speakingVoice, finalVoice, channelOf, OLD_MARLOWE_NOTES, DEFAULT_MARLOWE_NOTES } from "./cast.js";
-import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
+import { defaultVoices, sanitizeVoices, PRESETS, FX_PARAMS, VARIANTS, STYLES, ENGINES, SPEAKERS, KITTEN_SPEAKERS, BUILTIN, DEFAULT_PERSONAS, OLD_DEFAULT_PERSONAS } from "./voices.js";
 import { APP_VERSION } from "./version.js";
 import { cleanName, kitSounds, KIT_FILES } from "./sounds.js";
 import { DEFAULT_CREW, TRAUMA_RESPONSES, sanitizeCrew, patchCrew, resolveVariants, crewTargets, setVital, gainStress, raiseMinStress, closeCrew, changeItem, freshen, newCond, applyDamage, gainWound, applyDeathSave, playable, stabilise, deathSaveCountdown, isDead, armorText, endSession, settleEndings, renameSkill } from "./crew.js";
@@ -576,7 +576,7 @@ export class Session {
     this.effectTimers = new Map();
     this.onChange = onChange;
     this.onEnd = onEnd;
-    if (this.usesNeural()) warmNeural();
+    this.warmVoices();
   }
 
   toJSON() {
@@ -620,6 +620,11 @@ export class Session {
 
   usesNeural() {
     return this.state.config.voices.some((v) => v.voice.engine === "neural");
+  }
+
+  warmVoices() {
+    if (this.usesNeural()) warmNeural();
+    if (this.state.config.voices.some((v) => v.voice.engine === "kitten")) warmKitten();
   }
 
   attach(ws, role, hint = {}) {
@@ -831,7 +836,7 @@ export class Session {
       selfRolls: c.playerRolls,
       create: !!c.playerCreate,
       trauma: TRAUMA_RESPONSES,
-      voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: shownName(v), style: v.style, color: v.color, fx: v.fx, chunked: v.voice.engine === "neural" }])),
+      voices: Object.fromEntries(c.voices.map((v) => [v.id, { name: shownName(v), style: v.style, color: v.color, fx: v.fx, chunked: isHuman(v.voice) }])),
       portraits: Object.fromEntries((c.cast || []).filter((m) => m.portrait).map((m) => [m.name.toLowerCase(), m.portrait])),
       portraitCredit: [...(c.cast || []), ...c.crew].some((m) => m.portrait?.startsWith("kit/")),
       rig: this.rigView(),
@@ -984,7 +989,7 @@ export class Session {
       discord: this.discordView(),
       allEffects: ALL_EFFECTS,
       rollOptions: { checks: CHECKS, skillLevels: SKILL_LEVELS },
-      voiceOptions: { presets: PRESETS, fxParams: FX_PARAMS, variants: VARIANTS, styles: STYLES, engines: ENGINES, speakers: SPEAKERS },
+      voiceOptions: { presets: PRESETS, fxParams: FX_PARAMS, variants: VARIANTS, styles: STYLES, engines: ENGINES, speakers: SPEAKERS, kittenSpeakers: KITTEN_SPEAKERS },
       panicTable: PANIC_TABLE.slice(1),
       deathSaves: Object.fromEntries(Object.keys(this.state.deathSaves || {}).map((id) => [id, true])),
       weaponsOf: Object.fromEntries(this.state.config.crew.map((c) => [c.id, weaponsOf(c.items).map((w) => w.name)])),
@@ -993,9 +998,22 @@ export class Session {
     };
   }
 
+  // Kitten TTS 2 markup ([nervous], <sigh>, (((word)))) is never shown; a Kitten voice keeps it to speak, in "say".
+  splitExpression(entry) {
+    const marked = [entry, ...(entry.variants || [])].filter((t) => hasExpression(t.text));
+    if (!marked.length) return;
+    const kitten = speakingVoice(this.state.config, entry)?.engine === "kitten";
+    for (const t of marked) {
+      const { text, say } = splitExpression(t.text);
+      t.text = text;
+      if (kitten) t.say = say;
+    }
+  }
+
   addLog(kind, text, extra = {}) {
     const { net = this.defaultNet(), ...rest } = extra;
     const entry = { id: this.nextId++, kind, text, ts: Date.now(), ...(net ? { net } : {}), ...rest };
+    if (SPOKEN_KINDS.has(kind)) this.splitExpression(entry);
     const adv = kind === "entity" && this.state.config.voices.find((v) => v.id === entry.entity && v.adversary);
     if (adv) entry.shownAs = shownName(adv);
     this.state.log.push(entry);
@@ -1073,7 +1091,7 @@ export class Session {
 
   lineVoice(e) {
     const voice = SPOKEN_KINDS.has(e.kind) ? voiceFor(this.state.config.voices, e) : null;
-    return { voice, chunked: !!e.character || voice?.voice.engine === "neural" };
+    return { voice, chunked: !!e.character || isHuman(voice?.voice) };
   }
   async scheduleLine(entry) {
     const PIECE_GAP = 250, LINE_GAP = 150;
@@ -1085,7 +1103,7 @@ export class Session {
     const { voice, chunked } = this.lineVoice(entry);
     const base = voice ? speakingVoice(c, entry) : null;
     const fx = entry.inPerson ? {} : voice?.fx || {};
-    const texts = [entry.text, ...(entry.variants || []).map((v) => v.text)];
+    const texts = [entry.say ?? entry.text, ...(entry.variants || []).map((v) => v.say ?? v.text)];
     const pieces = texts.map((t) => (!t ? [] : chunked ? speechParts(t) : [t]));
     const jobs = pieces.map((ps) => ps.map((p) => (spoken ? this.speech.speak(p, base, fx).catch(() => null) : Promise.resolve(null))));
     const wavs = texts.map(() => []);
@@ -1309,7 +1327,7 @@ export class Session {
       }
       case "voices":
         s.config.voices = sanitizeVoices(msg.voices);
-        if (this.usesNeural()) warmNeural();
+        this.warmVoices();
         this.sendHeader();
         break;
       case "adversary": {
@@ -1986,9 +2004,9 @@ export class Session {
     if (!this.speaksOnScreens()) return;
     for (const l of lines) {
       const base = speakingVoice(this.state.config, l);
-      if (base.engine !== "neural") continue;
+      if (!isHuman(base)) continue;
       const fx = l.inPerson ? {} : voiceFor(this.state.config.voices, l)?.fx || {};
-      for (const text of [l.text, ...(l.variants || []).map((v) => v.text)]) {
+      for (const text of [l.say ?? l.text, ...(l.variants || []).map((v) => v.say ?? v.text)]) {
         for (const part of speechParts(text)) this.speech.speak(part, base, fx).catch(() => {});
       }
     }
@@ -2277,7 +2295,7 @@ export class Session {
     this.hazardNeeds = [];
     this.syncHazards();
     for (const ws of this.sockets) if (ws.role === "player" && !(keepClaims && this.state.config.crew.some((c) => c.id === ws.character && playable(c)))) ws.character = null;
-    if (this.usesNeural()) warmNeural();
+    this.warmVoices();
     this.addLog("note", `New story applied: "${draft.title}".`);
     this.initPlayers();
     this.setBusy(false);
@@ -3634,7 +3652,7 @@ export class Session {
   }
   speaksBySentence(voiceId) {
     const v = this.state.config.voices.find((x) => x.id === voiceId);
-    return !!v && v.style !== "plain" && v.voice?.engine === "neural";
+    return !!v && v.style !== "plain" && isHuman(v.voice);
   }
 
   restartStory() {

@@ -25,7 +25,56 @@ export const VARIANTS = [
 ];
 export const STYLES = ["plain", "label", "boxed", "narration"];
 
-export const ENGINES = ["espeak", "neural"];
+export const ENGINES = ["espeak", "neural", "kitten"];
+// Engines that sound human: spoken a sentence at a time, generated ahead, on the server.
+export const isHuman = (voice) => voice?.engine === "neural" || voice?.engine === "kitten";
+
+// Kitten TTS 2 voices (github.com/KittenML/KittenTTS, docs/voices-and-expression.md).
+export const KITTEN_SPEAKERS = {
+  Bella: "Bella (F)", Luna: "Luna (F)", Rosie: "Rosie (F)", Kiki: "Kiki (F)",
+  Jasper: "Jasper (M)", Bruno: "Bruno (M)", Hugo: "Hugo (M)", Leo: "Leo (M)",
+  Diana: "Diana (F, stern military officer)", Maeve: "Maeve (F, warm storyteller)", Edith: "Edith (F, soft elderly)",
+  Grace: "Grace (F, soothing nurse)", Iris: "Iris (F, hushed guide)", Willow: "Willow (F, hushed young)",
+  Dolores: "Dolores (F, Southern elderly)", Serena: "Serena (F, gentle)", Eleanor: "Eleanor (F, somber historian)",
+  Saoirse: "Saoirse (F, joyful Irish)", Claire: "Claire (F, playful professional)", Martha: "Martha (F, weathered radio journalist)",
+  Raven: "Raven (F, controlled, furious)", Sable: "Sable (F, hushed conspirator)", Victoria: "Victoria (F, regal narrator)",
+  Herbert: "Herbert (M, elderly professor)", Laurence: "Laurence (M, dramatic actor)", Walter: "Walter (M, warm grandfather)",
+  Miles: "Miles (M, gentle librarian)", Matthew: "Matthew (M, exhausted mechanic)", Reginald: "Reginald (M, elderly diplomat)",
+  Elliot: "Elliot (M, grieving young man)", Frank: "Frank (M, gravelly war veteran)", Victor: "Victor (M, controlled, furious)",
+  Julian: "Julian (M, dreamy poet)", Dante: "Dante (M, playful, smooth)", Alfred: "Alfred (M, tender, older)",
+  Otis: "Otis (M, rumbling blues musician)", Vincent: "Vincent (M, hushed guide)", Marcus: "Marcus (M, smooth radio DJ)",
+};
+
+// Kitten TTS 2 expression markup: one leading [emotion], inline <event>s, (((emphasis))). Spoken, never shown.
+export const EMOTIONS = ["angry", "contemplative", "excited", "joyful", "mundane", "nervous", "sad", "stern", "surprised", "tender"];
+export const VOCAL_EVENTS = ["gasp", "giggle", "growl", "gulp", "laugh", "pause", "scoff", "sigh", "sob", "um"];
+const EMOTION_TAG = new RegExp(`\\[(${EMOTIONS.join("|")})\\]`, "gi");
+const LEAD_EMOTION = new RegExp(`^\\s*\\[(${EMOTIONS.join("|")})\\]`, "i");
+const EVENT_TAG = new RegExp(`<(${VOCAL_EVENTS.join("|")})>`, "gi");
+const EMPHASIS = /\(\(\(([^()\n]{1,80})\)\)\)/g;
+export const hasExpression = (text) => [EMOTION_TAG, EVENT_TAG, EMPHASIS].some((re) => String(text).search(re) >= 0);
+const tidy = (l) => l.replace(/[ \t]{2,}/g, " ").replace(/ ([,.!?…])/g, "$1").trim();
+export const stripExpression = (text) => String(text).split("\n").map((l) => {
+  const s = l.replace(EMOTION_TAG, "").replace(EVENT_TAG, "").replace(EMPHASIS, "$1");
+  return s === l ? l : tidy(s); // untouched lines keep their spacing (terminal tables)
+}).join("\n");
+// Marked text -> { text: what is shown, say: what Kitten speaks }, line for line. Each line is spoken alone, so it
+// carries the last emotion; a line of tags only joins the next line, so shown and spoken lines stay paired.
+export function splitExpression(marked) {
+  const text = [], say = [];
+  let mood = "", carry = "";
+  for (const line of String(marked).split("\n")) {
+    const tag = line.match(LEAD_EMOTION);
+    if (tag) mood = tag[1].toLowerCase();
+    const body = tidy(`${carry} ${line.replace(EMOTION_TAG, "")}`);
+    const shown = stripExpression(line);
+    if (!shown) { carry = body; if (!line.trim()) { text.push(""); say.push(""); } continue; }
+    carry = "";
+    text.push(shown);
+    say.push(`${mood ? `[${mood}] ` : ""}${body}`);
+  }
+  return { text: text.join("\n").trim(), say: say.join("\n").trim() };
+}
 
 export const SPEAKERS = {
   af_heart: "Heart (US female)", af_bella: "Bella (US female)", af_nicole: "Nicole (US female, soft)",
@@ -226,6 +275,7 @@ export function sanitizeVoices(list) {
         engine: ENGINES.includes(raw.voice?.engine) ? raw.voice.engine : "espeak",
         speaker: SPEAKERS[raw.voice?.speaker] ? raw.voice.speaker : "am_michael",
         pace: Math.min(2, Math.max(0.5, Number(raw.voice?.pace) || 1)),
+        kitten: KITTEN_SPEAKERS[raw.voice?.kitten] ? raw.voice.kitten : "Bruno",
         variant: VARIANTS.includes(raw.voice?.variant) ? raw.voice.variant : "",
         pitch: clampInt(raw.voice?.pitch, 0, 99, 50),
         speed: clampInt(raw.voice?.speed, 80, 320, 170),

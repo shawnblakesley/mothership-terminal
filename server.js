@@ -263,7 +263,8 @@ router.get("/api/sessions/:code/tts/:id", async (req, res) => {
   const s = sessionOf(req);
   const entry = s?.state.log.find((e) => e.id === Number(req.params.id));
   if (!s || !s.speaksOnScreens() || !entry || entry.hidden || !SPOKEN_KINDS.has(entry.kind)) return res.status(404).end();
-  const whole = req.query.v === undefined ? entry.text : entry.variants?.[Number(req.query.v)]?.text;
+  const said = req.query.v === undefined ? entry : entry.variants?.[Number(req.query.v)];
+  const whole = said && (said.say ?? said.text);
   const text = whole === undefined ? undefined : req.query.part === undefined ? whole : speechParts(whole)[Number(req.query.part)];
   if (text === undefined) return res.status(404).end();
   const c = s.state.config;

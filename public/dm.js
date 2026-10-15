@@ -2681,7 +2681,7 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
   $("resetAll").onclick = async () => (await sure("Factory reset?", "Resets the whole story to the defaults.", "Factory reset")) && send({ t: "resetAll" });
 
   const BUILTIN_IDS = ["terminal", "broadcast", "narrator"];
-  const BASE_VOICE = { engine: "espeak", speaker: "am_michael", pace: 1, variant: "", pitch: 50, speed: 170, wordgap: 0 };
+  const BASE_VOICE = { engine: "espeak", speaker: "am_michael", pace: 1, kitten: "Bruno", variant: "", pitch: 50, speed: 170, wordgap: 0 };
   const presetSound = (p) => ({ voice: { ...BASE_VOICE, ...p.voice }, fx: Object.fromEntries(Object.entries(S.voiceOptions.fxParams).map(([k, [, , def]]) => [k, p.fx[k] ?? def])) });
   const FX_LABELS = {
     rate: "Speed / pitch", highpass: "Low cut (Hz)", lowpass: "High cut (Hz)", drive: "Distortion",
@@ -2766,10 +2766,15 @@ ${num("stress", c.stress, "Stress")}${num("minStress", c.minStress, "Min stress"
           <label>Engine
             <select data-k="voice.engine">
               <option value="neural" ${v.voice.engine === "neural" ? "selected" : ""}>Human (neural)</option>
-              <option value="espeak" ${v.voice.engine !== "neural" ? "selected" : ""}>Synthetic (eSpeak)</option>
+              <option value="kitten" ${v.voice.engine === "kitten" ? "selected" : ""}>Expressive (Kitten TTS 2)</option>
+              <option value="espeak" ${v.voice.engine === "espeak" ? "selected" : ""}>Synthetic (eSpeak)</option>
             </select>
           </label>
-          ${v.voice.engine === "neural" ? `
+          ${v.voice.engine === "kitten" ? `
+          <label>Speaker
+            <select data-k="voice.kitten">${Object.entries(o.kittenSpeakers).map(([id, label]) => `<option value="${id}" ${id === v.voice.kitten ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
+          </label>
+          <p class="small muted">The agent acts these lines with emotion, sighs and emphasis. Try it: [nervous] It's (((here))). &lt;gasp&gt;</p>` : v.voice.engine === "neural" ? `
           <label>Speaker
             <select data-k="voice.speaker">${Object.entries(o.speakers).map(([id, label]) => `<option value="${id}" ${id === v.voice.speaker ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>
           </label>

@@ -31,7 +31,7 @@ export class VoiceRelay {
     const job = prepare(text, voice);
     if (!job) return Promise.resolve(null);
     const onServer = () => synthesize(text, voice).then((wav) => (wav ? { wav, seconds: wavSeconds(wav) / (fx.rate || 1), composed: false } : null));
-    if (!this.usable(job.neural)) return onServer();
+    if (job.kitten || !this.usable(job.neural)) return onServer(); // Kitten runs only on the server
     const key = `${job.key}|${JSON.stringify(fx)}`;
     const hit = this.cache.get(key);
     if (hit) {
