@@ -30,6 +30,7 @@ test("Kitten markup is shown stripped and spoken line for line, each line keepin
   const { text, say } = splitExpression("[nervous] I hear it. <gasp>\nIt's (((here))).\n<sigh>\nRun!");
   assert.equal(text, "I hear it.\nIt's here.\nRun!");
   assert.equal(say, "[nervous] I hear it. <gasp>\n[nervous] It's (((here))).\n[nervous] <sigh> Run!");
+  assert.deepEqual(splitExpression("[angry] Get out!\n<growl>"), { text: "Get out!", say: "[angry] Get out! <growl>" });
 });
 
 test("only Kitten's own tags are markup: terminal brackets and spacing survive", () => {

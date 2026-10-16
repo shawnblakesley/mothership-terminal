@@ -59,7 +59,7 @@ export const stripExpression = (text) => String(text).split("\n").map((l) => {
   return s === l ? l : tidy(s); // untouched lines keep their spacing (terminal tables)
 }).join("\n");
 // Marked text -> { text: what is shown, say: what Kitten speaks }, line for line. Each line is spoken alone, so it
-// carries the last emotion; a line of tags only joins the next line, so shown and spoken lines stay paired.
+// carries the last emotion; a line of tags only joins the next line (the last line, at the end), so shown and spoken lines stay paired.
 export function splitExpression(marked) {
   const text = [], say = [];
   let mood = "", carry = "";
@@ -73,6 +73,8 @@ export function splitExpression(marked) {
     text.push(shown);
     say.push(`${mood ? `[${mood}] ` : ""}${body}`);
   }
+  const last = say.findLastIndex(Boolean);
+  if (carry && last >= 0) say[last] = tidy(`${say[last]} ${carry}`); // trailing tags join the last spoken line
   return { text: text.join("\n").trim(), say: say.join("\n").trim() };
 }
 
